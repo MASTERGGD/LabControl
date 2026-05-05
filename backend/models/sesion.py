@@ -1,0 +1,54 @@
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy.orm import relationship
+from database import Base
+import datetime
+
+class SesionClase(Base):
+    __tablename__ = "sesiones_clase"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reservacion_id = Column(Integer, ForeignKey("reservaciones.id"), nullable=True)
+    laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=False)
+    docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    materia = Column(String, nullable=False)
+    grupo = Column(String, nullable=False)
+    codigo_sesion = Column(String, unique=True, nullable=False)
+    inicio = Column(DateTime, default=datetime.datetime.utcnow)
+    fin_estimado = Column(DateTime, nullable=True)
+    fin_real = Column(DateTime, nullable=True)
+    estado = Column(String, default="ABIERTA")
+    observacion_general = Column(String, nullable=True)
+    overtime_min = Column(Integer, nullable=True, default=0)
+
+    reservacion = relationship("Reservacion", back_populates="sesiones")
+    docente = relationship("Usuario", back_populates="sesiones")
+    asignaciones = relationship("AsignacionPC", back_populates="sesion")
+    observaciones_pc = relationship("ObservacionPC", back_populates="sesion")
+
+class AsignacionPC(Base):
+    __tablename__ = "asignaciones_pc"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sesion_id = Column(Integer, ForeignKey("sesiones_clase.id"), nullable=False)
+    computadora_id = Column(Integer, ForeignKey("computadoras.id"), nullable=False)
+    alumno_nombre = Column(String, nullable=False)
+    alumno_matricula = Column(String, nullable=False)
+    hora_asignacion = Column(DateTime, default=datetime.datetime.utcnow)
+    hora_liberacion = Column(DateTime, nullable=True)
+
+    sesion = relationship("SesionClase", back_populates="asignaciones")
+    computadora = relationship("Computadora", back_populates="asignaciones")
+
+class ObservacionPC(Base):
+    __tablename__ = "observaciones_pc"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sesion_id = Column(Integer, ForeignKey("sesiones_clase.id"), nullable=False)
+    computadora_id = Column(Integer, ForeignKey("computadoras.id"), nullable=True)
+    tipo = Column(String, default="SIN_NOVEDAD")
+    descripcion = Column(String, nullable=True)
+    prioridad = Column(String, default="BAJA")
+    atendida = Column(Boolean, default=False)
+
+    sesion = relationship("SesionClase", back_populates="observaciones_pc")
+    computadora = relationship("Computadora", back_populates="observaciones")

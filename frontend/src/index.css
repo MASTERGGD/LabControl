@@ -1,0 +1,7 @@
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: #0f172a;
+  color: #f1f5f9;
+}

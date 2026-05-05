@@ -1,0 +1,81 @@
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from database import get_db
+from models.usuario import Usuario, RolUsuario
+import os
+
+# ─── Configuración ─────────────────────────────────────────────────────────────
+
+SECRET_KEY = os.getenv("SECRET_KEY", "labcontrol-utecan-secret-dev-2024")
+ALGORITHM = "HS256"
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+# ─── Utilidades de contraseña ──────────────────────────────────────────────────
+
+def hashear_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verificar_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+# ─── Utilidades de JWT ─────────────────────────────────────────────────────────
+
+def crear_access_token(data: dict) -> str:
+    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+
+def decodificar_token(token: str) -> dict:
+    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+
+# ─── Dependency: usuario autenticado ──────────────────────────────────────────
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+) -> Usuario:
+    credencial_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No autenticado o token inválido",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = decodificar_token(token)
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credencial_exception
+    except JWTError:
+        raise credencial_exception
+
+    usuario = db.query(Usuario).filter(
+        Usuario.id == int(user_id),
+        Usuario.activo == True
+    ).first()
+
+    if usuario is None:
+        raise credencial_exception
+    return usuario
+
+
+# ─── Factory: requerir rol(es) específico(s) ───────────────────────────────────
+
+def require_roles(*roles: RolUsuario):
+    """
+    Uso:
+        @router.get("/admin", dependencies=[Depends(require_roles(RolUsuario.SUPER_ADMIN))])
+        @router.get("/docentes", dependencies=[Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))])
+    """
+    def _check(current_user: Usuario = Depends(get_current_user)):
+        if current_user.rol not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Acceso denegado. Se requiere uno de los roles: {[r.value for r in roles]}"
+            )
+        return current_user
+    return _check

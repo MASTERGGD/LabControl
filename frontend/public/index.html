@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>LabControl — UTECAN</title>
+
+    <!-- ── PWA: manifest + theme ──────────────────────────────────────────── -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LabControl" />
+    <meta name="application-name" content="LabControl" />
+    <meta name="msapplication-TileColor" content="#0f172a" />
+
+    <!-- ── Íconos ─────────────────────────────────────────────────────────── -->
+    <link rel="icon" type="image/png" sizes="32x32"  href="/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16"  href="/icons/favicon-16.png" />
+    <link rel="apple-touch-icon"      sizes="180x180" href="/icons/apple-touch-icon.png" />
+
+    <!-- ── SEO / descripción ──────────────────────────────────────────────── -->
+    <meta name="description" content="Sistema de control y reservación de laboratorios — UTECAN" />
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                bg:      '#0f172a',
+                surface: '#1e293b',
+                border:  '#334155',
+                blue:    '#3b82f6',
+                'blue-hover': '#2563eb',
+                emerald: '#10b981',
+                'emerald-hover': '#059669',
+              },
+            },
+            backdropBlur: { xs: '2px' },
+            boxShadow: {
+              glass: '0 8px 32px 0 rgba(0,0,0,0.36)',
+              glow:  '0 0 20px rgba(59,130,246,0.35)',
+              'glow-em': '0 0 20px rgba(16,185,129,0.35)',
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* ── Base ─────────────────────────────────────────────────────────── */
+      *, *::before, *::after { box-sizing: border-box; }
+      :root {
+        --bg:           #0f172a;
+        --surface:      #1e293b;
+        --surface-2:    #0d1b2e;
+        --border:       #334155;
+        --border-light: rgba(255,255,255,0.07);
+        --blue:         #3b82f6;
+        --emerald:      #10b981;
+        --text:         #f1f5f9;
+        --text-muted:   #94a3b8;
+        --glass-bg:     rgba(30,41,59,0.6);
+        --glass-border: rgba(255,255,255,0.08);
+      }
+
+      html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+      body { margin: 0; background: var(--bg); color: var(--text); }
+
+      /* ── Glassmorphism card ───────────────────────────────────────────── */
+      .glass {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: 1rem;
+      }
+      .glass-sm {
+        background: rgba(30,41,59,0.5);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid var(--glass-border);
+        border-radius: 0.75rem;
+      }
+      .glass-dark {
+        background: rgba(15,23,42,0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+        border-radius: 1rem;
+      }
+
+      /* ── Sidebar gradient ─────────────────────────────────────────────── */
+      .sidebar-bg {
+        background: linear-gradient(180deg, #0d1b2e 0%, #0f172a 100%);
+        border-right: 1px solid var(--border-light);
+      }
+
+      /* ── Inputs ──────────────────────────────────────────────────────── */
+      .input-dark {
+        background: rgba(15,23,42,0.7);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 0.75rem;
+        padding: 0.625rem 1rem;
+        width: 100%;
+        outline: none;
+        font-family: inherit;
+        transition: border-color .15s, box-shadow .15s;
+      }
+      .input-dark:focus {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+      }
+      .input-dark::placeholder { color: #475569; }
+
+      /* select.input-dark option — eliminado: todos los selects usan SelectDark */
+
+      /* ── Botones primarios ──────────────────────────────────────────── */
+      .btn-blue {
+        background: var(--blue);
+        color: #fff;
+        border: none;
+        border-radius: 0.75rem;
+        padding: 0.625rem 1.25rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s, box-shadow .15s, transform .1s;
+      }
+      .btn-blue:hover  { background: #2563eb; box-shadow: 0 0 18px rgba(59,130,246,.4); }
+      .btn-blue:active { transform: scale(.97); }
+      .btn-blue:disabled { opacity: .5; cursor: not-allowed; }
+
+      .btn-emerald {
+        background: var(--emerald);
+        color: #fff;
+        border: none;
+        border-radius: 0.75rem;
+        padding: 0.625rem 1.25rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s, box-shadow .15s, transform .1s;
+      }
+      .btn-emerald:hover  { background: #059669; box-shadow: 0 0 18px rgba(16,185,129,.4); }
+      .btn-emerald:active { transform: scale(.97); }
+      .btn-emerald:disabled { opacity: .5; cursor: not-allowed; }
+
+      .btn-ghost {
+        background: rgba(255,255,255,0.05);
+        color: var(--text-muted);
+        border: 1px solid var(--border-light);
+        border-radius: 0.75rem;
+        padding: 0.625rem 1.25rem;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background .15s, color .15s;
+      }
+      .btn-ghost:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+      /* ── Scrollbar ───────────────────────────────────────────────────── */
+      ::-webkit-scrollbar             { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track       { background: transparent; }
+      ::-webkit-scrollbar-thumb       { background: #334155; border-radius: 6px; }
+      ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+      /* ── Animaciones ─────────────────────────────────────────────────── */
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+      .animate-spin { animation: spin 1s linear infinite; }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.4; }
+      }
+      .animate-pulse { animation: pulse 2s ease-in-out infinite; }
+
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fadeUp { animation: fadeUp .3s ease both; }
+
+      @keyframes disputaPulse {
+        0%, 100% { box-shadow: 0 2px 8px rgba(0,0,0,.3), 0 0 0 0 rgba(245,158,11,0); }
+        50%       { box-shadow: 0 2px 8px rgba(0,0,0,.3), 0 0 0 5px rgba(245,158,11,.35); }
+      }
+      .slot-disputa { animation: disputaPulse 1.8s ease-in-out infinite; }
+
+      /* ── Nav active glow ─────────────────────────────────────────────── */
+      .nav-active {
+        background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.1) 100%);
+        border-left: 2px solid var(--blue);
+        color: #fff;
+      }
+      .nav-item {
+        border-left: 2px solid transparent;
+        transition: all .15s;
+        border-radius: 0 0.75rem 0.75rem 0;
+      }
+      .nav-item:hover { background: rgba(255,255,255,.05); color: #fff; }
+
+      /* ── Tooltip ─────────────────────────────────────────────────────── */
+      [data-tip] { position: relative; }
+      [data-tip]:hover::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 110%;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #1e293b;
+        color: #e2e8f0;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        white-space: nowrap;
+        pointer-events: none;
+        border: 1px solid #334155;
+        z-index: 100;
+      }
+
+      /* ── Horarios: rayas diagonales para EN_DISPUTA (accesibilidad daltonismo) ── */
+      .slot-disputa {
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(245,158,11,0.15) 0px, rgba(245,158,11,0.15) 3px,
+          rgba(120,53,15,0.1)   3px, rgba(120,53,15,0.1)   9px
+        );
+        border: 1px solid rgba(245,158,11,0.5) !important;
+      }
+      /* ── Drag-select highlight ─────────────────────────────────────────────── */
+      .slot-selecting {
+        background: rgba(59,130,246,0.3) !important;
+        border: 1px solid rgba(59,130,246,0.7) !important;
+        outline: 2px solid rgba(59,130,246,0.4);
+      }
+      .slot-libre {
+        background: rgba(16,185,129,0.12);
+        border: 1px solid rgba(16,185,129,0.3);
+      }
+      .slot-libre:hover { background: rgba(16,185,129,0.22); cursor: pointer; }
+      .slot-reservado {
+        background: rgba(59,130,246,0.18);
+        border: 1px solid rgba(59,130,246,0.4);
+      }
+      .slot-bloqueado {
+        background: rgba(139,92,246,0.18);
+        border: 1px solid rgba(139,92,246,0.4);
+      }
+      .slot-inactivo { opacity: 0.25; }
+      @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to   { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideInUp {
+        from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+        to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+      }
+
+      /* ── Safe area insets (notch / home indicator en móvil) ────────────── */
+      body {
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left:   env(safe-area-inset-left);
+        padding-right:  env(safe-area-inset-right);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- ── Service Worker registration ───────────────────────────────────── -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              console.log('[PWA] SW registrado:', reg.scope);
+
+              // Notificar al usuario cuando hay una nueva versión disponible
+              reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    // Hay actualización disponible — el toast de React lo maneja si quieres
+                    window.dispatchEvent(new CustomEvent('pwa-update-available'));
+                  }
+                });
+              });
+            })
+            .catch(err => console.warn('[PWA] SW error:', err));
+        });
+      }
+    </script>
+  </body>
+</html>

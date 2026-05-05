@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    container_name: labcontrol_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    env_file:
+      - .env
+    command: sh /app/start.sh
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: labcontrol_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    # Sin REACT_APP_API_URL: el frontend usa window.location.hostname automáticamente
+    # Funciona tanto desde localhost como desde la IP de la red local
+    depends_on:
+      - backend
+    restart: unless-stopped
