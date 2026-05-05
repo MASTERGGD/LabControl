@@ -5,6 +5,9 @@ from database import engine, Base, SessionLocal
 import models
 import os
 
+# Middleware de seguridad
+from middleware.security import SecurityHeadersMiddleware
+
 # Routers
 from routers import auth as auth_router
 from routers import laboratorios as laboratorios_router
@@ -114,13 +117,30 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# En desarrollo permite localhost:3000. En producción leer de FRONTEND_URL.
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    _FRONTEND_URL,
+]
+# Eliminar duplicados y strings vacíos
+_CORS_ORIGINS = list({o for o in _CORS_ORIGINS if o})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin",
+                   "X-Requested-With"],
+    expose_headers=["Content-Disposition"],  # para descargas de Excel
+    max_age=600,  # preflight cache 10 min
 )
+
+# ── Security Headers ───────────────────────────────────────────────────────────
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # ─── Routers ───────────────────────────────────────────────────────────────────

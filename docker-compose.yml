@@ -13,7 +13,9 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: dev          # hot-reload para desarrollo
     container_name: labcontrol_frontend
     ports:
       - "3000:3000"
