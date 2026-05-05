@@ -18,6 +18,7 @@ from routers import inventario as inventario_router
 from routers import catalogo as catalogo_router
 from routers import reportes as reportes_router
 from routers import notificaciones as notificaciones_router
+from routers import rbac as rbac_router
 from ws.mapa import websocket_mapa
 
 # Seeder
@@ -154,6 +155,7 @@ app.include_router(inventario_router.router)
 app.include_router(catalogo_router.router)
 app.include_router(reportes_router.router)
 app.include_router(notificaciones_router.router)
+app.include_router(rbac_router.router)
 
 # WebSocket — mapa de PCs en tiempo real
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)

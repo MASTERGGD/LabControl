@@ -8,6 +8,7 @@ from models.horario import Reservacion
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
+from permissions import require_permission
 from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
 import datetime
@@ -136,10 +137,9 @@ def sesiones_activas(
 async def abrir_sesion(
     data: SesionCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
+    # RBAC: solo SUPER_ADMIN, LAB_ADMIN y DOCENTE pueden abrir sesiones
+    current_user: Usuario = Depends(require_permission("sesiones:write"))
 ):
-    if current_user.rol == RolUsuario.ALUMNO:
-        raise HTTPException(status_code=403, detail="Acceso denegado")
 
     # Solo un docente puede tener una sesión abierta a la vez
     if current_user.rol == RolUsuario.DOCENTE:

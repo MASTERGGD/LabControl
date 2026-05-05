@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import PWAInstallBanner from './components/PWAInstallBanner';
+import { ROUTE_PERMISSIONS } from './config/permissions';
 
 // Páginas
 import Login from './pages/Login';
@@ -22,15 +23,20 @@ import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
+// Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
+// También acepta rolesPermitidos explícito para casos especiales.
 
-function RutaProtegida({ children, rolesPermitidos }) {
+function RutaProtegida({ children, rolesPermitidos, path }) {
   const { usuario } = useAuth();
 
   if (!usuario) {
     return <Navigate to="/login" replace />;
   }
 
-  if (rolesPermitidos && !rolesPermitidos.includes(usuario.rol)) {
+  // Determinar roles permitidos: parámetro explícito > ROUTE_PERMISSIONS > libre
+  const allowed = rolesPermitidos ?? (path ? ROUTE_PERMISSIONS[path] : null);
+
+  if (allowed && !allowed.includes(usuario.rol)) {
     // Redirigir a su propio dashboard si intenta acceder a un área no permitida
     return <Navigate to={RUTAS_POR_ROL[usuario.rol] || '/login'} replace />;
   }
@@ -148,9 +154,9 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
 
-      {/* Admin — sesión de uso libre */}
+      {/* Sesión activa — accesible para todos los roles autenticados */}
       <Route path="/admin/sesion/:sesionId" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN']}>
+        <RutaProtegida path="/admin/sesion/:sesionId">
           <SesionActiva />
         </RutaProtegida>
       }/>
