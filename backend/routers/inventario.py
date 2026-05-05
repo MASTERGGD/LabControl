@@ -8,6 +8,7 @@ from models.inventario import Activo, Prestamo, Incidente, MantenimientoPreventi
 from models.laboratorio import Laboratorio
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
+from rls import assert_lab_write, assert_resource_access
 import datetime
 
 router = APIRouter(prefix="/inventario", tags=["Inventario y Préstamos"])
@@ -313,8 +314,11 @@ def listar_activos(
 def crear_activo(
     data: ActivoCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
+    # RLS: LAB_ADMIN solo puede crear activos en su propio laboratorio
+    assert_lab_write(data.laboratorio_id, current_user)
+
     if data.categoria.upper() not in CATEGORIAS:
         raise HTTPException(status_code=422, detail=f"Categoría inválida. Use: {CATEGORIAS}")
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
@@ -339,11 +343,11 @@ def crear_activo(
 def obtener_activo(
     activo_id: int,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user)
 ):
     a = db.query(Activo).filter(Activo.id == activo_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Activo no encontrado")
+    # RLS: LAB_ADMIN no puede ver activos de otros laboratorios (devuelve 404)
+    assert_resource_access(a, current_user)
     historial = db.query(Prestamo).filter(
         Prestamo.activo_id == activo_id
     ).order_by(Prestamo.fecha_salida.desc()).limit(10).all()
@@ -357,11 +361,11 @@ def editar_activo(
     activo_id: int,
     data: ActivoUpdate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     a = db.query(Activo).filter(Activo.id == activo_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Activo no encontrado")
+    # RLS: LAB_ADMIN solo puede editar activos de su laboratorio
+    assert_resource_access(a, current_user)
     campos = data.model_dump(exclude_none=True)
     if "categoria" in campos:
         campos["categoria"] = campos["categoria"].upper()
@@ -376,11 +380,11 @@ def editar_activo(
 def dar_baja_activo(
     activo_id: int,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     a = db.query(Activo).filter(Activo.id == activo_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Activo no encontrado")
+    # RLS: LAB_ADMIN solo puede dar de baja activos de su laboratorio
+    assert_resource_access(a, current_user)
     prestamo_activo = db.query(Prestamo).filter(
         Prestamo.activo_id == activo_id,
         Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
@@ -450,6 +454,9 @@ def crear_prestamo(
     activo = db.query(Activo).filter(Activo.id == data.activo_id, Activo.activo == True).first()
     if not activo:
         raise HTTPException(status_code=404, detail="Activo no encontrado o dado de baja")
+
+    # RLS: LAB_ADMIN solo puede prestar activos de su propio laboratorio
+    assert_resource_access(activo, current_user)
     if activo.estado not in ("OPERATIVO",):
         raise HTTPException(status_code=400, detail=f"El activo está en estado '{activo.estado}', no se puede prestar")
 

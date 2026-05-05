@@ -8,6 +8,7 @@ from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
+from rls import assert_lab_write, lab_filter
 import datetime
 
 router = APIRouter(prefix="/horarios", tags=["Horarios y Reservaciones"])
@@ -206,8 +207,11 @@ def listar_horarios(
 def crear_horario(
     data: HorarioCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
+    # RLS: LAB_ADMIN solo puede crear slots en su propio laboratorio
+    assert_lab_write(data.laboratorio_id, current_user)
+
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 
@@ -233,13 +237,16 @@ def crear_horario(
 def bulk_horarios(
     data: HorarioBulkCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     """
     Crea el mismo bloque horario para varios días de la semana de una vez.
     Útil para cargar toda la disponibilidad del cuatrimestre.
     Omite duplicados silenciosamente.
     """
+    # RLS: LAB_ADMIN solo puede crear slots en su propio laboratorio
+    assert_lab_write(data.laboratorio_id, current_user)
+
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 

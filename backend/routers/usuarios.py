@@ -6,6 +6,7 @@ from database import get_db
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from dependencies import hashear_password, verificar_password, get_current_user, require_roles
+from rls import usuario_lab_filter, resolve_lab_id
 import secrets
 import string
 import io
@@ -93,9 +94,13 @@ def listar_usuarios(
     activo: Optional[bool] = None,
     laboratorio_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     query = db.query(Usuario)
+
+    # RLS: LAB_ADMIN solo ve usuarios de su lab (+ todos los docentes)
+    query = usuario_lab_filter(query, Usuario, current_user)
+
     if rol:
         try:
             query = query.filter(Usuario.rol == RolUsuario(rol))
@@ -103,7 +108,10 @@ def listar_usuarios(
             raise HTTPException(status_code=422, detail=f"Rol inválido: {rol}")
     if activo is not None:
         query = query.filter(Usuario.activo == activo)
-    if laboratorio_id:
+
+    # El filtro manual por laboratorio_id solo aplica si SUPER_ADMIN lo pide explícitamente
+    # Para LAB_ADMIN ya está forzado por usuario_lab_filter; ignoramos el parámetro
+    if laboratorio_id and current_user.rol == RolUsuario.SUPER_ADMIN:
         query = query.filter(Usuario.laboratorio_id == laboratorio_id)
 
     usuarios = query.order_by(Usuario.nombre).all()

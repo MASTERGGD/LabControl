@@ -10,6 +10,7 @@ from models.sesion import SesionClase, AsignacionPC
 from models.inventario import Activo, Prestamo, Incidente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user
+from rls import assert_report_access
 
 import openpyxl
 from openpyxl.styles import (Font, PatternFill, Alignment, Border, Side,
@@ -239,8 +240,11 @@ def reporte_mensual_json(
     mes:  int = None,
     anio: int = None,
     db:   Session = Depends(get_db),
-    _:    Usuario = Depends(get_current_user),
+    current_user: Usuario = Depends(get_current_user),
 ):
+    # RLS: LAB_ADMIN solo puede ver reportes de su propio laboratorio
+    assert_report_access(laboratorio_id, current_user)
+
     hoy = datetime.date.today()
     mes  = mes  or hoy.month
     anio = anio or hoy.year
@@ -600,8 +604,11 @@ def reporte_mensual_excel(
     mes:  int = None,
     anio: int = None,
     db:   Session = Depends(get_db),
-    _:    Usuario = Depends(get_current_user),
+    current_user: Usuario = Depends(get_current_user),
 ):
+    # RLS: LAB_ADMIN solo puede exportar reportes de su propio laboratorio
+    assert_report_access(laboratorio_id, current_user)
+
     hoy = datetime.date.today()
     mes  = mes  or hoy.month
     anio = anio or hoy.year
