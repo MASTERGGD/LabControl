@@ -19,6 +19,8 @@ import Prestamos from './pages/admin/Prestamos';
 import Mantenimiento from './pages/admin/Mantenimiento';
 import Catalogo from './pages/admin/Catalogo';
 import Reportes from './pages/admin/Reportes';
+import AsistenciaSesion from './pages/admin/AsistenciaSesion';
+import HistorialAlumno from './pages/admin/HistorialAlumno';
 import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
 
@@ -153,6 +155,18 @@ function AppRoutes() {
           <Reportes />
         </RutaProtegida>
       }/>
+      <Route path="/admin/historial-alumno" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+          <HistorialAlumno />
+        </RutaProtegida>
+      }/>
+
+      {/* Asistencia de sesión — SUPER_ADMIN, LAB_ADMIN y DOCENTE */}
+      <Route path="/admin/sesion/:sesionId/asistencia" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'DOCENTE']}>
+          <AsistenciaSesion />
+        </RutaProtegida>
+      }/>
 
       {/* Sesión activa — accesible para todos los roles autenticados */}
       <Route path="/admin/sesion/:sesionId" element={
@@ -170,6 +184,13 @@ function AppRoutes() {
       <Route path="/docente/sesion/:sesionId" element={
         <RutaProtegida rolesPermitidos={['DOCENTE','SUPER_ADMIN','LAB_ADMIN']}>
           <SesionActiva />
+        </RutaProtegida>
+      }/>
+
+      {/* Asistencia accesible para docente */}
+      <Route path="/docente/sesion/:sesionId/asistencia" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE','SUPER_ADMIN','LAB_ADMIN']}>
+          <AsistenciaSesion />
         </RutaProtegida>
       }/>
 

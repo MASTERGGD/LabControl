@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
@@ -738,6 +738,7 @@ function Temporizador({ segundos }) {
 export default function SesionActiva() {
   const { sesionId } = useParams();
   const navigate     = useNavigate();
+  const location     = useLocation();
   const { usuario }  = useAuth();
 
   const [sesion, setSesion]         = useState(null);
@@ -949,6 +950,10 @@ export default function SesionActiva() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => navigate(`${location.pathname}/asistencia`)}
+            className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors">
+            📋 Asistencia
+          </button>
           <button onClick={() => setModalObs({})}
             className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-colors">
             ⚠️ Observación
