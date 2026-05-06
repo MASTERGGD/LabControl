@@ -418,7 +418,7 @@ export default function Prestamos() {
         </div>
 
         {/* Filtros */}
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
+        <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', position: 'relative', zIndex: 2 }}>
           <div className="flex flex-wrap gap-3">
             <input
               type="text"
@@ -852,7 +852,4 @@ export default function Prestamos() {
             </form>
           </div>
         </div>
-      )}
-    </AdminLayout>
-  );
-}
+  

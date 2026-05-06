@@ -13,18 +13,20 @@ import React from 'react';
 
 const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-const BASE_PX = 64; // px para un bloque de 60 minutos
+const BASE_PX    = 80;  // px para un bloque de 60 minutos
+const MIN_ROW_PX = 80;  // mínimo = BASE_PX: slots cortos (<60 min) tienen el mismo alto que 1 hora
+const MAX_ROW_PX = 128; // cap: máximo 2 horas de alto (evita filas gigantes con slots largos)
 
 function toMinutes(t) {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
 
-/** Altura de fila en px proporcional a la duración del período */
+/** Altura de fila en px proporcional a la duración del período, con min y max */
 function rowHeightPx(inicio, fin) {
   if (!fin) return BASE_PX;
   const mins = toMinutes(fin) - toMinutes(inicio);
-  return Math.max(48, Math.round((mins / 60) * BASE_PX));
+  return Math.min(MAX_ROW_PX, Math.max(MIN_ROW_PX, Math.round((mins / 60) * BASE_PX)));
 }
 
 // Estilos compartidos
@@ -160,16 +162,4 @@ export default function TimeGrid({
                         verticalAlign: 'top',
                         padding: '4px 6px',
                       }}
-                    >
-                      {renderCell(dia, hora)}
-                    </td>
-                  ))}
-                </tr>
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+   

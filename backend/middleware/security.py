@@ -118,8 +118,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 response.headers[header] = value
 
         # ── Eliminar cabeceras que revelan el stack ─────────────────────────────
-        response.headers.pop("server", None)
-        response.headers.pop("x-powered-by", None)
+        # MutableHeaders no tiene .pop() — usar del con try/except
+        for _hdr in ("server", "x-powered-by"):
+            try:
+                del response.headers[_hdr]
+            except KeyError:
+                pass
 
         # ── Cache-Control especial para endpoints de auth ──────────────────────
         # Los tokens JWT y datos de sesión nunca deben cachearse
@@ -132,6 +136,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if path.startswith("/static") or path.endswith((".ico", ".png", ".svg")):
             response.headers["Cache-Control"] = "public, max-age=86400"
-            response.headers.pop("Pragma", None)
+            try:
+                del response.headers["Pragma"]
+            except KeyError:
+                pass
 
         return response

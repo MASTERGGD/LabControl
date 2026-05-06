@@ -341,7 +341,7 @@ export default function AdminLayout({ children }) {
   const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
 
   return (
-    <div className="min-h-screen flex" style={{background:'#0f172a'}}>
+    <div className="h-screen overflow-hidden flex" style={{background:'#0f172a'}}>
 
       {/* ── Sidebar ───────────────────────────────────────────────────── */}
       <aside
@@ -349,6 +349,7 @@ export default function AdminLayout({ children }) {
         style={{
           background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
           borderRight: '1px solid rgba(255,255,255,0.06)',
+          overflow: 'visible',   /* permite que los tooltips salgan del aside */
         }}
       >
         {/* Logo */}
@@ -370,20 +371,54 @@ export default function AdminLayout({ children }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto overflow-x-visible">
           {itemsVisibles.map(item => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              data-tip={!sidebarOpen ? item.label : undefined}
-              className={({ isActive }) =>
-                `nav-item flex items-center gap-3 px-2.5 py-2.5 text-sm font-medium
-                 ${isActive ? 'nav-active' : 'text-slate-400'}`
-              }
-            >
-              <span className="shrink-0">{item.icon}</span>
-              {sidebarOpen && <span>{item.label}</span>}
-            </NavLink>
+            <div key={item.path} className="relative group">
+              <NavLink
+                to={item.path}
+                className={({ isActive }) =>
+                  `nav-item flex items-center gap-3 px-2.5 py-2.5 text-sm font-medium
+                   ${isActive ? 'nav-active' : 'text-slate-400'}`
+                }
+              >
+                <span className="shrink-0">{item.icon}</span>
+                {sidebarOpen && <span>{item.label}</span>}
+              </NavLink>
+
+              {/* Tooltip — solo visible cuando sidebar colapsado */}
+              {!sidebarOpen && (
+                <div
+                  className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
+                             opacity-0 group-hover:opacity-100
+                             transition-opacity duration-150"
+                  style={{ transform: 'translateY(-50%)' }}
+                >
+                  {/* Triángulo izquierdo */}
+                  <div style={{
+                    position: 'absolute', left: '-4px', top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 0, height: 0,
+                    borderTop: '4px solid transparent',
+                    borderBottom: '4px solid transparent',
+                    borderRight: '4px solid rgba(30,41,59,0.97)',
+                  }} />
+                  <span style={{
+                    display: 'block',
+                    background: 'rgba(30,41,59,0.97)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    padding: '5px 11px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    color: '#e2e8f0',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                  }}>
+                    {item.label}
+                  </span>
+                </div>
+              )}
+            </div>
           ))}
         </nav>
 
@@ -443,41 +478,4 @@ export default function AdminLayout({ children }) {
             {/* Cambiar contraseña */}
             <button
               onClick={() => setModalPwd(true)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
-              title="Cambiar contraseña"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-              </svg>
-            </button>
-
-            {/* Salir */}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors p-1.5 rounded-xl hover:bg-white/5"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-              </svg>
-              <span className="hidden sm:inline">Salir</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Breadcrumb */}
-        <Breadcrumb pathname={location.pathname} />
-
-        {/* Contenido */}
-        <main className="flex-1 overflow-auto p-6 text-white">
-          {children}
-        </main>
-      </div>
-
-      {/* Modales */}
-      {modalPwd   && <ModalCambiarPassword onClose={() => setModalPwd(false)} />}
-      {modalLibre && <ModalSesionLibre usuario={usuario} onClose={() => setModalLibre(false)} />}
-    </div>
-  );
-}
+              className="p-1.5 text-slate-400 hover:text-wh

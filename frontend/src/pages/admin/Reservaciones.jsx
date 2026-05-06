@@ -702,6 +702,8 @@ export default function Reservaciones() {
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '12px',
           padding: '16px',
+          position: 'relative',
+          zIndex: 2,
         }}>
           <div className="flex flex-wrap gap-3 items-center">
             <div className="flex items-center gap-2">
@@ -881,8 +883,4 @@ export default function Reservaciones() {
       )}
       {modalSlot?.tipo === 'yo_solicite' && (
         <ModalYoSolicite slot={modalSlot.slot}
-          onClose={cerrarModal} onRetirado={recargar} />
-      )}
-    </AdminLayout>
-  );
-}
+          onClose={cerrarModal} onRetir

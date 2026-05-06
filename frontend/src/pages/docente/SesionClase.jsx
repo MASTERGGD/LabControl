@@ -1122,6 +1122,8 @@ export default function SesionClase() {
 
   useEffect(() => { cargarSesionActiva(); }, [cargarSesionActiva]);
   useEffect(() => { cargarGrid(); }, [cargarGrid]);
+  // Resetear scroll al cambiar de laboratorio (evita espacio vacío arriba con labs más cortos)
+  useEffect(() => { window.scrollTo(0, 0); }, [labId]);
 
   const recargar = () => { cargarGrid(); cargarSesionActiva(); };
 
@@ -1163,7 +1165,7 @@ export default function SesionClase() {
           </h1>
           {!esMobil && (
             <p className="text-sm text-slate-400 mt-1">
-              Selecciona un slot para reservarlo, iniciarlo o solicitar uno ocupado.
+              Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.
             </p>
           )}
         </div>
@@ -1177,7 +1179,7 @@ export default function SesionClase() {
       </div>
 
       {/* Filtros */}
-      <div className="glass p-3 mb-4 flex flex-wrap gap-2 items-center">
+      <div className="glass p-3 mb-4 flex flex-wrap gap-2 items-center" style={{ position: 'relative', zIndex: 2 }}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <label className="text-xs font-medium text-slate-400 shrink-0">Lab</label>
           <SelectDark
@@ -1248,12 +1250,4 @@ export default function SesionClase() {
       )}
       {modalLibre && (
         <ModalSesionLibre labs={laboratorios}
-          onClose={() => setModalLibre(false)}
-          onSesionIniciada={recargar} />
-      )}
-      {modalPwd && (
-        <ModalCambiarPassword onClose={() => setModalPwd(false)} />
-      )}
-    </DocenteLayout>
-  );
-}
+          onClose={() =>

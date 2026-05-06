@@ -152,11 +152,11 @@ function ModalHorario({ labId, cuatrimestre, slot, onClose, onSave, preselect })
               {!confirmarEliminar ? (
                 <button type="button" onClick={() => setConfirmarEliminar(true)}
                   className="w-full text-red-400 hover:text-red-300 text-sm py-2 rounded-lg hover:bg-red-900/20 transition-colors border border-transparent hover:border-red-800">
-                  🗑 Eliminar este slot
+                  🗑 Eliminar este turno
                 </button>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs text-slate-400 text-center">¿Confirmar eliminación del slot?</p>
+                  <p className="text-xs text-slate-400 text-center">¿Confirmar eliminación del turno?</p>
                   <div className="flex gap-2">
                     <button type="button" onClick={() => setConfirmarEliminar(false)}
                       className="flex-1 bg-gray-700 text-gray-300 rounded-lg py-2 text-sm">
@@ -257,7 +257,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
               </div>
             </div>
             <div className="bg-white/5 rounded-lg p-3 text-sm text-slate-400">
-              Creará <strong className="text-white">{dias.length}</strong> slot(s) de{' '}
+              Creará <strong className="text-white">{dias.length}</strong> turno(s) de{' '}
               <strong className="text-white">{horaInicio} – {horaFin}</strong> para{' '}
               {dias.map(d => DIAS[d].slice(0, 3)).join(', ')}
             </div>
@@ -269,7 +269,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
               </button>
               <button type="submit" disabled={loading}
                 className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-                {loading ? 'Creando...' : `Crear ${dias.length} slot(s)`}
+                {loading ? 'Creando...' : `Crear ${dias.length} turno(s)`}
               </button>
             </div>
           </form>
@@ -281,7 +281,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
               </svg>
             </div>
             <div>
-              <p className="text-white font-semibold">{resultado.creados} slot(s) creado(s)</p>
+              <p className="text-white font-semibold">{resultado.creados} turno(s) creado(s)</p>
               {resultado.omitidos > 0 && <p className="text-yellow-400 text-sm mt-1">{resultado.omitidos} omitidos (ya existían)</p>}
             </div>
             <button onClick={onClose}
@@ -403,7 +403,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
             </div>
 
             <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg px-4 py-3 text-xs text-blue-300">
-              Se crearán hasta <strong>{8 * dias.length}</strong> slots para <strong>{cuatrimestre}</strong>.
+              Se crearán hasta <strong>{8 * dias.length}</strong> turnos para <strong>{cuatrimestre}</strong>.
               Los que ya existan se omitirán automáticamente.
             </div>
 
@@ -416,7 +416,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
               </button>
               <button type="button" onClick={handleCargar} disabled={loading || dias.length === 0}
                 className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-green-900 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-                {loading ? 'Creando períodos…' : `✓ Cargar ${8 * dias.length} slots`}
+                {loading ? 'Creando períodos…' : `✓ Cargar ${8 * dias.length} turnos`}
               </button>
             </div>
           </div>
@@ -494,7 +494,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
       <div className="glass w-full max-w-sm shadow-2xl">
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-white">🔒 Bloquear slot institucional</h3>
+            <h3 className="font-semibold text-white">🔒 Bloquear turno institucional</h3>
             <p className="text-xs text-slate-400 mt-0.5">
               {DIAS_NOMBRE[slot.dia_semana]} · {slot.hora_inicio}–{slot.hora_fin}
             </p>
@@ -560,7 +560,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
             </button>
             <button onClick={handleBloquear} disabled={loading || !motivoFinal}
               className="flex-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:text-slate-400 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-              {loading ? 'Bloqueando...' : '🔒 Bloquear slot'}
+              {loading ? 'Bloqueando...' : '🔒 Bloquear turno'}
             </button>
           </div>
         </div>
@@ -616,7 +616,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
             </svg>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-white text-sm">Slot reservado</p>
+            <p className="font-bold text-white text-sm">Turno reservado</p>
             <p className="text-xs text-slate-500">{DIAS_NOMBRE[slot.dia_semana]} · {slot.hora_inicio}–{slot.hora_fin}</p>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors">
@@ -679,7 +679,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
               <button onClick={onBloquear}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all
                            bg-violet-600/20 hover:bg-violet-600 text-violet-400 hover:text-white border border-violet-500/30 hover:border-violet-500">
-                🔒 Bloquear este slot
+                🔒 Bloquear este turno
               </button>
             )}
             <button onClick={onClose} className="btn-ghost w-full">Cerrar</button>
@@ -736,7 +736,7 @@ function ModalDetalleBloqueo({ slot, onClose, onDesbloqueado }) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-sm shadow-2xl">
         <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
-          <h3 className="font-semibold text-white">🔒 Slot bloqueado</h3>
+          <h3 className="font-semibold text-white">🔒 Turno bloqueado</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
@@ -915,14 +915,14 @@ export default function Horarios() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
-            Nuevo slot
+            Nuevo turno
           </button>
         </div>
       </div>
 
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3 mb-6 rounded-xl p-4"
-        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)', position: 'relative', zIndex: 2 }}>
         <div>
           <label className="block text-xs text-slate-400 mb-1">Laboratorio</label>
           <SelectDark
@@ -1005,7 +1005,6 @@ export default function Horarios() {
                     : esDisputa   ? 'slot-disputa cursor-pointer hover:brightness-110'
                     : esReservado ? 'slot-reservado cursor-pointer hover:brightness-110'
                     :              'slot-libre cursor-crosshair'}`}
-                  style={{ minHeight: '40px' }}
                   onMouseDown={e => {
                     if (esInactivo || esBloqueado || esReservado) return;
                     e.preventDefault();
@@ -1065,9 +1064,9 @@ export default function Horarios() {
                   {/* Reservado */}
                   {!esBloqueado && esReservado && res && (
                     <>
-                      <p className="text-xs font-semibold text-white leading-tight truncate">{res.materia}</p>
-                      <p className="text-xs text-blue-300 leading-tight truncate">{res.grupo}</p>
-                      <p className="text-xs text-slate-400 leading-tight truncate">{res.docente_nombre}</p>
+                      <p className="text-xs font-semibold text-white leading-tight line-clamp-1">{res.materia}</p>
+                      <p className="text-xs text-blue-300 leading-tight">{res.grupo}</p>
+                      <p className="text-xs text-slate-400 leading-tight line-clamp-1">{res.docente_nombre}</p>
                     </>
                   )}
                 </div>
@@ -1142,3 +1141,4 @@ export default function Horarios() {
     </AdminLayout>
   );
 }
+   

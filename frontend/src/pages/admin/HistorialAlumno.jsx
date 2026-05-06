@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import AutocompleteInput from '../../components/AutocompleteInput';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,20 +47,20 @@ export default function HistorialAlumno() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [matricula,  setMatricula]  = useState(searchParams.get('matricula') || '');
-  const [inputVal,   setInputVal]   = useState(searchParams.get('matricula') || '');
-  const [data,       setData]       = useState(null);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState('');
-  const [exporting,  setExporting]  = useState(false);
-  const [busqueda,   setBusqueda]   = useState('');
+  const [matricula,         setMatricula]         = useState(searchParams.get('matricula') || '');
+  const [inputVal,          setInputVal]          = useState(searchParams.get('matricula') || '');
+  const [alumnoSeleccionado, setAlumnoSeleccionado] = useState(null);
+  const [data,              setData]              = useState(null);
+  const [loading,           setLoading]           = useState(false);
+  const [error,             setError]             = useState('');
+  const [exporting,         setExporting]         = useState(false);
+  const [busqueda,          setBusqueda]          = useState('');
 
   // ── Buscar historial ────────────────────────────────────────────────────────
   const buscar = useCallback(async (mat) => {
-    const m = (mat || inputVal).trim();
+    const m = (mat || matricula).trim();
     if (!m) return;
     setLoading(true); setError(''); setData(null); setBusqueda('');
-    setMatricula(m);
     setSearchParams({ matricula: m });
     try {
       const { data: d } = await api.get(`/reportes/historial-alumno?matricula=${encodeURIComponent(m)}`);
@@ -69,13 +70,32 @@ export default function HistorialAlumno() {
     } finally {
       setLoading(false);
     }
-  }, [inputVal, setSearchParams]);
+  }, [matricula, setSearchParams]);
 
-  // ── Auto-buscar si viene matrícula en URL ───────────────────────────────────
+  // Selección desde autocomplete → auto-busca
+  const seleccionarAlumno = (a) => {
+    const nombre = [a.apellido_paterno, a.apellido_materno, a.nombres].filter(Boolean).join(' ');
+    setAlumnoSeleccionado(a);
+    setInputVal(nombre);
+    setMatricula(a.matricula || '');
+    if (a.matricula) buscar(a.matricula);   // búsqueda inmediata al seleccionar
+  };
+
+  // Limpiar selección al modificar texto
+  const handleInputChange = (txt) => {
+    setInputVal(txt);
+    setAlumnoSeleccionado(null);
+    // Si parece matrícula (sin espacios) úsala directamente
+    if (!txt.includes(' ')) setMatricula(txt);
+    else setMatricula('');
+  };
+
+  // ── Auto-buscar si viene matrícula en URL (solo al montar) ───────────────────
+  const buscarRef = React.useRef(buscar);
+  buscarRef.current = buscar;
   React.useEffect(() => {
-    const m = searchParams.get('matricula');
-    if (m) { setInputVal(m); buscar(m); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const m = new URLSearchParams(window.location.search).get('matricula');
+    if (m) { setInputVal(m); setMatricula(m); buscarRef.current(m); }
   }, []);
 
   // ── Exportar ────────────────────────────────────────────────────────────────
@@ -149,20 +169,43 @@ export default function HistorialAlumno() {
 
         {/* ── Buscador ────────────────────────────────────────────────────── */}
         <div className="glass rounded-2xl p-6">
-          <label className="block text-sm text-slate-400 mb-3 font-medium">
-            🔍 Matrícula del alumno
+          <label className="block text-sm text-slate-400 mb-1 font-medium">
+            🔍 Buscar alumno por nombre o matrícula
           </label>
+          <p className="text-xs text-slate-500 mb-3">
+            Escribe el nombre del alumno o su número de matrícula
+          </p>
           <form onSubmit={e => { e.preventDefault(); buscar(); }}
-                className="flex gap-3 items-end">
-            <div className="flex-1 max-w-xs">
-              <input
+                className="flex gap-3 items-end flex-wrap">
+            <div className="flex-1" style={{ minWidth: '220px', maxWidth: '380px', position: 'relative', zIndex: 10 }}>
+              <AutocompleteInput
+                endpoint="/catalogo/alumnos/buscar"
+                placeholder="Ej: MENDOZA VERONICA o UTC250134"
                 value={inputVal}
-                onChange={e => setInputVal(e.target.value)}
-                placeholder="Ej: 220310001"
-                className="input-dark w-full font-mono"
+                onChange={handleInputChange}
+                onSelect={seleccionarAlumno}
+                renderItem={a => (
+                  <div>
+                    <span className="font-medium text-white">
+                      {[a.apellido_paterno, a.apellido_materno, a.nombres].filter(Boolean).join(' ')}
+                    </span>
+                    <span className="ml-2 text-xs text-slate-400 font-mono">{a.matricula}</span>
+                    {a.grupo && <span className="ml-1 text-xs text-blue-400">· {a.grupo}</span>}
+                  </div>
+                )}
               />
             </div>
-            <button type="submit" disabled={loading || !inputVal.trim()}
+
+            {/* Chip de matrícula cuando hay alumno seleccionado */}
+            {alumnoSeleccionado && (
+              <div className="flex items-center gap-2 bg-blue-900/30 border border-blue-700/40 rounded-xl px-3 py-2 text-sm shrink-0">
+                <span className="text-blue-300 font-mono text-xs">{alumnoSeleccionado.matricula}</span>
+                <button type="button" onClick={() => { setAlumnoSeleccionado(null); setInputVal(''); setMatricula(''); }}
+                  className="text-slate-500 hover:text-white leading-none">✕</button>
+              </div>
+            )}
+
+            <button type="submit" disabled={loading || !matricula.trim()}
               className="btn-blue flex items-center gap-2 shrink-0">
               {loading ? (
                 <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -303,54 +346,4 @@ export default function HistorialAlumno() {
                               </td>
                               <td className="px-4 py-3 text-center">
                                 {h.horas != null
-                                  ? <span className="text-emerald-400 font-medium">{h.horas} h</span>
-                                  : <span className="text-slate-600">—</span>}
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge color={h.estado_sesion === 'ABIERTA' ? 'green' : h.estado_sesion === 'CERRADA' ? 'blue' : 'slate'}>
-                                  {h.estado_sesion}
-                                </Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* Pie */}
-                  <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
-                    <span>{data.total_sesiones} sesión{data.total_sesiones !== 1 ? 'es' : ''} en total</span>
-                    <span className="text-emerald-400/80">{data.total_horas} h acumuladas</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              /* Sin historial */
-              <div className="glass rounded-2xl py-16 text-center">
-                <div className="text-5xl mb-4">📭</div>
-                <p className="text-slate-300 font-medium">Sin registros de asistencia</p>
-                <p className="text-slate-500 text-sm mt-1">
-                  El alumno <span className="font-mono text-slate-400">{data.alumno.matricula}</span> no
-                  tiene sesiones registradas en el sistema.
-                </p>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Estado inicial (sin búsqueda aún) */}
-        {!data && !loading && !error && (
-          <div className="glass rounded-2xl py-20 text-center">
-            <div className="text-5xl mb-4">🔍</div>
-            <p className="text-slate-400 font-medium">Ingresa una matrícula para consultar el historial</p>
-            <p className="text-slate-600 text-sm mt-1">
-              Podrás ver todos los laboratorios que ha usado, las horas acumuladas y las materias cursadas.
-            </p>
-          </div>
-        )}
-
-      </div>
-    </AdminLayout>
-  );
-}
+                                  ? <span
