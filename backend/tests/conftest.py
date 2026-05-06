@@ -1,0 +1,173 @@
+"""
+conftest.py -- Fixtures compartidos para todos los tests de integracion.
+
+Estrategia:
+  - Se crea una test_app limpia (FastAPI sin lifespan) que comparte los mismos
+    routers del backend. Esto evita que Alembic o el seed interfieran.
+  - SQLite en archivo /tmp para que todas las conexiones compartan la misma BD.
+  - Las tablas se crean con Base.metadata.create_all antes de cada test.
+  - La dependencia get_db se sobreescribe con el engine de test.
+"""
+import os
+import sys
+
+# -- sys.path: poner backend/ al frente ANTES de cualquier import ---------------
+_BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BACKEND not in sys.path:
+    sys.path.insert(0, _BACKEND)
+
+# -- Variables de entorno de test -----------------------------------------------
+TEST_DB_PATH      = "/tmp/labcontrol_pytest.db"
+TEST_DATABASE_URL = "sqlite:///" + TEST_DB_PATH
+
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SECRET_KEY"]   = "test-secret-key-for-pytest-only"
+os.environ["APP_ENV"]      = "testing"
+
+# -- Imports del backend --------------------------------------------------------
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from database import Base, get_db
+from models.usuario import Usuario, RolUsuario
+from models.laboratorio import Laboratorio
+from dependencies import hashear_password
+
+# -- Engine de test -------------------------------------------------------------
+engine_test = create_engine(
+    TEST_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine_test)
+
+
+def override_get_db():
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# -- Test app: FastAPI limpia, sin lifespan, con los mismos routers -------------
+from routers import (
+    auth as auth_router,
+    laboratorios as laboratorios_router,
+    usuarios as usuarios_router,
+    sesiones as sesiones_router,
+    inventario as inventario_router,
+    auditoria as auditoria_router,
+    reportes as reportes_router,
+    notificaciones as notificaciones_router,
+    horarios as horarios_router,
+    catalogo as catalogo_router,
+    rbac as rbac_router,
+    asistencia as asistencia_router,
+    historial as historial_router,
+)
+
+test_app = FastAPI(title="LabControl-Test", docs_url=None)
+test_app.include_router(auth_router.router)
+test_app.include_router(laboratorios_router.router)
+test_app.include_router(usuarios_router.router)
+test_app.include_router(sesiones_router.router)
+test_app.include_router(inventario_router.router)
+test_app.include_router(auditoria_router.router)
+test_app.include_router(reportes_router.router)
+test_app.include_router(notificaciones_router.router)
+test_app.include_router(horarios_router.router)
+test_app.include_router(catalogo_router.router)
+test_app.include_router(rbac_router.router)
+test_app.include_router(asistencia_router.router)
+test_app.include_router(historial_router.router)
+
+test_app.dependency_overrides[get_db] = override_get_db
+
+
+# -- Fixtures -------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def reset_db():
+    """Recrea todas las tablas antes de cada test usando drop_all + create_all."""
+    Base.metadata.drop_all(bind=engine_test)
+    Base.metadata.create_all(bind=engine_test)
+    yield
+    Base.metadata.drop_all(bind=engine_test)
+
+
+@pytest.fixture()
+def db():
+    """Sesion directa de BD para crear datos de prueba."""
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture()
+def client():
+    """Cliente HTTP de prueba apuntando a test_app (sin lifespan)."""
+    with TestClient(test_app, raise_server_exceptions=True) as c:
+        yield c
+
+
+# -- Usuarios de prueba ---------------------------------------------------------
+
+@pytest.fixture()
+def admin_user(db):
+    user = Usuario(
+        nombre="Admin Test",
+        email="admin@test.com",
+        password_hash=hashear_password("AdminPass123"),
+        rol=RolUsuario.SUPER_ADMIN,
+        activo=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def docente_user(db):
+    user = Usuario(
+        nombre="Docente Test",
+        email="docente@test.com",
+        password_hash=hashear_password("DocentePass123"),
+        rol=RolUsuario.DOCENTE,
+        activo=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def lab(db):
+    laboratorio = Laboratorio(
+        nombre="Lab Test A",
+        ubicacion="Edificio 1",
+        capacidad=20,
+        activo=True,
+    )
+    db.add(laboratorio)
+    db.commit()
+    db.refresh(laboratorio)
+    return laboratorio
+
+
+# -- Helpers de autenticacion ---------------------------------------------------
+
+def get_token(client, email, password):
+    resp = client.post("/auth/login", data={"username": email, "password": password})
+    assert resp.status_code == 200, "Login fallo ({0}): {1}".format(resp.status_code, resp.text)
+    return resp.json()["access_token"]
+
+
+def auth_headers(token):
+    return {"Authorization": "Bearer " + token}
