@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import api from '../../api';
-import { useToast } from '../../components/Toast';
+import api from '../../hooks/useApi';
+import { useToast } from '../../context/ToastContext';
 
 // ── Colores por tipo de accion ─────────────────────────────────────────────
 const BADGE = {
