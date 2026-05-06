@@ -1,28 +1,56 @@
 ###############################################################################
-# docker-compose.prod.yml — LabControl UTECAN (PRODUCCIÓN)
+# docker-compose.prod.yml -- LabControl UTECAN (PRODUCCION)
 #
 # Diferencias respecto al compose de desarrollo:
-#   - Frontend: nginx multi-stage build (puerto 80) con security headers
-#   - Backend:  APP_ENV=production → activa HSTS en el middleware
-#   - No hay volúmenes de hot-reload (código queda dentro del contenedor)
+#   - PostgreSQL: usa volumen persistente (sin puerto expuesto al host)
+#   - Frontend:   nginx multi-stage build (puerto 80) con security headers
+#   - Backend:    APP_ENV=production -> activa HSTS en el middleware
+#   - No hay volumenes de hot-reload (codigo queda dentro del contenedor)
 #   - CORS restringido a FRONTEND_URL del .env
 #
 # Uso:
 #   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# En Railway / Render:
+#   - El servicio 'db' puede reemplazarse por el plugin de PostgreSQL de la plataforma.
+#   - En ese caso, borra el servicio 'db' de aqui y configura DATABASE_URL como
+#     variable de entorno en la plataforma.
 ###############################################################################
 
 services:
+
+  # --- Base de datos ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: labcontrol_db
+    environment:
+      POSTGRES_USER: ${DB_USER:-labcontrol}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-labcontrol}
+      POSTGRES_DB: ${DB_NAME:-labcontrol}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # Sin 'ports': la BD NO esta expuesta fuera de la red Docker en produccion
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-labcontrol} -d ${DB_NAME:-labcontrol}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # --- Backend ----------------------------------------------------------------
   backend:
     build: ./backend
     container_name: labcontrol_backend
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data          # Solo persistir la BD, no el código
     env_file:
       - .env
     environment:
-      - APP_ENV=production        # Activa HSTS y upgrade-insecure-requests
+      - APP_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://labcontrol:labcontrol@db:5432/labcontrol}
+    depends_on:
+      db:
+        condition: service_healthy
     command: sh /app/start.sh
     restart: unless-stopped
     healthcheck:
@@ -31,14 +59,18 @@ services:
       timeout: 10s
       retries: 3
 
+  # --- Frontend ---------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       target: prod                # nginx con security headers
     container_name: labcontrol_frontend
     ports:
-      - "80:80"                   # Puerto estándar HTTP
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  pg_data:

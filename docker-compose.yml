@@ -1,4 +1,37 @@
+###############################################################################
+# docker-compose.yml -- LabControl UTECAN (DESARROLLO)
+#
+# Servicios:
+#   db       -- PostgreSQL 16 (BD real, persistente en volumen)
+#   backend  -- FastAPI + Alembic (espera a que db este listo)
+#   frontend -- React con hot-reload
+#
+# Uso:
+#   docker-compose up -d --build
+###############################################################################
+
 services:
+
+  # --- Base de datos ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: labcontrol_db
+    environment:
+      POSTGRES_USER: labcontrol
+      POSTGRES_PASSWORD: labcontrol
+      POSTGRES_DB: labcontrol
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"       # expuesto solo para herramientas locales (DBeaver, etc.)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labcontrol -d labcontrol"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # --- Backend ----------------------------------------------------------------
   backend:
     build: ./backend
     container_name: labcontrol_backend
@@ -9,9 +42,16 @@ services:
       - ./data:/app/data
     env_file:
       - .env
+    environment:
+      # Apunta al servicio 'db' interno (sobreescribe lo que haya en .env)
+      - DATABASE_URL=postgresql+psycopg2://labcontrol:labcontrol@db:5432/labcontrol
+    depends_on:
+      db:
+        condition: service_healthy
     command: sh /app/start.sh
     restart: unless-stopped
 
+  # --- Frontend ---------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
@@ -22,8 +62,10 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
-    # Sin REACT_APP_API_URL: el frontend usa window.location.hostname automáticamente
-    # Funciona tanto desde localhost como desde la IP de la red local
+    # Sin REACT_APP_API_URL: el frontend usa window.location.hostname automaticamente
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  pg_data:           # datos sobreviven a docker-compose down
