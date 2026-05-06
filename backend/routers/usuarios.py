@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
@@ -8,6 +8,7 @@ from models.laboratorio import Laboratorio
 from dependencies import hashear_password, verificar_password, get_current_user, require_roles
 from rls import usuario_lab_filter, resolve_lab_id
 import secrets
+from services.auditoria import registrar, Accion, Recurso
 import string
 import io
 
@@ -120,9 +121,10 @@ def listar_usuarios(
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Crear usuario")
 def crear_usuario(
+    request: Request,
     data: UsuarioCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
 ):
     if db.query(Usuario).filter(Usuario.email == data.email).first():
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
@@ -143,6 +145,10 @@ def crear_usuario(
     db.add(usuario)
     db.commit()
     db.refresh(usuario)
+    registrar(db, accion=Accion.CREAR_USUARIO, recurso=Recurso.USUARIO,
+              usuario=current_user, recurso_id=usuario.id,
+              detalle={"nombre": usuario.nombre, "email": usuario.email, "rol": usuario.rol.value},
+              request=request)
     return _serializar(usuario, db)
 
 
@@ -168,6 +174,7 @@ def obtener_usuario(
 
 @router.put("/{usuario_id}", summary="Editar usuario")
 def editar_usuario(
+    request: Request,
     usuario_id: int,
     data: UsuarioUpdate,
     db: Session = Depends(get_db),
@@ -202,11 +209,16 @@ def editar_usuario(
 
     db.commit()
     db.refresh(u)
+    registrar(db, accion=Accion.EDITAR_USUARIO, recurso=Recurso.USUARIO,
+              usuario=current_user, recurso_id=u.id,
+              detalle={"campos_modificados": list(campos.keys())},
+              request=request)
     return _serializar(u, db)
 
 
 @router.post("/{usuario_id}/reset-password", response_model=ResetPasswordResponse, summary="Resetear contraseña (admin)")
 def reset_password(
+    request: Request,
     usuario_id: int,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
@@ -223,8 +235,12 @@ def reset_password(
     u.password_hash = hashear_password(nueva)
     db.commit()
 
+    registrar(db, accion=Accion.CAMBIAR_PASSWORD, recurso=Recurso.USUARIO,
+              usuario=current_user, recurso_id=u.id,
+              detalle={"tipo": "reset_admin", "afectado": u.email},
+              request=request)
     return {
-        "mensaje": f"Contraseña reseteada para {u.nombre}",
+        "mensaje": f"Contrasena reseteada para {u.nombre}",
         "password_temporal": nueva
     }
 
@@ -256,9 +272,10 @@ def cambiar_mi_password(
 
 @router.post("/bulk-excel", status_code=status.HTTP_201_CREATED, summary="Carga masiva desde Excel")
 async def bulk_excel(
+    request: Request,
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
 ):
     """
     Carga masiva de usuarios desde Excel.

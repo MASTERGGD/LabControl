@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database import Base          # noqa: E402
 from models import (               # noqa: E402
     catalogo, horario, inventario, laboratorio,
-    notificacion, sesion, usuario,
+    notificacion, sesion, usuario, auditoria,
 )
 
 target_metadata = Base.metadata

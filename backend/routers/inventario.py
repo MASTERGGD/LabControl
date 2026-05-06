@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+from services.auditoria import registrar, Accion, Recurso
 import openpyxl, io, unicodedata
 from typing import Optional, List
 from database import get_db
@@ -312,6 +313,7 @@ def listar_activos(
 
 @router.post("/activos", status_code=status.HTTP_201_CREATED, summary="Registrar activo")
 def crear_activo(
+    request: Request,
     data: ActivoCreate,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
@@ -336,6 +338,10 @@ def crear_activo(
     db.add(a)
     db.commit()
     db.refresh(a)
+    registrar(db, accion=Accion.CREAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=a.id,
+              detalle={"codigo": a.codigo_inventario, "nombre": a.nombre, "categoria": a.categoria},
+              request=request)
     return _serializar_activo(a, db)
 
 
@@ -358,6 +364,7 @@ def obtener_activo(
 
 @router.put("/activos/{activo_id}", summary="Editar activo")
 def editar_activo(
+    request: Request,
     activo_id: int,
     data: ActivoUpdate,
     db: Session = Depends(get_db),
@@ -373,11 +380,16 @@ def editar_activo(
         setattr(a, campo, valor)
     db.commit()
     db.refresh(a)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=a.id,
+              detalle={"campos": list(campos.keys())},
+              request=request)
     return _serializar_activo(a, db)
 
 
 @router.delete("/activos/{activo_id}", summary="Dar de baja activo")
 def dar_baja_activo(
+    request: Request,
     activo_id: int,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
@@ -394,6 +406,10 @@ def dar_baja_activo(
     a.activo = False
     a.estado = "BAJA"
     db.commit()
+    registrar(db, accion=Accion.ELIMINAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=a.id,
+              detalle={"nombre": a.nombre, "codigo": a.codigo_inventario},
+              request=request)
     return {"mensaje": f"Activo '{a.nombre}' dado de baja"}
 
 
@@ -442,6 +458,7 @@ def prestamos_vencidos(
 
 @router.post("/prestamos", status_code=status.HTTP_201_CREATED, summary="Registrar préstamo")
 def crear_prestamo(
+    request: Request,
     data: PrestamoCreate,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
@@ -504,11 +521,16 @@ def crear_prestamo(
     db.add(p)
     db.commit()
     db.refresh(p)
+    registrar(db, accion=Accion.CREAR_PRESTAMO, recurso=Recurso.PRESTAMO,
+              usuario=current_user, recurso_id=p.id,
+              detalle={"activo_id": p.activo_id, "receptor": p.solicitante_nombre},
+              request=request)
     return _serializar_prestamo(p, db)
 
 
 @router.post("/prestamos/{prestamo_id}/devolver", summary="Registrar devolución")
 def devolver_prestamo(
+    request: Request,
     prestamo_id: int,
     data: PrestamoDevolver,
     db: Session = Depends(get_db),
@@ -546,10 +568,14 @@ def devolver_prestamo(
 
     db.commit()
     db.refresh(p)
+    registrar(db, accion=Accion.DEVOLVER_PRESTAMO, recurso=Recurso.PRESTAMO,
+              usuario=current_user, recurso_id=p.id,
+              detalle={"activo_id": p.activo_id, "condicion": data.condicion_devolucion},
+              request=request)
     return _serializar_prestamo(p, db)
 
 
-# ─── Incidentes ────────────────────────────────────────────────────────────────
+# --- Incidentes ────────────────────────────────────────────────────────────────
 
 @router.get("/incidentes", summary="Listar incidentes de mantenimiento")
 def listar_incidentes(

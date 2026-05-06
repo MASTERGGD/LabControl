@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
+from services.auditoria import registrar, Accion, Recurso
 from typing import Optional, List
 from database import get_db
 from models.sesion import SesionClase, AsignacionPC, ObservacionPC
@@ -135,6 +136,7 @@ def sesiones_activas(
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Abrir sesión de clase")
 async def abrir_sesion(
+    request: Request,
     data: SesionCreate,
     db: Session = Depends(get_db),
     # RBAC: solo SUPER_ADMIN, LAB_ADMIN y DOCENTE pueden abrir sesiones
@@ -233,6 +235,7 @@ def mapa_sesion(
 
 @router.post("/{sesion_id}/cerrar", summary="Cerrar sesión de clase")
 async def cerrar_sesion(
+    request: Request,
     sesion_id: int,
     data: SesionCerrar,
     db: Session = Depends(get_db),
@@ -264,9 +267,14 @@ async def cerrar_sesion(
         overtime_min = int((ahora - s.fin_estimado).total_seconds() / 60)
     s.overtime_min = overtime_min
     db.commit()
+    registrar(db, accion=Accion.CERRAR_SESION, recurso=Recurso.SESION,
+              usuario=current_user, recurso_id=s.id,
+              detalle={"laboratorio_id": s.laboratorio_id, "codigo": s.codigo_sesion,
+                       "overtime_min": overtime_min, "pcs_liberadas": len(asigs_abiertas)},
+              request=request)
     db.refresh(s)
 
-    # ── Notificación de overtime al cerrar ───────────────────────────────────
+    # ── Notificacion de overtime al cerrar ───────────────────────────────────
     if overtime_min > 0:
         try:
             lab = db.query(Laboratorio).filter(Laboratorio.id == s.laboratorio_id).first()

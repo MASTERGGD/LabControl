@@ -21,6 +21,7 @@ import Catalogo from './pages/admin/Catalogo';
 import Reportes from './pages/admin/Reportes';
 import AsistenciaSesion from './pages/admin/AsistenciaSesion';
 import HistorialAlumno from './pages/admin/HistorialAlumno';
+import Auditoria from './pages/admin/Auditoria';
 import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
 
@@ -158,6 +159,7 @@ function AppRoutes() {
       <Route path="/admin/historial-alumno" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
           <HistorialAlumno />
+          <Route path="/admin/auditoria" element={<Auditoria />} />
         </RutaProtegida>
       }/>
 

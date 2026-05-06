@@ -5,6 +5,10 @@ from database import engine, Base, SessionLocal
 import models
 import os
 
+# Alembic -- migraciones de esquema
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
+
 # Middleware de seguridad
 from middleware.security import SecurityHeadersMiddleware
 
@@ -21,114 +25,61 @@ from routers import notificaciones as notificaciones_router
 from routers import rbac as rbac_router
 from routers import asistencia as asistencia_router
 from routers import historial as historial_router
+from routers import auditoria as auditoria_router
+
 from ws.mapa import websocket_mapa
 
 # Seeder
 from seed import run_seed
 
 
-# ─── Lifespan (startup / shutdown) ────────────────────────────────────────────
+# --- Lifespan (startup / shutdown) -------------------------------------------
 
-def _migraciones_sqlite():
-    """Aplica columnas nuevas que create_all no agrega a tablas existentes."""
-    with engine.connect() as conn:
-        # overtime_min en sesiones_clase
-        try:
-            conn.execute(__import__('sqlalchemy').text(
-                "ALTER TABLE sesiones_clase ADD COLUMN overtime_min INTEGER DEFAULT 0"
-            ))
-            conn.commit()
-        except Exception:
-            pass  # columna ya existe
-        # resguardo_nombre y area en activos
-        for col_sql in [
-            "ALTER TABLE activos ADD COLUMN resguardo_nombre VARCHAR",
-            "ALTER TABLE activos ADD COLUMN area VARCHAR",
-        ]:
-            try:
-                conn.execute(__import__('sqlalchemy').text(col_sql))
-                conn.commit()
-            except Exception:
-                pass
-        # tabla notificaciones (si no existía se crea con create_all, pero por si acaso)
-        try:
-            conn.execute(__import__('sqlalchemy').text("""
-                CREATE TABLE IF NOT EXISTS notificaciones (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
-                    tipo VARCHAR NOT NULL,
-                    titulo VARCHAR NOT NULL,
-                    mensaje VARCHAR NOT NULL,
-                    leida BOOLEAN NOT NULL DEFAULT 0,
-                    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    url VARCHAR
-                )
-            """))
-            conn.commit()
-        except Exception:
-            pass
-        # tabla mantenimientos_preventivos
-        try:
-            conn.execute(__import__('sqlalchemy').text("""
-                CREATE TABLE IF NOT EXISTS mantenimientos_preventivos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    activo_id INTEGER REFERENCES activos(id),
-                    computadora_id INTEGER REFERENCES computadoras(id),
-                    laboratorio_id INTEGER REFERENCES laboratorios(id),
-                    tipo VARCHAR NOT NULL,
-                    periodicidad VARCHAR DEFAULT 'TRIMESTRAL',
-                    fecha_programada DATETIME NOT NULL,
-                    fecha_limite DATETIME,
-                    estado VARCHAR DEFAULT 'PENDIENTE',
-                    fecha_inicio DATETIME,
-                    fecha_completado DATETIME,
-                    completado_por_id INTEGER REFERENCES usuarios(id),
-                    descripcion VARCHAR,
-                    checklist VARCHAR,
-                    notas_result VARCHAR,
-                    costo FLOAT,
-                    duracion_min INTEGER,
-                    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """))
-            conn.commit()
-        except Exception:
-            pass
+def _run_migrations():
+    """
+    Aplica todas las migraciones pendientes con Alembic al iniciar el servidor.
+    Equivalente a ejecutar: alembic upgrade head
+    Funciona tanto con PostgreSQL como con SQLite.
+    """
+    alembic_cfg = AlembicConfig("/app/alembic.ini")
+    alembic_cfg.set_main_option("script_location", "/app/alembic")
+    try:
+        alembic_command.upgrade(alembic_cfg, "head")
+        print("Alembic: migraciones aplicadas correctamente")
+    except Exception as e:
+        print(f"Alembic: {e}")
+        raise
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Crear tablas si no existen
-    Base.metadata.create_all(bind=engine)
-    # Migraciones manuales para columnas nuevas en tablas existentes
-    _migraciones_sqlite()
-    # Ejecutar seeder inicial
+    # 1. Aplicar migraciones de esquema (crea tablas nuevas, agrega columnas, etc.)
+    _run_migrations()
+    # 2. Ejecutar seeder inicial (crea SUPER_ADMIN si no existe)
     db = SessionLocal()
     try:
         run_seed(db)
     finally:
         db.close()
-    yield  # App corriendo
-    # (shutdown logic aquí si se necesita)
+    yield  # -- App corriendo --
 
 
-# ─── App ───────────────────────────────────────────────────────────────────────
+# --- App ---------------------------------------------------------------------
 
 app = FastAPI(
     title="LabControl UTECAN",
-    description="Sistema de gestión multi-laboratorio — Universidad Tecnológica de Candelaria",
+    description="Sistema de gestion multi-laboratorio -- Universidad Tecnologica de Candelaria",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
-# En desarrollo permite localhost:3000. En producción leer de FRONTEND_URL.
+# -- CORS ---------------------------------------------------------------------
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 _CORS_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     _FRONTEND_URL,
 ]
-# Eliminar duplicados y strings vacíos
 _CORS_ORIGINS = list({o for o in _CORS_ORIGINS if o})
 
 app.add_middleware(
@@ -138,15 +89,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin",
                    "X-Requested-With"],
-    expose_headers=["Content-Disposition"],  # para descargas de Excel
-    max_age=600,  # preflight cache 10 min
+    expose_headers=["Content-Disposition"],
+    max_age=600,
 )
 
-# ── Security Headers ───────────────────────────────────────────────────────────
+# -- Security Headers ---------------------------------------------------------
 app.add_middleware(SecurityHeadersMiddleware)
 
 
-# ─── Routers ───────────────────────────────────────────────────────────────────
+# --- Routers -----------------------------------------------------------------
 
 app.include_router(auth_router.router)
 app.include_router(laboratorios_router.router)
@@ -160,12 +111,13 @@ app.include_router(notificaciones_router.router)
 app.include_router(rbac_router.router)
 app.include_router(asistencia_router.router)
 app.include_router(historial_router.router)
+app.include_router(auditoria_router.router)
 
-# WebSocket — mapa de PCs en tiempo real
+# WebSocket -- mapa de PCs en tiempo real
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 
 
-# ─── Endpoints base ────────────────────────────────────────────────────────────
+# --- Endpoints base ----------------------------------------------------------
 
 @app.get("/", tags=["Sistema"])
 def root():
