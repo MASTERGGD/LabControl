@@ -222,7 +222,7 @@ function ModalSesionLibre({ usuario, onClose }) {
             <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
             <button onClick={handleAbrir} disabled={saving || !labId || !!sesionActiva}
               className="btn-emerald flex-1">
-              {saving ? 'Abriendo…' : '🖥️ Abrir sesión'}
+              {saving ? 'Abriendo…' : '▶ Abrir sesión'}
             </button>
           </div>
         </div>
@@ -274,6 +274,14 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>,
   },
   {
+    label: 'Adeudos', path: '/admin/adeudos', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>,
+  },
+  {
+    label: 'Consulta Persona', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"/></svg>,
+  },
+  {
     label: 'Bitacora', path: '/admin/auditoria', roles: ['SUPER_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>,
   },
@@ -297,6 +305,8 @@ const BREADCRUMB_MAP = {
   '/admin/prestamos':         [{ label: 'Préstamos' }],
   '/admin/mantenimiento':     [{ label: 'Mantenimiento' }],
   '/admin/auditoria':          [{ label: 'Bitacora de Auditoria' }],
+  '/admin/adeudos':           [{ label: 'Adeudos' }],
+  '/admin/consulta-persona':  [{ label: 'Consulta de Persona' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
 };
@@ -333,158 +343,243 @@ function Breadcrumb({ pathname }) {
   );
 }
 
-// ─── Layout principal ─────────────────────────────────────────────────────────
-export default function AdminLayout({ children }) {
-  const { usuario, logout } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [modalPwd,    setModalPwd]    = useState(false);
-  const [modalLibre,  setModalLibre]  = useState(false);
-
-  const handleLogout = () => { logout(); navigate('/login'); };
-  const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
-
+// ─── Sidebar content (definido FUERA de AdminLayout para evitar re-montaje) ───
+function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout }) {
   return (
-    <div className="h-screen overflow-hidden flex" style={{background:'#0f172a'}}>
-
-      {/* ── Sidebar ───────────────────────────────────────────────────── */}
-      <aside
-        className={`${sidebarOpen ? 'w-56' : 'w-[60px]'} shrink-0 flex flex-col transition-all duration-200`}
-        style={{
-          background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          overflow: 'visible',   /* permite que los tooltips salgan del aside */
-        }}
-      >
-        {/* Logo */}
-        <div className="px-3 py-5 flex items-center gap-3"
-             style={{borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-          <div className="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center"
+    <>
+      {/* Logo */}
+      <div className="px-3 py-3 flex items-center gap-3"
+           style={{borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+        <NavLink to="/admin" onClick={() => mobile && setMenuMovil(false)}
+                 className="flex items-center gap-3 flex-1 min-w-0 group">
+          <div className="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center group-hover:opacity-80 transition-opacity"
                style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)'}}>
             <svg className="w-[18px] h-[18px] text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
           </div>
-          {sidebarOpen && (
-            <div>
-              <p className="text-white font-bold text-sm leading-none">LabControl</p>
-              <p className="text-slate-500 text-[10px] mt-0.5">UTECAN</p>
-            </div>
-          )}
+          <div>
+            <p className="text-white font-bold text-sm leading-none">LabControl</p>
+            <p className="text-slate-500 text-[10px] mt-0.5">UTECAN</p>
+          </div>
+        </NavLink>
+        {mobile && (
+          <button onClick={() => setMenuMovil(false)}
+            className="ml-auto p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Usuario en móvil */}
+      {mobile && (
+        <div className="px-4 py-3" style={{borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+          <p className="text-white text-sm font-semibold">{usuario?.nombre}</p>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold mt-1 inline-block
+            ${ROL_BADGE[usuario?.rol] || 'bg-slate-700 text-slate-300'}`}>
+            {usuario?.rol}
+          </span>
         </div>
+      )}
 
-        {/* Nav */}
-        <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto overflow-x-visible">
-          {itemsVisibles.map(item => (
-            <div key={item.path} className="relative group">
-              <NavLink
-                to={item.path}
-                className={({ isActive }) =>
-                  `nav-item flex items-center gap-3 px-2.5 py-2.5 text-sm font-medium
-                   ${isActive ? 'nav-active' : 'text-slate-400'}`
-                }
-              >
-                <span className="shrink-0">{item.icon}</span>
-                {sidebarOpen && <span>{item.label}</span>}
-              </NavLink>
+      {/* Nav */}
+      <nav className="flex-1 py-2 px-2 space-y-0 overflow-y-auto overflow-x-visible">
+        {itemsVisibles.map(item => (
+          <div key={item.path} className="relative group">
+            <NavLink
+              to={item.path}
+              className={({ isActive }) =>
+                `nav-item flex items-center gap-3 px-2.5 py-2.5 text-sm font-medium
+                 ${isActive ? 'nav-active' : 'text-slate-400'}`
+              }
+            >
+              <span className="shrink-0">{item.icon}</span>
+              {(sidebarOpen || mobile) && <span>{item.label}</span>}
+            </NavLink>
 
-              {/* Tooltip — solo visible cuando sidebar colapsado */}
-              {!sidebarOpen && (
-                <div
-                  className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
-                             opacity-0 group-hover:opacity-100
-                             transition-opacity duration-150"
-                  style={{ transform: 'translateY(-50%)' }}
-                >
-                  {/* Triángulo izquierdo */}
-                  <div style={{
-                    position: 'absolute', left: '-4px', top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 0, height: 0,
-                    borderTop: '4px solid transparent',
-                    borderBottom: '4px solid transparent',
-                    borderRight: '4px solid rgba(30,41,59,0.97)',
-                  }} />
-                  <span style={{
-                    display: 'block',
-                    background: 'rgba(30,41,59,0.97)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '8px',
-                    padding: '5px 11px',
-                    fontSize: '12px',
-                    fontWeight: 500,
-                    color: '#e2e8f0',
-                    whiteSpace: 'nowrap',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
-                  }}>
-                    {item.label}
-                  </span>
-                </div>
-              )}
-            </div>
-          ))}
-        </nav>
+            {/* Tooltip — solo en desktop colapsado */}
+            {!sidebarOpen && !mobile && (
+              <div className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
+                             opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                   style={{ transform: 'translateY(-50%)' }}>
+                <div style={{
+                  position: 'absolute', left: '-4px', top: '50%',
+                  transform: 'translateY(-50%)',
+                  width: 0, height: 0,
+                  borderTop: '4px solid transparent',
+                  borderBottom: '4px solid transparent',
+                  borderRight: '4px solid rgba(30,41,59,0.97)',
+                }} />
+                <span style={{
+                  display: 'block',
+                  background: 'rgba(30,41,59,0.97)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '8px', padding: '5px 11px',
+                  fontSize: '12px', fontWeight: 500,
+                  color: '#e2e8f0', whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                }}>
+                  {item.label}
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </nav>
 
-        {/* Toggle */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
+      {/* Toggle desktop / Logout móvil */}
+      {mobile ? (
+        <button onClick={handleLogout}
+          className="mx-3 mb-5 flex items-center gap-2 text-sm text-slate-400 hover:text-white
+                     transition-colors px-3 py-2.5 rounded-xl hover:bg-white/5">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+          Cerrar sesión
+        </button>
+      ) : (
+        <button onClick={() => setSidebarOpen(!sidebarOpen)}
           className="mx-2 mb-4 p-2 text-slate-500 hover:text-white rounded-xl transition-colors flex items-center justify-center"
-          style={{background:'rgba(255,255,255,0.04)'}}
-        >
+          style={{background:'rgba(255,255,255,0.04)'}}>
           <svg className={`w-4 h-4 transition-transform ${sidebarOpen ? '' : 'rotate-180'}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
           </svg>
         </button>
+      )}
+    </>
+  );
+}
+
+// ─── Layout principal ─────────────────────────────────────────────────────────
+export default function AdminLayout({ children }) {
+  const { usuario, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
+  const [menuMovil,    setMenuMovil]    = useState(false);
+  const [modalPwd,     setModalPwd]     = useState(false);
+  const [modalLibre,   setModalLibre]   = useState(false);
+
+  // Cerrar menú móvil al navegar
+  useEffect(() => { setMenuMovil(false); }, [location.pathname]);
+
+  const handleLogout = useCallback(() => { logout(); navigate('/login'); }, [logout, navigate]);
+  const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
+
+  return (
+    <div className="h-screen overflow-hidden flex" style={{background:'#0f172a'}}>
+
+      {/* ── Sidebar desktop (md+) ─────────────────────────────────────── */}
+      <aside
+        className={`hidden md:flex ${sidebarOpen ? 'w-56' : 'w-[60px]'} shrink-0 flex-col transition-all duration-200`}
+        style={{
+          background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          overflow: 'visible',
+        }}
+      >
+        <SidebarContent mobile={false} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
+                        setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
+                        handleLogout={handleLogout} />
       </aside>
+
+      {/* ── Drawer móvil (< md) ───────────────────────────────────────── */}
+      {menuMovil && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+               onClick={() => setMenuMovil(false)} />
+          {/* Panel */}
+          <aside className="relative z-10 w-72 flex flex-col h-full"
+                 style={{
+                   background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
+                   borderRight: '1px solid rgba(255,255,255,0.08)',
+                   animation: 'slideInRight .22s ease',
+                 }}>
+            <SidebarContent mobile={true} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
+                            setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
+                            handleLogout={handleLogout} />
+          </aside>
+        </div>
+      )}
 
       {/* ── Main ──────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Topbar */}
         <header
-          className="px-6 py-3 flex items-center justify-between shrink-0"
+          className="px-3 md:px-6 py-3 flex items-center justify-between shrink-0"
           style={{
+            position: 'relative',
+            zIndex: 50,
             background: 'rgba(15,23,42,0.8)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
           }}
         >
-          <div />
-          <div className="flex items-center gap-2.5">
+          {/* Izquierda: hamburguesa móvil */}
+          <button
+            className="md:hidden p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
+            onClick={() => setMenuMovil(true)}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
 
-            {/* Uso libre */}
+          {/* Logo centrado en móvil */}
+          <NavLink to="/admin" className="md:hidden flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg flex items-center justify-center"
+                 style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)'}}>
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <span className="text-white font-bold text-sm">LabControl</span>
+          </NavLink>
+
+          {/* Espacio vacío desktop izquierda */}
+          <div className="hidden md:block" />
+
+          {/* Derecha: acciones */}
+          <div className="flex items-center gap-2">
+
+            {/* Uso libre — oculto en móvil */}
             <button
               onClick={() => setModalLibre(true)}
-              className="btn-emerald flex items-center gap-2 px-3 py-1.5 text-sm"
+              className="hidden sm:flex btn-emerald items-center gap-2 px-3 py-1.5 text-sm"
               title="Abrir sesión de uso libre"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
               </svg>
-              <span className="hidden sm:inline">Uso libre</span>
+              <span className="hidden md:inline">Uso libre</span>
             </button>
 
             {/* Campana */}
             <NotificacionesBell />
 
-            {/* Nombre + rol */}
-            <div className="hidden sm:flex items-center gap-2 pl-1 border-l border-white/10 ml-1">
+            {/* Nombre + rol — solo desktop */}
+            <div className="hidden md:flex items-center gap-2 pl-1 border-l border-white/10 ml-1">
               <span className="text-sm text-slate-300 font-medium">{usuario?.nombre}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${ROL_BADGE[usuario?.rol] || 'bg-slate-700 text-slate-300'}`}>
                 {usuario?.rol}
               </span>
             </div>
 
-            {/* Cambiar contraseña */}
+            {/* Cambiar contraseña — solo desktop */}
             <button
               onClick={() => setModalPwd(true)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
-              title="Cambiar contrasena"
+              className="hidden md:block p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
+              title="Cambiar contraseña"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -492,16 +587,16 @@ export default function AdminLayout({ children }) {
               </svg>
             </button>
 
-            {/* Salir */}
+            {/* Salir — solo desktop */}
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors p-1.5 rounded-xl hover:bg-white/5"
+              className="hidden md:flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors p-1.5 rounded-xl hover:bg-white/5"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
               </svg>
-              <span className="hidden sm:inline">Salir</span>
+              Salir
             </button>
           </div>
         </header>
@@ -510,7 +605,7 @@ export default function AdminLayout({ children }) {
         <Breadcrumb pathname={location.pathname} />
 
         {/* Contenido */}
-        <main className="flex-1 overflow-auto p-6 text-white">
+        <main className="flex-1 overflow-auto p-3 md:p-6 text-white">
           {children}
         </main>
       </div>

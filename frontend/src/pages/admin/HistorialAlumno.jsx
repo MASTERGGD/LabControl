@@ -346,4 +346,54 @@ export default function HistorialAlumno() {
                               </td>
                               <td className="px-4 py-3 text-center">
                                 {h.horas != null
-                                  ? <span
+                                  ? <span className="text-emerald-400 font-medium">{h.horas} h</span>
+                                  : <span className="text-slate-600">—</span>}
+                              </td>
+                              <td className="px-4 py-3">
+                                <Badge color={h.estado_sesion === 'ABIERTA' ? 'green' : h.estado_sesion === 'CERRADA' ? 'blue' : 'slate'}>
+                                  {h.estado_sesion}
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Pie */}
+                  <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
+                    <span>{data.total_sesiones} sesión{data.total_sesiones !== 1 ? 'es' : ''} en total</span>
+                    <span className="text-emerald-400/80">{data.total_horas} h acumuladas</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Sin historial */
+              <div className="glass rounded-2xl py-16 text-center">
+                <div className="text-5xl mb-4">📭</div>
+                <p className="text-slate-300 font-medium">Sin registros de asistencia</p>
+                <p className="text-slate-500 text-sm mt-1">
+                  El alumno <span className="font-mono text-slate-400">{data.alumno.matricula}</span> no
+                  tiene sesiones registradas en el sistema.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Estado inicial (sin búsqueda aún) */}
+        {!data && !loading && !error && (
+          <div className="glass rounded-2xl py-20 text-center">
+            <div className="text-5xl mb-4">🔍</div>
+            <p className="text-slate-400 font-medium">Ingresa una matrícula para consultar el historial</p>
+            <p className="text-slate-600 text-sm mt-1">
+              Podrás ver todos los laboratorios que ha usado, las horas acumuladas y las materias cursadas.
+            </p>
+          </div>
+        )}
+
+      </div>
+    </AdminLayout>
+  );
+}

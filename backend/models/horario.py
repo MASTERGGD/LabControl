@@ -38,6 +38,7 @@ class Reservacion(Base):
     docente     = relationship("Usuario", back_populates="reservaciones", foreign_keys=[docente_id])
     sesiones    = relationship("SesionClase", back_populates="reservacion")
     solicitudes = relationship("SolicitudConflicto", back_populates="reservacion", cascade="all, delete-orphan")
+    requerimiento = relationship("RequerimientoClase", back_populates="reservacion", uselist=False, cascade="all, delete-orphan")
 
 
 class BloqueoSlot(Base):
@@ -80,3 +81,37 @@ class SolicitudConflicto(Base):
 
     reservacion = relationship("Reservacion",  back_populates="solicitudes")
     solicitante = relationship("Usuario", foreign_keys=[solicitante_id])
+
+
+class RequerimientoClase(Base):
+    """
+    Requerimientos técnicos que un docente solicita para su clase.
+    Tiene ciclo de vida propio: PENDIENTE → CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
+    """
+    __tablename__ = "requerimientos_clase"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    reservacion_id = Column(Integer, ForeignKey("reservaciones.id"), nullable=False)
+
+    # Qué necesita el docente
+    items          = Column(String, nullable=True)   # JSON list: ["Proyector","Software específico"]
+    descripcion    = Column(String, nullable=True)   # Detalle libre: "AutoCAD 2024"
+
+    # Para software: ¿el docente tiene el instalador?
+    tiene_instalador = Column(Boolean, default=False)
+
+    # Urgencia calculada al crear (< 3 días hábiles)
+    urgente          = Column(Boolean, default=False)
+    dias_anticipacion = Column(Integer, nullable=True)
+
+    # Estado de gestión
+    # PENDIENTE | CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
+    estado         = Column(String, default="PENDIENTE")
+    nota_admin     = Column(String, nullable=True)   # Respuesta del admin
+
+    creado_en      = Column(DateTime, default=datetime.datetime.utcnow)
+    resuelto_en    = Column(DateTime, nullable=True)
+    resuelto_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+
+    reservacion  = relationship("Reservacion", back_populates="requerimiento")
+    resuelto_por = relationship("Usuario", foreign_keys=[resuelto_por_id])

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
-from models.horario import HorarioDisponible, Reservacion, SolicitudConflicto, BloqueoSlot
+from models.horario import HorarioDisponible, Reservacion, SolicitudConflicto, BloqueoSlot, RequerimientoClase
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from dependencies import get_current_user, require_roles
@@ -48,6 +48,10 @@ class ReservacionCreate(BaseModel):
     grupo: str    = Field(..., min_length=1, max_length=20)
     cuatrimestre: str = Field(..., min_length=2, max_length=20)
     observaciones: Optional[str] = None
+    # Requerimientos embebidos (se crean automáticamente si existen)
+    req_items:           Optional[List[str]] = None
+    req_descripcion:     Optional[str]       = None
+    req_tiene_instalador: Optional[bool]     = False
 
 class ReservacionUpdate(BaseModel):
     docente_id: Optional[int]       = None
@@ -56,6 +60,10 @@ class ReservacionUpdate(BaseModel):
     estado: Optional[str]           = None
     observaciones: Optional[str]    = None
     docente_suplente_id: Optional[int] = None
+
+class RequerimientoResolverSchema(BaseModel):
+    estado:     str            # CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
+    nota_admin: Optional[str]  = None
 
 class BloqueoCreate(BaseModel):
     motivo: str = Field(..., min_length=3, max_length=200,
@@ -127,6 +135,49 @@ def _serializar_horario(h: HorarioDisponible, db: Session) -> dict:
         "bloqueo":     bloqueo_data,
     }
 
+ESTADO_REQ_LABEL = {
+    "PENDIENTE":      "Pendiente de revisión",
+    "CONFIRMADO":     "Confirmado por el laboratorio",
+    "RECHAZADO":      "No se puede atender",
+    "DOCENTE_PROVEE": "El docente provee el instalador",
+}
+
+def _serializar_requerimiento(req: RequerimientoClase) -> dict:
+    import json
+    items = []
+    try:
+        items = json.loads(req.items) if req.items else []
+    except Exception:
+        pass
+    return {
+        "id":               req.id,
+        "items":            items,
+        "descripcion":      req.descripcion,
+        "tiene_instalador": req.tiene_instalador,
+        "urgente":          req.urgente,
+        "dias_anticipacion": req.dias_anticipacion,
+        "estado":           req.estado,
+        "estado_label":     ESTADO_REQ_LABEL.get(req.estado, req.estado),
+        "nota_admin":       req.nota_admin,
+        "creado_en":        req.creado_en.isoformat() if req.creado_en else None,
+        "resuelto_en":      req.resuelto_en.isoformat() if req.resuelto_en else None,
+    }
+
+def _calcular_urgencia(horario: HorarioDisponible) -> tuple[bool, int]:
+    """Calcula si el requerimiento es urgente (< 3 días hábiles)."""
+    hoy = datetime.date.today()
+    dia_semana_slot = horario.dia_semana  # 0=Lun, 5=Sab
+    # Próxima ocurrencia del día de la semana
+    dias_hasta = (dia_semana_slot - hoy.weekday()) % 7
+    if dias_hasta == 0:
+        dias_hasta = 7  # ya pasó hoy, próxima semana
+    fecha_clase = hoy + datetime.timedelta(days=dias_hasta)
+    dias_habiles = sum(
+        1 for i in range((fecha_clase - hoy).days)
+        if (hoy + datetime.timedelta(days=i+1)).weekday() < 5
+    )
+    return dias_habiles < 3, dias_habiles
+
 def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
     suplente = db.query(Usuario).filter(Usuario.id == r.docente_suplente_id).first() if r.docente_suplente_id else None
@@ -150,6 +201,7 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
         "cuatrimestre": r.cuatrimestre,
         "estado": r.estado,
         "observaciones": r.observaciones,
+        "requerimiento": _serializar_requerimiento(r.requerimiento) if r.requerimiento else None,
     }
 
 def _verificar_conflicto(
@@ -487,6 +539,57 @@ def disponibilidad(
     return {"laboratorio_id": laboratorio_id, "cuatrimestre": cuatrimestre, "slots": slots}
 
 
+# ─── Solicitudes recibidas (para el docente dueño) ────────────────────────────
+
+@router.get("/mis-solicitudes-recibidas",
+            summary="Solicitudes pendientes sobre los slots propios del docente")
+def mis_solicitudes_recibidas(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Retorna las solicitudes pendientes de otros docentes sobre las reservaciones
+    del docente actual. Permite al docente decidir ceder o rechazar.
+    """
+    # Reservaciones propias EN_DISPUTA
+    reservaciones = db.query(Reservacion).filter(
+        Reservacion.docente_id == current_user.id,
+        Reservacion.estado == "EN_DISPUTA",
+    ).all()
+
+    resultado = []
+    for r in reservaciones:
+        solicitud = db.query(SolicitudConflicto).filter(
+            SolicitudConflicto.reservacion_id == r.id,
+            SolicitudConflicto.estado == "PENDIENTE",
+        ).first()
+        if not solicitud:
+            continue
+
+        horario     = db.query(HorarioDisponible).filter(HorarioDisponible.id == r.horario_id).first()
+        solicitante = db.query(Usuario).filter(Usuario.id == solicitud.solicitante_id).first()
+        lab         = db.query(Laboratorio).filter(Laboratorio.id == r.laboratorio_id).first()
+
+        resultado.append({
+            "reservacion_id":      r.id,
+            "solicitud_id":        solicitud.id,
+            "dia_semana":          horario.dia_semana if horario else None,
+            "dia_nombre":          DIAS.get(horario.dia_semana, "") if horario else "",
+            "hora_inicio":         horario.hora_inicio if horario else "",
+            "hora_fin":            horario.hora_fin if horario else "",
+            "laboratorio_nombre":  lab.nombre if lab else "",
+            "mi_materia":          r.materia,
+            "mi_grupo":            r.grupo,
+            "solicitante_nombre":  solicitante.nombre if solicitante else "—",
+            "materia_solicitada":  solicitud.materia,
+            "grupo_solicitado":    solicitud.grupo,
+            "motivo":              solicitud.motivo,
+            "fecha_solicitud":     solicitud.fecha_solicitud.isoformat() if solicitud.fecha_solicitud else None,
+        })
+
+    return resultado
+
+
 # ─── Reservaciones ─────────────────────────────────────────────────────────────
 
 @router.get("/reservaciones", summary="Listar reservaciones")
@@ -535,12 +638,72 @@ def crear_reservacion(
 
     _verificar_conflicto(db, data.horario_id, data.laboratorio_id, data.cuatrimestre)
 
+    # Extraer campos de requerimiento antes de crear la reservación
+    req_items           = data.req_items
+    req_descripcion     = data.req_descripcion
+    req_tiene_instalador = data.req_tiene_instalador or False
+
     r = Reservacion(
-        **data.model_dump(),
+        horario_id=data.horario_id,
+        laboratorio_id=data.laboratorio_id,
+        docente_id=data.docente_id,
+        materia=data.materia,
+        grupo=data.grupo,
+        cuatrimestre=data.cuatrimestre,
+        observaciones=data.observaciones,
         estado="PROGRAMADA",
         creado_por=current_user.id,
     )
     db.add(r)
+    db.flush()  # obtener r.id sin commit
+
+    # Crear requerimiento si hay datos
+    hay_req = (req_items and len(req_items) > 0) or (req_descripcion and req_descripcion.strip())
+    if hay_req:
+        import json
+        urgente, dias = _calcular_urgencia(horario)
+        req = RequerimientoClase(
+            reservacion_id=r.id,
+            items=json.dumps(req_items or []),
+            descripcion=req_descripcion,
+            tiene_instalador=req_tiene_instalador,
+            urgente=urgente,
+            dias_anticipacion=dias,
+            estado="PENDIENTE",
+        )
+        db.add(req)
+
+        # Notificar al LAB_ADMIN del laboratorio
+        lab = db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id).first()
+        admins = db.query(Usuario).filter(
+            Usuario.rol == RolUsuario.LAB_ADMIN,
+            Usuario.laboratorio_id == data.laboratorio_id,
+            Usuario.activo == True,
+        ).all()
+        docente = db.query(Usuario).filter(Usuario.id == data.docente_id).first()
+        desc_req = ', '.join(req_items or [])
+        if req_descripcion:
+            desc_req += f' — {req_descripcion}'
+        urgencia_txt = ' ⚠️ URGENTE (menos de 3 días)' if urgente else ''
+        for admin in admins:
+            crear_notificacion(db, admin.id,
+                "requerimiento",
+                f"📋 Requerimiento de clase{urgencia_txt}",
+                f"{docente.nombre if docente else 'Docente'} solicitó para su clase "
+                f"'{data.materia}': {desc_req}."
+                + (' El docente tiene el instalador.' if req_tiene_instalador else ''),
+            )
+        # Notificar también al SUPER_ADMIN
+        super_admins = db.query(Usuario).filter(
+            Usuario.rol == RolUsuario.SUPER_ADMIN, Usuario.activo == True
+        ).all()
+        for sa in super_admins:
+            crear_notificacion(db, sa.id,
+                "requerimiento",
+                f"📋 Requerimiento de clase — {lab.nombre if lab else ''}",
+                f"{docente.nombre if docente else 'Docente'} solicitó: {desc_req}{urgencia_txt}",
+            )
+
     db.commit()
     db.refresh(r)
     return _serializar_reservacion(r, db)
@@ -617,7 +780,7 @@ def solicitar_slot(
     if r.docente_id == current_user.id:
         raise HTTPException(status_code=400, detail="No puedes solicitar tu propio horario")
 
-    # Verificar que no tenga ya una solicitud activa para este slot
+    # Verificar que no tenga ya una solicitud activa para este slot (yo mismo)
     ya_existe = db.query(SolicitudConflicto).filter(
         SolicitudConflicto.reservacion_id == reservacion_id,
         SolicitudConflicto.solicitante_id == current_user.id,
@@ -625,6 +788,17 @@ def solicitar_slot(
     ).first()
     if ya_existe:
         raise HTTPException(status_code=409, detail="Ya tienes una solicitud activa para este horario")
+
+    # Política: solo 1 solicitante por slot — si ya hay uno de otro docente, bloquear
+    otra_solicitud = db.query(SolicitudConflicto).filter(
+        SolicitudConflicto.reservacion_id == reservacion_id,
+        SolicitudConflicto.estado == "PENDIENTE",
+    ).first()
+    if otra_solicitud:
+        raise HTTPException(
+            status_code=409,
+            detail="Ya hay un docente solicitando este espacio. Verifica disponibilidad en otro laboratorio."
+        )
 
     solicitud = SolicitudConflicto(
         reservacion_id = reservacion_id,
@@ -653,7 +827,23 @@ def solicitar_slot(
             dia_nombre = DIAS.get(horario.dia_semana, f"Día {horario.dia_semana}")
             slot_txt = f"{dia_nombre} {horario.hora_inicio}–{horario.hora_fin}"
 
-        # Buscar admins del lab + SUPER_ADMIN
+        # 1. Notificar al DOCENTE DUEÑO del slot (puede ceder directamente)
+        docente_dueno = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
+        if docente_dueno:
+            crear_notificacion(
+                db, docente_dueno.id,
+                tipo="RESERVACION",
+                titulo=f"📩 Solicitud de espacio — {slot_txt}",
+                mensaje=(
+                    f"El docente {current_user.nombre} solicita tu horario del "
+                    f"{slot_txt} para '{data.materia}' (grupo {data.grupo}). "
+                    f"{'Motivo: ' + data.motivo + '. ' if data.motivo else ''}"
+                    f"Puedes ceder o rechazar el espacio desde tu panel de horarios."
+                ),
+                url="/docente/horarios",
+            )
+
+        # 2. Notificar a los admins del laboratorio (información)
         admins = db.query(Usuario).filter(
             Usuario.laboratorio_id == r.laboratorio_id,
             Usuario.rol == RolUsuario.LAB_ADMIN,
@@ -665,12 +855,11 @@ def solicitar_slot(
             crear_notificacion(
                 db, adm.id,
                 tipo="RESERVACION",
-                titulo=f"Nueva solicitud de horario — {lab_nombre}",
+                titulo=f"Solicitud de horario — {lab_nombre}",
                 mensaje=(
-                    f"El docente {current_user.nombre} solicita el slot "
-                    f"{slot_txt} para '{data.materia}' (grupo {data.grupo}). "
-                    f"{'Motivo: ' + data.motivo if data.motivo else ''} "
-                    f"Pendiente de tu resolución."
+                    f"{current_user.nombre} solicita el slot {slot_txt} "
+                    f"ocupado por {docente_dueno.nombre if docente_dueno else 'otro docente'}. "
+                    f"El docente dueño puede ceder directamente."
                 ),
                 url="/admin/horarios",
             )
@@ -682,7 +871,7 @@ def solicitar_slot(
         "id":              solicitud.id,
         "reservacion_id":  solicitud.reservacion_id,
         "estado":          solicitud.estado,
-        "mensaje":         "Solicitud enviada. El administrador del laboratorio recibirá una notificación.",
+        "mensaje":         "Solicitud enviada. El docente titular recibirá una notificación y podrá cederte el espacio.",
     }
 
 
@@ -717,6 +906,143 @@ def retirar_solicitud(
 
     db.commit()
     return {"mensaje": "Solicitud retirada"}
+
+
+# ─── Ceder / Rechazar solicitud — acción del docente dueño ────────────────────
+
+@router.post("/reservaciones/{reservacion_id}/ceder",
+             summary="Ceder el slot al docente solicitante (acción del dueño)")
+def ceder_slot(
+    reservacion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    El docente dueño del slot cede voluntariamente su espacio al solicitante pendiente.
+    La reservación se transfiere automáticamente sin intervención del admin.
+    """
+    r = db.query(Reservacion).filter(
+        Reservacion.id == reservacion_id,
+        Reservacion.estado == "EN_DISPUTA",
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Reservación no encontrada o sin solicitudes activas")
+
+    es_admin = current_user.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
+    if r.docente_id != current_user.id and not es_admin:
+        raise HTTPException(status_code=403, detail="Solo el docente titular puede ceder este espacio")
+
+    # Obtener la única solicitud pendiente
+    solicitud = db.query(SolicitudConflicto).filter(
+        SolicitudConflicto.reservacion_id == reservacion_id,
+        SolicitudConflicto.estado == "PENDIENTE",
+    ).first()
+    if not solicitud:
+        raise HTTPException(status_code=404, detail="No hay solicitudes pendientes para este slot")
+
+    ahora = datetime.datetime.utcnow()
+
+    # Transferir la reservación al solicitante
+    r.docente_id    = solicitud.solicitante_id
+    r.materia       = solicitud.materia
+    r.grupo         = solicitud.grupo
+    r.estado        = "PROGRAMADA"
+    r.observaciones = f"Cedido por {current_user.nombre} el {ahora.strftime('%d/%m/%Y')}"
+
+    # Marcar solicitud como aprobada
+    solicitud.estado           = "APROBADA"
+    solicitud.resuelto_por_id  = current_user.id
+    solicitud.fecha_resolucion = ahora
+    solicitud.resolucion_notas = "Cedido directamente por el docente titular"
+
+    db.commit()
+
+    # Notificar al solicitante
+    try:
+        horario = db.query(HorarioDisponible).filter(HorarioDisponible.id == r.horario_id).first()
+        slot_txt = ""
+        if horario:
+            dia_nombre = DIAS.get(horario.dia_semana, f"Día {horario.dia_semana}")
+            slot_txt = f"{dia_nombre} {horario.hora_inicio}–{horario.hora_fin}"
+
+        crear_notificacion(
+            db,
+            usuario_id=solicitud.solicitante_id,
+            tipo="RESERVACION",
+            titulo="✅ ¡Espacio cedido! Tu solicitud fue aprobada",
+            mensaje=(
+                f"El docente {current_user.nombre} cedió el slot {slot_txt}. "
+                f"El horario ahora es tuyo para '{solicitud.materia}' (grupo {solicitud.grupo})."
+            ),
+            url="/docente/horarios",
+        )
+        db.commit()
+    except Exception:
+        pass
+
+    return {"mensaje": "Espacio cedido exitosamente. El solicitante fue notificado."}
+
+
+@router.post("/reservaciones/{reservacion_id}/rechazar-solicitud",
+             summary="Rechazar la solicitud de liberación (acción del dueño)")
+def rechazar_solicitud_docente(
+    reservacion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    El docente dueño rechaza la solicitud pendiente y conserva su espacio.
+    """
+    r = db.query(Reservacion).filter(
+        Reservacion.id == reservacion_id,
+        Reservacion.estado == "EN_DISPUTA",
+    ).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Reservación no encontrada o sin solicitudes activas")
+    if r.docente_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Solo el docente titular puede rechazar solicitudes")
+
+    solicitud = db.query(SolicitudConflicto).filter(
+        SolicitudConflicto.reservacion_id == reservacion_id,
+        SolicitudConflicto.estado == "PENDIENTE",
+    ).first()
+    if not solicitud:
+        raise HTTPException(status_code=404, detail="No hay solicitudes pendientes para este slot")
+
+    ahora = datetime.datetime.utcnow()
+    solicitud.estado           = "RECHAZADA"
+    solicitud.resuelto_por_id  = current_user.id
+    solicitud.fecha_resolucion = ahora
+    solicitud.resolucion_notas = "Rechazado por el docente titular"
+
+    # Volver la reservación a PROGRAMADA
+    r.estado = "PROGRAMADA"
+    db.commit()
+
+    # Notificar al solicitante
+    try:
+        horario = db.query(HorarioDisponible).filter(HorarioDisponible.id == r.horario_id).first()
+        slot_txt = ""
+        if horario:
+            dia_nombre = DIAS.get(horario.dia_semana, f"Día {horario.dia_semana}")
+            slot_txt = f"{dia_nombre} {horario.hora_inicio}–{horario.hora_fin}"
+
+        crear_notificacion(
+            db,
+            usuario_id=solicitud.solicitante_id,
+            tipo="RESERVACION",
+            titulo="❌ Solicitud de horario rechazada",
+            mensaje=(
+                f"El docente {current_user.nombre} decidió conservar el slot {slot_txt}. "
+                f"Te sugerimos revisar disponibilidad en otros laboratorios."
+            ),
+            url="/docente/horarios",
+        )
+        db.commit()
+    except Exception:
+        pass
+
+    return {"mensaje": "Solicitud rechazada. El slot sigue siendo tuyo."}
 
 
 # ─── Conflictos (vista del administrador) ─────────────────────────────────────
@@ -865,7 +1191,7 @@ def resolver_conflicto(
 
 # ─── Bloqueos Institucionales (solo SUPER_ADMIN) ───────────────────────────────
 
-@router.post("/horarios/{horario_id}/bloquear",
+@router.post("/{horario_id}/bloquear",
              status_code=201,
              summary="Bloquear un slot — solo admins")
 def bloquear_slot(
@@ -909,7 +1235,7 @@ def bloquear_slot(
     }
 
 
-@router.delete("/horarios/{horario_id}/bloquear",
+@router.delete("/{horario_id}/bloquear",
                summary="Desbloquear un slot — solo admins")
 def desbloquear_slot(
     horario_id: int,
@@ -922,3 +1248,117 @@ def desbloquear_slot(
     ).update({"activo": False})
     db.commit()
     return {"desbloqueados": updated}
+
+
+# ─── Requerimientos de Clase ───────────────────────────────────────────────────
+
+@router.get("/requerimientos/pendientes", summary="Listar requerimientos pendientes — admins")
+def listar_requerimientos_pendientes(
+    laboratorio_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    q = db.query(RequerimientoClase).filter(RequerimientoClase.estado == "PENDIENTE")
+    if laboratorio_id:
+        q = q.join(Reservacion).filter(Reservacion.laboratorio_id == laboratorio_id)
+    elif current_user.rol == RolUsuario.LAB_ADMIN and current_user.laboratorio_id:
+        q = q.join(Reservacion).filter(Reservacion.laboratorio_id == current_user.laboratorio_id)
+
+    reqs = q.order_by(RequerimientoClase.urgente.desc(), RequerimientoClase.creado_en).all()
+
+    resultado = []
+    for req in reqs:
+        r = req.reservacion
+        horario = r.horario if r else None
+        docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first() if r else None
+        lab = db.query(Laboratorio).filter(Laboratorio.id == r.laboratorio_id).first() if r else None
+        import json
+        items = []
+        try:
+            items = json.loads(req.items) if req.items else []
+        except Exception:
+            pass
+        resultado.append({
+            **_serializar_requerimiento(req),
+            "reservacion_id":   r.id if r else None,
+            "materia":          r.materia if r else None,
+            "grupo":            r.grupo if r else None,
+            "docente_nombre":   docente.nombre if docente else None,
+            "laboratorio_nombre": lab.nombre if lab else None,
+            "dia_nombre":       ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"][horario.dia_semana] if horario else None,
+            "hora_inicio":      horario.hora_inicio if horario else None,
+            "hora_fin":         horario.hora_fin if horario else None,
+        })
+    return resultado
+
+
+@router.get("/requerimientos/mis", summary="Mis requerimientos — docente")
+def mis_requerimientos(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    mis_reservaciones = db.query(Reservacion).filter(
+        Reservacion.docente_id == current_user.id
+    ).all()
+    ids = [r.id for r in mis_reservaciones]
+    reqs = db.query(RequerimientoClase).filter(
+        RequerimientoClase.reservacion_id.in_(ids)
+    ).order_by(RequerimientoClase.creado_en.desc()).all()
+
+    resultado = []
+    for req in reqs:
+        r = req.reservacion
+        horario = r.horario if r else None
+        lab = db.query(Laboratorio).filter(Laboratorio.id == r.laboratorio_id).first() if r else None
+        resultado.append({
+            **_serializar_requerimiento(req),
+            "materia":            r.materia if r else None,
+            "grupo":              r.grupo if r else None,
+            "laboratorio_nombre": lab.nombre if lab else None,
+            "dia_nombre":         ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"][horario.dia_semana] if horario else None,
+            "hora_inicio":        horario.hora_inicio if horario else None,
+        })
+    return resultado
+
+
+@router.put("/requerimientos/{req_id}/resolver", summary="Resolver requerimiento — admins")
+def resolver_requerimiento(
+    req_id: int,
+    data: RequerimientoResolverSchema,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    if data.estado not in ("CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE"):
+        raise HTTPException(status_code=422, detail="Estado inválido")
+
+    req = db.query(RequerimientoClase).filter(RequerimientoClase.id == req_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Requerimiento no encontrado")
+
+    req.estado          = data.estado
+    req.nota_admin      = data.nota_admin
+    req.resuelto_en     = datetime.datetime.utcnow()
+    req.resuelto_por_id = current_user.id
+    db.commit()
+    db.refresh(req)
+
+    # Notificar al docente
+    try:
+        r = req.reservacion
+        docente_id = r.docente_id if r else None
+        if docente_id:
+            emojis = {"CONFIRMADO": "✅", "RECHAZADO": "❌", "DOCENTE_PROVEE": "📦"}
+            labels = ESTADO_REQ_LABEL
+            msg = f"Tu requerimiento para '{r.materia}' fue {labels.get(data.estado, data.estado).lower()}."
+            if data.nota_admin:
+                msg += f" Nota del laboratorio: {data.nota_admin}"
+            crear_notificacion(db, docente_id,
+                "requerimiento",
+                f"{emojis.get(data.estado,'📋')} Requerimiento de clase actualizado",
+                msg,
+            )
+            db.commit()
+    except Exception:
+        pass
+
+    return _serializar_requerimiento(req)

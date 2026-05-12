@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database import Base          # noqa: E402
 from models import (               # noqa: E402
     catalogo, horario, inventario, laboratorio,
-    notificacion, sesion, usuario, auditoria,
+    notificacion, sesion, usuario, auditoria, adeudo,
 )
 
 target_metadata = Base.metadata
@@ -64,20 +64,30 @@ def run_migrations_online() -> None:
     url = config.get_main_option("sqlalchemy.url", "")
     is_sqlite = url.startswith("sqlite")
 
+    connect_args = {"check_same_thread": False} if is_sqlite else {}
+    # Para PostgreSQL: timeout de conexión de 10 s para no colgar el arranque
+    if not is_sqlite:
+        connect_args["connect_timeout"] = 10
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"check_same_thread": False} if is_sqlite else {},
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:
+        # Evitar que el lock de alembic_version bloquee el arranque indefinidamente
+        if not is_sqlite:
+            connection.execute(
+                __import__("sqlalchemy").text("SET lock_timeout = '10s'")
+            )
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
-            render_as_batch=is_sqlite,   # SQLite no soporta ALTER TABLE directo
+            render_as_batch=is_sqlite,
         )
         with context.begin_transaction():
             context.run_migrations()

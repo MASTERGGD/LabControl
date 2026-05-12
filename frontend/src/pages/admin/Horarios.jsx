@@ -559,7 +559,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
               Cancelar
             </button>
             <button onClick={handleBloquear} disabled={loading || !motivoFinal}
-              className="flex-1 bg-purple-700 hover:bg-purple-600 disabled:bg-gray-600 disabled:text-slate-400 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+              className="btn-emerald flex-1 disabled:bg-gray-600 disabled:text-slate-400 disabled:shadow-none">
               {loading ? 'Bloqueando...' : '🔒 Bloquear turno'}
             </button>
           </div>
@@ -572,9 +572,14 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
 // ─── Drawer detalle de reservación (panel lateral) ───────────────────────────
 function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, onBloquear }) {
   const r = slot.reservacion;
-  const [cancelando, setCancelando] = useState(false);
-  const [confirmar, setConfirmar]   = useState(false);
-  const [error, setError]           = useState('');
+  const [cancelando, setCancelando]       = useState(false);
+  const [confirmar, setConfirmar]         = useState(false);
+  const [error, setError]                 = useState('');
+  // Resolver requerimiento
+  const [req, setReq]                     = useState(r?.requerimiento ?? null);
+  const [resolviendoReq, setResolviendoReq] = useState(false);
+  const [notaAdmin, setNotaAdmin]         = useState('');
+  const [mostrarNotaReq, setMostrarNotaReq] = useState(false);
   const DIAS_NOMBRE = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
   const handleCancelar = async () => {
@@ -586,6 +591,22 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
       setError(err.response?.data?.detail || 'Error al cancelar');
       setCancelando(false); setConfirmar(false);
     }
+  };
+
+  const handleResolverReq = async (estado) => {
+    if (!req) return;
+    setResolviendoReq(true);
+    try {
+      const { data } = await api.put(`/horarios/requerimientos/${req.id}/resolver`, {
+        estado,
+        nota_admin: notaAdmin.trim() || undefined,
+      });
+      setReq(data);
+      setMostrarNotaReq(false);
+      setNotaAdmin('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al resolver requerimiento');
+    } finally { setResolviendoReq(false); }
   };
 
   // Badge de estado con rayas para EN_DISPUTA
@@ -658,6 +679,112 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
               </>
             )}
           </div>
+
+          {/* ── Requerimientos del docente (panel admin) ── */}
+          {req && (() => {
+            const items = Array.isArray(req.items) ? req.items : [];
+            const ESTADO_STYLE = {
+              PENDIENTE:      { bg:'rgba(234,179,8,0.08)',  border:'rgba(234,179,8,0.28)',  text:'#fde68a', label:'⏳ Pendiente' },
+              CONFIRMADO:     { bg:'rgba(34,197,94,0.08)',  border:'rgba(34,197,94,0.28)',  text:'#86efac', label:'✅ Confirmado' },
+              RECHAZADO:      { bg:'rgba(239,68,68,0.08)',  border:'rgba(239,68,68,0.28)',  text:'#fca5a5', label:'❌ Rechazado' },
+              DOCENTE_PROVEE: { bg:'rgba(99,102,241,0.10)', border:'rgba(99,102,241,0.32)', text:'#c4b5fd', label:'💾 Docente provee' },
+            };
+            const st = ESTADO_STYLE[req.estado] || ESTADO_STYLE.PENDIENTE;
+            return (
+              <div className="rounded-xl p-4 space-y-3" style={{ background: st.bg, border: `1px solid ${st.border}` }}>
+                {/* Header */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: st.text }}>
+                    <span>📋</span> Requerimientos del docente
+                  </p>
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>
+                    {st.label}
+                  </span>
+                </div>
+
+                {/* Items */}
+                {items.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map(item => (
+                      <span key={item} className="text-xs px-2 py-0.5 rounded-full font-medium"
+                        style={{ background:'rgba(234,179,8,0.12)', color:'#fde68a', border:'1px solid rgba(234,179,8,0.25)' }}>
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {req.descripcion && <p className="text-xs text-slate-300 italic leading-relaxed">"{req.descripcion}"</p>}
+
+                {/* Tiene instalador */}
+                {req.tiene_instalador && (
+                  <p className="text-xs text-indigo-300 flex items-center gap-1.5">
+                    <span>💾</span> El docente <strong>tiene el instalador</strong> y puede compartirlo
+                  </p>
+                )}
+
+                {/* Urgente */}
+                {req.urgente && (
+                  <p className="text-xs text-red-400 font-bold flex items-center gap-1.5">
+                    <span>🔴</span> URGENTE — clase en menos de 3 días hábiles
+                  </p>
+                )}
+
+                {/* Nota del admin anterior */}
+                {req.nota_admin && (
+                  <div className="bg-white/5 rounded-lg px-3 py-2">
+                    <p className="text-xs text-slate-400">Tu nota:</p>
+                    <p className="text-xs text-slate-200 italic mt-0.5">"{req.nota_admin}"</p>
+                  </div>
+                )}
+
+                {/* Botones de acción — solo si no está resuelto */}
+                {req.estado === 'PENDIENTE' && (
+                  <div className="space-y-2 pt-1">
+                    {/* Campo de nota opcional */}
+                    {mostrarNotaReq ? (
+                      <textarea
+                        rows={2}
+                        placeholder="Nota para el docente (opcional)…"
+                        value={notaAdmin}
+                        onChange={e => setNotaAdmin(e.target.value)}
+                        className="w-full text-xs rounded-lg px-3 py-2 resize-none focus:outline-none"
+                        style={{ background:'rgba(15,23,42,0.7)', border:'1px solid rgba(255,255,255,0.1)', color:'#e2e8f0' }}
+                      />
+                    ) : (
+                      <button onClick={() => setMostrarNotaReq(true)}
+                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1">
+                        <span>✏️</span> Agregar nota para el docente
+                      </button>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => handleResolverReq('CONFIRMADO')}
+                        disabled={resolviendoReq}
+                        className="py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background:'rgba(34,197,94,0.15)', border:'1px solid rgba(34,197,94,0.35)', color:'#86efac' }}>
+                        ✅ Confirmar
+                      </button>
+                      <button
+                        onClick={() => handleResolverReq('DOCENTE_PROVEE')}
+                        disabled={resolviendoReq}
+                        className="py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background:'rgba(99,102,241,0.12)', border:'1px solid rgba(99,102,241,0.32)', color:'#c4b5fd' }}>
+                        💾 Docente provee
+                      </button>
+                      <button
+                        onClick={() => handleResolverReq('RECHAZADO')}
+                        disabled={resolviendoReq}
+                        className="py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.28)', color:'#fca5a5' }}>
+                        ❌ Rechazar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Info estado EN_DISPUTA */}
           {r?.estado === 'EN_DISPUTA' && (
@@ -829,9 +956,11 @@ export default function Horarios() {
 
   useEffect(() => { cargarHorarios(); }, [cargarHorarios]);
   // Drag-select: end on mouseup anywhere
+  // esSuperAdmin se incluye en deps para que el closure siempre lea el valor actual
   useEffect(() => {
     const onMouseUp = () => {
-      if (isDragging && selectedCells.size > 0) {
+      // Capa 1: Super admin nunca usa arrastre para crear — su click abre modal de bloqueo
+      if (isDragging && selectedCells.size > 0 && !esSuperAdmin) {
         // Extract hour range from selected cells
         const keys = Array.from(selectedCells);
         const horas = [...new Set(keys.map(k => k.split('|')[0]))].sort();
@@ -852,7 +981,7 @@ export default function Horarios() {
     };
     document.addEventListener('mouseup', onMouseUp);
     return () => document.removeEventListener('mouseup', onMouseUp);
-  }, [isDragging, selectedCells]);
+  }, [isDragging, selectedCells, esSuperAdmin]); // horaFinMap se captura en renderCell, no aquí
 
 
   // Construir grid: { "08:00": { 0: horario|null, 1: horario|null, ... } }
@@ -932,10 +1061,12 @@ export default function Horarios() {
             options={labs.map(l => ({ value: l.id, label: l.nombre }))}
           />
         </div>
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Cuatrimestre</label>
-          <CuatrimestreSelect value={cuatrimestre} onChange={setCuatrimestre} dark
-            className="text-sm w-44" />
+        <div className="flex items-end pb-0.5 gap-2">
+          <span className="text-xs text-slate-500">Cuatrimestre</span>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+            style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
+            📅 {cuatrimestre}
+          </span>
         </div>
         <div className="flex items-end pb-0.5">
           <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
@@ -1006,7 +1137,8 @@ export default function Horarios() {
                     : esReservado ? 'slot-reservado cursor-pointer hover:brightness-110'
                     :              'slot-libre cursor-crosshair'}`}
                   onMouseDown={e => {
-                    if (esInactivo || esBloqueado || esReservado) return;
+                    // Super admin usa click para bloquear, no para arrastre de creación
+                    if (esInactivo || esBloqueado || esReservado || esSuperAdmin) return;
                     e.preventDefault();
                     setIsDragging(true);
                     setDragStartKey(cellKey);
@@ -1023,7 +1155,13 @@ export default function Horarios() {
                     if (esInactivo) return;
                     if (esBloqueado) { setSlotBloqueo(slot); return; }
                     if (esReservado) { setSlotDetalle(slot); return; }
-                    if (esSuperAdmin) { setSlotBloquear(slot); return; }
+                    if (esSuperAdmin) {
+                      // Capa 2: limpiar cualquier drag state residual antes de abrir el modal
+                      setIsDragging(false);
+                      setSelectedCells(new Set());
+                      setSlotBloquear(slot);
+                      return;
+                    }
                     setSlotEditar(slot);
                   }}>
 
@@ -1112,7 +1250,7 @@ export default function Horarios() {
           labId={labSeleccionado}
           cuatrimestre={cuatrimestre}
           onClose={() => setModalUtecan(false)}
-          onSave={cargarHorarios}
+          onSave={() => { setModalUtecan(false); cargarHorarios(); }}
         />
       )}
       {slotDetalle && (
@@ -1121,7 +1259,7 @@ export default function Horarios() {
           esSuperAdmin={esSuperAdmin}
           onClose={() => setSlotDetalle(null)}
           onCancelada={() => { setSlotDetalle(null); cargarHorarios(); }}
-          onBloquear={() => { setSlotDetalle(null); setSlotBloquear(slotDetalle); }}
+          onBloquear={() => { setSlotBloquear(slotDetalle); setSlotDetalle(null); }}
         />
       )}
       {slotBloquear && (
@@ -1141,4 +1279,3 @@ export default function Horarios() {
     </AdminLayout>
   );
 }
-   

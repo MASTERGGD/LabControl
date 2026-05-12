@@ -735,6 +735,222 @@ function Temporizador({ segundos }) {
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
+// ─── Revisión de Recepción ────────────────────────────────────────────────────
+
+function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
+  // estados[pc_id] = { conProblema: bool, descripcion: string }
+  const [estados, setEstados]           = useState({});
+  const [ultimosUsuarios, setUltimosUsuarios] = useState({});  // pc_id -> {alumno_nombre, alumno_matricula, sesion_codigo, sesion_materia}
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState('');
+
+  // PCs que el docente debe inspeccionar (disponibles en teoría)
+  const pcsMapeables = pcs.filter(p => !['BAJA','MANTENIMIENTO','DAÑADO'].includes(p.estado));
+  // PCs ya fuera de servicio — el docente solo necesita saber que existen
+  const pcsYaFuera   = pcs.filter(p => ['MANTENIMIENTO','DAÑADO'].includes(p.estado));
+
+  const marcarPC = async (pcId, conProblema) => {
+    setEstados(prev => ({
+      ...prev,
+      [pcId]: { conProblema, descripcion: prev[pcId]?.descripcion || '' }
+    }));
+
+    // Fetch ultimo usuario si marcamos problema y aun no lo tenemos
+    if (conProblema && ultimosUsuarios[pcId] === undefined) {
+      setUltimosUsuarios(prev => ({ ...prev, [pcId]: { loading: true } })); // marcar como cargando
+      try {
+        const { data } = await api.get(`/sesiones/pc/${pcId}/ultimo-usuario`);
+        setUltimosUsuarios(prev => ({ ...prev, [pcId]: data.ultimo_usuario || null }));
+      } catch {
+        setUltimosUsuarios(prev => ({ ...prev, [pcId]: null }));
+      }
+    }
+  };
+
+  const handleConfirmar = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const items = pcsMapeables.map(pc => ({
+        computadora_id: pc.pc_id,
+        estado:         estados[pc.pc_id]?.conProblema ? 'CON_PROBLEMA' : 'OK',
+        descripcion:    estados[pc.pc_id]?.descripcion || '',
+      }));
+      await api.post(`/sesiones/${sesionId}/confirmar-recepcion`, { observaciones: items });
+      onConfirmada();
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Error al confirmar recepcion');
+      setLoading(false);
+    }
+  };
+
+  const conProblemasCount = pcsMapeables.filter(p => estados[p.pc_id]?.conProblema).length;
+
+  if (pcsMapeables.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <svg className="animate-spin w-7 h-7 text-amber-400" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen text-white flex flex-col">
+      {/* Header */}
+      <header className="glass-sm border-b border-white/5 px-4 py-3 flex items-center justify-between shrink-0">
+        <div>
+          <h2 className="font-semibold text-white text-sm">Revision de Recepcion</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {sesion.materia} · {sesion.grupo} · {sesion.laboratorio_nombre}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/40 border border-amber-600/40 rounded-lg">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block"></span>
+          <span className="text-xs text-amber-300 font-medium">Inspeccion obligatoria</span>
+        </div>
+      </header>
+
+      {/* Banner instruccion */}
+      <div className="px-4 py-3 bg-amber-900/20 border-b border-amber-700/30 flex items-start gap-3">
+        <span className="text-amber-400 text-lg mt-0.5">🔍</span>
+        <div>
+          <p className="text-sm text-amber-200 font-semibold">Revise cada computadora antes de iniciar la clase.</p>
+          <p className="text-xs text-amber-300/70 mt-0.5">
+            Si encuentra algun problema (dano fisico, equipo que no enciende, etc.), marquelo como "Problema" y descríbalo.
+            Esto crea un reporte automatico con trazabilidad del ultimo usuario.
+          </p>
+        </div>
+      </div>
+
+      {/* Banner PCs ya fuera de servicio */}
+      {pcsYaFuera.length > 0 && (
+        <div className="px-4 py-2 bg-yellow-900/20 border-b border-yellow-700/30 flex items-center gap-3 flex-wrap">
+          <span className="text-yellow-400 text-sm">🔧</span>
+          <span className="text-xs text-yellow-300">
+            <span className="font-semibold">{pcsYaFuera.length} PC{pcsYaFuera.length !== 1 ? 's' : ''} ya fuera de servicio</span>
+            {' '}({pcsYaFuera.map(p => p.codigo).join(', ')}) — no requieren revisión de recepción.
+          </span>
+        </div>
+      )}
+
+      {/* Grid de PCs */}
+      <div className="flex-1 overflow-auto p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto">
+          {pcsMapeables.map(pc => {
+            const conProblema = !!estados[pc.pc_id]?.conProblema;
+            const ultimoUsu   = ultimosUsuarios[pc.pc_id];
+            const cargandoUsu = conProblema && ultimosUsuarios[pc.pc_id] === null && ultimosUsuarios.hasOwnProperty(pc.pc_id) === false;
+
+            return (
+              <div
+                key={pc.pc_id}
+                className={`rounded-xl border p-3 transition-all ${
+                  conProblema
+                    ? 'border-orange-500/50 bg-orange-950/30'
+                    : 'border-white/10 bg-gray-800/40'
+                }`}
+              >
+                {/* Fila superior: codigo + botones */}
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="font-bold text-sm text-white">{pc.codigo}</p>
+                    {pc.fila && <p className="text-[10px] text-slate-500 leading-none">Fila {pc.fila}</p>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => marcarPC(pc.pc_id, false)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        !conProblema
+                          ? 'bg-green-700 text-green-100 ring-1 ring-green-500/50'
+                          : 'bg-gray-700/60 text-slate-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      ✓ OK
+                    </button>
+                    <button
+                      onClick={() => marcarPC(pc.pc_id, true)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        conProblema
+                          ? 'bg-orange-600 text-white ring-1 ring-orange-400/50'
+                          : 'bg-gray-700/60 text-slate-400 hover:bg-gray-700'
+                      }`}
+                    >
+                      ⚠ Problema
+                    </button>
+                  </div>
+                </div>
+
+                {/* Detalle cuando hay problema */}
+                {conProblema && (
+                  <div className="space-y-2 pt-2 border-t border-orange-500/20">
+                    <textarea
+                      rows={2}
+                      placeholder="Describe el problema observado..."
+                      value={estados[pc.pc_id]?.descripcion || ''}
+                      onChange={e =>
+                        setEstados(prev => ({
+                          ...prev,
+                          [pc.pc_id]: { ...prev[pc.pc_id], descripcion: e.target.value }
+                        }))
+                      }
+                      className="w-full bg-gray-900/60 border border-orange-700/40 text-white text-xs rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-600"
+                    />
+
+                    {/* Ultimo usuario */}
+                    {ultimoUsu?.loading ? (
+                      <p className="text-[10px] text-slate-500 italic">Buscando ultimo usuario...</p>
+                    ) : ultimoUsu && !ultimoUsu.loading ? (
+                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                        <span className="text-sm">🎓</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-amber-300 truncate">{ultimoUsu.alumno_nombre}</p>
+                          <p className="text-[10px] text-amber-400/70 truncate">
+                            {ultimoUsu.alumno_matricula}
+                            {ultimoUsu.sesion_materia ? ` · ${ultimoUsu.sesion_materia}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-[9px] text-amber-500/60 whitespace-nowrap">ultimo uso</span>
+                      </div>
+                    ) : ultimosUsuarios.hasOwnProperty(pc.pc_id) ? (
+                      <p className="text-[10px] text-slate-500 italic">Sin historial de uso previo</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Footer con resumen y confirmar */}
+      <footer className="glass-sm border-t border-white/5 px-4 py-3 flex items-center justify-between gap-4 shrink-0">
+        <div className="text-sm">
+          {conProblemasCount > 0 ? (
+            <span className="text-orange-300 font-medium">
+              {conProblemasCount} PC{conProblemasCount !== 1 ? 's' : ''} con problema detectado
+            </span>
+          ) : (
+            <span className="text-green-400">Todo en orden — sin novedades</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {error && <p className="text-red-400 text-xs max-w-xs text-right">{error}</p>}
+          <button
+            onClick={handleConfirmar}
+            disabled={loading}
+            className="px-5 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
+          >
+            {loading ? 'Confirmando...' : `Confirmar Recepcion${conProblemasCount > 0 ? ` (${conProblemasCount} incidente${conProblemasCount !== 1 ? 's' : ''})` : ''}`}
+          </button>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 export default function SesionActiva() {
   const { sesionId } = useParams();
   const navigate     = useNavigate();
@@ -807,7 +1023,7 @@ export default function SesionActiva() {
   // Conectar WebSocket (con fallback a polling si falla en 5s)
   useEffect(() => {
     if (!sesion) return;
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBase  = process.env.REACT_APP_WS_URL || `${wsProto}://${window.location.hostname}:8000`;
     const wsUrl = `${wsBase}/ws/mapa/${sesion.laboratorio_id}?token=${token}`;
@@ -909,6 +1125,19 @@ export default function SesionActiva() {
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
         </svg>
       </div>
+    );
+  }
+
+  // ── Fase de revisión de recepción ────────────────────────────────────────────
+  // Bloquea el mapa normal hasta que el docente complete la inspección inicial
+  if (!sesion.recepcion_confirmada) {
+    return (
+      <RecepcionInicial
+        pcs={pcs}
+        sesion={sesion}
+        sesionId={sesionId}
+        onConfirmada={() => setSesion(s => ({ ...s, recepcion_confirmada: true }))}
+      />
     );
   }
 

@@ -42,6 +42,7 @@ CMD ["nginx", "-g", "daemon off;"]
 FROM node:20-alpine AS dev
 WORKDIR /app
 COPY package*.json ./
+COPY tailwind.config.js postcss.config.js ./
 RUN npm install
 EXPOSE 3000
 CMD ["npm", "start"]

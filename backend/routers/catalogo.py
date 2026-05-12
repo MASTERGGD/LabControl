@@ -8,6 +8,7 @@ from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 import openpyxl
 import io
+import datetime
 
 router = APIRouter(prefix="/catalogo", tags=["Catálogo"])
 
@@ -161,11 +162,10 @@ def crear_alumno(
 
     existe = db.query(CatalogoAlumno).filter(
         CatalogoAlumno.matricula == matricula,
-        CatalogoAlumno.periodo   == periodo
     ).first()
     if existe:
         raise HTTPException(status_code=409,
-            detail="Ya existe un alumno con esa matrícula en este periodo")
+            detail="Ya existe un alumno con esa matrícula. Edítalo para actualizar sus datos.")
 
     alumno = CatalogoAlumno(
         matricula        = matricula,
@@ -279,7 +279,6 @@ async def importar_alumnos(
 
         existente = db.query(CatalogoAlumno).filter(
             CatalogoAlumno.matricula == matricula,
-            CatalogoAlumno.periodo   == periodo,
         ).first()
 
         if existente:
@@ -529,3 +528,35 @@ def listar_carreras(
     for (c,) in db.query(CatalogoMateria.carrera).distinct().all():
         if c: carreras.add(c)
     return sorted(carreras)
+
+
+# ─── Periodo actual calculado por fecha ───────────────────────────────────────
+
+def _calcular_periodo(fecha: datetime.date) -> str:
+    """
+    Calcula el período escolar UTECAN según la fecha:
+      1 ene – 30 abr  →  ENE-ABR YYYY
+      1 may – 31 ago  →  MAY-AGO YYYY
+      1 sep – 31 dic  →  SEP-DIC YYYY
+    """
+    mes  = fecha.month
+    anio = fecha.year
+    if mes <= 4:
+        return f"ENE-ABR {anio}"
+    elif mes <= 8:
+        return f"MAY-AGO {anio}"
+    else:
+        return f"SEP-DIC {anio}"
+
+
+@router.get("/periodo-actual", summary="Período escolar actual calculado por fecha")
+def periodo_actual(
+    current_user: Usuario = Depends(get_current_user),
+):
+    hoy    = datetime.date.today()
+    periodo = _calcular_periodo(hoy)
+    return {
+        "periodo": periodo,
+        "fecha":   hoy.isoformat(),
+        "mes":     hoy.month,
+    }

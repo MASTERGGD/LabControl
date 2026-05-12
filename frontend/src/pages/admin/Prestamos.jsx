@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
-import SelectDark from '../../components/SelectDark';
+import SelectDark     from '../../components/SelectDark';
+import DatePickerDark from '../../components/DatePickerDark';
 
 // ─── Combobox de búsqueda de activos ─────────────────────────────────────────
 function ActivoCombobox({ activos, value, onChange }) {
@@ -14,7 +15,7 @@ function ActivoCombobox({ activos, value, onChange }) {
   // Texto que muestra el input cuando hay un valor seleccionado
   const seleccionado = activos.find(a => String(a.id) === String(value));
   const labelSeleccionado = seleccionado
-    ? `${seleccionado.nombre} — ${seleccionado.numero_serie || 'S/N'} (${seleccionado.laboratorio_nombre || 'Sin lab'})`
+    ? `${seleccionado.codigo_inventario ? seleccionado.codigo_inventario + ' — ' : ''}${seleccionado.nombre} (${seleccionado.laboratorio_nombre || 'Sin lab'})`
     : '';
 
   const filtrados = query.trim() === ''
@@ -23,6 +24,7 @@ function ActivoCombobox({ activos, value, onChange }) {
         const q = query.toLowerCase();
         return (
           a.nombre?.toLowerCase().includes(q) ||
+          a.codigo_inventario?.toLowerCase().includes(q) ||
           a.numero_serie?.toLowerCase().includes(q) ||
           a.laboratorio_nombre?.toLowerCase().includes(q) ||
           a.categoria?.toLowerCase().includes(q)
@@ -77,7 +79,7 @@ function ActivoCombobox({ activos, value, onChange }) {
         <input
           ref={inputRef}
           type="text"
-          placeholder={value ? labelSeleccionado : 'Buscar por nombre, serie o laboratorio…'}
+          placeholder={value ? labelSeleccionado : 'Buscar por nombre, No. inventario, serie o laboratorio…'}
           value={value && !abierto ? '' : query}
           onFocus={() => setAbierto(true)}
           onChange={e => { setQuery(e.target.value); setAbierto(true); setDestacado(-1); }}
@@ -137,7 +139,8 @@ function ActivoCombobox({ activos, value, onChange }) {
                   onMouseEnter={() => setDestacado(i)}
                 >
                   <div className="font-medium truncate">{a.nombre}</div>
-                  <div className="text-xs text-slate-500 flex gap-2 mt-0.5">
+                  <div className="text-xs text-slate-500 flex gap-2 mt-0.5 flex-wrap">
+                    {a.codigo_inventario && <span className="text-blue-400 font-mono">{a.codigo_inventario}</span>}
                     <span>{a.categoria}</span>
                     {a.numero_serie && <span>· S/N: {a.numero_serie}</span>}
                     {a.laboratorio_nombre && <span>· {a.laboratorio_nombre}</span>}
@@ -722,11 +725,12 @@ export default function Prestamos() {
               {/* Fecha */}
               <div>
                 <label className="block text-sm text-slate-400 mb-1.5">Fecha de devolución esperada</label>
-                <input type="date"
+                <DatePickerDark
                   value={formPrestar.fecha_devolucion_esperada}
-                  onChange={e => setFormPrestar({ ...formPrestar, fecha_devolucion_esperada: e.target.value })}
+                  onChange={v => setFormPrestar({ ...formPrestar, fecha_devolucion_esperada: v })}
                   min={new Date().toISOString().split('T')[0]}
-                  className="input-dark text-sm rounded-xl w-full" />
+                  placeholder="Seleccionar fecha..."
+                />
               </div>
 
               {/* Notas */}
@@ -852,4 +856,7 @@ export default function Prestamos() {
             </form>
           </div>
         </div>
-  
+      )}
+    </AdminLayout>
+  );
+}

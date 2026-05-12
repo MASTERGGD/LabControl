@@ -85,6 +85,8 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         "overtime_min": s.overtime_min or 0,
         "tiempo_restante_seg": tiempo_restante_seg,
         "en_overtime": en_overtime,
+        "recepcion_confirmada": bool(s.recepcion_confirmada),
+        "recepcion_fin": s.recepcion_fin.isoformat() if s.recepcion_fin else None,
     }
 
 def _get_sesion_activa_docente(docente_id: int, db: Session) -> Optional[SesionClase]:
@@ -583,4 +585,165 @@ async def reportar_pc_cierre(
             + (" y bloqueada temporalmente" if data.bloquear else "")
             + ". El administrador recibirá el aviso."
         ),
+    }
+
+
+# ─── Revisión de recepción ─────────────────────────────────────────────────────
+
+class RecepcionItem(BaseModel):
+    computadora_id: int
+    estado:         str           # "OK" | "CON_PROBLEMA"
+    descripcion:    Optional[str] = None
+    prioridad:      str           = "MEDIA"  # ALTA | MEDIA | BAJA
+
+class RecepcionConfirmar(BaseModel):
+    observaciones: List[RecepcionItem] = []
+
+
+@router.post("/{sesion_id}/confirmar-recepcion",
+             summary="Confirmar revisión de recepción del laboratorio")
+def confirmar_recepcion(
+    sesion_id: int,
+    data: RecepcionConfirmar,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    if current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    if s.recepcion_confirmada:
+        raise HTTPException(status_code=400, detail="La recepción ya fue confirmada")
+
+    from models.inventario import Incidente
+
+    incidentes_creados = []
+
+    for obs in data.observaciones:
+        pc = db.query(Computadora).filter(Computadora.id == obs.computadora_id).first()
+        if not pc:
+            continue
+
+        # Crear ObservacionPC con momento=RECEPCION_INICIO
+        observacion = ObservacionPC(
+            sesion_id      = sesion_id,
+            computadora_id = obs.computadora_id,
+            tipo           = "CON_PROBLEMA" if obs.estado == "CON_PROBLEMA" else "SIN_NOVEDAD",
+            descripcion    = obs.descripcion,
+            prioridad      = obs.prioridad,
+            atendida       = False,
+            momento        = "RECEPCION_INICIO",
+        )
+        db.add(observacion)
+
+        if obs.estado == "CON_PROBLEMA":
+            # Crear Incidente vinculado a esta sesión con origen RECEPCION
+            descripcion_inc = (
+                obs.descripcion or f"Daño detectado al recibir laboratorio — PC {pc.codigo}"
+            )
+            descripcion_inc += f" [Reportado por {current_user.nombre} al iniciar sesión {s.codigo_sesion}]"
+
+            incidente = Incidente(
+                computadora_id   = pc.id,
+                laboratorio_id   = s.laboratorio_id,
+                origen           = "RECEPCION",
+                origen_id        = sesion_id,
+                tipo             = "DAÑO",
+                prioridad        = obs.prioridad,
+                descripcion      = descripcion_inc,
+                reportado_por_id = current_user.id,
+                estado           = "EN_REVISION",
+            )
+            db.add(incidente)
+            db.flush()  # get incidente.id
+
+            # Buscar último usuario de esa PC en sesiones anteriores
+            ultimo_uso = (
+                db.query(AsignacionPC)
+                .filter(
+                    AsignacionPC.computadora_id == pc.id,
+                    AsignacionPC.sesion_id != sesion_id,
+                )
+                .order_by(AsignacionPC.hora_asignacion.desc())
+                .first()
+            )
+
+            ultimo_alumno = None
+            ultima_sesion = None
+            if ultimo_uso:
+                ultima_sesion_obj = db.query(SesionClase).filter(
+                    SesionClase.id == ultimo_uso.sesion_id
+                ).first()
+                ultimo_alumno = {
+                    "nombre":    ultimo_uso.alumno_nombre,
+                    "matricula": ultimo_uso.alumno_matricula,
+                    "hora":      ultimo_uso.hora_asignacion.isoformat() if ultimo_uso.hora_asignacion else None,
+                }
+                if ultima_sesion_obj:
+                    ultima_sesion = {
+                        "id":           ultima_sesion_obj.id,
+                        "codigo":       ultima_sesion_obj.codigo_sesion,
+                        "materia":      ultima_sesion_obj.materia,
+                        "grupo":        ultima_sesion_obj.grupo,
+                        "inicio":       ultima_sesion_obj.inicio.isoformat() if ultima_sesion_obj.inicio else None,
+                        "fin_real":     ultima_sesion_obj.fin_real.isoformat() if ultima_sesion_obj.fin_real else None,
+                        "sin_reporte_cierre": True,  # si llegamos aquí, no hubo reporte al cierre
+                    }
+
+            incidentes_creados.append({
+                "incidente_id":  incidente.id,
+                "pc_codigo":     pc.codigo,
+                "computadora_id": pc.id,
+                "descripcion":   obs.descripcion,
+                "ultimo_alumno": ultimo_alumno,
+                "ultima_sesion": ultima_sesion,
+            })
+
+    # Marcar sesión como recepción confirmada
+    s.recepcion_confirmada = True
+    s.recepcion_fin        = datetime.datetime.utcnow()
+    db.commit()
+
+    return {
+        "mensaje":            "Recepcion confirmada" + (f" - {len(incidentes_creados)} incidente(s) reportado(s)" if incidentes_creados else " sin novedades"),
+        "recepcion_confirmada": True,
+        "incidentes":         incidentes_creados,
+    }
+
+
+# ─── Último usuario de una PC (para revisión de recepción) ────────────────────
+
+@router.get("/pc/{computadora_id}/ultimo-usuario", summary="Ultimo usuario de una PC")
+def ultimo_usuario_pc(
+    computadora_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Retorna el último alumno que usó una PC (en cualquier sesión anterior).
+    Accesible para docentes — usado en la revisión de recepción.
+    """
+    pc = db.query(Computadora).filter(Computadora.id == computadora_id).first()
+    if not pc:
+        raise HTTPException(404, "Computadora no encontrada")
+
+    asig = (
+        db.query(AsignacionPC)
+        .filter(AsignacionPC.computadora_id == computadora_id)
+        .order_by(AsignacionPC.hora_asignacion.desc())
+        .first()
+    )
+    if not asig:
+        return {"ultimo_usuario": None}
+
+    sesion = db.query(SesionClase).filter(SesionClase.id == asig.sesion_id).first()
+    return {
+        "ultimo_usuario": {
+            "alumno_nombre":    asig.alumno_nombre,
+            "alumno_matricula": asig.alumno_matricula,
+            "sesion_codigo":    sesion.codigo_sesion if sesion else None,
+            "sesion_materia":   sesion.materia       if sesion else None,
+            "sesion_fecha":     sesion.inicio.isoformat() if sesion and sesion.inicio else None,
+        }
     }

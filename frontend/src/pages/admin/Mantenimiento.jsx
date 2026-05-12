@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
@@ -169,6 +170,7 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
 
 // ─── Drawer de detalle ────────────────────────────────────────────────────────
 function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     estado:            incidente.estado,
     prioridad:         incidente.prioridad,
@@ -316,6 +318,34 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               onChange={e => setForm({...form, notas_seguimiento: e.target.value})}
               className="input-dark resize-none leading-relaxed" />
           </div>
+
+          {/* Crear adeudo rápido si hay alumno responsable */}
+          {incidente.alumno_responsable && (
+            <div className="glass-sm rounded-xl p-4 space-y-2">
+              <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Alumno responsable</p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-white font-medium truncate">{incidente.alumno_responsable.nombre}</p>
+                  <p className="text-xs text-slate-500">{incidente.alumno_responsable.matricula}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      identificador: incidente.alumno_responsable.matricula,
+                      nombre:        incidente.alumno_responsable.nombre,
+                      tipo:          'ALUMNO',
+                      descripcion:   `Daño en ${incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'equipo')}${incidente.descripcion ? ': ' + incidente.descripcion : ''}`,
+                      incidente_id:  String(incidente.id),
+                    });
+                    navigate(`/admin/adeudos?${params.toString()}`);
+                  }}
+                  className="shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                >
+                  📋 Crear adeudo
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>}
 

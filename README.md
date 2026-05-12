@@ -7,7 +7,7 @@ Universidad Tecnológica de Candelaria · Campeche, México
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)](https://sqlite.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -144,7 +144,7 @@ labcontrol/
 │   └── src/
 │       ├── App.jsx             # React Router v6, rutas protegidas
 │       ├── context/
-│       │   ├── AuthContext.jsx  # JWT en localStorage, login/logout
+│       │   ├── AuthContext.jsx  # JWT en sessionStorage, login/logout
 │       │   └── ToastContext.jsx # Sistema de toasts global
 │       ├── hooks/
 │       │   └── useApi.js        # Axios instance con interceptor JWT
@@ -227,7 +227,7 @@ Copia `.env.example` a `.env` y ajusta los valores:
 
 ```env
 # Base de datos
-DATABASE_URL=sqlite:///./data/labcontrol.db
+DATABASE_URL=postgresql://usuario:password@localhost:5432/labcontrol
 
 # JWT — usa un valor aleatorio largo en producción
 SECRET_KEY=cambia-esta-clave-en-produccion-minimo-32-caracteres
@@ -293,7 +293,7 @@ Documentación interactiva completa en `http://localhost:8000/docs` (Swagger UI)
 | Python | 3.11 | Lenguaje base |
 | FastAPI | 0.111 | Framework API REST + WebSockets |
 | SQLAlchemy | 2.0 | ORM / modelos de base de datos |
-| SQLite | — | Base de datos (dev) / migrable a PostgreSQL |
+| PostgreSQL | 16 | Base de datos principal |
 | python-jose | 3.3 | Generación y validación JWT |
 | passlib + bcrypt | — | Hash de contraseñas |
 | openpyxl + pandas | — | Importación / exportación Excel |
@@ -379,7 +379,7 @@ DATABASE_URL=postgresql://usuario:contraseña@host:5432/labcontrol
 | `backend/seed.py` | Crea el SUPER_ADMIN inicial si la BD está vacía |
 | `frontend/public/index.html` | Tailwind CDN, variables CSS, glassmorphism, animaciones |
 | `frontend/src/hooks/useApi.js` | Axios con token JWT automático + redirect al login en 401 |
-| `frontend/src/context/AuthContext.jsx` | Estado global de sesión (usuario + token en localStorage) |
+| `frontend/src/context/AuthContext.jsx` | Estado global de sesión (usuario + token en sessionStorage) |
 | `frontend/src/components/SelectDark.jsx` | Dropdown custom — reemplaza todos los `<select>` nativos |
 | `.env.example` | Plantilla de configuración — copiar a `.env` |
 | `docker-compose.yml` | Orquestación de servicios (backend + frontend) |

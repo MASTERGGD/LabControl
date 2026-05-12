@@ -757,4 +757,8 @@ export default function Inventario() {
         <ModalImportar
           onClose={() => setModalImportar(false)}
           onDone={() => { setModalImportar(false); cargar(); }}
-  
+        />
+      )}
+    </AdminLayout>
+  );
+}

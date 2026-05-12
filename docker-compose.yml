@@ -62,6 +62,13 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+    environment:
+      # Polling necesario en Windows/WSL2: los eventos inotify no llegan al contenedor
+      # Sin esto webpack no detecta cambios y hay que hacer Ctrl+Shift+R manualmente.
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     # Sin REACT_APP_API_URL: el frontend usa window.location.hostname automaticamente
     depends_on:
       - backend

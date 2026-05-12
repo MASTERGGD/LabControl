@@ -64,7 +64,7 @@ export default function NotificacionesBell() {
 
   // Polling del conteo no leídas (cada 60s) — solo si hay token
   const fetchCount = useCallback(async () => {
-    if (!localStorage.getItem('token')) return;
+    if (!sessionStorage.getItem('token')) return;
     try {
       const { data } = await api.get('/notificaciones/no-leidas');
       setNoLeidas(data.count);
@@ -123,7 +123,7 @@ export default function NotificacionesBell() {
   const cfg = (tipo) => TIPO_CONFIG[tipo] || { color: 'text-slate-400', bg: 'bg-white/4', icon: '🔔', label: tipo };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative">
       {/* ── Botón campana ── */}
       <button
         onClick={abrirDropdown}
@@ -140,10 +140,11 @@ export default function NotificacionesBell() {
         )}
       </button>
 
-      {/* ── Dropdown ── */}
+      {/* ── Dropdown vía Portal (escapa el stacking context del header) ── */}
       {open && (
-        <div className="absolute right-0 mt-2 w-96 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden"
-             style={{ maxHeight: '520px' }}>
+        <div ref={dropdownRef}
+             className="absolute right-0 mt-2 w-96 bg-gray-800 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+             style={{ maxHeight: '520px', zIndex: 9999 }}>
           {/* Cabecera */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <h3 className="text-white font-semibold text-sm">
@@ -210,11 +211,11 @@ export default function NotificacionesBell() {
                           <IconX className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <p className="text-xs text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">
+                                            <p className="text-xs text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">
                         {n.mensaje}
                       </p>
                       <p className="text-[10px] text-slate-600 mt-1">
-                        {tiempoRelativo(n.fecha)}
+                        {n.creado_en ? new Date(n.creado_en + (n.creado_en.endsWith('Z') ? '' : 'Z')).toLocaleString("es-MX", { dateStyle: "short", timeStyle: "short" }) : ''}
                       </p>
                     </div>
                   </div>
@@ -222,15 +223,6 @@ export default function NotificacionesBell() {
               })
             )}
           </div>
-
-          {/* Pie */}
-          {notifs.length > 0 && (
-            <div className="px-4 py-2 border-t border-white/5 bg-gray-800/80">
-              <p className="text-[11px] text-slate-500 text-center">
-                Mostrando {notifs.length} notificación{notifs.length !== 1 ? 'es' : ''}
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

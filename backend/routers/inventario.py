@@ -8,6 +8,7 @@ from database import get_db
 from models.inventario import Activo, Prestamo, Incidente, MantenimientoPreventivo
 from models.laboratorio import Laboratorio
 from models.usuario import Usuario, RolUsuario
+from models.adeudo import Adeudo
 from dependencies import get_current_user, require_roles
 from rls import assert_lab_write, assert_resource_access
 import datetime
@@ -238,6 +239,7 @@ def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
 
 def _serializar_incidente(i: Incidente, db: Session) -> dict:
     from models.laboratorio import Computadora
+    from models.sesion import AsignacionPC
     activo    = db.query(Activo).filter(Activo.id == i.activo_id).first() if i.activo_id else None
     lab       = db.query(Laboratorio).filter(Laboratorio.id == i.laboratorio_id).first() if i.laboratorio_id else None
     # Para computadoras, intentar obtener datos básicos
@@ -253,6 +255,49 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
             pass
 
     reporter  = db.query(Usuario).filter(Usuario.id == i.reportado_por_id).first() if i.reportado_por_id else None
+
+    # ── Alumno responsable ────────────────────────────────────────────────────
+    # SESION     → alumno que tenía la PC en ESA sesión (testigo directo, certeza ALTA)
+    # RECEPCION  → alumno de la sesión ANTERIOR a la que recibió el daño (certeza MEDIA)
+    alumno_responsable = None
+    certeza            = None
+    if i.origen == "SESION" and i.origen_id and i.computadora_id:
+        certeza = "ALTA"
+        try:
+            asig = db.query(AsignacionPC).filter(
+                AsignacionPC.sesion_id      == i.origen_id,
+                AsignacionPC.computadora_id == i.computadora_id,
+            ).order_by(AsignacionPC.hora_asignacion.desc()).first()
+            if asig:
+                alumno_responsable = {
+                    "nombre":    asig.alumno_nombre,
+                    "matricula": asig.alumno_matricula,
+                }
+        except Exception:
+            pass
+    elif i.origen == "RECEPCION" and i.computadora_id:
+        certeza = "MEDIA"
+        try:
+            # Buscar la última AsignacionPC de sesiones DISTINTAS a la actual
+            asig = db.query(AsignacionPC).filter(
+                AsignacionPC.computadora_id == i.computadora_id,
+                AsignacionPC.sesion_id      != (i.origen_id or 0),
+            ).order_by(AsignacionPC.hora_asignacion.desc()).first()
+            if asig:
+                from models.sesion import SesionClase as SC
+                sesion_ant = db.query(SC).filter(SC.id == asig.sesion_id).first()
+                alumno_responsable = {
+                    "nombre":          asig.alumno_nombre,
+                    "matricula":       asig.alumno_matricula,
+                    "sesion_anterior": {
+                        "id":     sesion_ant.id           if sesion_ant else None,
+                        "codigo": sesion_ant.codigo_sesion if sesion_ant else None,
+                        "materia": sesion_ant.materia      if sesion_ant else None,
+                        "inicio": sesion_ant.inicio.isoformat() if sesion_ant and sesion_ant.inicio else None,
+                    },
+                }
+        except Exception:
+            pass
 
     return {
         "id":               i.id,
@@ -275,6 +320,8 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         "notas_seguimiento": i.notas_seguimiento,
         "fecha_resolucion": i.fecha_resolucion.isoformat() if i.fecha_resolucion else None,
         "costo_reparacion": i.costo_reparacion,
+        "alumno_responsable": alumno_responsable,
+        "certeza":            certeza,
     }
 
 
@@ -566,6 +613,21 @@ def devolver_prestamo(
         )
         db.add(incidente)
 
+    # ── Auto-resolver adeudo vinculado al préstamo si existía ──────────────────
+    adeudo_vinculado = db.query(Adeudo).filter(
+        Adeudo.prestamo_id == prestamo_id,
+        Adeudo.estado.in_(["PENDIENTE", "EN_REVISION"]),
+    ).first()
+    if adeudo_vinculado:
+        adeudo_vinculado.estado           = "RESUELTO"
+        adeudo_vinculado.fecha_resolucion = datetime.datetime.utcnow()
+        adeudo_vinculado.resuelto_por_id  = current_user.id
+        adeudo_vinculado.notas_resolucion = (
+            f"Préstamo devuelto el {datetime.datetime.utcnow().strftime('%d/%m/%Y')} "
+            f"en condición {data.condicion_devolucion}. "
+            + (data.notas_devolucion or "")
+        )
+
     db.commit()
     db.refresh(p)
     registrar(db, accion=Accion.DEVOLVER_PRESTAMO, recurso=Recurso.PRESTAMO,
@@ -695,6 +757,10 @@ def actualizar_incidente(
             if pc:
                 pc.estado = "OPERATIVO"
 
+    # Si se cierra sin adeudo → solo registrar fecha de resolución
+    if "estado" in campos and campos["estado"].upper() == "CERRADO_SIN_ADEUDO":
+        i.fecha_resolucion = datetime.datetime.utcnow()
+
     # Si se marca como DADO_DE_BAJA → dar de baja el equipo
     if "estado" in campos and campos["estado"].upper() == "DADO_DE_BAJA":
         i.fecha_resolucion = datetime.datetime.utcnow()
@@ -783,8 +849,10 @@ def estadisticas(
         "operativos": sum(1 for a in activos if a.estado == "OPERATIVO"),
         "en_mantenimiento": sum(1 for a in activos if a.estado == "MANTENIMIENTO"),
         "dañados": sum(1 for a in activos if a.estado == "DAÑADO"),
-        "prestamos_activos": sum(1 for p in prestamos if p.estado == "ACTIVO"),
+        "prestamos_totales":  len(prestamos),
+        "prestamos_activos":  sum(1 for p in prestamos if p.estado == "ACTIVO"),
         "prestamos_vencidos": sum(1 for p in prestamos if p.estado == "VENCIDO"),
+        "prestamos_devueltos": sum(1 for p in prestamos if p.estado == "DEVUELTO"),
         "por_categoria": por_categoria,
     }
 
@@ -1154,7 +1222,7 @@ def historial_activo(
             "tipo_evento":  "PRESTAMO",
             "fecha":        p.fecha_salida.isoformat() if p.fecha_salida else None,
             "fecha_fin":    p.fecha_retorno_real.isoformat() if p.fecha_retorno_real else None,
-            "titulo":       f"Préstamo — {p.solicitante_nombre}",
+            "titulo":       f"Prestamo - {p.solicitante_nombre}",
             "descripcion":  p.observaciones_salida,
             "estado":       p.estado,
             "condicion_salida":  p.condicion_salida,
@@ -1164,7 +1232,7 @@ def historial_activo(
             "id_ref":       p.id,
         })
 
-    # ── Mantenimientos preventivos ─────────────────────────────────────────
+    # Mantenimientos preventivos
     for mp in db.query(MantenimientoPreventivo).filter(MantenimientoPreventivo.activo_id == activo_id).all():
         comp_nombre = None
         if mp.completado_por_id:
@@ -1174,7 +1242,7 @@ def historial_activo(
             "tipo_evento":  "MANTENIMIENTO_PREVENTIVO",
             "fecha":        mp.fecha_programada.isoformat() if mp.fecha_programada else None,
             "fecha_fin":    mp.fecha_completado.isoformat() if mp.fecha_completado else None,
-            "titulo":       f"Preventivo — {mp.tipo.replace('_',' ').title()}",
+            "titulo":       "Preventivo - " + mp.tipo.replace("_", " ").title(),
             "descripcion":  mp.descripcion,
             "estado":       mp.estado,
             "notas":        mp.notas_result,
@@ -1184,20 +1252,5 @@ def historial_activo(
             "id_ref":       mp.id,
         })
 
-    # Ordenar por fecha descendente
     eventos.sort(key=lambda e: e["fecha"] or "", reverse=True)
-
-    return {
-        "activo": {
-            "id":               activo.id,
-            "nombre":           activo.nombre,
-            "codigo":           activo.codigo_inventario,
-            "categoria":        activo.categoria,
-            "marca":            activo.marca,
-            "modelo":           activo.modelo,
-            "estado":           activo.estado,
-            "resguardo_nombre": activo.resguardo_nombre,
-        },
-        "total_eventos": len(eventos),
-        "eventos":       eventos,
-    }
+    return {"activo_id": activo_id, "eventos": eventos}

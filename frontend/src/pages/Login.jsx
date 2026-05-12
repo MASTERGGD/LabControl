@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 
@@ -12,7 +12,10 @@ const ROLES_REDIRECT = {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, usuario } = useAuth();
+
+  // Si ya hay sesión activa → ir directo al dashboard
+  if (usuario) return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
   const [form, setForm]       = useState({ email: '', password: '' });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);

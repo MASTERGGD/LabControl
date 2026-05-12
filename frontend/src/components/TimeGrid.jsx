@@ -162,4 +162,16 @@ export default function TimeGrid({
                         verticalAlign: 'top',
                         padding: '4px 6px',
                       }}
-   
+                    >
+                      {renderCell(dia, hora)}
+                    </td>
+                  ))}
+                </tr>
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

@@ -6,6 +6,7 @@ import models
 import os
 
 # Alembic -- migraciones de esquema
+import pathlib
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
 
@@ -26,6 +27,7 @@ from routers import rbac as rbac_router
 from routers import asistencia as asistencia_router
 from routers import historial as historial_router
 from routers import auditoria as auditoria_router
+from routers import adeudos as adeudos_router
 
 from ws.mapa import websocket_mapa
 
@@ -35,19 +37,50 @@ from seed import run_seed
 
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
+# Última revisión conocida — actualizar si se agrega una migración nueva
+_ALEMBIC_HEAD = "c9e2f3a84d51"
+
+
+def _current_db_version() -> str | None:
+    """Lee la versión Alembic actual usando psycopg2 con timeout corto."""
+    db_url = os.environ.get("DATABASE_URL", "")
+    if "postgresql" not in db_url:
+        return None
+    try:
+        import psycopg2
+        # psycopg2 no acepta el prefijo +psycopg2 de SQLAlchemy
+        pg_url = db_url.replace("postgresql+psycopg2://", "postgresql://", 1)
+        conn = psycopg2.connect(pg_url, connect_timeout=5)
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SELECT version_num FROM alembic_version LIMIT 1")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        print(f"Alembic: no se pudo leer versión ({e})")
+        return None
+
+
 def _run_migrations():
     """
-    Aplica todas las migraciones pendientes con Alembic al iniciar el servidor.
-    Equivalente a ejecutar: alembic upgrade head
-    Funciona tanto con PostgreSQL como con SQLite.
+    Aplica migraciones pendientes con Alembic.
+    Si la BD ya está en la versión head, lo salta sin tocar nada.
     """
-    alembic_cfg = AlembicConfig("/app/alembic.ini")
-    alembic_cfg.set_main_option("script_location", "/app/alembic")
+    current = _current_db_version()
+    if current == _ALEMBIC_HEAD:
+        print(f"Alembic: ya en versión {_ALEMBIC_HEAD} — sin cambios.")
+        return
+
+    _base = pathlib.Path(__file__).parent.resolve()
+    alembic_cfg = AlembicConfig(str(_base / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(_base / "alembic"))
     try:
         alembic_command.upgrade(alembic_cfg, "head")
         print("Alembic: migraciones aplicadas correctamente")
     except Exception as e:
-        print(f"Alembic: {e}")
+        print(f"Alembic: error al migrar: {e}")
         raise
 
 
@@ -74,21 +107,24 @@ app = FastAPI(
 )
 
 # -- CORS ---------------------------------------------------------------------
+_APP_ENV      = os.getenv("APP_ENV", "development")
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-_CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    _FRONTEND_URL,
-]
-_CORS_ORIGINS = list({o for o in _CORS_ORIGINS if o})
+
+if _APP_ENV == "production":
+    # Produccion: solo el dominio configurado en FRONTEND_URL
+    _CORS_ORIGINS   = list({o for o in ["http://localhost:3000", _FRONTEND_URL] if o})
+    _CORS_ALL       = False
+else:
+    # Desarrollo / LAN: cualquier origen (permite acceder desde otros equipos de la red)
+    _CORS_ORIGINS   = ["*"]
+    _CORS_ALL       = True
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=not _CORS_ALL,   # credentials=True es incompatible con allow_origins=["*"]
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin",
-                   "X-Requested-With"],
+    allow_headers=["*"] if _CORS_ALL else ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
     expose_headers=["Content-Disposition"],
     max_age=600,
 )
@@ -112,6 +148,7 @@ app.include_router(rbac_router.router)
 app.include_router(asistencia_router.router)
 app.include_router(historial_router.router)
 app.include_router(auditoria_router.router)
+app.include_router(adeudos_router.router)
 
 # WebSocket -- mapa de PCs en tiempo real
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)

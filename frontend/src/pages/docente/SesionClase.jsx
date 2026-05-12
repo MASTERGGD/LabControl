@@ -150,13 +150,72 @@ function ModalCambiarPassword({ onClose }) {
   );
 }
 
+// ─── Panel de estado de requerimiento (docente ve el estado) ─────────────────
+
+const REQ_ESTADO_STYLE = {
+  PENDIENTE:      { bg:'rgba(234,179,8,0.10)',  border:'rgba(234,179,8,0.30)',  text:'#fde68a', label:'⏳ Pendiente de revisión' },
+  CONFIRMADO:     { bg:'rgba(34,197,94,0.10)',  border:'rgba(34,197,94,0.30)',  text:'#86efac', label:'✅ Confirmado por el admin' },
+  RECHAZADO:      { bg:'rgba(239,68,68,0.10)',  border:'rgba(239,68,68,0.30)',  text:'#fca5a5', label:'❌ No disponible' },
+  DOCENTE_PROVEE: { bg:'rgba(99,102,241,0.12)', border:'rgba(99,102,241,0.35)', text:'#c4b5fd', label:'💾 Tú provees el software' },
+};
+
+function RequerimientoStatusPanel({ req }) {
+  if (!req) return null;
+  const items = Array.isArray(req.items) ? req.items : [];
+  const style = REQ_ESTADO_STYLE[req.estado] || REQ_ESTADO_STYLE.PENDIENTE;
+  return (
+    <div className="rounded-xl p-3 space-y-2" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+      <div className="flex items-center justify-between flex-wrap gap-1">
+        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: style.text }}>📋 Mis requerimientos</p>
+        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}>
+          {style.label}
+        </span>
+      </div>
+      {items.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map(item => (
+            <span key={item} className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ background:'rgba(34,197,94,0.12)', color:'#86efac', border:'1px solid rgba(34,197,94,0.25)' }}>
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
+      {req.descripcion && <p className="text-xs text-slate-300 italic">"{req.descripcion}"</p>}
+      {req.urgente && (
+        <p className="text-xs text-red-400 font-semibold flex items-center gap-1.5">
+          <span>🔴</span> Marcado como urgente (clase próxima)
+        </p>
+      )}
+      {req.nota_admin && (
+        <div className="pt-1.5 border-t border-white/5">
+          <p className="text-xs text-slate-400">Respuesta del administrador:</p>
+          <p className="text-xs text-slate-200 italic mt-0.5">"{req.nota_admin}"</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Modal: Reservar slot libre ───────────────────────────────────────────────
+
+// Requerimientos rápidos
+const CHECKS_REQ = [
+  { key: 'proyector',   label: 'Proyector / pantalla',   icon: '📽️' },
+  { key: 'internet',    label: 'Acceso a internet',       icon: '🌐' },
+  { key: 'software',    label: 'Software específico',     icon: '💿' },
+  { key: 'audio',       label: 'Micrófono / bocinas',     icon: '🔊' },
+  { key: 'extensiones', label: 'Extensiones / contactos', icon: '🔌' },
+];
 
 function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
   const { usuario } = useAuth();
   const [form, setForm]               = useState({ materia: '', grupo: '', cuatrimestre });
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
+  const [checks, setChecks]           = useState({});
+  const [notaReq, setNotaReq]         = useState('');
+  const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
@@ -166,18 +225,26 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
     setForm(f => ({ ...f, materia: m.nombre || '' }));
   };
 
+  const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
+
+  const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.materia.trim()) { setError('Escribe o selecciona una materia.'); return; }
     setSaving(true); setError('');
+    const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
     try {
       await api.post('/horarios/reservaciones', {
-        horario_id:     slot.horario_id,
-        laboratorio_id: laboratorio_id,
-        docente_id:     usuario.id,
-        materia:        form.materia,
-        grupo:          form.grupo,
-        cuatrimestre:   form.cuatrimestre,
+        horario_id:           slot.horario_id,
+        laboratorio_id:       laboratorio_id,
+        docente_id:           usuario.id,
+        materia:              form.materia,
+        grupo:                form.grupo,
+        cuatrimestre:         form.cuatrimestre,
+        req_items:            reqItems.length ? reqItems : undefined,
+        req_descripcion:      notaReq.trim() || undefined,
+        req_tiene_instalador: checks.software ? tieneInstalador : undefined,
       });
       onGuardado(); onClose();
     } catch (err) {
@@ -187,7 +254,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl">
+      <div className="glass w-full max-w-md shadow-2xl">
         <div className="p-5 border-b border-white/5 flex items-center justify-between">
           <div>
             <h2 className="font-bold text-white">Reservar horario</h2>
@@ -195,7 +262,8 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+          {/* Materia */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">
               Materia *
@@ -226,12 +294,71 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             </div>
             <input type="text" required className="sr-only" value={form.materia} readOnly tabIndex={-1} />
           </div>
+
+          {/* Grupo */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Grupo *</label>
             <input required type="text" placeholder="Ej. DyGS-8vo. A"
               value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
-              className="w-full input-dark text-white  px-3 py-2 text-sm  focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              className="w-full input-dark text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
           </div>
+
+          {/* ── Requerimientos ── */}
+          <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.6)', border:'1px solid rgba(255,255,255,0.07)' }}>
+            <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold flex items-center gap-1.5">
+              <span>📋</span> Requerimientos para la clase
+              <span className="text-slate-600 normal-case font-normal">(opcional)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {CHECKS_REQ.map(c => (
+                <label key={c.key}
+                  className="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition-colors select-none"
+                  style={{
+                    background: checks[c.key] ? 'rgba(34,197,94,0.15)' : 'rgba(15,23,42,0.5)',
+                    border: `1px solid ${checks[c.key] ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!checks[c.key]}
+                    onChange={() => toggleCheck(c.key)}
+                    className="accent-green-500 w-3.5 h-3.5 shrink-0"
+                  />
+                  <span className="text-xs">{c.icon}</span>
+                  <span className="text-xs text-slate-300 leading-tight">{c.label}</span>
+                </label>
+              ))}
+            </div>
+            <textarea
+              rows={2}
+              placeholder="Detalle adicional… ej. 'Necesito MATLAB R2024 instalado'"
+              value={notaReq}
+              onChange={e => setNotaReq(e.target.value)}
+              className="w-full input-dark text-sm resize-none px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+              style={{ minHeight: '56px' }}
+            />
+
+            {/* Toggle instalador — solo cuando Software específico está marcado */}
+            {checks.software && (
+              <label className="flex items-center gap-3 cursor-pointer rounded-xl px-4 py-3 transition-colors select-none"
+                style={{ background: tieneInstalador ? 'rgba(234,179,8,0.12)' : 'rgba(15,23,42,0.5)', border: `1px solid ${tieneInstalador ? 'rgba(234,179,8,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
+                <input type="checkbox" checked={tieneInstalador} onChange={() => setTieneInstalador(v => !v)}
+                  className="accent-yellow-400 w-4 h-4 shrink-0" />
+                <div>
+                  <p className="text-sm text-slate-200 font-medium">💾 Tengo el instalador disponible</p>
+                  <p className="text-xs text-slate-500 leading-tight mt-0.5">Puedo compartirlo con el administrador del laboratorio</p>
+                </div>
+              </label>
+            )}
+
+            {/* Aviso urgencia */}
+            {hayReqs && (
+              <p className="text-xs text-amber-400/80 flex items-center gap-1.5 px-1">
+                <span>⏰</span> Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.
+              </p>
+            )}
+          </div>
+
           {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
@@ -333,6 +460,9 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
               </div>
             )}
           </div>
+
+          {/* Requerimientos registrados (nuevo modelo) */}
+          {r?.requerimiento && <RequerimientoStatusPanel req={r.requerimiento} />}
 
           {/* Sesión activa en otro lado */}
           {sesionActiva && sesionActiva.reservacion_id !== r.id && (
@@ -465,7 +595,7 @@ function ModalSolicitar({ slot, onClose, onSolicitado }) {
             <p className="font-semibold text-white">{r.docente_nombre}</p>
             <p className="text-slate-400 text-xs">{r.materia} · {r.grupo}</p>
           </div>
-          <p className="text-sm text-slate-400">El administrador revisará el caso y decidirá si se puede reasignar.</p>
+          <p className="text-sm text-slate-400">El docente titular recibirá una notificación y podrá cederte el espacio directamente, sin intervención del administrador.</p>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <label className="block text-sm text-slate-400 mb-1">
@@ -564,23 +694,35 @@ function ModalYoSolicite({ slot, onClose, onRetirado }) {
 
 // ─── Modal: Sesión sin reservación (ad-hoc) ───────────────────────────────────
 
+const DURACIONES_DOCENTE = [50, 100, 150, 200];
+
 function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
   const navigate  = useNavigate();
-  const [form, setForm] = useState({ laboratorio_id: labs[0]?.id ?? '', materia: '', grupo: '', fin_estimado_min: 100 });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
+  const [labId,    setLabId]    = useState(labs[0]?.id ?? '');
+  const [materia,  setMateria]  = useState('');
+  const [grupo,    setGrupo]    = useState('');
+  const [duracion, setDuracion] = useState(100);
+  const [saving,   setSaving]   = useState(false);
+  const [error,    setError]    = useState('');
+  const [sesionActiva, setSesionActiva] = useState(null);
 
-  const handleChange = e => {
-    const val = ['laboratorio_id','fin_estimado_min'].includes(e.target.name)
-      ? Number(e.target.value) : e.target.value;
-    setForm({...form, [e.target.name]: val}); setError('');
-  };
+  useEffect(() => {
+    if (!labId) return;
+    api.get(`/sesiones?estado=ABIERTA&laboratorio_id=${labId}`)
+      .then(res => setSesionActiva(res.data.length > 0 ? res.data[0] : null))
+      .catch(() => setSesionActiva(null));
+  }, [labId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true); setError('');
     try {
-      const { data } = await api.post('/sesiones', form);
+      const { data } = await api.post('/sesiones', {
+        laboratorio_id:   Number(labId),
+        materia:          materia.trim(),
+        grupo:            grupo.trim(),
+        fin_estimado_min: duracion,
+      });
       onSesionIniciada(data);
       navigate(`/docente/sesion/${data.id}`);
     } catch (err) {
@@ -589,55 +731,101 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-2xl">
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-white">Sesión sin reservación</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Para usos especiales o clases no programadas</p>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="glass w-full max-w-md shadow-glass animate-fadeUp">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+                 style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-semibold text-white">Sesión sin reservación</h3>
+              <p className="text-xs text-slate-400">Para clases o usos no programados</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Aviso sesión activa */}
+          {sesionActiva && (
+            <div className="bg-amber-950/40 border border-amber-700/40 rounded-xl p-3 text-sm">
+              <p className="text-amber-400 font-medium">⚠️ Ya hay una sesión abierta en este laboratorio</p>
+              <p className="text-slate-400 text-xs mt-0.5">{sesionActiva.materia} · {sesionActiva.grupo}</p>
+              <button type="button"
+                onClick={() => { onClose(); navigate(`/docente/sesion/${sesionActiva.id}`); }}
+                className="mt-2 w-full bg-amber-600 hover:bg-amber-500 text-white py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                Ir a la sesión activa →
+              </button>
+            </div>
+          )}
+
+          {/* Laboratorio */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Laboratorio *</label>
+            <label className="block text-sm text-slate-400 mb-1.5">Laboratorio *</label>
             <SelectDark
-              value={form.laboratorio_id}
-              onChange={v => handleChange({ target: { name: 'laboratorio_id', value: v } })}
+              value={labId}
+              onChange={setLabId}
               options={labs.map(l => ({ value: l.id, label: l.nombre }))}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* Materia + Grupo */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Materia *</label>
-              <input name="materia" value={form.materia} onChange={handleChange} required
+              <label className="block text-sm text-slate-400 mb-1.5">Materia *</label>
+              <input value={materia} onChange={e => setMateria(e.target.value)} required
                 placeholder="Ej: Programación"
-                className="w-full input-dark text-white  px-3 py-2 text-sm  focus:outline-none focus:ring-2 focus:ring-green-500"/>
+                className="w-full input-dark text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Grupo *</label>
-              <input name="grupo" value={form.grupo} onChange={handleChange} required
+              <label className="block text-sm text-slate-400 mb-1.5">Grupo *</label>
+              <input value={grupo} onChange={e => setGrupo(e.target.value)} required
                 placeholder="Ej: IDGS-01A"
-                className="w-full input-dark text-white  px-3 py-2 text-sm  focus:outline-none focus:ring-2 focus:ring-green-500"/>
+                className="w-full input-dark text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
             </div>
           </div>
+
+          {/* Duración — pastillas */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Duración estimada</label>
-            <SelectDark
-              value={form.fin_estimado_min}
-              onChange={v => handleChange({ target: { name: 'fin_estimado_min', value: Number(v) } })}
-              options={[50,100,150,200].map(m => ({
-                value: m,
-                label: `${m} min (${Math.floor(m/60)}h${m%60>0?` ${m%60}min`:''})`,
-              }))}
-            />
+            <label className="block text-sm text-slate-400 mb-2">Duración estimada</label>
+            <div className="grid grid-cols-4 gap-2">
+              {DURACIONES_DOCENTE.map(m => (
+                <button key={m} type="button" onClick={() => setDuracion(m)}
+                  className={`py-2.5 rounded-xl border text-xs font-medium transition-all
+                    ${duracion === m
+                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-glow-em'
+                      : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20 hover:text-white'}`}>
+                  {m} min
+                </button>
+              ))}
+            </div>
           </div>
-          {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
+
+          {/* Info */}
+          <div className="glass-sm p-3 text-xs text-slate-400 space-y-1">
+            <p>• Los alumnos quedan registrados al asignarles una PC en el mapa</p>
+            <p>• Al cerrar la sesión se libera el registro de todos los equipos</p>
+            <p>• La sesión aparece en el historial del laboratorio</p>
+          </div>
+
+          {error && (
+            <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>
+          )}
+
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2 text-sm">Cancelar</button>
-            <button type="submit" disabled={saving}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg py-2 text-sm font-semibold">
+            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+            <button type="submit" disabled={saving || !labId || !!sesionActiva}
+              className="btn-emerald flex-1">
               {saving ? 'Abriendo…' : '▶ Abrir sesión'}
             </button>
           </div>
@@ -1083,15 +1271,17 @@ export default function SesionClase() {
   const { usuario } = useAuth();
   const esMobil     = useEsMobil();
 
-  const [laboratorios, setLaboratorios] = useState([]);
-  const [labId, setLabId]               = useState('');
-  const [cuatrimestre, setCuatrimestre] = useState(getCuatrimestreActual);
-  const [slots, setSlots]               = useState([]);
-  const [loading, setLoading]           = useState(false);
-  const [sesionActiva, setSesionActiva] = useState(null);
-  const [modalSlot, setModalSlot]       = useState(null);
-  const [modalLibre, setModalLibre]     = useState(false);
-  const [modalPwd, setModalPwd]         = useState(false);
+  const [laboratorios, setLaboratorios]       = useState([]);
+  const [labId, setLabId]                     = useState('');
+  const [cuatrimestre, setCuatrimestre]       = useState(getCuatrimestreActual);
+  const [slots, setSlots]                     = useState([]);
+  const [loading, setLoading]                 = useState(false);
+  const [sesionActiva, setSesionActiva]       = useState(null);
+  const [modalSlot, setModalSlot]             = useState(null);
+  const [modalLibre, setModalLibre]           = useState(false);
+  const [modalPwd, setModalPwd]               = useState(false);
+  const [solicRecibidas, setSolicRecibidas]   = useState([]);
+  const [accionando, setAccionando]           = useState(null); // reservacion_id en proceso
 
   // Cargar laboratorios
   useEffect(() => {
@@ -1120,26 +1310,104 @@ export default function SesionClase() {
     finally { setLoading(false); }
   }, [labId, cuatrimestre]);
 
+  // Cargar solicitudes pendientes recibidas (mis slots con petición de otro docente)
+  const cargarSolicRecibidas = useCallback(async () => {
+    try {
+      const { data } = await api.get('/horarios/mis-solicitudes-recibidas');
+      setSolicRecibidas(data || []);
+    } catch { setSolicRecibidas([]); }
+  }, []);
+
   useEffect(() => { cargarSesionActiva(); }, [cargarSesionActiva]);
   useEffect(() => { cargarGrid(); }, [cargarGrid]);
+  useEffect(() => { cargarSolicRecibidas(); }, [cargarSolicRecibidas]);
   // Resetear scroll al cambiar de laboratorio (evita espacio vacío arriba con labs más cortos)
   useEffect(() => { window.scrollTo(0, 0); }, [labId]);
 
-  const recargar = () => { cargarGrid(); cargarSesionActiva(); };
+  const recargar = () => { cargarGrid(); cargarSesionActiva(); cargarSolicRecibidas(); };
+
+  const handleCeder = async (reservacion_id) => {
+    setAccionando(reservacion_id);
+    try {
+      await api.post(`/horarios/reservaciones/${reservacion_id}/ceder`);
+      recargar();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al ceder el espacio');
+    } finally { setAccionando(null); }
+  };
+
+  const handleRechazarSolicitud = async (reservacion_id) => {
+    setAccionando(reservacion_id);
+    try {
+      await api.post(`/horarios/reservaciones/${reservacion_id}/rechazar-solicitud`);
+      recargar();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al rechazar');
+    } finally { setAccionando(null); }
+  };
 
   const handleSlotClick = (slot) => {
     const tipo = slot.estado_vista;
-    if (tipo === 'BLOQUEADO')   return; // no se puede interactuar
-    if (tipo === 'LIBRE')       setModalSlot({ tipo: 'reservar',    slot });
-    else if (tipo === 'MIO')    setModalSlot({ tipo: 'mi_reserva',  slot });
-    else if (tipo === 'OCUPADO' || tipo === 'EN_DISPUTA') setModalSlot({ tipo: 'solicitar', slot });
-    else if (tipo === 'YO_SOLICITE') setModalSlot({ tipo: 'yo_solicite', slot });
+    if (tipo === 'BLOQUEADO')        return; // no se puede interactuar
+    if (tipo === 'LIBRE')            setModalSlot({ tipo: 'reservar',      slot });
+    else if (tipo === 'MIO')         setModalSlot({ tipo: 'mi_reserva',    slot });
+    else if (tipo === 'OCUPADO')     setModalSlot({ tipo: 'solicitar',     slot });
+    else if (tipo === 'EN_DISPUTA')  setModalSlot({ tipo: 'en_disputa',    slot });
+    else if (tipo === 'YO_SOLICITE') setModalSlot({ tipo: 'yo_solicite',   slot });
   };
 
   const cerrar = () => setModalSlot(null);
 
   return (
     <DocenteLayout onCambiarPwd={() => setModalPwd(true)}>
+
+      {/* ── Panel: Solicitudes recibidas (otro docente quiere mi espacio) ──── */}
+      {solicRecibidas.length > 0 && (
+        <div className="mb-5 space-y-3">
+          {solicRecibidas.map(s => (
+            <div key={s.reservacion_id}
+              className="rounded-xl border border-amber-600/50 p-4"
+              style={{ background: 'rgba(120,53,15,0.35)' }}>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-amber-300 font-semibold text-sm flex items-center gap-2">
+                    📩 Solicitud de espacio
+                    <span className="text-xs font-normal bg-amber-900/60 text-amber-400 px-2 py-0.5 rounded-full border border-amber-700/40">
+                      {s.dia_nombre} · {s.hora_inicio}–{s.hora_fin}
+                    </span>
+                  </p>
+                  <p className="text-white text-sm mt-1">
+                    <span className="font-semibold">{s.solicitante_nombre}</span>
+                    {' '}solicita tu horario de{' '}
+                    <span className="text-slate-300">{s.mi_materia}</span>
+                    {' '}para impartir{' '}
+                    <span className="font-semibold text-amber-200">{s.materia_solicitada}</span>
+                    {' '}(grupo {s.grupo_solicitado})
+                  </p>
+                  {s.motivo && (
+                    <p className="text-slate-400 text-xs mt-1 italic">"{s.motivo}"</p>
+                  )}
+                  <p className="text-xs text-amber-900/80 mt-1">{s.laboratorio_nombre}</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => handleRechazarSolicitud(s.reservacion_id)}
+                    disabled={accionando === s.reservacion_id}
+                    className="px-3 py-1.5 rounded-lg border border-red-700/60 text-red-400 text-xs font-medium hover:bg-red-900/30 transition-colors disabled:opacity-40">
+                    {accionando === s.reservacion_id ? '…' : '✕ Rechazar'}
+                  </button>
+                  <button
+                    onClick={() => handleCeder(s.reservacion_id)}
+                    disabled={accionando === s.reservacion_id}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold transition-colors disabled:opacity-40">
+                    {accionando === s.reservacion_id ? 'Procesando…' : '✓ Ceder espacio'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Banner sesión activa */}
       {sesionActiva && (
@@ -1190,8 +1458,11 @@ export default function SesionClase() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-slate-400">Cuatrimestre</label>
-          <CuatrimestreSelect value={cuatrimestre} onChange={setCuatrimestre} />
+          <span className="text-sm text-slate-500">Cuatrimestre</span>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
+            style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
+            📅 {cuatrimestre}
+          </span>
         </div>
         <button onClick={recargar}
           className="ml-auto text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
@@ -1248,6 +1519,23 @@ export default function SesionClase() {
         <ModalYoSolicite slot={modalSlot.slot}
           onClose={cerrar} onRetirado={recargar} />
       )}
+      {modalSlot?.tipo === 'en_disputa' && (
+        <ModalMiReservacion
+          slot={modalSlot.slot}
+          sesionActiva={sesionActiva}
+          onClose={cerrar}
+          onCancelada={recargar}
+          onSesionIniciada={setSesionActiva}
+        />
+      )}
       {modalLibre && (
-        <ModalSesionLibre labs={laboratorios}
-          onClose={() =>
+        <ModalSesionLibre
+          labs={laboratorios}
+          onClose={() => setModalLibre(false)}
+          onSesionIniciada={setSesionActiva}
+        />
+      )}
+      {modalPwd && <ModalCambiarPassword onClose={() => setModalPwd(false)} />}
+    </DocenteLayout>
+  );
+}

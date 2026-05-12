@@ -3,6 +3,24 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
+// ─── Utilidad: período escolar actual ────────────────────────────────────────
+
+/**
+ * Devuelve el período escolar UTECAN actual basado en la fecha del navegador.
+ *   ene–abr  → "ENE-ABR YYYY"
+ *   may–ago  → "MAY-AGO YYYY"
+ *   sep–dic  → "SEP-DIC YYYY"
+ */
+function periodoActual() {
+  const hoy  = new Date();
+  const mes  = hoy.getMonth() + 1; // 1-12
+  const anio = hoy.getFullYear();
+  if (mes <= 4)  return `ENE-ABR ${anio}`;
+  if (mes <= 8)  return `MAY-AGO ${anio}`;
+  return `SEP-DIC ${anio}`;
+}
+
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const CARRERAS_DEFAULT = [
@@ -217,7 +235,7 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
     carrera:          alumno?.carrera          ?? '',
     cuatrimestre:     alumno?.cuatrimestre     ?? '',
     grupo:            alumno?.grupo            ?? '',
-    periodo:          alumno?.periodo          ?? '',
+    periodo:          alumno?.periodo          ?? (esEdicion ? '' : periodoActual()),
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -464,15 +482,15 @@ export default function Catalogo() {
   const [carreras, setCarreras] = useState(CARRERAS_DEFAULT);
   const [loading, setLoading]   = useState(false);
 
-  // Filtros alumnos
-  const [filtPeriodo, setFiltPeriodo] = useState('');
+  // Filtros alumnos — pre-seleccionar el período actual
+  const [filtPeriodo, setFiltPeriodo] = useState(periodoActual);
   const [filtCarrera, setFiltCarrera] = useState('');
   const [filtGrupo, setFiltGrupo]     = useState('');
   const [filtActivo, setFiltActivo]   = useState('true');
   const [filtQ, setFiltQ]             = useState('');
 
-  // Filtros materias
-  const [filtMPeriodo, setFiltMPeriodo] = useState('');
+  // Filtros materias — pre-seleccionar el período actual
+  const [filtMPeriodo, setFiltMPeriodo] = useState(periodoActual);
   const [filtMActivo, setFiltMActivo]   = useState('true');
   const [filtMQ, setFiltMQ]             = useState('');
 
@@ -565,6 +583,12 @@ export default function Catalogo() {
           <p className="text-slate-400 text-sm mt-0.5">
             Alumnos y materias por periodo — base para autocomplete en el sistema
           </p>
+          <span className="inline-flex items-center gap-1.5 mt-1.5 bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium px-2.5 py-1 rounded-full">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            Período actual: <strong>{periodoActual()}</strong>
+          </span>
         </div>
         <div className="flex gap-2">
           <button

@@ -729,25 +729,37 @@ def dashboard_stats(
     incidentes_abiertos = q_inc.count()
 
     # ── Próximas reservaciones (hoy en adelante) ──────────────────────────────
-    from models.horario import Reservacion
-    q_res = db.query(Reservacion).filter(
-        Reservacion.estado == "APROBADA",
-        Reservacion.fecha >= ahora.date(),
+    from models.horario import Reservacion, HorarioDisponible
+    q_res = (
+        db.query(Reservacion, HorarioDisponible)
+        .join(HorarioDisponible, Reservacion.horario_id == HorarioDisponible.id)
+        .filter(Reservacion.estado.in_(["APROBADA", "PROGRAMADA"]))
     )
     if lab_filter_id:
         q_res = q_res.filter(Reservacion.laboratorio_id == lab_filter_id)
-    proximas = q_res.order_by(Reservacion.fecha, Reservacion.hora_inicio).limit(5).all()
+    reservas_raw = q_res.all()
+
+    # Calcular la próxima fecha real para cada reservación (basada en dia_semana)
+    hoy_date = ahora.date()
+    proximas_con_fecha = []
+    for r, h in reservas_raw:
+        dias_hasta = (h.dia_semana - hoy_date.weekday()) % 7
+        proxima_fecha = hoy_date + datetime.timedelta(days=dias_hasta)
+        proximas_con_fecha.append((proxima_fecha, h.hora_inicio, r, h))
+
+    proximas_con_fecha.sort(key=lambda x: (x[0], x[1]))
+    proximas_con_fecha = proximas_con_fecha[:5]
 
     proximas_data = []
-    for r in proximas:
+    for fecha, _, r, h in proximas_con_fecha:
         doc = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
         proximas_data.append({
             "id":        r.id,
             "materia":   r.materia,
             "docente":   doc.nombre if doc else "—",
-            "fecha":     r.fecha.isoformat() if r.fecha else None,
-            "hora_ini":  r.hora_inicio,
-            "hora_fin":  r.hora_fin,
+            "fecha":     fecha.isoformat(),
+            "hora_ini":  h.hora_inicio,
+            "hora_fin":  h.hora_fin,
             "grupo":     r.grupo,
         })
 

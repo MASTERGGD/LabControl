@@ -9,8 +9,26 @@ import os
 
 # ─── Configuración ─────────────────────────────────────────────────────────────
 
-SECRET_KEY = os.getenv("SECRET_KEY", "labcontrol-utecan-secret-dev-2024")
-ALGORITHM = "HS256"
+_SECRET_KEY_ENV = os.getenv("SECRET_KEY", "")
+_APP_ENV        = os.getenv("APP_ENV", "development")
+
+if not _SECRET_KEY_ENV:
+    if _APP_ENV == "production":
+        raise RuntimeError(
+            "SECRET_KEY no configurada. "
+            "Define la variable de entorno SECRET_KEY antes de iniciar en produccion."
+        )
+    # Desarrollo: usar clave de fallback con advertencia visible
+    import warnings
+    _SECRET_KEY_ENV = "labcontrol-dev-insecure-key-do-not-use-in-production"
+    warnings.warn(
+        "SECRET_KEY no configurada — usando clave de desarrollo insegura. "
+        "Configura SECRET_KEY en .env para produccion.",
+        stacklevel=2,
+    )
+
+SECRET_KEY = _SECRET_KEY_ENV
+ALGORITHM  = "HS256"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")

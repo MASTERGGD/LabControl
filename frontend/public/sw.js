@@ -1,29 +1,18 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   LabControl PWA — Service Worker  (shell-only strategy)
+   LabControl PWA — Service Worker  (network-first para HTML, cache para assets)
    ─────────────────────────────────────────────────────────────────────────────
    Estrategia:
-   • Activos del shell (/, /index.html, /icons/*, /static/*) → Cache First
-   • Llamadas al API (/api/) → Network Only  (datos siempre frescos)
-   • Fuentes externas (fonts.googleapis.com) → Stale-While-Revalidate
+   • Navegación (HTML)  → Network First  (F5 siempre trae la versión más nueva)
+   • Assets estáticos   → Cache First    (JS/CSS/iconos son inmutables por hash)
+   • API (puerto 8000)  → Network Only   (datos siempre frescos)
+   • Fuentes Google     → Stale-While-Revalidate
    ───────────────────────────────────────────────────────────────────────────── */
 
-const CACHE_NAME    = 'labcontrol-shell-v1';
-const FONT_CACHE    = 'labcontrol-fonts-v1';
+const CACHE_NAME    = 'labcontrol-shell-v3';
+const FONT_CACHE    = 'labcontrol-fonts-v3';
 
-// Archivos del shell que pre-cacheamos en el install
-const SHELL_URLS = [
-  '/',
-  '/index.html',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/apple-touch-icon.png',
-];
-
-// ── Install: pre-cachear shell ────────────────────────────────────────────────
+// ── Install: activar inmediatamente sin pre-caché de HTML ─────────────────────
 self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_URLS))
-  );
   self.skipWaiting();
 });
 
@@ -46,9 +35,14 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1. API calls → siempre network (nunca cachear datos del servidor)
-  if (url.pathname.startsWith('/api/') || url.port === '8000') {
-    return; // dejar pasar al network sin interceptar
+  // Ignorar todo lo que no sea http/https o no sea GET
+  if (!url.protocol.startsWith('http') || request.method !== 'GET') {
+    return;
+  }
+
+  // 1. API calls (puerto 8000 o /api/) → siempre network, sin interceptar
+  if (url.port === '8000' || url.pathname.startsWith('/api/')) {
+    return;
   }
 
   // 2. Fuentes de Google → Stale-While-Revalidate
@@ -57,34 +51,72 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // 3. CDN externos (Tailwind, etc.) → Stale-While-Revalidate
-  if (url.hostname !== self.location.hostname) {
-    event.respondWith(staleWhileRevalidate(request, CACHE_NAME));
+  // 3. Navegación (peticiones de página HTML) → Network First
+  //    Esto asegura que F5 siempre traiga index.html fresco del servidor.
+  //    Solo cae al caché si no hay conexión.
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstHTML(request));
     return;
   }
 
-  // 4. Shell local → Cache First, fallback a network, luego a /index.html
-  event.respondWith(cacheFirst(request));
+  // 4. Assets estáticos con hash en el nombre (JS/CSS de CRA) → Cache First
+  //    Estos tienen hashes únicos por build, nunca cambian una vez subidos.
+  if (url.pathname.startsWith('/static/')) {
+    event.respondWith(cacheFirst(request));
+    return;
+  }
+
+  // 5. Demás recursos locales (iconos, manifest, etc.) → Network First con fallback
+  event.respondWith(networkFirst(request));
 });
 
 // ── Estrategias ───────────────────────────────────────────────────────────────
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
+/** Network First para navegación — devuelve index.html del servidor siempre que haya red */
+async function networkFirstHTML(request) {
   try {
     const response = await fetch(request);
-    // Cachear solo respuestas válidas de nuestro origen
-    if (response.ok && request.method === 'GET') {
+    if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }
     return response;
   } catch (_) {
-    // Sin red y sin cache → devolver el shell para que React maneje la ruta
-    const shell = await caches.match('/index.html');
-    return shell || new Response('Sin conexión', { status: 503 });
+    // Sin red → servir desde caché si existe
+    const cached = await caches.match(request)
+                || await caches.match('/index.html');
+    return cached || new Response('Sin conexión', { status: 503 });
+  }
+}
+
+/** Network First genérico */
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (_) {
+    const cached = await caches.match(request);
+    return cached || new Response('Sin conexión', { status: 503 });
+  }
+}
+
+/** Cache First para assets estáticos con hash */
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (_) {
+    return new Response('Sin conexión', { status: 503 });
   }
 }
 
@@ -93,7 +125,10 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request);
 
   const fetchPromise = fetch(request).then(response => {
-    if (response.ok) cache.put(request, response.clone());
+    // Solo cachear respuestas de esquemas soportados (http/https)
+    if (response.ok && request.url.startsWith('http')) {
+      cache.put(request, response.clone());
+    }
     return response;
   }).catch(() => cached); // si falla la red, usar lo cacheado
 

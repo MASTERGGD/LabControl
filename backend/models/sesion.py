@@ -20,6 +20,11 @@ class SesionClase(Base):
     observacion_general = Column(String, nullable=True)
     overtime_min = Column(Integer, nullable=True, default=0)
 
+    # ── Revisión de recepción ─────────────────────────────────────────────────
+    recepcion_confirmada = Column(Boolean, default=False)
+    recepcion_fin        = Column(DateTime, nullable=True)
+    # True cuando el docente completó la inspección inicial de PCs
+
     reservacion = relationship("Reservacion", back_populates="sesiones")
     docente = relationship("Usuario", back_populates="sesiones")
     asignaciones = relationship("AsignacionPC", back_populates="sesion")
@@ -46,9 +51,12 @@ class ObservacionPC(Base):
     sesion_id = Column(Integer, ForeignKey("sesiones_clase.id"), nullable=False)
     computadora_id = Column(Integer, ForeignKey("computadoras.id"), nullable=True)
     tipo = Column(String, default="SIN_NOVEDAD")
+    # SIN_NOVEDAD | CON_PROBLEMA | DAÑO | MANTENIMIENTO | OTRO
     descripcion = Column(String, nullable=True)
     prioridad = Column(String, default="BAJA")
     atendida = Column(Boolean, default=False)
+    momento = Column(String, default="DURANTE_SESION")
+    # RECEPCION_INICIO | DURANTE_SESION | CIERRE
 
     sesion = relationship("SesionClase", back_populates="observaciones_pc")
     computadora = relationship("Computadora", back_populates="observaciones")
