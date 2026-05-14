@@ -60,20 +60,22 @@
          institucionales del Gobierno de México.
       ══════════════════════════════════════════════════════════ */
       body.theme-gobmx {
-        --blue:                #621132;   /* Guinda institucional */
-        --emerald:             #D4C19C;   /* Dorado — reemplaza esmeralda */
+        /* ── Pantone oficiales Gobierno de México ── */
+        --blue:                #9F2241;   /* Pantone 7420C — Guinda */
+        --emerald:             #DDC9A3;   /* Pantone 468C  — Dorado */
 
-        --accent-primary:      #621132;
-        --accent-primary-dark: #4a0d25;
-        --accent-primary-glow: rgba(212,193,156,0.32);  /* glow dorado */
-        --accent-secondary:    #D4C19C;
-        --accent-success:      #10312B;   /* Verde oscuro institucional */
-        --accent-success-dark: #0a2420;
-        --accent-success-glow: rgba(16,49,43,0.5);
+        --accent-primary:      #9F2241;   /* Pantone 7420C */
+        --accent-primary-dark: #7a1932;
+        --accent-primary-glow: rgba(221,201,163,0.28);  /* glow dorado */
+        --accent-secondary:    #DDC9A3;   /* Pantone 468C  */
+        --accent-success:      #235B4E;   /* Pantone 626C  — Verde */
+        --accent-success-dark: #1a4439;
+        --accent-success-glow: rgba(35,91,78,0.45);
 
-        --glass-bg:     rgba(98,17,50,0.07);   /* tinte guinda sutil */
-        --glass-border: rgba(212,193,156,0.10); /* borde dorado transparente */
-        --border:       #4a1528;
+        --text-muted:   #98989A;          /* Pantone CG7   — Gris */
+        --border:       #5a2035;
+        --glass-bg:     rgba(159,34,65,0.06);   /* tinte guinda sutil */
+        --glass-border: rgba(221,201,163,0.10); /* borde dorado transparente */
       }
 
       html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
@@ -214,7 +216,7 @@
         background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.08) 100%);
       }
       body.theme-gobmx .nav-active {
-        background: linear-gradient(90deg, rgba(98,17,50,.35) 0%, rgba(98,17,50,.12) 100%);
+        background: linear-gradient(90deg, rgba(159,34,65,.32) 0%, rgba(159,34,65,.10) 100%);
       }
       .nav-item {
         border-left: 2px solid transparent;

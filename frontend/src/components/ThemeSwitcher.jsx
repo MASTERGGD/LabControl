@@ -7,6 +7,9 @@ export default function ThemeSwitcher() {
 
   const isGobMX = themeKey === 'gobmx';
 
+  // Pantone 468C — Dorado oficial Gobierno de México
+  const DORADO = '#DDC9A3';
+
   return (
     <button
       onClick={toggle}
@@ -19,18 +22,18 @@ export default function ThemeSwitcher() {
         gap: 6,
         padding: '4px 10px 4px 6px',
         borderRadius: 20,
-        border: `1px solid ${isGobMX ? 'rgba(212,193,156,0.25)' : 'rgba(255,255,255,0.08)'}`,
+        border: `1px solid ${isGobMX ? 'rgba(221,201,163,0.28)' : 'rgba(255,255,255,0.08)'}`,
         background: hovered
-          ? isGobMX ? 'rgba(212,193,156,0.08)' : 'rgba(255,255,255,0.06)'
+          ? isGobMX ? 'rgba(221,201,163,0.07)' : 'rgba(255,255,255,0.06)'
           : 'rgba(255,255,255,0.03)',
         cursor: 'pointer',
         transition: 'all 0.2s',
         flexShrink: 0,
       }}
     >
-      {/* Icono de paleta SVG */}
+      {/* Icono paleta SVG */}
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-        stroke={isGobMX ? '#D4C19C' : '#64748b'} strokeWidth="2"
+        stroke={isGobMX ? DORADO : '#64748b'} strokeWidth="2"
         strokeLinecap="round" strokeLinejoin="round"
         style={{ transition: 'stroke 0.2s' }}>
         <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
@@ -42,7 +45,7 @@ export default function ThemeSwitcher() {
 
       {/* Dots indicadores de tema */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-        {/* Dot azul/guinda — tema activo si coincide */}
+        {/* Dot azul — LabControl */}
         <span style={{
           width: 7, height: 7, borderRadius: '50%',
           background: themes.default.dot,
@@ -50,6 +53,7 @@ export default function ThemeSwitcher() {
           transition: 'opacity 0.2s',
           boxShadow: themeKey === 'default' ? `0 0 5px ${themes.default.dot}` : 'none',
         }}/>
+        {/* Dot guinda — GobMX (Pantone 7420C) */}
         <span style={{
           width: 7, height: 7, borderRadius: '50%',
           background: themes.gobmx.dot,
@@ -62,7 +66,7 @@ export default function ThemeSwitcher() {
       {/* Label tema activo */}
       <span style={{
         fontSize: 11, fontWeight: 600,
-        color: isGobMX ? '#D4C19C' : '#64748b',
+        color: isGobMX ? DORADO : '#64748b',
         letterSpacing: '0.03em',
         transition: 'color 0.2s',
       }}>

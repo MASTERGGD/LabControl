@@ -10,8 +10,8 @@ const THEMES = {
   gobmx: {
     key: 'gobmx',
     label: 'GobMX',
-    dot: '#621132',
-    dotSecondary: '#D4C19C',
+    dot: '#9F2241',          // Pantone 7420C — Guinda
+    dotSecondary: '#DDC9A3', // Pantone 468C  — Dorado
   },
 };
 
