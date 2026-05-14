@@ -16,20 +16,26 @@ function pct(actual, anterior) {
 
 // ─── Componentes compartidos ──────────────────────────────────────────────────
 function StatCard({ emoji, label, value, sub, color = "blue" }) {
-  const colors = {
-    blue:   "bg-blue-900/40 border-blue-700 text-blue-300",
-    green:  "bg-green-900/40 border-green-700 text-green-300",
-    yellow: "bg-yellow-900/40 border-yellow-700 text-yellow-300",
-    red:    "bg-red-900/40 border-red-700 text-red-300",
-    purple: "bg-purple-900/40 border-purple-700 text-purple-300",
-    gray:   "bg-white/4 border-gray-600 text-gray-300",
+  const palette = {
+    blue:   { accent: '#3b82f6', bg: 'rgba(59,130,246,0.07)',  border: 'rgba(59,130,246,0.2)',  text: '#93c5fd' },
+    green:  { accent: '#10b981', bg: 'rgba(16,185,129,0.07)',  border: 'rgba(16,185,129,0.2)',  text: '#6ee7b7' },
+    yellow: { accent: '#f59e0b', bg: 'rgba(245,158,11,0.07)',  border: 'rgba(245,158,11,0.2)',  text: '#fcd34d' },
+    red:    { accent: '#ef4444', bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',   text: '#fca5a5' },
+    purple: { accent: '#8b5cf6', bg: 'rgba(139,92,246,0.07)',  border: 'rgba(139,92,246,0.2)',  text: '#c4b5fd' },
+    gray:   { accent: '#475569', bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: '#94a3b8' },
   };
+  const p = palette[color] || palette.gray;
   return (
-    <div className={`border rounded-xl p-4 text-center ${colors[color]}`}>
-      <p className="text-2xl mb-1">{emoji}</p>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs mt-1 opacity-80">{label}</p>
-      {sub && <p className="text-xs opacity-60 mt-0.5">{sub}</p>}
+    <div style={{
+      background: p.bg, border: `1px solid ${p.border}`,
+      borderRadius: '0.875rem', padding: '1rem', textAlign: 'center',
+      position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${p.accent}, ${p.accent}44)` }}/>
+      <p style={{ fontSize: 16, margin: '0 0 4px', opacity: 0.7 }}>{emoji}</p>
+      <p style={{ fontSize: 22, fontWeight: 800, color: p.text, margin: 0, fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+      <p style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>{label}</p>
+      {sub && <p style={{ fontSize: 10, color: '#475569', marginTop: 2 }}>{sub}</p>}
     </div>
   );
 }
@@ -50,64 +56,111 @@ function Delta({ actual, anterior, labelAnt, invertido = false }) {
 
 // ─── Gráfica comparativa (SVG) ────────────────────────────────────────────────
 function GraficaComparativa({ tendencia, cuatActual, cuatAnterior }) {
+  const [hovered, setHovered] = React.useState(null);
   if (!tendencia) return null;
+
   const { actual, anterior } = tendencia;
   const maxVal = Math.max(...actual.map(d => d.count), ...anterior.map(d => d.count), 1);
-  const W = 480, H = 160, PAD = 8, BWIDTH = 28, GAP = 6;
-  const barH = (v) => Math.max((v / maxVal) * (H - 24), v > 0 ? 4 : 0);
+
+  // Dimensiones mini — barras cortas, ancho fijo con scroll si hay muchos meses
+  const BWIDTH = 20, PAIR_GAP = 34, PAD = 8;
+  const H = 65;
+  const W = Math.max(PAD * 2 + actual.length * PAIR_GAP, 320);
+  const barH = (v) => Math.max((v / maxVal) * (H - 10), v > 0 ? 2 : 0);
 
   return (
-    <div className="glass p-5">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-2">
+    <div className="glass p-5" style={{ maxHeight: 300 }}>
+      {/* ── Header + leyenda ── */}
+      <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h3 className="font-semibold text-white text-sm">Sesiones mes a mes</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Comparativa entre cuatrimestres</p>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+            Sesiones mes a mes
+          </p>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>Comparativa entre cuatrimestres</p>
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-blue-500"/>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(59,130,246,0.8)' }}/>
             <span className="text-slate-300">{cuatActual}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-slate-600"/>
-            <span className="text-slate-400">{cuatAnterior}</span>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(100,116,139,0.5)' }}/>
+            <span className="text-slate-500">{cuatAnterior}</span>
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H + 30}`} width="100%" style={{ minWidth: 320 }}>
-          {actual.map((d, i) => {
-            const ant  = anterior[i] || { count: 0 };
-            const x    = PAD + i * ((BWIDTH * 2 + GAP + 8) );
-            const hAct = barH(d.count);
-            const hAnt = barH(ant.count);
-            return (
-              <g key={i}>
-                {/* Barra anterior (gris) */}
-                <rect x={x} y={H - hAnt} width={BWIDTH} height={hAnt}
-                  rx={3} fill="#475569" opacity={0.7}/>
-                {ant.count > 0 && (
-                  <text x={x + BWIDTH/2} y={H - hAnt - 3} textAnchor="middle"
-                    fontSize={9} fill="#94a3b8">{ant.count}</text>
-                )}
-                {/* Barra actual (azul) */}
-                <rect x={x + BWIDTH + 3} y={H - hAct} width={BWIDTH} height={hAct}
-                  rx={3} fill="#3b82f6"/>
-                {d.count > 0 && (
-                  <text x={x + BWIDTH + 3 + BWIDTH/2} y={H - hAct - 3} textAnchor="middle"
-                    fontSize={9} fill="#93c5fd">{d.count}</text>
-                )}
-                {/* Label mes */}
-                <text x={x + BWIDTH} y={H + 14} textAnchor="middle"
-                  fontSize={10} fill="#64748b">{d.nombre.slice(0,3)}</text>
-              </g>
-            );
-          })}
-          {/* Línea base */}
-          <line x1={PAD} y1={H} x2={W - PAD} y2={H} stroke="#334155" strokeWidth={1}/>
-        </svg>
-      </div>
+      {/* ── SVG de barras — ancho fijo + scroll si hay muchos meses ── */}
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
+          <svg viewBox={`0 0 ${W} ${H + 22}`} width={W} height={H + 22} style={{ display: 'block', minWidth: 200 }}>
+            {/* Grid lines horizontales casi invisibles */}
+            {[0.25, 0.5, 0.75, 1].map(t => (
+              <line key={t}
+                x1={PAD} y1={H - t * (H - 14)} x2={W - PAD} y2={H - t * (H - 14)}
+                stroke="#ffffff" strokeOpacity={0.04} strokeWidth={1}/>
+            ))}
+
+            {actual.map((d, i) => {
+              const ant  = anterior[i] || { count: 0 };
+              const x    = PAD + i * PAIR_GAP;
+              const hAct = barH(d.count);
+              const hAnt = barH(ant.count);
+              const isHov = hovered === i;
+              return (
+                <g key={i}
+                  onMouseEnter={() => setHovered(i)}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{ cursor: 'default' }}>
+
+                  {/* Highlight de fondo al hover */}
+                  {isHov && (
+                    <rect x={x - 3} y={0} width={BWIDTH * 2 + 9} height={H + 2}
+                      rx={4} fill="rgba(255,255,255,0.04)"/>
+                  )}
+
+                  {/* Barra anterior */}
+                  <rect x={x} y={H - hAnt} width={BWIDTH} height={hAnt}
+                    rx={3} fill="rgba(100,116,139,0.45)"
+                    style={{ transition: 'opacity 0.2s' }}
+                    opacity={hovered !== null && !isHov ? 0.4 : 1}/>
+
+                  {/* Barra actual — glow azul */}
+                  <rect x={x + BWIDTH + 2} y={H - hAct} width={BWIDTH} height={hAct}
+                    rx={3} fill="rgba(59,130,246,0.82)"
+                    style={{ filter: isHov ? 'drop-shadow(0 0 5px rgba(59,130,246,0.7))' : 'none', transition: 'all 0.2s' }}
+                    opacity={hovered !== null && !isHov ? 0.35 : 1}/>
+
+                  {/* Label mes */}
+                  <text x={x + BWIDTH} y={H + 14} textAnchor="middle"
+                    fontSize={9} fill={isHov ? '#94a3b8' : '#475569'}
+                    fontWeight={isHov ? 600 : 400}>
+                    {d.nombre.slice(0, 3)}
+                  </text>
+
+                  {/* Tooltip flotante al hover */}
+                  {isHov && (
+                    <g>
+                      <rect x={x - 8} y={H - Math.max(hAct, hAnt) - 38}
+                        width={70} height={32} rx={6}
+                        fill="rgba(15,23,42,0.92)" stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
+                      <text x={x + 27} y={H - Math.max(hAct, hAnt) - 24}
+                        textAnchor="middle" fontSize={9} fill="#93c5fd" fontWeight={700}>
+                        Actual: {d.count}
+                      </text>
+                      <text x={x + 27} y={H - Math.max(hAct, hAnt) - 12}
+                        textAnchor="middle" fontSize={9} fill="#64748b">
+                        Ant: {ant.count}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Línea base */}
+            <line x1={PAD} y1={H} x2={W - PAD} y2={H} stroke="#1e293b" strokeWidth={1}/>
+          </svg>
+        </div>
     </div>
   );
 }
@@ -209,33 +262,76 @@ function RankingDocentes({ docentes, cuatrimestre }) {
   const max = docentes[0]?.sesiones || 1;
   return (
     <div className="glass p-5">
-      <div className="mb-4">
-        <h3 className="font-semibold text-white text-sm">👩‍🏫 Top docentes</h3>
-        <p className="text-xs text-slate-400 mt-0.5">{cuatrimestre} · por sesiones impartidas</p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>Top docentes</h3>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>{cuatrimestre} · por sesiones impartidas</p>
+        </div>
+        <span style={{ fontSize: 18 }}>👩‍🏫</span>
       </div>
-      <div className="space-y-2">
-        {docentes.slice(0, 7).map((d, i) => (
-          <div key={d.docente_id} className="flex items-center gap-3">
-            <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center shrink-0
-              ${i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-slate-400 text-black' : i === 2 ? 'bg-amber-700 text-white' : 'bg-white/8 text-slate-400'}`}>
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <span className="text-xs text-slate-200 truncate font-medium">{d.nombre}</span>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-slate-400">{d.horas}h</span>
-                  <span className="text-xs font-bold text-blue-300">{d.sesiones} ses.</span>
-                </div>
-              </div>
-              <div className="w-full h-1.5 bg-white/6 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all"
-                     style={{ width: `${(d.sesiones / max) * 100}%` }}/>
-              </div>
+
+      {/* Header fila */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '26px 1fr 48px',
+        gap: '0 10px', padding: '0 4px 8px',
+        borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 2,
+      }}>
+        <span/>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em' }}>Docente</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em', textAlign: 'right' }}>Ses.</span>
+      </div>
+
+      {docentes.slice(0, 7).map((d, i) => (
+        <div key={d.docente_id}
+          style={{
+            display: 'grid', gridTemplateColumns: '26px 1fr 48px',
+            gap: '0 10px', alignItems: 'center',
+            padding: '8px 4px',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            borderRadius: 6, transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          {/* Medalla de posición */}
+          <span style={{
+            width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            background: i === 0 ? '#ca8a04' : i === 1 ? '#64748b' : i === 2 ? '#92400e' : 'rgba(255,255,255,0.06)',
+            color: i < 3 ? '#fff' : '#475569',
+          }}>
+            {i + 1}
+          </span>
+
+          {/* Nombre + horas + barra */}
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {d.nombre}
+            </p>
+            <p style={{ margin: '2px 0 5px', fontSize: 11, color: '#475569' }}>
+              {d.horas}h de uso
+            </p>
+            <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                width: `${(d.sesiones / max) * 100}%`, height: '100%', borderRadius: 2,
+                background: i === 0
+                  ? 'linear-gradient(90deg, #ca8a04, #fbbf24)'
+                  : 'linear-gradient(90deg, #2563eb, #60a5fa)',
+                transition: 'width 0.7s cubic-bezier(.4,0,.2,1)',
+              }}/>
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Badge sesiones */}
+          <span style={{
+            fontSize: 13, fontWeight: 700, color: '#93c5fd', textAlign: 'right',
+            background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.18)',
+            padding: '2px 8px', borderRadius: 6, justifySelf: 'end',
+          }}>
+            {d.sesiones}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -250,39 +346,117 @@ function ComputadorasCriticas({ pcs }) {
   const max = pcs[0]?.total || 1;
   return (
     <div className="glass p-5">
-      <div className="mb-4">
-        <h3 className="font-semibold text-white text-sm">💻 PCs con más incidentes</h3>
-        <p className="text-xs text-slate-400 mt-0.5">Últimos 12 meses · candidatas a mantenimiento</p>
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>PCs con más incidentes</h3>
+          <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>Últimos 12 meses · candidatas a mantenimiento</p>
+        </div>
+        <span style={{ fontSize: 18 }}>💻</span>
       </div>
-      <div className="space-y-2">
-        {pcs.slice(0, 7).map((pc, i) => (
-          <div key={pc.computadora_id} className="flex items-center gap-3">
-            <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center shrink-0
-              ${i < 3 ? 'bg-red-800 text-red-200' : 'bg-white/8 text-slate-400'}`}>
-              {i + 1}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <span className="text-xs text-slate-200 truncate font-medium">
-                  {pc.codigo || `PC-${pc.numero}`}
+
+      {/* Header fila */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: '26px 1fr 54px',
+        gap: '0 10px', padding: '0 4px 8px',
+        borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 2,
+      }}>
+        <span/>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em' }}>Equipo</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em', textAlign: 'right' }}>Inc.</span>
+      </div>
+
+      {pcs.slice(0, 7).map((pc, i) => (
+        <div key={pc.computadora_id}
+          style={{
+            display: 'grid', gridTemplateColumns: '26px 1fr 54px',
+            gap: '0 10px', alignItems: 'center',
+            padding: '8px 4px',
+            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            borderRadius: 6, transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+        >
+          <span style={{
+            width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            background: i < 3 ? 'rgba(185,28,28,0.7)' : 'rgba(255,255,255,0.06)',
+            color: i < 3 ? '#fca5a5' : '#475569',
+          }}>
+            {i + 1}
+          </span>
+
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {pc.codigo || `PC-${pc.numero}`}
+              </p>
+              {pc.pendientes > 0 && (
+                <span style={{
+                  fontSize: 10, fontWeight: 600, color: '#fca5a5', flexShrink: 0,
+                  background: 'rgba(185,28,28,0.25)', border: '1px solid rgba(239,68,68,0.25)',
+                  padding: '1px 6px', borderRadius: 4,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }}/>
+                  {pc.pendientes} pend.
                 </span>
-                <div className="flex items-center gap-2 shrink-0">
-                  {pc.pendientes > 0 && (
-                    <span className="text-xs bg-red-900/60 text-red-300 px-1.5 py-0.5 rounded-full">
-                      {pc.pendientes} pend.
-                    </span>
-                  )}
-                  <span className="text-xs font-bold text-red-400">{pc.total} inc.</span>
-                </div>
-              </div>
-              <div className="w-full h-1.5 bg-white/6 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-gradient-to-r from-red-800 to-red-500 transition-all"
-                     style={{ width: `${(pc.total / max) * 100}%` }}/>
-              </div>
+              )}
+            </div>
+            <div style={{ marginTop: 5, height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                width: `${(pc.total / max) * 100}%`, height: '100%', borderRadius: 2,
+                background: i < 3
+                  ? 'linear-gradient(90deg, #b91c1c, #f87171)'
+                  : 'linear-gradient(90deg, #7f1d1d, #ef4444)',
+                transition: 'width 0.7s cubic-bezier(.4,0,.2,1)',
+              }}/>
             </div>
           </div>
-        ))}
-      </div>
+
+          <span style={{
+            fontSize: 13, fontWeight: 700, color: '#fca5a5', textAlign: 'right',
+            background: 'rgba(185,28,28,0.15)', border: '1px solid rgba(239,68,68,0.2)',
+            padding: '2px 8px', borderRadius: 6, justifySelf: 'end',
+          }}>
+            {pc.total}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Tarjeta de resumen visual (hero KPI) ────────────────────────────────────
+function SummaryCard({ label, value, color = '#3b82f6', sub }) {
+  return (
+    <div style={{
+      background: 'rgba(8,14,30,0.72)',
+      border: `1px solid ${color}28`,
+      borderRadius: '1rem',
+      padding: '1.1rem 1.25rem',
+      position: 'relative',
+      overflow: 'hidden',
+      backdropFilter: 'blur(12px)',
+    }}>
+      {/* barra de acento superior */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, ${color}, ${color}44)`,
+      }}/>
+      {/* blob de brillo de fondo */}
+      <div style={{
+        position: 'absolute', top: '-20%', right: '-10%', width: '60%', height: '140%',
+        background: `radial-gradient(ellipse, ${color}0d 0%, transparent 70%)`,
+        filter: 'blur(20px)', pointerEvents: 'none',
+      }}/>
+      <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', margin: '0 0 10px', position: 'relative' }}>
+        {label}
+      </p>
+      <p style={{ fontSize: 28, fontWeight: 800, color, margin: 0, lineHeight: 1, fontVariantNumeric: 'tabular-nums', position: 'relative' }}>
+        {value}
+      </p>
+      {sub && <p style={{ fontSize: 11, color: '#64748b', marginTop: 8, position: 'relative' }}>{sub}</p>}
     </div>
   );
 }
@@ -421,8 +595,32 @@ function TabMensual() {
                    labelAnt={datos.comparativa.mes_ant_nombre}/>
           </div>
 
+          {/* ── Resumen visual ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <SummaryCard
+              label="Total de sesiones"
+              value={datos.sesiones.total}
+              color="#3b82f6"
+              sub={`${datos.sesiones.horas_total}h de uso registradas`}
+            />
+            <SummaryCard
+              label="Promedio por sesión"
+              value={datos.sesiones.total > 0
+                ? `${Math.round(datos.sesiones.horas_total * 60 / datos.sesiones.total)} min`
+                : '—'}
+              color="#10b981"
+              sub={`Docentes activos: ${datos.docentes.total}`}
+            />
+            <SummaryCard
+              label="Alumnos atendidos"
+              value={datos.alumnos.total_unicos}
+              color="#8b5cf6"
+              sub={`${MESES[datos.periodo.mes]} ${datos.periodo.anio}`}
+            />
+          </div>
+
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Actividad del mes</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Actividad del mes</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="🗓️" label="Sesiones realizadas"  value={datos.sesiones.total}      color="blue"/>
               <StatCard emoji="👩‍🏫" label="Docentes activos"    value={datos.docentes.total}       color="purple"/>
@@ -432,7 +630,7 @@ function TabMensual() {
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Estado del equipo</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Estado del equipo</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="💻" label={`PCs operativas / ${datos.pcs.total}`}   value={datos.pcs.operativas}   color="green"/>
               <StatCard emoji="🔧" label="PCs en mantenimiento"                   value={datos.pcs.mantenimiento} color={datos.pcs.mantenimiento > 0 ? "yellow" : "gray"}/>
@@ -444,7 +642,7 @@ function TabMensual() {
           </div>
 
           <div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Préstamos e incidentes</p>
+            <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Préstamos e incidentes</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="📤" label="Préstamos del mes"     value={datos.prestamos.total}    color="blue"/>
               <StatCard emoji="✅" label="Devueltos"              value={datos.prestamos.devueltos} color="green"/>
@@ -656,3 +854,4 @@ export default function Reportes() {
     </AdminLayout>
   );
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
