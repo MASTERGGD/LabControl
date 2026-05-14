@@ -5,7 +5,7 @@ from services.auditoria import registrar, Accion, Recurso
 from typing import Optional, List
 from database import get_db
 from models.sesion import SesionClase, AsignacionPC, ObservacionPC
-from models.horario import Reservacion
+from models.horario import Reservacion, HorarioDisponible
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
@@ -22,10 +22,11 @@ router = APIRouter(prefix="/sesiones", tags=["Sesiones de Clase"])
 
 class SesionCreate(BaseModel):
     laboratorio_id: int
-    materia: str        = Field(..., min_length=2, max_length=100)
-    grupo: str          = Field(..., min_length=1, max_length=20)
+    materia: Optional[str]  = Field(None, max_length=100)
+    grupo:   Optional[str]  = Field(None, max_length=20)
+    observacion: Optional[str] = Field(None, max_length=200)   # para sesión libre
     reservacion_id: Optional[int] = None
-    fin_estimado_min: Optional[int] = Field(None, ge=30, le=300, description="Duración estimada en minutos")
+    fin_estimado_min: Optional[int] = Field(None, ge=15, le=300, description="Duración estimada en minutos")
 
 class SesionCerrar(BaseModel):
     observacion_general: Optional[str] = None
@@ -73,6 +74,7 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         "laboratorio_nombre": lab.nombre if lab else None,
         "docente_id": s.docente_id,
         "docente_nombre": doc.nombre if doc else None,
+        "tipo_sesion": s.tipo_sesion or "CLASE",
         "materia": s.materia,
         "grupo": s.grupo,
         "inicio": s.inicio.isoformat() if s.inicio else None,
@@ -144,6 +146,13 @@ async def abrir_sesion(
     # RBAC: solo SUPER_ADMIN, LAB_ADMIN y DOCENTE pueden abrir sesiones
     current_user: Usuario = Depends(require_permission("sesiones:write"))
 ):
+    # ── Hora actual en México (UTC-6, sin ajuste DST simplificado) ────────────
+    OFFSET_MX = datetime.timedelta(hours=-6)
+    ahora_utc = datetime.datetime.utcnow()
+    ahora_mx  = ahora_utc + OFFSET_MX          # hora local México
+    dia_mx    = ahora_mx.weekday()              # 0=lun … 6=dom
+    hora_mx   = ahora_mx.strftime("%H:%M")      # "07:00"
+    TOLERANCIA = datetime.timedelta(minutes=15)
 
     # Solo un docente puede tener una sesión abierta a la vez
     if current_user.rol == RolUsuario.DOCENTE:
@@ -172,16 +181,119 @@ async def abrir_sesion(
             detail=f"Ya hay una sesión abierta en este laboratorio: {otra.codigo_sesion}"
         )
 
-    ahora = datetime.datetime.utcnow()
+    # ── Validaciones exclusivas para DOCENTE ─────────────────────────────────
+    if current_user.rol == RolUsuario.DOCENTE:
+
+        if data.reservacion_id:
+            # ── Sesión reservada: verificar propiedad y ventana horaria ──────
+            res = db.query(Reservacion).filter(Reservacion.id == data.reservacion_id).first()
+            if not res:
+                raise HTTPException(status_code=404, detail="Reservación no encontrada")
+
+            # Solo el docente titular (o suplente) puede iniciarla
+            es_titular  = res.docente_id == current_user.id
+            es_suplente = res.docente_suplente_id == current_user.id
+            if not es_titular and not es_suplente:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Esta reservación no te pertenece. Solo puedes iniciar tus propias clases."
+                )
+
+            # Verificar ventana horaria ±15 min en horario México
+            horario = db.query(HorarioDisponible).filter(
+                HorarioDisponible.id == res.horario_id
+            ).first()
+            if horario:
+                mismo_dia = horario.dia_semana == dia_mx
+                # Construir datetime de hoy con hora de inicio y fin del slot
+                hoy = ahora_mx.date()
+                try:
+                    h_ini = datetime.datetime.combine(
+                        hoy, datetime.time.fromisoformat(horario.hora_inicio)
+                    )
+                    h_fin = datetime.datetime.combine(
+                        hoy, datetime.time.fromisoformat(horario.hora_fin)
+                    )
+                    dentro_ventana = (
+                        mismo_dia and
+                        (h_ini - TOLERANCIA) <= ahora_mx <= (h_fin + TOLERANCIA)
+                    )
+                except Exception:
+                    dentro_ventana = True   # si no se puede parsear, dejar pasar
+
+                if not dentro_ventana:
+                    dia_labels = ["lunes","martes","miércoles","jueves","viernes","sábado","domingo"]
+                    raise HTTPException(
+                        status_code=403,
+                        detail=(
+                            f"Fuera de horario. Tu clase es los {dia_labels[horario.dia_semana]} "
+                            f"de {horario.hora_inicio} a {horario.hora_fin}. "
+                            f"Puedes iniciarla entre las {(h_ini - TOLERANCIA).strftime('%H:%M')} "
+                            f"y las {(h_fin + TOLERANCIA).strftime('%H:%M')}. "
+                            f"Hora actual en México: {hora_mx}."
+                        )
+                    )
+
+        else:
+            # ── Sesión libre: verificar que no haya reservación vigente de otro ──
+            # Buscar si hay alguna reservación activa de OTRO docente en este lab en este slot horario
+            reservaciones_lab = (
+                db.query(Reservacion)
+                .join(HorarioDisponible, Reservacion.horario_id == HorarioDisponible.id)
+                .filter(
+                    Reservacion.laboratorio_id == data.laboratorio_id,
+                    Reservacion.estado == "PROGRAMADA",
+                    HorarioDisponible.dia_semana == dia_mx,
+                    Reservacion.docente_id != current_user.id,
+                )
+                .all()
+            )
+            # Filtrar las que estén activas ahora (dentro de su ventana horaria)
+            conflicto = None
+            hoy = ahora_mx.date()
+            for rev in reservaciones_lab:
+                try:
+                    h_ini = datetime.datetime.combine(
+                        hoy, datetime.time.fromisoformat(rev.horario.hora_inicio)
+                    )
+                    h_fin = datetime.datetime.combine(
+                        hoy, datetime.time.fromisoformat(rev.horario.hora_fin)
+                    )
+                    if h_ini <= ahora_mx <= h_fin:
+                        conflicto = rev
+                        break
+                except Exception:
+                    continue
+            if conflicto:
+                docente_titular = db.query(Usuario).filter(Usuario.id == conflicto.docente_id).first()
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"El laboratorio tiene una clase reservada en este horario "
+                        f"({conflicto.horario.hora_inicio}–{conflicto.horario.hora_fin}) "
+                        f"para {docente_titular.nombre if docente_titular else 'otro docente'}. "
+                        f"No puedes abrir una sesión libre durante un slot reservado."
+                    )
+                )
+
+    ahora = ahora_utc  # usar UTC para guardar en BD
     fin_est = ahora + datetime.timedelta(minutes=data.fin_estimado_min) if data.fin_estimado_min else None
     codigo  = f"SES-{ahora.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+
+    # Determinar tipo: CLASE si tiene materia+grupo o viene de reservación, LIBRE si no
+    es_libre = not data.reservacion_id and not (data.materia and data.grupo)
+    tipo_sesion = "LIBRE" if es_libre else "CLASE"
+    # Para sesión libre, usar observacion como etiqueta si se proporcionó
+    materia_final = data.materia or (data.observacion if data.observacion else "Sesión Libre")
+    grupo_final   = data.grupo or ""
 
     sesion = SesionClase(
         reservacion_id=data.reservacion_id,
         laboratorio_id=data.laboratorio_id,
         docente_id=current_user.id,
-        materia=data.materia,
-        grupo=data.grupo,
+        tipo_sesion=tipo_sesion,
+        materia=materia_final,
+        grupo=grupo_final,
         codigo_sesion=codigo,
         inicio=ahora,
         fin_estimado=fin_est,
@@ -197,9 +309,10 @@ async def abrir_sesion(
         "sesion": {
             "id": sesion.id,
             "codigo": codigo,
-            "materia": data.materia,
-            "grupo": data.grupo,
+            "materia": materia_final,
+            "grupo": grupo_final,
             "docente": current_user.nombre,
+            "tipo_sesion": tipo_sesion,
         }
     })
 
@@ -617,9 +730,7 @@ def confirmar_recepcion(
         raise HTTPException(status_code=400, detail="La recepción ya fue confirmada")
 
     from models.inventario import Incidente
-
     incidentes_creados = []
-
     for obs in data.observaciones:
         pc = db.query(Computadora).filter(Computadora.id == obs.computadora_id).first()
         if not pc:

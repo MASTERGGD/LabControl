@@ -299,6 +299,9 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         except Exception:
             pass
 
+    # ── Adeudo vinculado a este incidente ────────────────────────────────────
+    adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == i.id).first()
+
     return {
         "id":               i.id,
         "activo_id":        i.activo_id,
@@ -322,6 +325,10 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         "costo_reparacion": i.costo_reparacion,
         "alumno_responsable": alumno_responsable,
         "certeza":            certeza,
+        # Adeudo vinculado (si existe)
+        "adeudo_id":          adeudo_vinculado.id     if adeudo_vinculado else None,
+        "adeudo_estado":      adeudo_vinculado.estado if adeudo_vinculado else None,
+        "adeudo_persona":     adeudo_vinculado.persona_nombre if adeudo_vinculado else None,
     }
 
 
@@ -613,9 +620,59 @@ def devolver_prestamo(
         )
         db.add(incidente)
 
-    # ── Auto-resolver adeudo vinculado al préstamo si existía ──────────────────
+        # ── Auto-crear adeudo por daño al equipo ──────────────────────────────
+        # Obtener tipo de persona desde metadato guardado en observaciones_salida
+        import json as _json
+        try:
+            meta = _json.loads(p.observaciones_salida or "{}")
+            persona_tipo = meta.get("receptor_tipo", "ALUMNO")
+        except Exception:
+            persona_tipo = "ALUMNO"
+
+        nombre_equipo = f"{activo.nombre} (cód. {activo.codigo_inventario})" if activo else "Equipo"
+        adeudo_danio = Adeudo(
+            persona_nombre        = p.solicitante_nombre,
+            persona_identificador = p.solicitante_id_escolar or "",
+            persona_tipo          = persona_tipo,
+            origen_tipo           = "PRESTAMO",
+            tipo                  = "DAÑO",
+            descripcion           = (
+                f"Equipo devuelto dañado — Préstamo #{p.id}. "
+                f"{nombre_equipo}. "
+                f"Condición al devolver: {data.condicion_devolucion}. "
+                + (f"Nota: {data.notas_devolucion}" if data.notas_devolucion else "")
+            ),
+            prestamo_id           = p.id,
+            laboratorio_id        = activo.laboratorio_id if activo else None,
+            estado                = "PENDIENTE",
+            reportado_por_id      = current_user.id,
+            fecha_reporte         = datetime.datetime.utcnow(),
+        )
+        db.add(adeudo_danio)
+
+        # Notificar a admins del laboratorio
+        try:
+            from routers.notificaciones import crear_notificacion
+            admins = db.query(Usuario).filter(
+                Usuario.activo == True,
+                Usuario.rol.in_(["SUPER_ADMIN", "LAB_ADMIN"]),
+            ).all()
+            for admin in admins:
+                if admin.rol == "SUPER_ADMIN" or admin.laboratorio_id == activo.laboratorio_id:
+                    crear_notificacion(
+                        db, admin.id,
+                        "PRESTAMO_VENCIDO",
+                        f"⚠️ Equipo devuelto dañado — {p.solicitante_nombre}",
+                        f"{nombre_equipo} devuelto en condición {data.condicion_devolucion}. "
+                        f"Se generó adeudo automáticamente.",
+                    )
+        except Exception:
+            pass
+
+    # ── Auto-resolver adeudo por vencimiento si existía (el equipo fue devuelto) ──
     adeudo_vinculado = db.query(Adeudo).filter(
         Adeudo.prestamo_id == prestamo_id,
+        Adeudo.tipo.in_(["PRESTAMO_VENCIDO", "PRESTAMO_NO_DEVUELTO"]),
         Adeudo.estado.in_(["PENDIENTE", "EN_REVISION"]),
     ).first()
     if adeudo_vinculado:
@@ -736,6 +793,20 @@ def actualizar_incidente(
 
     campos = data.model_dump(exclude_none=True)
     estado_anterior = i.estado
+
+    # ── Bloquear reabrir un incidente que ya generó un adeudo ────────────────
+    nuevo_estado = campos.get("estado", "").upper() if "estado" in campos else ""
+    if nuevo_estado in ("PENDIENTE", "EN_REVISION"):
+        adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == incidente_id).first()
+        if adeudo_vinculado and adeudo_vinculado.estado not in ("RESUELTO", "CANCELADO"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Este incidente tiene un adeudo vinculado en estado '{adeudo_vinculado.estado}' "
+                    f"(ID #{adeudo_vinculado.id}). No se puede reabrir hasta que el adeudo sea "
+                    f"resuelto o cancelado. Si necesitas revisar el equipo, crea un nuevo incidente de inspección."
+                )
+            )
 
     for campo, valor in campos.items():
         if isinstance(valor, str):

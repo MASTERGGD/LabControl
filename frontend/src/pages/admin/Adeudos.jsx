@@ -493,7 +493,7 @@ export default function Adeudos() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="sm:col-span-2">
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-              className="input-dark w-full" placeholder="🔍 Matrícula, RFC..." />
+              className="input-dark w-full" placeholder="🔍 Nombre o matrícula..." />
           </div>
           <SelectDark value={filtroTipo} onChange={setFiltroTipo}
             options={[{value:'',label:'Todo tipo'},{value:'ALUMNO',label:'🎓 Alumnos'},{value:'DOCENTE',label:'👨‍🏫 Docentes'},{value:'OTRO',label:'👤 Otro'}]} />

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
-import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
+import { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
@@ -692,18 +692,17 @@ function ModalYoSolicite({ slot, onClose, onRetirado }) {
   );
 }
 
-// ─── Modal: Sesión sin reservación (ad-hoc) ───────────────────────────────────
+// ─── Modal: Sesión sin reservación (uso libre del lab) ────────────────────────
 
-const DURACIONES_DOCENTE = [50, 100, 150, 200];
+const DURACIONES_LIBRE = [30, 60, 90, 120];
 
 function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
   const navigate  = useNavigate();
-  const [labId,    setLabId]    = useState(labs[0]?.id ?? '');
-  const [materia,  setMateria]  = useState('');
-  const [grupo,    setGrupo]    = useState('');
-  const [duracion, setDuracion] = useState(100);
-  const [saving,   setSaving]   = useState(false);
-  const [error,    setError]    = useState('');
+  const [labId,      setLabId]      = useState(labs[0]?.id ?? '');
+  const [observacion, setObservacion] = useState('');
+  const [duracion,   setDuracion]   = useState(60);
+  const [saving,     setSaving]     = useState(false);
+  const [error,      setError]      = useState('');
   const [sesionActiva, setSesionActiva] = useState(null);
 
   useEffect(() => {
@@ -719,8 +718,7 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
     try {
       const { data } = await api.post('/sesiones', {
         laboratorio_id:   Number(labId),
-        materia:          materia.trim(),
-        grupo:            grupo.trim(),
+        observacion:      observacion.trim() || null,
         fin_estimado_min: duracion,
       });
       onSesionIniciada(data);
@@ -732,20 +730,17 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-glass animate-fadeUp">
+      <div className="glass w-full max-w-sm shadow-glass animate-fadeUp">
         {/* Header */}
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center"
                  style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-              </svg>
+              <span className="text-lg">🖥️</span>
             </div>
             <div>
-              <h3 className="font-semibold text-white">Sesión sin reservación</h3>
-              <p className="text-xs text-slate-400">Para clases o usos no programados</p>
+              <h3 className="font-semibold text-white">Sesión libre</h3>
+              <p className="text-xs text-slate-400">Uso abierto del laboratorio</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
@@ -760,7 +755,10 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
           {sesionActiva && (
             <div className="bg-amber-950/40 border border-amber-700/40 rounded-xl p-3 text-sm">
               <p className="text-amber-400 font-medium">⚠️ Ya hay una sesión abierta en este laboratorio</p>
-              <p className="text-slate-400 text-xs mt-0.5">{sesionActiva.materia} · {sesionActiva.grupo}</p>
+              <p className="text-slate-400 text-xs mt-0.5">
+                {sesionActiva.tipo_sesion === 'LIBRE' ? 'Sesión libre' : sesionActiva.materia}
+                {sesionActiva.grupo ? ` · ${sesionActiva.grupo}` : ''}
+              </p>
               <button type="button"
                 onClick={() => { onClose(); navigate(`/docente/sesion/${sesionActiva.id}`); }}
                 className="mt-2 w-full bg-amber-600 hover:bg-amber-500 text-white py-1.5 rounded-lg text-xs font-semibold transition-colors">
@@ -779,31 +777,29 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
             />
           </div>
 
-          {/* Materia + Grupo */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1.5">Materia *</label>
-              <input value={materia} onChange={e => setMateria(e.target.value)} required
-                placeholder="Ej: Programación"
-                className="w-full input-dark text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1.5">Grupo *</label>
-              <input value={grupo} onChange={e => setGrupo(e.target.value)} required
-                placeholder="Ej: IDGS-01A"
-                className="w-full input-dark text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
-            </div>
+          {/* Nota opcional */}
+          <div>
+            <label className="block text-sm text-slate-400 mb-1.5">
+              Nota <span className="text-slate-600 font-normal">(opcional)</span>
+            </label>
+            <input
+              value={observacion}
+              onChange={e => setObservacion(e.target.value)}
+              placeholder="Ej: Proyecto integrador, Examen extraordinario…"
+              maxLength={200}
+              className="w-full input-dark text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
           </div>
 
-          {/* Duración — pastillas */}
+          {/* Duración */}
           <div>
             <label className="block text-sm text-slate-400 mb-2">Duración estimada</label>
             <div className="grid grid-cols-4 gap-2">
-              {DURACIONES_DOCENTE.map(m => (
+              {DURACIONES_LIBRE.map(m => (
                 <button key={m} type="button" onClick={() => setDuracion(m)}
                   className={`py-2.5 rounded-xl border text-xs font-medium transition-all
                     ${duracion === m
-                      ? 'bg-emerald-600 border-emerald-500 text-white shadow-glow-em'
+                      ? 'bg-emerald-600 border-emerald-500 text-white'
                       : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20 hover:text-white'}`}>
                   {m} min
                 </button>
@@ -812,10 +808,9 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
           </div>
 
           {/* Info */}
-          <div className="glass-sm p-3 text-xs text-slate-400 space-y-1">
-            <p>• Los alumnos quedan registrados al asignarles una PC en el mapa</p>
-            <p>• Al cerrar la sesión se libera el registro de todos los equipos</p>
-            <p>• La sesión aparece en el historial del laboratorio</p>
+          <div className="glass-sm p-3 text-xs text-slate-400 space-y-1 rounded-xl">
+            <p>• Asigna PCs a alumnos individualmente desde el mapa</p>
+            <p>• La asignación mantiene trazabilidad en caso de daño</p>
           </div>
 
           {error && (
@@ -826,7 +821,7 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
             <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
             <button type="submit" disabled={saving || !labId || !!sesionActiva}
               className="btn-emerald flex-1">
-              {saving ? 'Abriendo…' : '▶ Abrir sesión'}
+              {saving ? 'Abriendo…' : '▶ Abrir sesión libre'}
             </button>
           </div>
         </form>

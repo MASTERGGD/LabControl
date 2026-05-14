@@ -92,7 +92,7 @@ const EXITO_OPTS = [
 ];
 
 export default function Auditoria() {
-  const { addToast } = useToast();
+  const { toast: addToast } = useToast();
 
   const [items,      setItems]      = useState([]);
   const [total,      setTotal]      = useState(0);

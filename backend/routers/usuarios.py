@@ -216,6 +216,66 @@ def editar_usuario(
     return _serializar(u, db)
 
 
+@router.delete("/{usuario_id}", summary="Eliminar usuario permanentemente")
+def eliminar_usuario(
+    request: Request,
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
+):
+    """
+    Elimina un usuario de forma permanente.
+    Bloquea si tiene horarios, sesiones, reservaciones o activos asociados.
+    En ese caso usa desactivar (activo=False) en su lugar.
+    """
+    from models.horario import HorarioDisponible, Reservacion
+    from models.sesion import Sesion
+    from models.inventario import Activo
+    from models.notificacion import Notificacion
+
+    u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if u.id == current_user.id:
+        raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+
+    if u.rol == RolUsuario.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="No se puede eliminar al Super Administrador")
+
+    # Verificar dependencias críticas (relaciones sin CASCADE)
+    bloqueos = []
+    if db.query(HorarioDisponible).filter(HorarioDisponible.docente_id == usuario_id).count():
+        bloqueos.append("tiene horarios de clase asignados")
+    if db.query(Sesion).filter(Sesion.docente_id == usuario_id).count():
+        bloqueos.append("tiene sesiones de clase registradas")
+    if db.query(Reservacion).filter(Reservacion.solicitante_id == usuario_id).count():
+        bloqueos.append("tiene reservaciones")
+    if db.query(Activo).filter(Activo.autorizado_por == usuario_id).count():
+        bloqueos.append("autorizó activos de inventario")
+
+    if bloqueos:
+        raise HTTPException(
+            status_code=409,
+            detail=f"No se puede eliminar: el usuario {', '.join(bloqueos)}. "
+                   f"Desactívalo en su lugar para conservar el historial."
+        )
+
+    # Sin dependencias críticas → eliminar notificaciones y borrar
+    db.query(Notificacion).filter(Notificacion.usuario_id == usuario_id).delete()
+    nombre_guardado = u.nombre
+    email_guardado  = u.email
+    db.delete(u)
+    db.commit()
+
+    registrar(db, accion=Accion.ELIMINAR_USUARIO, recurso=Recurso.USUARIO,
+              usuario=current_user, recurso_id=usuario_id,
+              detalle={"nombre": nombre_guardado, "email": email_guardado},
+              request=request)
+
+    return {"ok": True, "mensaje": f"Usuario '{nombre_guardado}' eliminado permanentemente"}
+
+
 @router.post("/{usuario_id}/reset-password", response_model=ResetPasswordResponse, summary="Resetear contraseña (admin)")
 def reset_password(
     request: Request,

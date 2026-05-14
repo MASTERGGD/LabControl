@@ -3,6 +3,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark     from '../../components/SelectDark';
 import DatePickerDark from '../../components/DatePickerDark';
+import AutocompleteInput from '../../components/AutocompleteInput';
 
 // ─── Combobox de búsqueda de activos ─────────────────────────────────────────
 function ActivoCombobox({ activos, value, onChange }) {
@@ -235,6 +236,11 @@ export default function Prestamos() {
 
   const [saving, setSaving] = useState(false);
 
+  // ── Alumno seleccionado del autocomplete ──
+  const [alumnoVerificado, setAlumnoVerificado] = useState(null);
+  // Texto visible en el campo de búsqueda de alumno
+  const [busquedaAlumno, setBusquedaAlumno] = useState('');
+
   // ─── Carga inicial ────────────────────────────────────────────────────────────
 
   const cargarTodo = useCallback(async () => {
@@ -283,6 +289,8 @@ export default function Prestamos() {
       fecha_devolucion_esperada: '',
       notas: '',
     });
+    setAlumnoVerificado(null);
+    setBusquedaAlumno('');
     setModalPrestar(true);
   };
 
@@ -681,28 +689,17 @@ export default function Prestamos() {
               </div>
 
               {/* Receptor */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-sm text-slate-400 mb-1.5">
-                    Nombre del receptor <span className="text-red-400">*</span>
-                  </label>
-                  <input type="text" required placeholder="Nombre completo"
-                    value={formPrestar.receptor_nombre}
-                    onChange={e => setFormPrestar({ ...formPrestar, receptor_nombre: e.target.value })}
-                    className="input-dark text-sm rounded-xl w-full" />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1.5">Matrícula / ID</label>
-                  <input type="text" placeholder="Ej. 230001"
-                    value={formPrestar.receptor_matricula}
-                    onChange={e => setFormPrestar({ ...formPrestar, receptor_matricula: e.target.value })}
-                    className="input-dark text-sm rounded-xl w-full" />
-                </div>
+              <div className="space-y-3">
+                {/* Tipo */}
                 <div>
                   <label className="block text-sm text-slate-400 mb-1.5">Tipo de receptor</label>
                   <SelectDark
                     value={formPrestar.receptor_tipo}
-                    onChange={v => setFormPrestar({ ...formPrestar, receptor_tipo: v })}
+                    onChange={v => {
+                      setFormPrestar({ ...formPrestar, receptor_tipo: v, receptor_matricula: '', receptor_nombre: '' });
+                      setAlumnoVerificado(null);
+                      setBusquedaAlumno('');
+                    }}
                     options={[
                       { value: 'ALUMNO',   label: 'Alumno' },
                       { value: 'DOCENTE',  label: 'Docente' },
@@ -711,6 +708,100 @@ export default function Prestamos() {
                     ]}
                   />
                 </div>
+
+                {/* ALUMNO → autocomplete nombre/matrícula */}
+                {formPrestar.receptor_tipo === 'ALUMNO' ? (
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">
+                      Buscar alumno <span className="text-red-400">*</span>
+                      <span className="text-slate-600 font-normal ml-1">(nombre o matrícula)</span>
+                    </label>
+
+                    {/* Si ya hay alumno seleccionado, mostrar chip con opción de limpiar */}
+                    {alumnoVerificado ? (
+                      <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl
+                                      bg-emerald-900/25 border border-emerald-700/40">
+                        <span className="text-emerald-400 text-base">✅</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">
+                            {formPrestar.receptor_nombre}
+                          </p>
+                          <p className="text-slate-400 text-xs font-mono">
+                            {formPrestar.receptor_matricula}
+                            {alumnoVerificado.grupo && <span className="ml-2 text-slate-500">· {alumnoVerificado.grupo}</span>}
+                          </p>
+                        </div>
+                        <button type="button"
+                          onClick={() => {
+                            setAlumnoVerificado(null);
+                            setBusquedaAlumno('');
+                            setFormPrestar(prev => ({ ...prev, receptor_nombre: '', receptor_matricula: '' }));
+                          }}
+                          className="text-slate-500 hover:text-red-400 transition-colors text-xs px-1">
+                          ✕ cambiar
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <AutocompleteInput
+                          endpoint="/catalogo/alumnos/buscar"
+                          placeholder="Ej. García López o UTC250134…"
+                          value={busquedaAlumno}
+                          onChange={setBusquedaAlumno}
+                          onSelect={alumno => {
+                            const nombre = [alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres]
+                              .filter(Boolean).join(' ').trim();
+                            setAlumnoVerificado(alumno);
+                            setBusquedaAlumno(nombre);
+                            setFormPrestar(prev => ({
+                              ...prev,
+                              receptor_nombre:    nombre,
+                              receptor_matricula: alumno.matricula || '',
+                            }));
+                          }}
+                          renderItem={alumno => (
+                            <div className="flex items-center gap-2 py-0.5">
+                              <span className="font-mono text-xs text-slate-400 w-24 shrink-0">
+                                {alumno.matricula}
+                              </span>
+                              <span className="text-slate-200 text-sm truncate">
+                                {[alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres].filter(Boolean).join(' ')}
+                              </span>
+                              {alumno.grupo && (
+                                <span className="ml-auto text-xs text-slate-500 shrink-0">{alumno.grupo}</span>
+                              )}
+                            </div>
+                          )}
+                          className="input-dark text-sm rounded-xl w-full"
+                          minChars={2}
+                        />
+                        {/* hidden inputs para que el form los recoja */}
+                        <input type="text" required value={formPrestar.receptor_nombre} onChange={() => {}}
+                          style={{ position:'absolute', opacity:0, pointerEvents:'none', height:0 }} tabIndex={-1} />
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  /* No ALUMNO → campos libres */
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-sm text-slate-400 mb-1.5">
+                        Nombre del receptor <span className="text-red-400">*</span>
+                      </label>
+                      <input type="text" required placeholder="Nombre completo"
+                        value={formPrestar.receptor_nombre}
+                        onChange={e => setFormPrestar({ ...formPrestar, receptor_nombre: e.target.value })}
+                        className="input-dark text-sm rounded-xl w-full" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-sm text-slate-400 mb-1.5">ID / Matrícula</label>
+                      <input type="text" placeholder="Opcional"
+                        value={formPrestar.receptor_matricula}
+                        onChange={e => setFormPrestar({ ...formPrestar, receptor_matricula: e.target.value })}
+                        className="input-dark text-sm rounded-xl w-full" />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Propósito */}

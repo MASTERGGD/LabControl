@@ -804,7 +804,9 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
         <div>
           <h2 className="font-semibold text-white text-sm">Revision de Recepcion</h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            {sesion.materia} · {sesion.grupo} · {sesion.laboratorio_nombre}
+            {sesion.tipo_sesion === 'LIBRE'
+              ? `Sesión Libre · ${sesion.laboratorio_nombre}`
+              : `${sesion.materia} · ${sesion.grupo} · ${sesion.laboratorio_nombre}`}
           </p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/40 border border-amber-600/40 rounded-lg">
@@ -1158,8 +1160,16 @@ export default function SesionActiva() {
             }
           </span>
           <div>
-            <p className="font-semibold text-sm text-white leading-tight">{sesion.materia}</p>
-            <p className="text-xs text-slate-400">{sesion.grupo} · {sesion.laboratorio_nombre}</p>
+            <p className="font-semibold text-sm text-white leading-tight">
+              {sesion.tipo_sesion === 'LIBRE'
+                ? <span className="flex items-center gap-1.5">🖥️ Sesión Libre</span>
+                : sesion.materia}
+            </p>
+            <p className="text-xs text-slate-400">
+              {sesion.tipo_sesion === 'LIBRE'
+                ? sesion.laboratorio_nombre
+                : `${sesion.grupo} · ${sesion.laboratorio_nombre}`}
+            </p>
           </div>
         </div>
 

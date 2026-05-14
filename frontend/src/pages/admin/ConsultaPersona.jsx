@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
+import AutocompleteInput from '../../components/AutocompleteInput';
 import api from '../../hooks/useApi';
 
 const ESTADO_CLS = {
@@ -17,11 +18,11 @@ function Badge({ cls, children }) {
   return <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${cls}`}>{children}</span>;
 }
 
-function SeccionHeader({ icon, titulo, count, color = 'text-white' }) {
+function SeccionHeader({ icon, titulo, count }) {
   return (
     <div className="flex items-center gap-3 mb-3">
       <span className="text-xl">{icon}</span>
-      <h3 className={`font-semibold text-base ${color}`}>{titulo}</h3>
+      <h3 className="font-semibold text-base text-white">{titulo}</h3>
       {count !== undefined && (
         <span className="ml-auto bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded-full font-medium">{count}</span>
       )}
@@ -30,26 +31,37 @@ function SeccionHeader({ icon, titulo, count, color = 'text-white' }) {
 }
 
 export default function ConsultaPersona() {
-  const [query, setQuery]       = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [resultado, setResultado] = useState(null);
-  const [error, setError]       = useState('');
+  const [busqueda, setBusqueda]     = useState('');
+  const [seleccionado, setSeleccionado] = useState(null); // alumno del catálogo
+  const [loading, setLoading]       = useState(false);
+  const [resultado, setResultado]   = useState(null);
+  const [error, setError]           = useState('');
 
-  const buscar = async () => {
-    if (!query.trim()) return;
+  const cargarPerfil = async (matricula) => {
     setLoading(true); setError(''); setResultado(null);
     try {
-      const r = await api.get(`/adeudos/persona/${encodeURIComponent(query.trim())}`);
+      const r = await api.get(`/adeudos/persona/${encodeURIComponent(matricula)}`);
       setResultado(r.data);
     } catch (e) {
       setError(e.response?.data?.detail || 'No se pudo obtener la información.');
     } finally { setLoading(false); }
   };
 
+  const handleSeleccionar = (alumno) => {
+    // alumno viene del catálogo: { matricula, nombres, apellido_paterno, apellido_materno, ... }
+    const nombreCompleto = [alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres]
+      .filter(Boolean).join(' ');
+    setBusqueda(`${alumno.matricula} — ${nombreCompleto}`);
+    setSeleccionado(alumno);
+    cargarPerfil(alumno.matricula);
+  };
+
+  const limpiar = () => {
+    setBusqueda(''); setSeleccionado(null); setResultado(null); setError('');
+  };
+
   const res = resultado?.resumen;
-  const tieneAdeudosActivos = res?.tiene_adeudos_activos;
-  const tienePrestamosVencidos = res?.prestamos_vencidos > 0;
-  const tieneProblemas = tieneAdeudosActivos || tienePrestamosVencidos;
+  const tieneProblemas = res?.tiene_adeudos_activos || res?.prestamos_vencidos > 0;
 
   return (
     <AdminLayout>
@@ -57,27 +69,59 @@ export default function ConsultaPersona() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Consulta de Persona</h1>
         <p className="text-slate-400 text-sm mt-1">
-          Busca por matrícula o RFC para ver todos los adeudos y préstamos de una persona
+          Busca por nombre o matrícula para ver adeudos, préstamos e historial completo de un alumno
         </p>
       </div>
 
       {/* Buscador */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6">
-        <label className="text-slate-400 text-sm block mb-3">Matrícula del alumno o RFC / nómina del docente</label>
-        <div className="flex gap-3">
-          <input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && buscar()}
-            className="input-dark flex-1 text-base"
-            placeholder="Ej: A12345 ó GARG800101XXX"
-            autoFocus
+        <label className="text-slate-400 text-sm block mb-3">Nombre o matrícula del alumno</label>
+
+        {!seleccionado ? (
+          <AutocompleteInput
+            endpoint="/catalogo/alumnos/buscar"
+            placeholder="🔍 Escribe nombre o matrícula…"
+            value={busqueda}
+            onChange={setBusqueda}
+            onSelect={handleSeleccionar}
+            minChars={2}
+            className="input-dark w-full text-base"
+            renderItem={a => {
+              const nombre = [a.apellido_paterno, a.apellido_materno, a.nombres].filter(Boolean).join(' ');
+              return (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white font-medium truncate">{nombre}</p>
+                    <p className="text-xs text-slate-400 font-mono">{a.matricula}</p>
+                  </div>
+                  {a.grupo && (
+                    <span className="text-xs text-slate-500 shrink-0">{a.grupo}</span>
+                  )}
+                </div>
+              );
+            }}
           />
-          <button onClick={buscar} disabled={loading || !query.trim()}
-            className="btn-emerald px-6 disabled:opacity-50 shrink-0">
-            {loading ? 'Buscando...' : '🔍 Buscar'}
-          </button>
-        </div>
+        ) : (
+          /* Chip del alumno seleccionado */
+          <div className="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700 rounded-xl">
+            <span className="text-2xl">🎓</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-semibold text-sm">{resultado?.nombre || busqueda}</p>
+              <p className="text-slate-400 text-xs font-mono">{seleccionado.matricula}</p>
+            </div>
+            <button onClick={limpiar}
+              className="text-xs text-slate-400 hover:text-white border border-slate-600 hover:border-slate-400 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+              ✕ Cambiar
+            </button>
+          </div>
+        )}
+
+        {loading && (
+          <div className="flex items-center gap-2 mt-3 text-slate-400 text-sm">
+            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            Cargando perfil…
+          </div>
+        )}
         {error && <p className="mt-3 text-sm text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
       </div>
 
@@ -90,7 +134,7 @@ export default function ConsultaPersona() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-3 mb-1">
-                  <span className="text-3xl">{resultado.persona_tipo === 'DOCENTE' ? '👨‍🏫' : '🎓'}</span>
+                  <span className="text-3xl">🎓</span>
                   <div>
                     <h2 className="text-white text-xl font-bold">{resultado.nombre}</h2>
                     <p className="text-slate-400 font-mono text-sm">{resultado.identificador}</p>
@@ -126,12 +170,12 @@ export default function ConsultaPersona() {
             {/* Mini stats */}
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-5">
               {[
-                { label: 'Pendientes',   val: res.adeudos_pendientes, color: res.adeudos_pendientes > 0 ? 'text-red-400' : 'text-slate-400' },
-                { label: 'En revisión',  val: res.adeudos_revision,   color: res.adeudos_revision   > 0 ? 'text-amber-400' : 'text-slate-400' },
-                { label: 'Resueltos',    val: res.adeudos_resueltos,  color: 'text-emerald-400' },
-                { label: 'Exonerados',   val: res.adeudos_exonerados, color: 'text-slate-400' },
-                { label: 'Préstamos act.',val: res.prestamos_activos, color: 'text-blue-400' },
-                { label: 'Vencidos',     val: res.prestamos_vencidos, color: res.prestamos_vencidos > 0 ? 'text-red-400' : 'text-slate-400' },
+                { label: 'Pendientes',    val: res.adeudos_pendientes,  color: res.adeudos_pendientes > 0  ? 'text-red-400'     : 'text-slate-400' },
+                { label: 'En revisión',   val: res.adeudos_revision,    color: res.adeudos_revision   > 0  ? 'text-amber-400'   : 'text-slate-400' },
+                { label: 'Resueltos',     val: res.adeudos_resueltos,   color: 'text-emerald-400' },
+                { label: 'Exonerados',    val: res.adeudos_exonerados,  color: 'text-slate-400' },
+                { label: 'Préstamos act.',val: res.prestamos_activos,   color: 'text-blue-400' },
+                { label: 'Vencidos',      val: res.prestamos_vencidos,  color: res.prestamos_vencidos > 0  ? 'text-red-400'     : 'text-slate-400' },
               ].map(s => (
                 <div key={s.label} className="bg-black/20 rounded-xl p-3 text-center">
                   <div className={`text-xl font-bold ${s.color}`}>{s.val}</div>
@@ -174,9 +218,8 @@ export default function ConsultaPersona() {
                       {a.monto_estimado != null && (
                         <span className="text-amber-400 font-medium">Monto: ${a.monto_estimado.toFixed(2)}</span>
                       )}
-                      {a.sesion_id && <span>Sesión #{a.sesion_id}</span>}
-                      {a.computadora_codigo && <span>PC: {a.computadora_codigo}</span>}
                       {a.prestamo_id && <span>Préstamo #{a.prestamo_id}</span>}
+                      {a.computadora_codigo && <span>PC: {a.computadora_codigo}</span>}
                     </div>
                     {a.notas_resolucion && (
                       <p className="mt-2 text-xs text-emerald-400 bg-emerald-900/10 rounded-lg px-3 py-1.5">
@@ -205,9 +248,9 @@ export default function ConsultaPersona() {
                     }`}>
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
-                        p.vencido            ? 'bg-red-500/15 text-red-400 border-red-500/30' :
-                        p.estado==='DEVUELTO'? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
-                                               'bg-blue-500/15 text-blue-400 border-blue-500/30'
+                        p.vencido             ? 'bg-red-500/15 text-red-400 border-red-500/30' :
+                        p.estado==='DEVUELTO' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+                                                'bg-blue-500/15 text-blue-400 border-blue-500/30'
                       }`}>
                         {p.vencido ? '⚠️ Vencido' : p.estado}
                       </span>
@@ -234,9 +277,9 @@ export default function ConsultaPersona() {
           {/* Sin registros */}
           {resultado.adeudos.length === 0 && resultado.prestamos.length === 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
-              <div className="text-5xl mb-3">📋</div>
-              <p className="text-slate-400 font-medium">Sin registros para esta persona</p>
-              <p className="text-slate-600 text-sm mt-1">No se encontraron adeudos ni préstamos asociados a este identificador.</p>
+              <div className="text-5xl mb-3">✅</div>
+              <p className="text-slate-300 font-semibold text-lg">Sin adeudos ni préstamos</p>
+              <p className="text-slate-500 text-sm mt-1">Este alumno no tiene registros pendientes.</p>
             </div>
           )}
         </div>
@@ -246,9 +289,9 @@ export default function ConsultaPersona() {
       {!resultado && !loading && !error && (
         <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-16 text-center">
           <div className="text-6xl mb-4">🔍</div>
-          <p className="text-slate-400 font-medium text-lg">Ingresa una matrícula o RFC para consultar</p>
+          <p className="text-slate-400 font-medium text-lg">Busca un alumno para consultar su historial</p>
           <p className="text-slate-600 text-sm mt-2">
-            Verás todos los adeudos, préstamos y trazabilidad de incidentes en una sola vista
+            Escribe el nombre o matrícula — verás adeudos, préstamos y trazabilidad en una sola vista
           </p>
         </div>
       )}

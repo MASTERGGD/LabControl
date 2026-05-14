@@ -485,6 +485,7 @@ export default function Usuarios() {
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [bulkLoading, setBulkLoading]   = useState(false);
   const [confirmDesactivar, setConfirmDesactivar] = useState(false);
+  const [userEliminar, setUserEliminar]           = useState(null);
 
   // Modales
   const [modalCrear, setModalCrear]           = useState(false);
@@ -586,6 +587,20 @@ export default function Usuarios() {
       toast('Error al desactivar usuarios', 'error');
     } finally {
       setBulkLoading(false);
+    }
+  };
+
+  const handleEliminar = async () => {
+    if (!userEliminar) return;
+    try {
+      await api.delete(`/usuarios/${userEliminar.id}`);
+      toast(`Usuario '${userEliminar.nombre}' eliminado permanentemente`, 'success');
+      setUserEliminar(null);
+      cargar();
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Error al eliminar el usuario';
+      toast(msg, 'error');
+      setUserEliminar(null);
     }
   };
 
@@ -885,6 +900,16 @@ export default function Usuarios() {
                             </svg>
                           </button>
                         )}
+                        {u.id !== yo?.id && u.rol !== 'SUPER_ADMIN' && (
+                          <button onClick={() => setUserEliminar(u)}
+                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Eliminar usuario">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -931,7 +956,53 @@ export default function Usuarios() {
           onAceptar={() => { setConfirmDesactivar(false); desactivarSeleccionados(); }}
         />
       )}
+      {userEliminar && (
+        <ModalConfirmarEliminar
+          usuario={userEliminar}
+          onCancelar={() => setUserEliminar(null)}
+          onAceptar={handleEliminar}
+        />
+      )}
     </AdminLayout>
+  );
+}
+
+// ─── Modal: Confirmar eliminación permanente ──────────────────────────────────
+
+function ModalConfirmarEliminar({ usuario, onCancelar, onAceptar }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="glass w-full max-w-sm shadow-glass animate-fadeUp">
+        <div className="p-6 text-center space-y-4">
+          <div className="w-14 h-14 bg-red-900/40 rounded-full flex items-center justify-center mx-auto">
+            <svg className="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-white font-semibold text-lg">Eliminar usuario</h3>
+            <p className="text-slate-400 text-sm mt-1">
+              ¿Eliminar permanentemente a <span className="text-white font-medium">{usuario.nombre}</span>?
+            </p>
+            <p className="text-slate-500 text-xs mt-2">
+              Esta acción no se puede deshacer. Si el usuario tiene historial (horarios, sesiones, inventario),
+              el sistema bloqueará la eliminación y deberás desactivarlo en su lugar.
+            </p>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button onClick={onCancelar}
+              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              Cancelar
+            </button>
+            <button onClick={onAceptar}
+              className="flex-1 bg-red-600 hover:bg-red-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+              Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

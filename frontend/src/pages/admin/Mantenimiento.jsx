@@ -56,13 +56,18 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const nombre = incidente.activo_nombre
     || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '—');
 
+  // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
+  const adeudoPendiente = incidente.adeudo_id &&
+    incidente.adeudo_estado !== 'RESUELTO' && incidente.adeudo_estado !== 'CANCELADO';
+
   return (
     <div
-      draggable
-      onDragStart={e => onDragStart(e, incidente)}
+      draggable={!adeudoPendiente}
+      onDragStart={adeudoPendiente ? undefined : e => onDragStart(e, incidente)}
       onClick={() => onClick(incidente)}
-      className={`glass-sm rounded-xl p-3.5 cursor-grab active:cursor-grabbing
-                  hover:brightness-110 transition-all duration-150 select-none group
+      className={`glass-sm rounded-xl p-3.5 transition-all duration-150 select-none group
+                  hover:brightness-110
+                  ${adeudoPendiente ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}
                   ${isDragOver ? 'ring-2 ring-blue-500/50' : ''}`}
       style={{ borderLeft: `3px solid ${incidente.prioridad === 'ALTA' ? '#ef4444' : incidente.prioridad === 'MEDIA' ? '#f59e0b' : '#475569'}` }}
     >
@@ -85,6 +90,22 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
         </div>
       )}
 
+      {/* Badge adeudo vinculado */}
+      {incidente.adeudo_id && (
+        <div className="mt-2 mb-1">
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border
+            ${incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
+              ? 'bg-emerald-900/30 border-emerald-500/30 text-emerald-400'
+              : 'bg-orange-900/30 border-orange-500/40 text-orange-300'}`}
+            title={`Adeudo #${incidente.adeudo_id} — ${incidente.adeudo_persona || ''}`}
+          >
+            ⚖️ Adeudo #{incidente.adeudo_id}
+            {incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
+              ? ' · Resuelto' : ' · Pendiente'}
+          </span>
+        </div>
+      )}
+
       {/* Meta info */}
       <div className="flex items-center justify-between gap-2 mt-2">
         <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
@@ -100,12 +121,14 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
         <span className="text-[10px] text-slate-600">{formatFecha(incidente.fecha_reporte)}</span>
       </div>
 
-      {/* Indicador de arrastre */}
-      <div className="flex justify-center mt-2 opacity-0 group-hover:opacity-30 transition-opacity">
-        <div className="flex gap-0.5">
-          {[1,2,3].map(i => <div key={i} className="w-0.5 h-3 bg-slate-400 rounded-full"/>)}
+      {/* Indicador de arrastre — oculto si tiene adeudo pendiente */}
+      {!(incidente.adeudo_id && incidente.adeudo_estado !== 'RESUELTO' && incidente.adeudo_estado !== 'CANCELADO') && (
+        <div className="flex justify-center mt-2 opacity-0 group-hover:opacity-30 transition-opacity">
+          <div className="flex gap-0.5">
+            {[1,2,3].map(i => <div key={i} className="w-0.5 h-3 bg-slate-400 rounded-full"/>)}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -319,7 +342,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               className="input-dark resize-none leading-relaxed" />
           </div>
 
-          {/* Crear adeudo rápido si hay alumno responsable */}
+          {/* Adeudo vinculado o botón crear */}
           {incidente.alumno_responsable && (
             <div className="glass-sm rounded-xl p-4 space-y-2">
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Alumno responsable</p>
@@ -328,22 +351,54 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                   <p className="text-sm text-white font-medium truncate">{incidente.alumno_responsable.nombre}</p>
                   <p className="text-xs text-slate-500">{incidente.alumno_responsable.matricula}</p>
                 </div>
-                <button
-                  onClick={() => {
-                    const params = new URLSearchParams({
-                      identificador: incidente.alumno_responsable.matricula,
-                      nombre:        incidente.alumno_responsable.nombre,
-                      tipo:          'ALUMNO',
-                      descripcion:   `Daño en ${incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'equipo')}${incidente.descripcion ? ': ' + incidente.descripcion : ''}`,
-                      incidente_id:  String(incidente.id),
-                    });
-                    navigate(`/admin/adeudos?${params.toString()}`);
-                  }}
-                  className="shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
-                >
-                  📋 Crear adeudo
-                </button>
+
+                {/* Si ya existe adeudo vinculado → mostrar estado + link */}
+                {incidente.adeudo_id ? (
+                  <button
+                    onClick={() => navigate(`/admin/adeudos?id=${incidente.adeudo_id}`)}
+                    className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors
+                      ${incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
+                        : 'text-orange-300 border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20'}`}
+                  >
+                    ⚖️ Adeudo #{incidente.adeudo_id}
+                    {' · '}{incidente.adeudo_estado === 'RESUELTO' ? 'Resuelto'
+                          : incidente.adeudo_estado === 'CANCELADO' ? 'Cancelado'
+                          : 'Pendiente'}
+                  </button>
+                ) : (
+                  /* Sin adeudo → ofrecer crear */
+                  <button
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        identificador: incidente.alumno_responsable.matricula,
+                        nombre:        incidente.alumno_responsable.nombre,
+                        tipo:          'ALUMNO',
+                        descripcion:   `Daño en ${incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'equipo')}${incidente.descripcion ? ': ' + incidente.descripcion : ''}`,
+                        incidente_id:  String(incidente.id),
+                      });
+                      navigate(`/admin/adeudos?${params.toString()}`);
+                    }}
+                    className="shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                  >
+                    📋 Crear adeudo
+                  </button>
+                )}
               </div>
+            </div>
+          )}
+
+          {/* Bloqueo visual si el adeudo impide reabrir */}
+          {incidente.adeudo_id &&
+           incidente.adeudo_estado !== 'RESUELTO' &&
+           incidente.adeudo_estado !== 'CANCELADO' && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-orange-900/20 border border-orange-500/30 text-orange-300 text-xs">
+              <span className="mt-0.5 shrink-0">⚠️</span>
+              <span>
+                Este incidente tiene un <strong>adeudo pendiente</strong> vinculado.
+                No puede volver a estados anteriores hasta que el adeudo sea resuelto o cancelado.
+                Si el equipo necesita otra revisión, crea un nuevo incidente de inspección.
+              </span>
             </div>
           )}
 
@@ -1427,12 +1482,29 @@ export default function Mantenimiento() {
   const handleDrop = async (targetEstado) => {
     const inc = dragItem.current;
     if (!inc || inc.estado === targetEstado) { setDragTarget(null); dragItem.current = null; return; }
+
+    // Bloquear reabrir si tiene adeudo pendiente
+    const adeudoPendiente = inc.adeudo_id &&
+      inc.adeudo_estado !== 'RESUELTO' && inc.adeudo_estado !== 'CANCELADO';
+    if (adeudoPendiente && (targetEstado === 'PENDIENTE' || targetEstado === 'EN_REVISION')) {
+      toast(
+        `No se puede reabrir — este incidente tiene un adeudo pendiente (#${inc.adeudo_id}). ` +
+        `Resuelve el adeudo primero, o crea un nuevo incidente de inspección.`,
+        'error'
+      );
+      setDragTarget(null); dragItem.current = null;
+      return;
+    }
+
     try {
       await api.put(`/inventario/incidentes/${inc.id}`, { estado: targetEstado });
       const colLabel = COLUMNAS.find(c => c.key === targetEstado)?.label || targetEstado;
       toast(`Movido a "${colLabel}"`, 'success');
       cargarTodo();
-    } catch { toast('Error al mover incidente', 'error'); }
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Error al mover incidente';
+      toast(msg, 'error');
+    }
     setDragTarget(null); dragItem.current = null;
   };
 

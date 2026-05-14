@@ -52,7 +52,7 @@ Perfil técnico: Python, FastAPI, n8n, Docker, Telegram bots, SQL Server, Virtua
 
 ---
 
-## Módulos implementados (v1.0 COMPLETO)
+## Módulos implementados (v1.2 — Mayo 2026 — ESTADO REAL)
 
 ### ✅ Auth
 - POST `/auth/login` → JWT (8h)
@@ -298,8 +298,119 @@ await api.post('/laboratorios', payload);
 
 ---
 
+## Módulos post-v1.0 (construidos en sesiones Cowork — Mayo 2026)
+
+### ✅ Auditoría (AuditLog)
+- `models/auditoria.py` → tabla `audit_logs`: usuario, accion, entidad, entidad_id, detalle, ip, timestamp
+- `services/auditoria.py` → `registrar_accion()` integrado en todos los routers existentes
+- `routers/auditoria.py` → GET `/auditoria/acciones` con filtros: usuario, accion, entidad, fechas
+- `pages/admin/Auditoria.jsx` → tabla paginada con filtros; solo SUPER_ADMIN
+- Migración Alembic: `1722d0e1feba_add_audit_logs.py`
+
+### ✅ Adeudos / Responsabilidades
+- `models/adeudo.py` → modelo unificado: persona_tipo (ALUMNO/DOCENTE/PERSONAL/EXTERNO), nombre, matricula/num_empleado, concepto (PRESTAMO/INCIDENTE/OTRO), monto, estado (PENDIENTE/PAGADO/CANCELADO), fecha_limite
+- `routers/adeudos.py` → CRUD + búsqueda por nombre/matrícula
+- Auto-adeudo: cuando un préstamo vence, se crea adeudo automáticamente en `routers/inventario.py`
+- `pages/admin/Adeudos.jsx` → tabla con filtros de estado y persona
+- `pages/admin/ConsultaPersona.jsx` → vista unificada de responsabilidades de una persona (préstamos + adeudos + incidentes)
+- Migraciones: `a3f9c2e81b45` y `b7d4e1f92c38_adeudos_unified_persona`
+
+### ✅ Recepción de Sesión (cierre con revisión)
+- `models/sesion.py` → campos nuevos: `recepcion_confirmada` (bool), `momento_recepcion` (datetime)
+- Endpoint `POST /sesiones/{id}/confirmar-recepcion` → revisa PCs, genera adeudos si hay daños, cierra sesión
+- `SesionActiva.jsx` → fase final de revisión: lista PCs asignadas, botón "Confirmar recepción sin daños" o "Reportar incidente al cerrar"
+- Estado incidente `CERRADO_SIN_ADEUDO` cuando todo OK en recepción
+- Migración: `c9e2f3a84d51_recepcion_sesion.py` (esta es la migración HEAD actual)
+
+### ✅ Dashboard Accionable (alertas en tiempo real)
+- `GET /reportes/dashboard` ahora incluye bloque `"alertas"`:
+  - incidentes_pendientes (sin asignar)
+  - prestamos_vencidos (con detalle de activo y receptor)
+  - adeudos_criticos (>7 días sin resolver)
+  - total de alertas sumado
+- `DashboardAdmin.jsx` → componente `PanelAlertas` que aparece entre header y stats cuando `alertas.total > 0`
+  - 3 columnas: Incidentes / Préstamos / Adeudos
+  - Botón de acción directo en cada alerta (navega al módulo correspondiente)
+  - Solo visible cuando hay alertas activas
+
+### ✅ Reportes Comparativos (Análisis de Tendencia)
+- `GET /reportes/comparativo?laboratorio_id=X` → compara cuatrimestre actual vs anterior:
+  - tendencia día a día (actual vs anterior)
+  - horas_pico: matriz días×horas (0-6 × 7-21) con conteo de sesiones
+  - top_docentes: ranking por horas de uso
+  - computadoras_criticas: PCs con más incidentes recurrentes (usa `pc.codigo`, NO `pc.nombre`)
+  - resumen: sesiones, alumnos, horas totales de ambos períodos
+- Helpers: `_cuatrimestre_actual()`, `_cuatrimestre_anterior()`, `_rango_cuatrimestre()`, `_nombre_cuatrimestre()`
+- Sistema cuatrimestral UTECAN: ENE-ABR (1), MAY-AGO (2), SEP-DIC (3)
+- `pages/admin/Reportes.jsx` → 2 tabs:
+  - **Tab "Mensual"**: reportes mensuales originales
+  - **Tab "Análisis"**: comparativo con SVG de tendencia, heatmap CSS Grid de horas pico, ranking docentes, tabla PCs críticas, KPIs comparativos
+
+### ✅ Fixes y mejoras de UX (sesiones recientes)
+- `NotificacionesBell.jsx`: z-index 2147483647 + `transform: translateZ(0)` + `willChange: transform` → fix panel detrás de botones (bug Chrome compositing layer con backdrop-filter)
+- `AdminLayout.jsx`: Dashboard como primer ítem de navegación con `end={true}` en NavLink (fix NavLink activo en todas las rutas)
+- Importación de alumnos: upsert busca por matrícula sola (fix duplicados)
+- `GET /catalogo/periodo-actual` → detecta período académico vigente automáticamente
+- `SesionActiva.jsx`: muestra "🖥️ Sesión Libre" cuando `tipo_sesion === 'LIBRE'`
+
+---
+
+## Infraestructura actual
+
+- **Servidor**: PC de escritorio en laboratorio UTECAN (Windows 11)
+- **Internet**: Starlink con IP dinámica + CGNAT
+- **Acceso externo**: Cloudflare Tunnel (gratis, sin abrir puertos)
+- **Docker**: `docker-compose.yml` → backend:8000 + frontend:3000 + postgres:5432
+- **BD**: PostgreSQL (Docker) con Alembic. HEAD actual: `c9e2f3a84d51`
+- **Inicio rápido**: `INICIAR_LABCONTROL.bat` (usa `%~dp0` — seguro para mover carpeta)
+- **Migración futura**: VPS Hostinger ~$5/mes — mismo `docker-compose.yml`, solo `.env`
+
+---
+
+## Patrones de código clave
+
+### Backend — endpoint protegido
+```python
+@router.get("/recurso")
+def listar(db: Session = Depends(get_db), current: Usuario = Depends(require_roles(["SUPER_ADMIN", "LAB_ADMIN"]))):
+    ...
+```
+
+### Backend — registrar auditoría
+```python
+from services.auditoria import registrar_accion
+registrar_accion(db, usuario_id=current.id, accion="CREAR", entidad="Activo", entidad_id=nuevo.id, detalle="...", ip=request.client.host)
+```
+
+### Frontend — SelectDark
+```jsx
+import SelectDark from '../../components/SelectDark';
+<SelectDark value={form.campo} onChange={v => handleChange({ target: { name: 'campo', value: v } })} options={opciones} />
+```
+
+### Frontend — ModalConfirmar
+```jsx
+{confirmModal && (
+  <ModalConfirmar mensaje="¿Eliminar?" detalle="No se puede deshacer."
+    labelAceptar="Eliminar"
+    onAceptar={() => { eliminar(); setConfirmModal(false); }}
+    onCancelar={() => setConfirmModal(false)} />
+)}
+```
+
+### Frontend — useApi (Axios + JWT)
+```jsx
+import useApi from '../../hooks/useApi';
+const api = useApi();
+const data = await api.get('/laboratorios');
+await api.post('/laboratorios', payload);
+```
+
+---
+
 ## Lo que falta para v2.0 (ideas pendientes)
 
+- [ ] **Control de Tutorías** — módulo nuevo (próxima sesión): formatos Word semanales, canalización, reporte general
 - [ ] Portal del Alumno — ver asignación de PC activa
 - [ ] Notificaciones push vía n8n + Telegram Bot
 - [ ] Reporte exportable a PDF/Excel
@@ -307,5 +418,4 @@ await api.post('/laboratorios', payload);
 - [ ] Dashboard docente con historial personal
 - [ ] Calendario global de todos los labs (vista institución)
 - [ ] Modo oscuro/claro toggle (actualmente siempre dark)
-- [ ] PostgreSQL en producción (cambio de DATABASE_URL)
 - [ ] CI/CD con GitHub Actions

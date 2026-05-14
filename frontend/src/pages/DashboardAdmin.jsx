@@ -109,9 +109,13 @@ function TarjetaSesion({ sesion, onIr }) {
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <span className={`w-2 h-2 rounded-full shrink-0 ${overtime ? 'bg-red-500 animate-pulse' : 'bg-green-400 animate-pulse'}`}/>
-            <p className="text-sm font-semibold text-white truncate">{sesion.materia}</p>
+            <p className="text-sm font-semibold text-white truncate">
+              {sesion.tipo_sesion === 'LIBRE' ? '🖥️ Sesión Libre' : sesion.materia}
+            </p>
           </div>
-          <p className="text-xs text-slate-400">{sesion.grupo} · {sesion.laboratorio_nombre}</p>
+          <p className="text-xs text-slate-400">
+            {sesion.tipo_sesion === 'LIBRE' ? sesion.laboratorio_nombre : `${sesion.grupo} · ${sesion.laboratorio_nombre}`}
+          </p>
           {sesion.docente_nombre && sesion.docente_nombre !== 'Sistema' && (
             <p className="text-xs text-slate-500 mt-0.5 truncate">{sesion.docente_nombre}</p>
           )}
@@ -243,6 +247,136 @@ function WidgetEquipos({ pcs, navigate }) {
   );
 }
 
+// ─── Panel de alertas accionables ────────────────────────────────────────────
+function FilaAlerta({ icono, texto, sub, urgente, onClick, boton }) {
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 border-b border-white/5 last:border-0
+      ${urgente ? 'bg-red-950/30' : 'hover:bg-white/3'} transition-colors`}>
+      <span className="text-base shrink-0">{icono}</span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-medium truncate ${urgente ? 'text-red-300' : 'text-slate-200'}`}>{texto}</p>
+        {sub && <p className="text-xs text-slate-500 truncate">{sub}</p>}
+      </div>
+      {boton && (
+        <button onClick={onClick}
+          className={`shrink-0 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors
+            ${urgente
+              ? 'bg-red-800/60 hover:bg-red-700/60 text-red-200'
+              : 'bg-white/8 hover:bg-white/12 text-slate-300'}`}>
+          {boton}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SeccionAlerta({ titulo, count, color, icono, children, onVerTodos }) {
+  if (count === 0) return null;
+  return (
+    <div className="flex-1 min-w-0">
+      <div className={`flex items-center justify-between px-4 py-2 border-b ${color.border}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-sm">{icono}</span>
+          <span className={`text-xs font-semibold ${color.text}`}>{titulo}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${color.badge}`}>{count}</span>
+        </div>
+        <button onClick={onVerTodos} className={`text-xs ${color.link} hover:underline`}>Ver todos →</button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function PanelAlertas({ alertas, navigate }) {
+  if (!alertas || alertas.total === 0) return null;
+
+  const { incidentes_pendientes, incidentes_total,
+          prestamos_vencidos,    prestamos_total,
+          adeudos_criticos,      adeudos_total } = alertas;
+
+  return (
+    <div className="rounded-xl border border-red-800/50 bg-red-950/20 overflow-hidden">
+      {/* Cabecera */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-red-800/40 bg-red-900/20">
+        <span className="w-7 h-7 rounded-lg bg-red-700/60 flex items-center justify-center text-sm shrink-0">🚨</span>
+        <div className="flex-1">
+          <p className="text-sm font-bold text-red-300">Requiere tu atención ahora</p>
+          <p className="text-xs text-red-400/70">{alertas.total} elemento{alertas.total !== 1 ? 's' : ''} pendiente{alertas.total !== 1 ? 's' : ''}</p>
+        </div>
+        <span className="text-xs text-red-400/60">Actualiza cada 30s</span>
+      </div>
+
+      {/* Columnas de alerta */}
+      <div className="divide-y divide-white/5 md:divide-y-0 md:divide-x md:flex">
+
+        {/* Incidentes */}
+        <SeccionAlerta
+          titulo="Incidentes sin atender"
+          count={incidentes_total}
+          icono="🛠️"
+          color={{ border:'border-orange-900/40', text:'text-orange-300', badge:'bg-orange-900/60 text-orange-200', link:'text-orange-400' }}
+          onVerTodos={() => navigate('/admin/mantenimiento')}>
+          {incidentes_pendientes.map(inc => (
+            <FilaAlerta key={inc.id}
+              icono={inc.prioridad === 'ALTA' ? '🔴' : inc.prioridad === 'BAJA' ? '🟡' : '🟠'}
+              texto={inc.descripcion}
+              sub={`Hace ${inc.dias} día${inc.dias !== 1 ? 's' : ''} · ${inc.tipo}`}
+              urgente={inc.dias >= 3}
+              boton="Atender"
+              onClick={() => navigate('/admin/mantenimiento')}/>
+          ))}
+          {incidentes_total > 5 && (
+            <p className="text-xs text-slate-500 px-4 py-2">+{incidentes_total - 5} más</p>
+          )}
+        </SeccionAlerta>
+
+        {/* Préstamos vencidos */}
+        <SeccionAlerta
+          titulo="Préstamos vencidos"
+          count={prestamos_total}
+          icono="📤"
+          color={{ border:'border-yellow-900/40', text:'text-yellow-300', badge:'bg-yellow-900/60 text-yellow-200', link:'text-yellow-400' }}
+          onVerTodos={() => navigate('/admin/prestamos')}>
+          {prestamos_vencidos.map(p => (
+            <FilaAlerta key={p.id}
+              icono="⏰"
+              texto={p.persona}
+              sub={`${p.activo} · ${p.dias_vencido} día${p.dias_vencido !== 1 ? 's' : ''} vencido`}
+              urgente={p.dias_vencido >= 3}
+              boton="Gestionar"
+              onClick={() => navigate('/admin/prestamos')}/>
+          ))}
+          {prestamos_total > 5 && (
+            <p className="text-xs text-slate-500 px-4 py-2">+{prestamos_total - 5} más</p>
+          )}
+        </SeccionAlerta>
+
+        {/* Adeudos críticos */}
+        <SeccionAlerta
+          titulo={`Adeudos +7 días`}
+          count={adeudos_total}
+          icono="⚠️"
+          color={{ border:'border-red-900/40', text:'text-red-300', badge:'bg-red-900/60 text-red-200', link:'text-red-400' }}
+          onVerTodos={() => navigate('/admin/adeudos')}>
+          {adeudos_criticos.map(a => (
+            <FilaAlerta key={a.id}
+              icono="💸"
+              texto={a.persona}
+              sub={`${a.tipo.toLowerCase().replace('_',' ')} · ${a.dias} días sin resolver`}
+              urgente={a.dias >= 14}
+              boton="Resolver"
+              onClick={() => navigate('/admin/adeudos')}/>
+          ))}
+          {adeudos_total > 5 && (
+            <p className="text-xs text-slate-500 px-4 py-2">+{adeudos_total - 5} más</p>
+          )}
+        </SeccionAlerta>
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Acciones rápidas ─────────────────────────────────────────────────────────
 function AccionesRapidas({ navigate }) {
   return (
@@ -335,6 +469,11 @@ export default function DashboardAdmin() {
             </div>
           )}
         </div>
+
+        {/* Panel de alertas accionables */}
+        {stats?.alertas?.total > 0 && (
+          <PanelAlertas alertas={stats.alertas} navigate={navigate}/>
+        )}
 
         {/* Stats */}
         {stats && (

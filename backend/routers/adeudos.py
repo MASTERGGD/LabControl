@@ -181,7 +181,7 @@ def crear_adeudo(
 
 @router.get("", summary="Listar adeudos")
 def listar_adeudos(
-    identificador: Optional[str] = Query(None, description="Matrícula, RFC u otro identificador"),
+    identificador: Optional[str] = Query(None, description="Nombre o matrícula (búsqueda combinada)"),
     persona_tipo:  Optional[str] = Query(None),
     estado:        Optional[str] = Query(None),
     cuatrimestre:  Optional[str] = Query(None),
@@ -197,7 +197,11 @@ def listar_adeudos(
         q = q.filter(Adeudo.laboratorio_id == lab_id)
 
     if identificador:
-        q = q.filter(Adeudo.persona_identificador.ilike(f"%{identificador}%"))
+        term = f"%{identificador}%"
+        q = q.filter(
+            Adeudo.persona_identificador.ilike(term) |
+            Adeudo.persona_nombre.ilike(term)
+        )
     if persona_tipo:
         q = q.filter(Adeudo.persona_tipo == persona_tipo)
     if estado:
@@ -443,6 +447,6 @@ def eliminar_adeudo(
 ):
     a = db.query(Adeudo).filter(Adeudo.id == adeudo_id).first()
     if not a:
-        raise HTTPException(404, "Adeudo no encontrado")
+        raise HTTPException(status_code=404, detail="Adeudo no encontrado")
     db.delete(a)
     db.commit()

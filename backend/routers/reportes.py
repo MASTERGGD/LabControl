@@ -9,6 +9,7 @@ from models.laboratorio import Laboratorio, Computadora
 from models.sesion import SesionClase, AsignacionPC
 from models.inventario import Activo, Prestamo, Incidente
 from models.usuario import Usuario, RolUsuario
+from models.adeudo import Adeudo
 from dependencies import get_current_user
 from rls import assert_report_access
 
@@ -763,6 +764,72 @@ def dashboard_stats(
             "grupo":     r.grupo,
         })
 
+    # ── Alertas accionables ───────────────────────────────────────────────────
+    # 1. Incidentes sin atender (PENDIENTE)
+    q_inc_pend = db.query(Incidente).filter(Incidente.estado == "PENDIENTE")
+    if lab_filter_id:
+        q_inc_pend = q_inc_pend.filter(Incidente.laboratorio_id == lab_filter_id)
+    inc_pend_total = q_inc_pend.count()
+    inc_pend_list  = q_inc_pend.order_by(Incidente.fecha_reporte).limit(5).all()
+
+    alerta_incidentes = [
+        {
+            "id":          i.id,
+            "tipo":        i.tipo,
+            "descripcion": (i.descripcion or "Sin descripción")[:80],
+            "dias":        (ahora - i.fecha_reporte).days if i.fecha_reporte else 0,
+            "prioridad":   getattr(i, "prioridad", "MEDIA"),
+        }
+        for i in inc_pend_list
+    ]
+
+    # 2. Préstamos vencidos (detalle)
+    if activo_ids:
+        prest_venc_rows = (
+            db.query(Prestamo, Activo)
+            .join(Activo, Prestamo.activo_id == Activo.id)
+            .filter(Prestamo.estado == "VENCIDO", Prestamo.activo_id.in_(activo_ids))
+            .order_by(Prestamo.fecha_retorno_esperada)
+            .limit(5)
+            .all()
+        )
+    else:
+        prest_venc_rows = []
+
+    alerta_prestamos = [
+        {
+            "id":          p.id,
+            "persona":     p.solicitante_nombre,
+            "id_escolar":  p.solicitante_id_escolar,
+            "activo":      a.nombre,
+            "dias_vencido": max(0, (ahora - p.fecha_retorno_esperada).days) if p.fecha_retorno_esperada else 0,
+        }
+        for p, a in prest_venc_rows
+    ]
+
+    # 3. Adeudos pendientes más de 7 días
+    umbral_adeudo = ahora - datetime.timedelta(days=7)
+    q_adeudos_crit = db.query(Adeudo).filter(
+        Adeudo.estado == "PENDIENTE",
+        Adeudo.fecha_reporte < umbral_adeudo,
+    )
+    if lab_filter_id:
+        q_adeudos_crit = q_adeudos_crit.filter(Adeudo.laboratorio_id == lab_filter_id)
+    adeudos_crit_total = q_adeudos_crit.count()
+    adeudos_crit_list  = q_adeudos_crit.order_by(Adeudo.fecha_reporte).limit(5).all()
+
+    alerta_adeudos = [
+        {
+            "id":      d.id,
+            "persona": d.persona_nombre,
+            "tipo":    d.tipo,
+            "dias":    (ahora - d.fecha_reporte).days if d.fecha_reporte else 0,
+        }
+        for d in adeudos_crit_list
+    ]
+
+    total_alertas = inc_pend_total + prestamos_vencidos + adeudos_crit_total
+
     # ── Labs disponibles (para selector del dashboard) ────────────────────────
     labs = db.query(Laboratorio).filter(Laboratorio.activo == True).all()
 
@@ -782,5 +849,222 @@ def dashboard_stats(
         "incidentes_abiertos":  incidentes_abiertos,
         "sesiones_7d":          sesiones_7d,
         "proximas_reservaciones": proximas_data,
+        "labs": [{"id": l.id, "nombre": l.nombre} for l in labs],
+        "alertas": {
+            "total":                total_alertas,
+            "incidentes_pendientes": alerta_incidentes,
+            "incidentes_total":      inc_pend_total,
+            "prestamos_vencidos":    alerta_prestamos,
+            "prestamos_total":       prestamos_vencidos,
+            "adeudos_criticos":      alerta_adeudos,
+            "adeudos_total":         adeudos_crit_total,
+        },
+    }
+
+
+# ─── Helpers cuatrimestre ─────────────────────────────────────────────────────
+
+def _cuatrimestre_actual(ahora: datetime.datetime):
+    """Devuelve (num, anio) del cuatrimestre en curso."""
+    m = ahora.month
+    if m <= 4:   return 1, ahora.year
+    elif m <= 8: return 2, ahora.year
+    else:        return 3, ahora.year
+
+def _cuatrimestre_anterior(num: int, anio: int):
+    if num == 1: return 3, anio - 1
+    elif num == 2: return 1, anio
+    else:          return 2, anio
+
+def _rango_cuatrimestre(num: int, anio: int):
+    rangos = {
+        1: (datetime.datetime(anio, 1, 1), datetime.datetime(anio, 4, 30, 23, 59, 59)),
+        2: (datetime.datetime(anio, 5, 1), datetime.datetime(anio, 8, 31, 23, 59, 59)),
+        3: (datetime.datetime(anio, 9, 1), datetime.datetime(anio, 12, 31, 23, 59, 59)),
+    }
+    return rangos[num]
+
+def _meses_cuatrimestre(num: int):
+    return {1: [1,2,3,4], 2: [5,6,7,8], 3: [9,10,11,12]}[num]
+
+def _nombre_cuatrimestre(num: int, anio: int):
+    nombres = {1: f"ENE-ABR {anio}", 2: f"MAY-AGO {anio}", 3: f"SEP-DIC {anio}"}
+    return nombres[num]
+
+
+# ─── Endpoint: Análisis comparativo ──────────────────────────────────────────
+
+@router.get("/comparativo", summary="Análisis comparativo cuatrimestral")
+def reporte_comparativo(
+    laboratorio_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    ahora = datetime.datetime.utcnow()
+
+    # RLS
+    lab_filter = laboratorio_id
+    if current_user.rol == RolUsuario.LAB_ADMIN and current_user.laboratorio_id:
+        lab_filter = current_user.laboratorio_id
+
+    # Cuatrimestres
+    num_act, anio_act = _cuatrimestre_actual(ahora)
+    num_ant, anio_ant = _cuatrimestre_anterior(num_act, anio_act)
+    ini_act, fin_act  = _rango_cuatrimestre(num_act, anio_act)
+    ini_ant, fin_ant  = _rango_cuatrimestre(num_ant, anio_ant)
+
+    def _q_ses(ini, fin):
+        q = db.query(SesionClase).filter(
+            SesionClase.inicio >= ini,
+            SesionClase.inicio <= fin,
+        )
+        if lab_filter:
+            q = q.filter(SesionClase.laboratorio_id == lab_filter)
+        return q
+
+    # ── 1. Tendencia: sesiones mes a mes ─────────────────────────────────────
+    def _ses_por_mes(meses_list: list, anio: int):
+        resultado = []
+        for m in meses_list:
+            ini_m, fin_m = _periodo(m, anio)
+            q = db.query(SesionClase).filter(
+                SesionClase.inicio >= ini_m,
+                SesionClase.inicio <= fin_m,
+            )
+            if lab_filter:
+                q = q.filter(SesionClase.laboratorio_id == lab_filter)
+            resultado.append({
+                "mes":    m,
+                "nombre": MESES_ES[m],
+                "count":  q.count(),
+            })
+        return resultado
+
+    tendencia_actual   = _ses_por_mes(_meses_cuatrimestre(num_act), anio_act)
+    tendencia_anterior = _ses_por_mes(_meses_cuatrimestre(num_ant), anio_ant)
+
+    # Totales cuatrimestrales
+    total_act = sum(d["count"] for d in tendencia_actual)
+    total_ant = sum(d["count"] for d in tendencia_anterior)
+
+    # ── 2. Horas pico — cuatrimestre actual ───────────────────────────────────
+    DIAS_ES_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    HORAS_LAB = list(range(7, 22))   # 07:00 – 21:00
+
+    ses_act = _q_ses(ini_act, fin_act).all()
+    horas_pico_raw = collections.defaultdict(int)
+    for s in ses_act:
+        if s.inicio:
+            horas_pico_raw[(s.inicio.weekday(), s.inicio.hour)] += 1
+
+    horas_pico = []
+    for dia in range(7):
+        for hora in HORAS_LAB:
+            horas_pico.append({
+                "dia":   dia,
+                "dia_nombre": DIAS_ES_SHORT[dia],
+                "hora":  hora,
+                "count": horas_pico_raw.get((dia, hora), 0),
+            })
+
+    # ── 3. Top docentes — cuatrimestre actual ─────────────────────────────────
+    doc_count = collections.defaultdict(lambda: {"sesiones": 0, "horas": 0.0, "nombre": ""})
+    for s in ses_act:
+        if s.docente_id:
+            doc_count[s.docente_id]["sesiones"] += 1
+            fin_s = s.fin_real or s.fin_estimado
+            if fin_s and s.inicio:
+                doc_count[s.docente_id]["horas"] += (fin_s - s.inicio).total_seconds() / 3600
+
+    doc_ids = list(doc_count.keys())
+    doc_objs = {u.id: u for u in db.query(Usuario).filter(Usuario.id.in_(doc_ids)).all()}
+    for did, v in doc_count.items():
+        u = doc_objs.get(did)
+        v["nombre"] = u.nombre if u else f"#{did}"
+        v["horas"]  = round(v["horas"], 1)
+
+    top_docentes = sorted(
+        [{"docente_id": k, **v} for k, v in doc_count.items()],
+        key=lambda x: x["sesiones"], reverse=True
+    )[:10]
+
+    # ── 4. Computadoras con más incidentes recurrentes ─────────────────────────
+    # Último año calendario
+    hace_un_anio = ahora - datetime.timedelta(days=365)
+    q_inc = db.query(Incidente).filter(Incidente.fecha_reporte >= hace_un_anio)
+    if lab_filter:
+        q_inc = q_inc.filter(Incidente.laboratorio_id == lab_filter)
+    incidentes_ano = q_inc.all()
+
+    pc_inc_count = collections.defaultdict(lambda: {"total": 0, "pendientes": 0, "nombre": "", "numero": ""})
+    for inc in incidentes_ano:
+        if inc.computadora_id:
+            pc_inc_count[inc.computadora_id]["total"] += 1
+            if inc.estado == "PENDIENTE":
+                pc_inc_count[inc.computadora_id]["pendientes"] += 1
+
+    pc_ids = list(pc_inc_count.keys())
+    pc_objs = {p.id: p for p in db.query(Computadora).filter(Computadora.id.in_(pc_ids)).all()}
+    for pid, v in pc_inc_count.items():
+        pc = pc_objs.get(pid)
+        v["codigo"]  = pc.codigo  if pc else f"PC #{pid}"
+        v["numero"]  = pc.numero  if pc else ""
+        v["estado"]  = pc.estado  if pc else ""
+
+    computadoras_criticas = sorted(
+        [{"computadora_id": k, **v} for k, v in pc_inc_count.items()],
+        key=lambda x: x["total"], reverse=True
+    )[:10]
+    # quitar incidentes sin computadora_id (activos de inventario)
+    computadoras_criticas = [c for c in computadoras_criticas if c["codigo"] != ""]
+
+    # ── 5. Alumnos únicos por cuatrimestre ────────────────────────────────────
+    def _alumnos_unicos(ini, fin):
+        ids = [s.id for s in _q_ses(ini, fin).all()]
+        if not ids:
+            return 0
+        return len({a.alumno_matricula for a in db.query(AsignacionPC).filter(
+            AsignacionPC.sesion_id.in_(ids)
+        ).all()})
+
+    alumnos_act = _alumnos_unicos(ini_act, fin_act)
+    alumnos_ant = _alumnos_unicos(ini_ant, fin_ant)
+
+    # ── 6. Horas totales por cuatrimestre ─────────────────────────────────────
+    def _horas(sesiones_list):
+        h = 0.0
+        for s in sesiones_list:
+            fin_s = s.fin_real or s.fin_estimado
+            if fin_s and s.inicio:
+                h += (fin_s - s.inicio).total_seconds() / 3600
+        return round(h, 1)
+
+    ses_ant_all = _q_ses(ini_ant, fin_ant).all()
+    horas_act = _horas(ses_act)
+    horas_ant = _horas(ses_ant_all)
+
+    # ── Labs disponibles ──────────────────────────────────────────────────────
+    labs = db.query(Laboratorio).filter(Laboratorio.activo == True).all()
+
+    return {
+        "cuatrimestre_actual":   {"num": num_act, "anio": anio_act, "nombre": _nombre_cuatrimestre(num_act, anio_act)},
+        "cuatrimestre_anterior": {"num": num_ant, "anio": anio_ant, "nombre": _nombre_cuatrimestre(num_ant, anio_ant)},
+        "tendencia": {
+            "actual":   tendencia_actual,
+            "anterior": tendencia_anterior,
+            "total_actual":   total_act,
+            "total_anterior": total_ant,
+        },
+        "horas_pico":            horas_pico,
+        "top_docentes":          top_docentes,
+        "computadoras_criticas": computadoras_criticas,
+        "resumen": {
+            "sesiones_actual":  total_act,
+            "sesiones_anterior": total_ant,
+            "alumnos_actual":   alumnos_act,
+            "alumnos_anterior": alumnos_ant,
+            "horas_actual":     horas_act,
+            "horas_anterior":   horas_ant,
+        },
         "labs": [{"id": l.id, "nombre": l.nombre} for l in labs],
     }
