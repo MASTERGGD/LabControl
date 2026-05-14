@@ -134,22 +134,20 @@ export default function SelectDark({
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         `}
         style={{
-          background: open
-            ? 'rgba(15,23,42,0.85)'
-            : 'rgba(15,23,42,0.7)',
+          background: open ? 'var(--input-bg-open)' : 'var(--input-bg)',
           border: open
-            ? '1px solid #3b82f6'
-            : '1px solid #334155',
-          color: selectedOpt ? '#f1f5f9' : '#475569',
-          boxShadow: open ? '0 0 0 3px rgba(59,130,246,.15)' : 'none',
+            ? '1px solid var(--dropdown-accent)'
+            : '1px solid var(--input-border-color)',
+          color: selectedOpt ? 'var(--input-color)' : 'var(--input-placeholder-color)',
+          boxShadow: open ? '0 0 0 3px var(--accent-primary-glow)' : 'none',
           fontFamily: 'inherit',
         }}
       >
         <span className="truncate min-w-0">{triggerLabel}</span>
         {/* Chevron */}
         <svg
-          className="w-4 h-4 shrink-0 text-slate-400 transition-transform duration-200"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          className="w-4 h-4 shrink-0 transition-transform duration-200"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--dropdown-chevron)' }}
           fill="none" stroke="currentColor" viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -168,15 +166,15 @@ export default function SelectDark({
             ${menuClass}
           `}
           style={{
-            background: 'rgba(15,23,42,0.97)',
+            background: 'var(--dropdown-bg)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.10)',
+            border: '1px solid var(--dropdown-border)',
             maxHeight: '14rem',
           }}
         >
           {options.length === 0 ? (
-            <li className="px-4 py-3 text-sm text-slate-500 text-center">Sin opciones</li>
+            <li className="px-4 py-3 text-sm text-center" style={{color:'var(--dropdown-text-empty)'}}>Sin opciones</li>
           ) : (
             options.map((opt, idx) => {
               const isSelected = String(opt.value) === String(value);
@@ -191,26 +189,25 @@ export default function SelectDark({
                   onMouseDown={() => handleSelect(opt)}
                   style={{
                     borderLeft: (isActive || isSelected)
-                      ? '2px solid #3b82f6'
+                      ? '2px solid var(--dropdown-accent)'
                       : '2px solid transparent',
                     background: isActive
-                      ? 'rgba(59,130,246,0.18)'
+                      ? 'var(--dropdown-active-bg)'
                       : isSelected
-                        ? 'rgba(59,130,246,0.10)'
+                        ? 'var(--dropdown-selected-bg)'
                         : 'transparent',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    borderBottom: '1px solid var(--dropdown-row-border)',
+                    color: isActive
+                      ? 'var(--dropdown-text-active)'
+                      : isSelected
+                        ? 'var(--dropdown-text-selected)'
+                        : 'var(--dropdown-text)',
                   }}
-                  className={`
-                    px-4 py-2.5 cursor-pointer select-none transition-colors duration-100
-                    flex items-center justify-between gap-2
-                    text-sm
-                    ${isActive ? 'text-white' : isSelected ? 'text-blue-300' : 'text-slate-300'}
-                  `}
+                  className="px-4 py-2.5 cursor-pointer select-none transition-colors duration-100 flex items-center justify-between gap-2 text-sm"
                 >
                   <span className="truncate">{opt.label}</span>
-                  {/* checkmark para la opción seleccionada */}
                   {isSelected && (
-                    <svg className="w-3.5 h-3.5 shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 shrink-0" style={{color:'var(--dropdown-accent)'}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                   )}

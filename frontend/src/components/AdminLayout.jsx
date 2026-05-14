@@ -331,7 +331,7 @@ function Breadcrumb({ pathname }) {
 
   return (
     <nav className="flex items-center gap-1.5 text-xs text-slate-500 px-6 py-1.5"
-         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(15,23,42,0.5)' }}>
+         style={{ borderBottom: '1px solid var(--breadcrumb-border)', background: 'var(--breadcrumb-bg)' }}>
       <span className="text-slate-600">Sistema</span>
       {crumbs.map((c, i) => (
         <React.Fragment key={i}>
@@ -354,11 +354,11 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
     <>
       {/* Logo */}
       <div className="px-3 py-3 flex items-center gap-3"
-           style={{borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+           style={{borderBottom:'1px solid var(--sidebar-border)'}}>
         <NavLink to="/admin" onClick={() => mobile && setMenuMovil(false)}
                  className="flex items-center gap-3 flex-1 min-w-0 group">
           <div className="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center group-hover:opacity-80 transition-opacity"
-               style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)'}}>
+               style={{background:'var(--logo-bg)'}}>
             <svg className="w-[18px] h-[18px] text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
@@ -366,7 +366,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
           </div>
           <div>
             <p className="text-white font-bold text-sm leading-none">LabControl</p>
-            <p className="text-slate-500 text-[10px] mt-0.5">UTECAN</p>
+            <p className="text-[10px] mt-0.5" style={{color:'var(--sidebar-subtitle)'}}>UTECAN</p>
           </div>
         </NavLink>
         {mobile && (
@@ -417,16 +417,16 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
                   width: 0, height: 0,
                   borderTop: '4px solid transparent',
                   borderBottom: '4px solid transparent',
-                  borderRight: '4px solid rgba(30,41,59,0.97)',
+                  borderRight: '4px solid var(--tooltip-arrow)',
                 }} />
                 <span style={{
                   display: 'block',
-                  background: 'rgba(30,41,59,0.97)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--tooltip-bg)',
+                  border: '1px solid var(--tooltip-border)',
                   borderRadius: '8px', padding: '5px 11px',
                   fontSize: '12px', fontWeight: 500,
-                  color: '#e2e8f0', whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                  color: 'var(--tooltip-text)', whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
                 }}>
                   {item.label}
                 </span>
@@ -449,8 +449,8 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
         </button>
       ) : (
         <button onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="mx-2 mb-4 p-2 text-slate-500 hover:text-white rounded-xl transition-colors flex items-center justify-center"
-          style={{background:'rgba(255,255,255,0.04)'}}>
+          className="mx-2 mb-4 p-2 rounded-xl transition-colors flex items-center justify-center"
+          style={{background:'var(--nav-toggle-bg)', color:'var(--nav-toggle-color)'}}>
           <svg className={`w-4 h-4 transition-transform ${sidebarOpen ? '' : 'rotate-180'}`}
             fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
@@ -478,14 +478,14 @@ export default function AdminLayout({ children }) {
   const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{background:'#0f172a'}}>
+    <div className="h-screen overflow-hidden flex" style={{background:'var(--layout-bg)'}}>
 
       {/* ── Sidebar desktop (md+) ─────────────────────────────────────── */}
       <aside
         className={`hidden md:flex ${sidebarOpen ? 'w-56' : 'w-[60px]'} shrink-0 flex-col transition-all duration-200`}
         style={{
-          background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
+          background: 'linear-gradient(180deg,var(--sidebar-from) 0%,var(--sidebar-to) 100%)',
+          borderRight: '1px solid var(--sidebar-border)',
           overflow: 'visible',
         }}
       >
@@ -503,8 +503,8 @@ export default function AdminLayout({ children }) {
           {/* Panel */}
           <aside className="relative z-10 w-72 flex flex-col h-full"
                  style={{
-                   background: 'linear-gradient(180deg,#0d1b2e 0%,#0a1628 100%)',
-                   borderRight: '1px solid rgba(255,255,255,0.08)',
+                   background: 'linear-gradient(180deg,var(--sidebar-from) 0%,var(--sidebar-to) 100%)',
+                   borderRight: '1px solid var(--sidebar-border)',
                    animation: 'slideInRight .22s ease',
                  }}>
             <SidebarContent mobile={true} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
@@ -523,10 +523,10 @@ export default function AdminLayout({ children }) {
           style={{
             position: 'relative',
             zIndex: 50,
-            background: 'rgba(15,23,42,0.8)',
+            background: 'var(--topbar-bg)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid var(--topbar-border)',
           }}
         >
           {/* Izquierda: hamburguesa móvil */}
@@ -542,7 +542,7 @@ export default function AdminLayout({ children }) {
           {/* Logo centrado en móvil */}
           <NavLink to="/admin" className="md:hidden flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                 style={{background:'linear-gradient(135deg,#3b82f6,#6366f1)'}}>
+                 style={{background:'var(--logo-bg)'}}>
               <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
@@ -577,8 +577,8 @@ export default function AdminLayout({ children }) {
             <NotificacionesBell />
 
             {/* Nombre + rol — solo desktop */}
-            <div className="hidden md:flex items-center gap-2 pl-1 border-l border-white/10 ml-1">
-              <span className="text-sm text-slate-300 font-medium">{usuario?.nombre}</span>
+            <div className="hidden md:flex items-center gap-2 pl-1 ml-1" style={{borderLeft:'1px solid var(--user-sep)'}}>
+              <span className="text-sm font-medium" style={{color:'var(--user-name-color)'}}>{usuario?.nombre}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${ROL_BADGE[usuario?.rol] || 'bg-slate-700 text-slate-300'}`}>
                 {usuario?.rol}
               </span>
@@ -614,7 +614,7 @@ export default function AdminLayout({ children }) {
         <Breadcrumb pathname={location.pathname} />
 
         {/* Contenido */}
-        <main className="flex-1 overflow-auto p-3 md:p-6 text-white">
+        <main className="flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>
           {children}
         </main>
       </div>

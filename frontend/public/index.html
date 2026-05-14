@@ -32,6 +32,7 @@
       /* ── Base ─────────────────────────────────────────────────────────── */
       *, *::before, *::after { box-sizing: border-box; }
       :root {
+        /* ── Paleta base (Modo Noche) ────────────────────────────────────── */
         --bg:           #0f172a;
         --surface:      #1e293b;
         --surface-2:    #0d1b2e;
@@ -44,42 +45,239 @@
         --glass-bg:     rgba(30,41,59,0.6);
         --glass-border: rgba(255,255,255,0.08);
 
-        /* Semantic accent aliases — los componentes deben usar éstas */
+        /* Semantic accent aliases */
         --accent-primary:      #3b82f6;
         --accent-primary-dark: #2563eb;
         --accent-primary-glow: rgba(59,130,246,0.38);
-        --accent-secondary:    #D4C19C;
+        --accent-secondary:    #DDC9A3;
         --accent-success:      #10b981;
         --accent-success-dark: #059669;
         --accent-success-glow: rgba(16,185,129,0.38);
+
+        /* ── Variables de estructura de layout ──────────────────────────── */
+        --layout-bg:         #0f172a;
+        --sidebar-from:      #0d1b2e;
+        --sidebar-to:        #0a1628;
+        --sidebar-border:    rgba(255,255,255,0.06);
+        --topbar-bg:         rgba(15,23,42,0.8);
+        --topbar-border:     rgba(255,255,255,0.06);
+        --breadcrumb-bg:     rgba(15,23,42,0.5);
+        --breadcrumb-border: rgba(255,255,255,0.04);
+        --logo-bg:           linear-gradient(135deg,#3b82f6,#6366f1);
+
+        /* ── Variables de navegación ─────────────────────────────────────── */
+        --nav-text:              #94a3b8;
+        --nav-hover-bg:          rgba(255,255,255,0.05);
+        --nav-toggle-bg:         rgba(255,255,255,0.04);
+        --nav-toggle-color:      #64748b;
+        --user-name-color:       #cbd5e1;
+        --user-sep:              rgba(255,255,255,0.1);
+        --topbar-icon-color:     #94a3b8;
+        --topbar-hover-bg:       rgba(255,255,255,0.05);
+        --main-text:             #f1f5f9;
+        --sidebar-subtitle:      #475569;
+
+        /* ── Tooltip ────────────────────────────────────────────────────── */
+        --tooltip-bg:     rgba(30,41,59,0.97);
+        --tooltip-border: rgba(255,255,255,0.1);
+        --tooltip-text:   #e2e8f0;
+        --tooltip-arrow:  rgba(30,41,59,0.97);
+
+        /* ── Inputs ──────────────────────────────────────────────────────── */
+        --input-bg:               rgba(15,23,42,0.7);
+        --input-bg-open:          rgba(15,23,42,0.85);
+        --input-border-color:     #334155;
+        --input-color:            #f1f5f9;
+        --input-placeholder-color:#475569;
+
+        /* ── Dropdowns / Select ──────────────────────────────────────────── */
+        --dropdown-bg:            rgba(15,23,42,0.97);
+        --dropdown-border:        rgba(255,255,255,0.10);
+        --dropdown-row-border:    rgba(255,255,255,0.04);
+        --dropdown-accent:        #3b82f6;
+        --dropdown-active-bg:     rgba(59,130,246,0.18);
+        --dropdown-selected-bg:   rgba(59,130,246,0.10);
+        --dropdown-text:          #cbd5e1;
+        --dropdown-text-active:   #ffffff;
+        --dropdown-text-selected: #93c5fd;
+        --dropdown-text-empty:    #64748b;
+        --dropdown-chevron:       #64748b;
       }
 
-      /* ══════════════════════════════════════════════════════════
-         Tema GobMX-Dark — clase aplicada al <body>
-         Sigue Dark Glassmorphism, reemplaza paleta por colores
-         institucionales del Gobierno de México.
-      ══════════════════════════════════════════════════════════ */
+      /* ══════════════════════════════════════════════════════════════════════
+         Tema GobMX-Día — paleta Pantone oficial Gobierno de México
+         Modo claro con sidebar guinda institucional.
+         Clase .theme-gobmx aplicada al <body>
+      ══════════════════════════════════════════════════════════════════════ */
       body.theme-gobmx {
-        /* ── Pantone oficiales Gobierno de México ── */
-        --blue:                #9F2241;   /* Pantone 7420C — Guinda */
-        --emerald:             #DDC9A3;   /* Pantone 468C  — Dorado */
+        /* ── Pantone oficiales ───────────────────────────────────────────── */
+        --blue:    #9F2241;   /* Pantone 7420C — Guinda */
+        --emerald: #235B4E;   /* Pantone 626C  — Verde  */
 
-        --accent-primary:      #9F2241;   /* Pantone 7420C */
+        --accent-primary:      #9F2241;
         --accent-primary-dark: #7a1932;
-        --accent-primary-glow: rgba(221,201,163,0.28);  /* glow dorado */
-        --accent-secondary:    #DDC9A3;   /* Pantone 468C  */
-        --accent-success:      #235B4E;   /* Pantone 626C  — Verde */
+        --accent-primary-glow: rgba(159,34,65,0.22);
+        --accent-secondary:    #DDC9A3;   /* Pantone 468C — Dorado */
+        --accent-success:      #235B4E;   /* Pantone 626C — Verde  */
         --accent-success-dark: #1a4439;
-        --accent-success-glow: rgba(35,91,78,0.45);
+        --accent-success-glow: rgba(35,91,78,0.28);
 
-        --text-muted:   #98989A;          /* Pantone CG7   — Gris */
-        --border:       #5a2035;
-        --glass-bg:     rgba(159,34,65,0.06);   /* tinte guinda sutil */
-        --glass-border: rgba(221,201,163,0.10); /* borde dorado transparente */
+        /* ── Colores base (modo claro) ────────────────────────────────────── */
+        --bg:           #F5F0E8;
+        --surface:      #ffffff;
+        --surface-2:    #F0EAE0;
+        --border:       #DDD5C4;
+        --border-light: rgba(221,201,163,0.25);
+        --text:         #1C1917;
+        --text-muted:   #98989A;   /* Pantone CG7 — Gris */
+        --glass-bg:     rgba(255,255,255,0.88);
+        --glass-border: rgba(159,34,65,0.1);
+
+        /* ── Layout estructura ───────────────────────────────────────────── */
+        --layout-bg:         #F5F0E8;
+        --sidebar-from:      #9F2241;
+        --sidebar-to:        #7a1932;
+        --sidebar-border:    rgba(159,34,65,0.25);
+        --topbar-bg:         rgba(255,255,255,0.97);
+        --topbar-border:     rgba(221,201,163,0.35);
+        --breadcrumb-bg:     #F0EAE0;
+        --breadcrumb-border: rgba(221,201,163,0.3);
+        --logo-bg:           linear-gradient(135deg,#9F2241,#c94067);
+
+        /* ── Navegación ─────────────────────────────────────────────────── */
+        --nav-text:              rgba(255,255,255,0.72);
+        --nav-hover-bg:          rgba(255,255,255,0.12);
+        --nav-toggle-bg:         rgba(255,255,255,0.15);
+        --nav-toggle-color:      rgba(255,255,255,0.75);
+        --user-name-color:       #1C1917;
+        --user-sep:              rgba(221,201,163,0.4);
+        --topbar-icon-color:     #6b7280;
+        --topbar-hover-bg:       rgba(159,34,65,0.06);
+        --main-text:             #1C1917;
+        --sidebar-subtitle:      rgba(255,255,255,0.45);
+
+        /* ── Tooltip ────────────────────────────────────────────────────── */
+        --tooltip-bg:     #ffffff;
+        --tooltip-border: rgba(159,34,65,0.18);
+        --tooltip-text:   #1C1917;
+        --tooltip-arrow:  #ffffff;
+
+        /* ── Inputs ──────────────────────────────────────────────────────── */
+        --input-bg:               #ffffff;
+        --input-bg-open:          #ffffff;
+        --input-border-color:     #DDD5C4;
+        --input-color:            #1C1917;
+        --input-placeholder-color:#98989A;
+
+        /* ── Dropdowns / Select ──────────────────────────────────────────── */
+        --dropdown-bg:            #ffffff;
+        --dropdown-border:        rgba(159,34,65,0.15);
+        --dropdown-row-border:    rgba(221,201,163,0.2);
+        --dropdown-accent:        #9F2241;
+        --dropdown-active-bg:     rgba(159,34,65,0.08);
+        --dropdown-selected-bg:   rgba(159,34,65,0.05);
+        --dropdown-text:          #374151;
+        --dropdown-text-active:   #9F2241;
+        --dropdown-text-selected: #9F2241;
+        --dropdown-text-empty:    #98989A;
+        --dropdown-chevron:       #9F2241;
       }
 
       html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
       body { margin: 0; background: var(--bg); color: var(--text); }
+
+      /* ══════════════════════════════════════════════════════════════════════
+         GobMX-Día: overrides de clases estructurales
+      ══════════════════════════════════════════════════════════════════════ */
+
+      /* Glass cards → fondo blanco/crema */
+      body.theme-gobmx .glass {
+        background: rgba(255,255,255,0.90) !important;
+        border-color: rgba(159,34,65,0.1) !important;
+      }
+      body.theme-gobmx .glass-sm {
+        background: rgba(255,255,255,0.82) !important;
+        border-color: rgba(159,34,65,0.1) !important;
+      }
+      body.theme-gobmx .glass-dark {
+        background: rgba(240,234,224,0.94) !important;
+        border-color: rgba(159,34,65,0.1) !important;
+      }
+
+      /* Inputs */
+      body.theme-gobmx .input-dark {
+        background: var(--input-bg) !important;
+        border-color: var(--input-border-color) !important;
+        color: var(--input-color) !important;
+      }
+      body.theme-gobmx .input-dark::placeholder {
+        color: var(--input-placeholder-color) !important;
+      }
+      body.theme-gobmx .input-dark:focus {
+        border-color: var(--accent-primary) !important;
+        box-shadow: 0 0 0 3px var(--accent-primary-glow) !important;
+      }
+
+      /* Nav items — texto blanco sobre sidebar guinda */
+      body.theme-gobmx .nav-item {
+        color: rgba(255,255,255,0.72) !important;
+        border-left-color: transparent !important;
+      }
+      body.theme-gobmx .nav-item:hover {
+        background: rgba(255,255,255,0.13) !important;
+        color: #ffffff !important;
+      }
+      body.theme-gobmx .nav-active {
+        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
+        border-left-color: #DDC9A3 !important;
+        color: #ffffff !important;
+      }
+
+      /* Topbar — texto oscuro sobre fondo blanco */
+      body.theme-gobmx header button,
+      body.theme-gobmx header a { color: var(--topbar-icon-color); }
+      body.theme-gobmx header button:hover,
+      body.theme-gobmx header a:hover { color: var(--main-text) !important; }
+      body.theme-gobmx header .text-slate-300,
+      body.theme-gobmx header .text-slate-400 { color: var(--topbar-icon-color) !important; }
+      body.theme-gobmx header .border-white\/10 { border-color: var(--user-sep) !important; }
+
+      /* Sidebar — textos sobre fondo guinda */
+      body.theme-gobmx aside .text-slate-400,
+      body.theme-gobmx aside .text-slate-500 { color: rgba(255,255,255,0.55) !important; }
+      body.theme-gobmx aside .text-white { color: #ffffff !important; }
+
+      /* Main content — texto oscuro */
+      body.theme-gobmx main { color: var(--main-text); }
+      body.theme-gobmx main .text-white { color: var(--main-text) !important; }
+      body.theme-gobmx main .text-slate-300 { color: #374151 !important; }
+      body.theme-gobmx main .text-slate-400 { color: #6b7280 !important; }
+      body.theme-gobmx main .text-slate-500 { color: #9ca3af !important; }
+
+      /* Tables */
+      body.theme-gobmx table thead th,
+      body.theme-gobmx table thead td { color: #6b7280 !important; }
+      body.theme-gobmx table tbody tr { border-color: rgba(221,201,163,0.2) !important; }
+      body.theme-gobmx table tbody td { color: #1C1917; }
+
+      /* Modales */
+      body.theme-gobmx .fixed.inset-0 .glass,
+      body.theme-gobmx .fixed.inset-0 .glass-sm { box-shadow: 0 20px 60px rgba(159,34,65,0.12); }
+
+      /* Breadcrumb */
+      body.theme-gobmx nav .text-slate-500,
+      body.theme-gobmx nav .text-slate-600 { color: #9ca3af !important; }
+      body.theme-gobmx nav .text-slate-300 { color: #374151 !important; }
+      body.theme-gobmx nav .text-slate-400 { color: var(--accent-primary) !important; }
+
+      /* Scrollbar claro */
+      body.theme-gobmx ::-webkit-scrollbar-thumb { background: #c8b5a0; }
+      body.theme-gobmx ::-webkit-scrollbar-thumb:hover { background: #a89070; }
+
+      /* nav-active override específico para gobmx */
+      body.theme-gobmx .nav-active {
+        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
+      }
 
       /* ── Glassmorphism card ───────────────────────────────────────────── */
       .glass {
@@ -215,8 +413,10 @@
       body:not(.theme-gobmx) .nav-active {
         background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.08) 100%);
       }
+      /* GobMX nav-active: borde dorado + fondo blanco translúcido sobre guinda */
       body.theme-gobmx .nav-active {
-        background: linear-gradient(90deg, rgba(159,34,65,.32) 0%, rgba(159,34,65,.10) 100%);
+        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
+        border-left-color: #DDC9A3 !important;
       }
       .nav-item {
         border-left: 2px solid transparent;

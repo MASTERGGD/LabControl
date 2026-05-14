@@ -3,15 +3,17 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const THEMES = {
   default: {
     key: 'default',
-    label: 'LabControl',
+    label: 'Noche',
     dot: '#3b82f6',
     dotSecondary: '#10b981',
+    isLight: false,
   },
   gobmx: {
     key: 'gobmx',
-    label: 'GobMX',
+    label: 'GobMX Día',
     dot: '#9F2241',          // Pantone 7420C — Guinda
     dotSecondary: '#DDC9A3', // Pantone 468C  — Dorado
+    isLight: true,
   },
 };
 
