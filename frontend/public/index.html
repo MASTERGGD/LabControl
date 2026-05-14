@@ -43,6 +43,37 @@
         --text-muted:   #94a3b8;
         --glass-bg:     rgba(30,41,59,0.6);
         --glass-border: rgba(255,255,255,0.08);
+
+        /* Semantic accent aliases — los componentes deben usar éstas */
+        --accent-primary:      #3b82f6;
+        --accent-primary-dark: #2563eb;
+        --accent-primary-glow: rgba(59,130,246,0.38);
+        --accent-secondary:    #D4C19C;
+        --accent-success:      #10b981;
+        --accent-success-dark: #059669;
+        --accent-success-glow: rgba(16,185,129,0.38);
+      }
+
+      /* ══════════════════════════════════════════════════════════
+         Tema GobMX-Dark — clase aplicada al <body>
+         Sigue Dark Glassmorphism, reemplaza paleta por colores
+         institucionales del Gobierno de México.
+      ══════════════════════════════════════════════════════════ */
+      body.theme-gobmx {
+        --blue:                #621132;   /* Guinda institucional */
+        --emerald:             #D4C19C;   /* Dorado — reemplaza esmeralda */
+
+        --accent-primary:      #621132;
+        --accent-primary-dark: #4a0d25;
+        --accent-primary-glow: rgba(212,193,156,0.32);  /* glow dorado */
+        --accent-secondary:    #D4C19C;
+        --accent-success:      #10312B;   /* Verde oscuro institucional */
+        --accent-success-dark: #0a2420;
+        --accent-success-glow: rgba(16,49,43,0.5);
+
+        --glass-bg:     rgba(98,17,50,0.07);   /* tinte guinda sutil */
+        --glass-border: rgba(212,193,156,0.10); /* borde dorado transparente */
+        --border:       #4a1528;
       }
 
       html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
@@ -90,8 +121,8 @@
         transition: border-color .15s, box-shadow .15s;
       }
       .input-dark:focus {
-        border-color: var(--blue);
-        box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px var(--accent-primary-glow);
       }
       .input-dark::placeholder { color: #475569; }
 
@@ -99,7 +130,7 @@
 
       /* ── Botones primarios ──────────────────────────────────────────── */
       .btn-blue {
-        background: var(--blue);
+        background: var(--accent-primary);
         color: #fff;
         border: none;
         border-radius: 0.75rem;
@@ -109,12 +140,12 @@
         cursor: pointer;
         transition: background .15s, box-shadow .15s, transform .1s;
       }
-      .btn-blue:hover  { background: #2563eb; box-shadow: 0 0 18px rgba(59,130,246,.4); }
+      .btn-blue:hover  { background: var(--accent-primary-dark); box-shadow: 0 0 18px var(--accent-primary-glow); }
       .btn-blue:active { transform: scale(.97); }
       .btn-blue:disabled { opacity: .5; cursor: not-allowed; }
 
       .btn-emerald {
-        background: var(--emerald);
+        background: var(--accent-success);
         color: #fff;
         border: none;
         border-radius: 0.75rem;
@@ -124,7 +155,7 @@
         cursor: pointer;
         transition: background .15s, box-shadow .15s, transform .1s;
       }
-      .btn-emerald:hover  { background: #059669; box-shadow: 0 0 18px rgba(16,185,129,.4); }
+      .btn-emerald:hover  { background: var(--accent-success-dark); box-shadow: 0 0 18px var(--accent-success-glow); }
       .btn-emerald:active { transform: scale(.97); }
       .btn-emerald:disabled { opacity: .5; cursor: not-allowed; }
 
@@ -174,9 +205,16 @@
 
       /* ── Nav active glow ─────────────────────────────────────────────── */
       .nav-active {
-        background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.1) 100%);
-        border-left: 2px solid var(--blue);
+        background: linear-gradient(90deg, rgba(var(--accent-primary-rgb, 59,130,246),.25) 0%, rgba(var(--accent-primary-rgb, 59,130,246),.08) 100%);
+        border-left: 2px solid var(--accent-primary);
         color: #fff;
+      }
+      /* Hack para que el gradiente funcione con la variable — dos reglas específicas */
+      body:not(.theme-gobmx) .nav-active {
+        background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.08) 100%);
+      }
+      body.theme-gobmx .nav-active {
+        background: linear-gradient(90deg, rgba(98,17,50,.35) 0%, rgba(98,17,50,.12) 100%);
       }
       .nav-item {
         border-left: 2px solid transparent;
@@ -215,18 +253,21 @@
       }
       /* ── Drag-select highlight ─────────────────────────────────────────────── */
       .slot-selecting {
-        background: rgba(59,130,246,0.3) !important;
-        border: 1px solid rgba(59,130,246,0.7) !important;
-        outline: 2px solid rgba(59,130,246,0.4);
+        background: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important;
+        border: 1px solid color-mix(in srgb, var(--accent-primary) 70%, transparent) !important;
+        outline: 2px solid color-mix(in srgb, var(--accent-primary) 40%, transparent);
       }
       .slot-libre {
-        background: rgba(16,185,129,0.12);
-        border: 1px solid rgba(16,185,129,0.3);
+        background: color-mix(in srgb, var(--accent-success) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent-success) 30%, transparent);
       }
-      .slot-libre:hover { background: rgba(16,185,129,0.22); cursor: pointer; }
+      .slot-libre:hover {
+        background: color-mix(in srgb, var(--accent-success) 22%, transparent);
+        cursor: pointer;
+      }
       .slot-reservado {
-        background: rgba(59,130,246,0.18);
-        border: 1px solid rgba(59,130,246,0.4);
+        background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent-primary) 40%, transparent);
       }
       .slot-bloqueado {
         background: rgba(139,92,246,0.18);

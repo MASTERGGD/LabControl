@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { ThemeProvider } from './context/ThemeContext';
 import PWAInstallBanner from './components/PWAInstallBanner';
 import { ROUTE_PERMISSIONS } from './config/permissions';
 
@@ -231,13 +232,15 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-          <PWAInstallBanner />
-        </BrowserRouter>
-      </AuthProvider>
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRoutes />
+            <PWAInstallBanner />
+          </BrowserRouter>
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
