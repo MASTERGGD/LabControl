@@ -184,4 +184,9 @@ def lab(db):
 
 def get_token(client, email, password):
     resp = client.post("/auth/login", data={"username": email, "password": password})
-    asser
+    assert resp.status_code == 200, "Login fallo ({0}): {1}".format(resp.status_code, resp.text)
+    return resp.json()["access_token"]
+
+
+def auth_headers(token):
+    return {"Authorization": "Bearer " + token}

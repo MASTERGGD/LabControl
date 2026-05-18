@@ -898,4 +898,3 @@ def ultimo_usuario_pc(
             "sesion_fecha":     sesion.inicio.isoformat() if sesion and sesion.inicio else None,
         }
     }
-                                                                                              

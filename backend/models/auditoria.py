@@ -36,4 +36,5 @@ class AuditLog(Base):
     ip_address     = Column(String(50),  nullable=True)
     user_agent     = Column(Text,        nullable=True)
 
-    # Relacion (puede ser None s
+    # Relacion (puede ser None si usuario fue eliminado)
+    usuario = relationship("Usuario", foreign_keys=[usuario_id])

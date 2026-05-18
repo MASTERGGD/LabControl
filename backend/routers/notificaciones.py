@@ -338,4 +338,5 @@ def verificar_eventos(
                 )
                 generadas += 1
 
-   
+    db.commit()
+    return {"generadas": generadas, "timestamp": ahora.isoformat()}

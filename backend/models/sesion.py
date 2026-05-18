@@ -64,4 +64,5 @@ class ObservacionPC(Base):
     momento = Column(String, default="DURANTE_SESION")
     # RECEPCION_INICIO | DURANTE_SESION | CIERRE
 
-    sesion = relationship("SesionClase", back_populates="observaciones_p
+    sesion = relationship("SesionClase", back_populates="observaciones_pc")
+    computadora = relationship("Computadora", back_populates="observaciones")

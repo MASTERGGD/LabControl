@@ -238,4 +238,4 @@ class TestPrestamos:
         adeudos = resp_adeudos.json()
         assert len(adeudos) == 1
         assert adeudos[0]["persona_tipo"] == "DOCENTE"
-        assert adeudos[0]["tipo"] =
+        assert adeudos[0]["tipo"] == "PRESTAMO_VENCIDO"

@@ -119,4 +119,4 @@ class RequerimientoClase(Base):
     resuelto_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
     reservacion  = relationship("Reservacion", back_populates="requerimiento")
-    resuel
+    resuelto_por = relationship("Usuario", foreign_keys=[resuelto_por_id])

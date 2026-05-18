@@ -1480,4 +1480,4 @@ def marcar_estado_reservacion(
         pass
 
     return {"mensaje": f"Evento {body.estado} registrado. La reservación permanece PROGRAMADA.",
-  
+            "estado": res.estado}

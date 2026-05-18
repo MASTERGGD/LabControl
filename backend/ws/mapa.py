@@ -203,4 +203,47 @@ async def websocket_mapa(
             await websocket.close(code=4003, reason="Usuario no autorizado")
             return
         if usuario.rol == RolUsuario.LAB_ADMIN and usuario.laboratorio_id != lab_id:
-            await websocket.cl
+            await websocket.close(code=4003, reason="Sin acceso a este laboratorio")
+            return
+        if usuario.rol == RolUsuario.DOCENTE:
+            sesion = db_auth.query(SesionClase).filter(
+                SesionClase.docente_id == usuario.id,
+                SesionClase.laboratorio_id == lab_id,
+                SesionClase.estado == "ABIERTA",
+            ).first()
+            if not sesion:
+                await websocket.close(code=4003, reason="Sin sesion abierta en este laboratorio")
+                return
+    finally:
+        db_auth.close()
+
+    await manager.conectar(websocket, lab_id)
+    db = SessionLocal()
+
+    try:
+        # Estado inicial
+        snapshot = _snapshot_lab(lab_id, db)
+        await websocket.send_text(json.dumps({
+            "tipo": "estado_inicial",
+            "lab_id": lab_id,
+            "pcs": snapshot,
+        }, ensure_ascii=False))
+
+        # Mantener conexión viva con ping cada 30s
+        while True:
+            try:
+                # Esperar mensaje del cliente (o timeout)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                if data == "ping":
+                    await websocket.send_text(json.dumps({"tipo": "pong"}))
+            except asyncio.TimeoutError:
+                # Enviar ping al cliente
+                await websocket.send_text(json.dumps({"tipo": "ping"}))
+            except WebSocketDisconnect:
+                break
+
+    except WebSocketDisconnect:
+        pass
+    finally:
+        manager.desconectar(websocket, lab_id)
+        db.close()

@@ -128,4 +128,4 @@ class MantenimientoPreventivo(Base):
 
     fecha_creacion = Column(DateTime, default=_utcnow)
 
-    activo = rel
+    activo = relationship("Activo", back_populates="mantenimientos_preventivos")
