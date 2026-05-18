@@ -27,7 +27,9 @@ const ThemeContext = createContext({
 
 export function ThemeProvider({ children }) {
   const [themeKey, setThemeKey] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY) || 'default';
+    // Forzar tema noche mientras el switcher está desactivado
+    localStorage.setItem(STORAGE_KEY, 'default');
+    return 'default';
   });
 
   useEffect(() => {

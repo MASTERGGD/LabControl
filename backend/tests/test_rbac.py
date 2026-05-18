@@ -12,6 +12,11 @@ Casos cubiertos:
 """
 import pytest
 from tests.conftest import get_token, auth_headers
+from dependencies import hashear_password
+from models.adeudo import Adeudo
+from models.horario import HorarioDisponible, Reservacion
+from models.laboratorio import Laboratorio
+from models.usuario import RolUsuario, Usuario
 
 
 class TestRBAC:
@@ -55,11 +60,4 @@ class TestRBAC:
         resp = client.post(
             "/usuarios",
             json={
-                "nombre": "Nuevo User",
-                "email": "nuevo@test.com",
-                "password": "Pass123",
-                "rol": "DOCENTE",
-            },
-            headers=auth_headers(token),
-        )
-        assert resp.status_code == 403
+                "nombre": "Nuevo User"

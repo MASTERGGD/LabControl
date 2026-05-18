@@ -17,6 +17,11 @@ import datetime
 import logging
 from typing import Optional
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -176,7 +181,7 @@ def verificar_eventos(
     Solo notifica si no existe ya una notificación reciente (últimas 8h)
     para el mismo evento para evitar spam.
     """
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     generadas = 0
 
     # Determinar scope: SUPER_ADMIN ve todo, LAB_ADMIN ve su lab
@@ -333,5 +338,4 @@ def verificar_eventos(
                 )
                 generadas += 1
 
-    db.commit()
-    return {"generadas": generadas, "timestamp": ahora.isoformat()}
+   

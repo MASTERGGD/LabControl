@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from database import get_db
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, crear_access_token, verificar_password
 from services.auditoria import registrar, Accion, Recurso
 import datetime
+import os
+
+# Duracion del token leida desde la variable de entorno ACCESS_TOKEN_EXPIRE_HOURS.
+# Si no esta definida se usa 8 horas como valor por defecto.
+_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "8"))
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 
@@ -27,8 +32,7 @@ class UsuarioResponse(BaseModel):
     laboratorio_id: int | None
     activo: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Endpoints ----------------------------------------------------------------
@@ -41,14 +45,13 @@ def login(
 ):
     """
     Autentica al usuario con email y contrasena.
-    Devuelve un JWT valido por 8 horas y los datos basicos del usuario.
+    Vigencia configurada con ACCESS_TOKEN_EXPIRE_HOURS (por defecto 8 horas).
     """
     usuario = db.query(Usuario).filter(
         Usuario.email == form_data.username
     ).first()
 
     if not usuario or not verificar_password(form_data.password, usuario.password_hash):
-        # Log intento fallido (no tenemos usuario real, guardamos el email en detalle)
         registrar(
             db, accion=Accion.LOGIN_FALLIDO, recurso=Recurso.SISTEMA,
             detalle={"email_intentado": form_data.username},
@@ -76,7 +79,7 @@ def login(
         "email": usuario.email,
         "rol": usuario.rol.value,
         "lab_id": usuario.laboratorio_id,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=8),
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=_TOKEN_EXPIRE_HOURS),
     }
     token = crear_access_token(token_data)
 

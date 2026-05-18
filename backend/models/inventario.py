@@ -3,6 +3,11 @@ from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class Activo(Base):
     __tablename__ = "activos"
 
@@ -38,7 +43,7 @@ class Prestamo(Base):
     solicitante_id_escolar = Column(String, nullable=False)
     docente_responsable_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     autorizado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    fecha_salida = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_salida = Column(DateTime, default=_utcnow)
     fecha_retorno_esperada = Column(DateTime, nullable=False)
     fecha_retorno_real = Column(DateTime, nullable=True)
     estado = Column(String, default="ACTIVO")
@@ -73,7 +78,7 @@ class Incidente(Base):
 
     # Quién reportó
     reportado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    fecha_reporte    = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_reporte    = Column(DateTime, default=_utcnow)
 
     # Seguimiento
     estado             = Column(String, default="PENDIENTE")  # PENDIENTE | EN_REVISION | REPARADO | DADO_DE_BAJA
@@ -121,6 +126,6 @@ class MantenimientoPreventivo(Base):
     costo        = Column(Float,  nullable=True)
     duracion_min = Column(Integer, nullable=True)  # tiempo empleado en minutos
 
-    fecha_creacion = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_creacion = Column(DateTime, default=_utcnow)
 
-    activo = relationship("Activo", back_populates="mantenimientos_preventivos")
+    activo = rel

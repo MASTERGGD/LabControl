@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
-import ThemeSwitcher from './ThemeSwitcher';
+// import ThemeSwitcher from './ThemeSwitcher'; // desactivado temporalmente
 
 // ─── Modal: Cambiar contraseña ────────────────────────────────────────────────
 function ModalCambiarPassword({ onClose }) {
@@ -569,9 +569,6 @@ export default function AdminLayout({ children }) {
               </svg>
               <span className="hidden md:inline">Uso libre</span>
             </button>
-
-            {/* Selector de tema */}
-            <ThemeSwitcher />
 
             {/* Campana */}
             <NotificacionesBell />

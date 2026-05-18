@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from database import get_db
 from models.laboratorio import Laboratorio, Computadora
@@ -33,8 +33,7 @@ class LaboratorioResponse(BaseModel):
     total_computadoras: int = 0
     computadoras_activas: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ComputadoraCreate(BaseModel):
     numero: int = Field(..., ge=1)
@@ -61,8 +60,7 @@ class ComputadoraResponse(BaseModel):
     estado: str
     activa: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class BulkComputadorasCreate(BaseModel):
     cantidad: int = Field(..., ge=1, le=100, description="Cantidad de PCs a generar")
@@ -195,11 +193,10 @@ def agregar_computadora(
     lab_id: int,
     data: ComputadoraCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
-    lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
-    if not lab:
-        raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    # Validar que el LAB_ADMIN solo pueda agregar PCs a su propio laboratorio
+    lab = _get_lab_autorizado(lab_id, db, current_user)
 
     duplicado = db.query(Computadora).filter(
         Computadora.laboratorio_id == lab_id,
@@ -221,8 +218,10 @@ async def editar_computadora(
     pc_id: int,
     data: ComputadoraUpdate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
+    # Validar que el LAB_ADMIN solo pueda editar PCs de su propio laboratorio
+    _get_lab_autorizado(lab_id, db, current_user)
     pc = db.query(Computadora).filter(
         Computadora.id == pc_id,
         Computadora.laboratorio_id == lab_id
@@ -277,16 +276,15 @@ def bulk_computadoras(
     lab_id: int,
     data: BulkComputadorasCreate,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     """
     Genera N computadoras numeradas automáticamente.
     Ejemplo: prefijo_codigo='PC', cantidad=25 → PC-01, PC-02, ..., PC-25
     Si se especifican filas, asigna fila A, B, C... automáticamente.
     """
-    lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
-    if not lab:
-        raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    # Validar que el LAB_ADMIN solo pueda hacer bulk en su propio laboratorio
+    lab = _get_lab_autorizado(lab_id, db, current_user)
 
     ultima = db.query(Computadora).filter(
         Computadora.laboratorio_id == lab_id
@@ -311,7 +309,4 @@ def bulk_computadoras(
             activa  = True,
         )
         db.add(pc)
-        nuevas.append(codigo)
-
-    db.commit()
-    return {"creadas": len(nuevas), "codigos": nuevas}
+        nueva

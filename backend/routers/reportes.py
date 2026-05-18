@@ -4,6 +4,11 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import datetime, io, calendar, collections
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 from database import get_db
 from models.laboratorio import Laboratorio, Computadora
 from models.sesion import SesionClase, AsignacionPC
@@ -196,6 +201,7 @@ def _datos_mes(db: Session, lab_id: int, mes: int, anio: int) -> dict:
             "detalle": sesiones,
             "por_docente": ses_por_docente,
             "horas_pico": horas_pico,
+            "asignaciones": asignaciones,
         },
         "docentes": {
             "total": len(docentes_ids),
@@ -386,23 +392,25 @@ def _build_excel(d: dict) -> io.BytesIO:
     for col, (h, w) in enumerate(HDRS2, 1):
         _set_hdr(ws2, 2, col, h, width=w)
 
+    # Índice de asignaciones por sesión para conteo rápido
+    _asig_por_sesion: dict = {}
+    for _a in d["sesiones"].get("asignaciones", []):
+        _asig_por_sesion.setdefault(_a.sesion_id, []).append(_a)
+
     sesiones_ord = sorted(d["sesiones"]["detalle"], key=lambda s: s.inicio or datetime.datetime.min)
     for r, s in enumerate(sesiones_ord, 3):
         doc  = d["docentes"]["obj"].get(s.docente_id)
         nombre_doc = doc.nombre if doc else f"ID {s.docente_id}"
         fin_s = s.fin_real or s.fin_estimado
         dur   = round((fin_s - s.inicio).total_seconds() / 3600, 2) if fin_s and s.inicio else ""
-        asigs = sum(1 for a in d["sesiones"]["detalle"] if False)  # contamos aparte
-        n_alumnos = len([a for a in d["sesiones"].get("detalle", []) if False])
-        # contar alumnos reales de esta sesión
-        asig_s = [a for a in (AsignacionPC.__table__, ) if False]  # placeholder
+        n_alumnos = len(_asig_por_sesion.get(s.id, []))
         fill_bg = GRIS_ROW if r % 2 == 0 else None
         _data_row(ws2, r, [
             nombre_doc, s.materia, s.grupo,
             s.inicio.strftime("%d/%m/%Y") if s.inicio else "",
             s.inicio.strftime("%H:%M") if s.inicio else "",
             fin_s.strftime("%H:%M") if fin_s else "—",
-            dur, "", s.estado
+            dur, n_alumnos or "", s.estado
         ], bg=fill_bg)
 
     # ── HOJA 3: ALUMNOS ATENDIDOS ─────────────────────────────────────────────
@@ -640,7 +648,7 @@ def dashboard_stats(
     db:   Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    ahora  = datetime.datetime.utcnow()
+    ahora  = _utcnow()
     hoy_ini = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
     hoy_fin = ahora.replace(hour=23, minute=59, second=59)
 
@@ -900,7 +908,7 @@ def reporte_comparativo(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
 
     # RLS
     lab_filter = laboratorio_id
@@ -1065,6 +1073,6 @@ def reporte_comparativo(
             "alumnos_anterior": alumnos_ant,
             "horas_actual":     horas_act,
             "horas_anterior":   horas_ant,
-        },
+               },
         "labs": [{"id": l.id, "nombre": l.nombre} for l in labs],
     }

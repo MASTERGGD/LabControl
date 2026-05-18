@@ -13,6 +13,10 @@ from dependencies import get_current_user, require_roles
 from rls import assert_lab_write, assert_resource_access
 import datetime
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
 router = APIRouter(prefix="/inventario", tags=["Inventario y Préstamos"])
 
 CATEGORIAS = ["COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT", "HERRAMIENTA", "MOBILIARIO", "OTRO"]
@@ -157,7 +161,7 @@ def _generar_codigo(db: Session, categoria: str, area: str = None) -> str:
 
 def _actualizar_estado_prestamos(db: Session):
     """Marca como VENCIDO cualquier préstamo activo con fecha de retorno pasada."""
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     vencidos = db.query(Prestamo).filter(
         Prestamo.estado == "ACTIVO",
         Prestamo.fecha_retorno_esperada < ahora,
@@ -198,7 +202,7 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
 def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
     activo   = db.query(Activo).filter(Activo.id == p.activo_id).first()
     lab      = db.query(Laboratorio).filter(Laboratorio.id == activo.laboratorio_id).first() if activo else None
-    ahora    = datetime.datetime.utcnow()
+    ahora    = _utcnow()
     dias_vencido = None
     if p.estado == "VENCIDO" and p.fecha_retorno_esperada:
         dias_vencido = (ahora - p.fecha_retorno_esperada).days
@@ -388,7 +392,7 @@ def crear_activo(
 
     payload = data.model_dump(exclude={"codigo_inventario"})
     payload["categoria"] = payload["categoria"].upper()
-    a = Activo(**payload, codigo_inventario=codigo, fecha_adquisicion=datetime.datetime.utcnow())
+    a = Activo(**payload, codigo_inventario=codigo, fecha_adquisicion=_utcnow())
     db.add(a)
     db.commit()
     db.refresh(a)
@@ -554,7 +558,7 @@ def crear_prestamo(
         fecha_retorno = datetime.datetime.combine(fecha_date, datetime.time(23, 59, 59))
     else:
         # Por defecto 7 días
-        fecha_retorno = datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        fecha_retorno = _utcnow() + datetime.timedelta(days=7)
 
     # Guardar receptor_tipo y proposito en observaciones_salida como metadato JSON
     import json
@@ -566,7 +570,7 @@ def crear_prestamo(
         solicitante_nombre=data.receptor_nombre,
         solicitante_id_escolar=data.receptor_matricula or "",
         autorizado_por=current_user.id,
-        fecha_salida=datetime.datetime.utcnow(),
+        fecha_salida=_utcnow(),
         fecha_retorno_esperada=fecha_retorno,
         estado="ACTIVO",
         condicion_salida="BUENO",
@@ -597,7 +601,7 @@ def devolver_prestamo(
         raise HTTPException(status_code=400, detail="Este préstamo ya fue devuelto")
 
     p.estado                = "DEVUELTO"
-    p.fecha_retorno_real    = datetime.datetime.utcnow()
+    p.fecha_retorno_real    = _utcnow()
     p.condicion_retorno     = data.condicion_devolucion
     p.observaciones_retorno = data.notas_devolucion
 
@@ -623,8 +627,9 @@ def devolver_prestamo(
         # ── Auto-crear adeudo por daño al equipo ──────────────────────────────
         # Obtener tipo de persona desde metadato guardado en observaciones_salida
         import json as _json
+        obs_salida = p.observaciones_salida or ""
         try:
-            meta = _json.loads(p.observaciones_salida or "{}")
+            meta = _json.loads(obs_salida[8:] if obs_salida.startswith("__meta__") else (obs_salida or "{}"))
             persona_tipo = meta.get("receptor_tipo", "ALUMNO")
         except Exception:
             persona_tipo = "ALUMNO"
@@ -646,7 +651,7 @@ def devolver_prestamo(
             laboratorio_id        = activo.laboratorio_id if activo else None,
             estado                = "PENDIENTE",
             reportado_por_id      = current_user.id,
-            fecha_reporte         = datetime.datetime.utcnow(),
+            fecha_reporte         = _utcnow(),
         )
         db.add(adeudo_danio)
 
@@ -677,10 +682,10 @@ def devolver_prestamo(
     ).first()
     if adeudo_vinculado:
         adeudo_vinculado.estado           = "RESUELTO"
-        adeudo_vinculado.fecha_resolucion = datetime.datetime.utcnow()
+        adeudo_vinculado.fecha_resolucion = _utcnow()
         adeudo_vinculado.resuelto_por_id  = current_user.id
         adeudo_vinculado.notas_resolucion = (
-            f"Préstamo devuelto el {datetime.datetime.utcnow().strftime('%d/%m/%Y')} "
+            f"Préstamo devuelto el {_utcnow().strftime('%d/%m/%Y')} "
             f"en condición {data.condicion_devolucion}. "
             + (data.notas_devolucion or "")
         )
@@ -723,6 +728,7 @@ def listar_incidentes(
 
 @router.post("/incidentes", status_code=status.HTTP_201_CREATED, summary="Crear incidente manualmente")
 def crear_incidente(
+    request: Request,
     data: IncidenteCreate,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
@@ -774,11 +780,18 @@ def crear_incidente(
 
     db.commit()
     db.refresh(i)
+    registrar(db, accion=Accion.CREAR_MANTENIMIENTO, recurso=Recurso.INCIDENTE,
+              usuario=current_user, recurso_id=i.id,
+              detalle={"tipo": i.tipo, "prioridad": i.prioridad,
+                       "laboratorio_id": i.laboratorio_id, "origen": i.origen,
+                       "activo_id": i.activo_id, "computadora_id": i.computadora_id},
+              request=request)
     return _serializar_incidente(i, db)
 
 
 @router.put("/incidentes/{incidente_id}", summary="Actualizar estado/seguimiento del incidente")
 def actualizar_incidente(
+    request: Request,
     incidente_id: int,
     data: IncidenteUpdate,
     db: Session = Depends(get_db),
@@ -815,7 +828,7 @@ def actualizar_incidente(
 
     # Si se marca como REPARADO → registrar fecha y reactivar el equipo
     if "estado" in campos and campos["estado"].upper() == "REPARADO":
-        i.fecha_resolucion = datetime.datetime.utcnow()
+        i.fecha_resolucion = _utcnow()
         # Activo de inventario → vuelve a OPERATIVO
         if i.activo_id:
             activo = db.query(Activo).filter(Activo.id == i.activo_id).first()
@@ -830,11 +843,11 @@ def actualizar_incidente(
 
     # Si se cierra sin adeudo → solo registrar fecha de resolución
     if "estado" in campos and campos["estado"].upper() == "CERRADO_SIN_ADEUDO":
-        i.fecha_resolucion = datetime.datetime.utcnow()
+        i.fecha_resolucion = _utcnow()
 
     # Si se marca como DADO_DE_BAJA → dar de baja el equipo
     if "estado" in campos and campos["estado"].upper() == "DADO_DE_BAJA":
-        i.fecha_resolucion = datetime.datetime.utcnow()
+        i.fecha_resolucion = _utcnow()
         # Activo de inventario → baja definitiva
         if i.activo_id:
             activo = db.query(Activo).filter(Activo.id == i.activo_id).first()
@@ -851,6 +864,13 @@ def actualizar_incidente(
 
     db.commit()
     db.refresh(i)
+    # Audit log when closing/resolving
+    if "estado" in campos and campos["estado"].upper() in ("REPARADO", "CERRADO_SIN_ADEUDO", "DADO_DE_BAJA"):
+        registrar(db, accion=Accion.CERRAR_MANTENIMIENTO, recurso=Recurso.INCIDENTE,
+                  usuario=current_user, recurso_id=i.id,
+                  detalle={"estado_anterior": estado_anterior, "estado_nuevo": i.estado,
+                           "laboratorio_id": i.laboratorio_id},
+                  request=request)
     return _serializar_incidente(i, db)
 
 
@@ -1192,7 +1212,7 @@ def actualizar_mantenimiento(
         mp.estado = data.estado.upper()
         if data.estado.upper() == "COMPLETADO":
             mp.completado_por_id = current_user.id
-            mp.fecha_completado  = datetime.datetime.utcnow()
+            mp.fecha_completado  = _utcnow()
             # Auto-generar el siguiente según periodicidad
             delta_map = {
                 "SEMANAL":    datetime.timedelta(weeks=1),
@@ -1325,3 +1345,4 @@ def historial_activo(
 
     eventos.sort(key=lambda e: e["fecha"] or "", reverse=True)
     return {"activo_id": activo_id, "eventos": eventos}
+                                                                                                                                                                                                                                                   

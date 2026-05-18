@@ -1,7 +1,11 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Text, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class AuditLog(Base):
@@ -14,7 +18,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id             = Column(Integer, primary_key=True, index=True)
-    timestamp      = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    timestamp      = Column(DateTime, default=_utcnow, index=True, nullable=False)
 
     # Quien
     usuario_id     = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -32,5 +36,4 @@ class AuditLog(Base):
     ip_address     = Column(String(50),  nullable=True)
     user_agent     = Column(Text,        nullable=True)
 
-    # Relacion (puede ser None si usuario fue eliminado)
-    usuario = relationship("Usuario", foreign_keys=[usuario_id])
+    # Relacion (puede ser None s

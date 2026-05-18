@@ -4,6 +4,10 @@ from database import Base
 import datetime
 
 
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class Notificacion(Base):
     __tablename__ = "notificaciones"
 
@@ -13,7 +17,5 @@ class Notificacion(Base):
     titulo      = Column(String, nullable=False)
     mensaje     = Column(String, nullable=False)
     leida       = Column(Boolean, default=False, nullable=False)
-    fecha       = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    url         = Column(String, nullable=True)    # ruta frontend opcional
-
-    usuario = relationship("Usuario", backref="notificaciones")
+    fecha       = Column(DateTime, default=_utcnow, nullable=False)
+    url         = Column(String, nullable=T

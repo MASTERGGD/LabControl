@@ -11,11 +11,12 @@ Endpoints:
   PATCH  /adeudos/{id}                     Actualizar estado / notas
   DELETE /adeudos/{id}                     Eliminar (SUPER_ADMIN o LAB_ADMIN)
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 import datetime
+import json
 
 from database import get_db
 from models.adeudo import Adeudo
@@ -25,9 +26,24 @@ from models.laboratorio import Laboratorio, Computadora
 from models.sesion import SesionClase, AsignacionPC
 from models.catalogo import CatalogoAlumno
 from dependencies import get_current_user, require_roles
+from services.auditoria import registrar, Accion, Recurso
 
 router = APIRouter(prefix="/adeudos", tags=["Adeudos"])
 _admin = require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _prestamo_meta(p: Prestamo) -> dict:
+    obs = p.observaciones_salida or ""
+    try:
+        if obs.startswith("__meta__"):
+            return json.loads(obs[8:])
+        return json.loads(obs) if obs else {}
+    except Exception:
+        return {}
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -100,29 +116,30 @@ def _s_prestamo(p: Prestamo) -> dict:
         "vencido":               (
             p.estado == "ACTIVO" and
             p.fecha_retorno_esperada and
-            p.fecha_retorno_esperada < datetime.datetime.utcnow()
+            p.fecha_retorno_esperada < _utcnow()
         ),
     }
 
 
 # ─── Helper: crear adeudo desde préstamo vencido ──────────────────────────────
 
-def _crear_adeudo_prestamo(p: Prestamo, db: Session, reportado_por_id: int = None) -> Adeudo:
+def _crear_adeudo_prestamo(p: Prestamo, db: Session, reportado_por_id: int = None) -> tuple:
     """Crea un adeudo ligado a un préstamo vencido si aún no existe."""
     existente = db.query(Adeudo).filter(
         Adeudo.prestamo_id == p.id,
         Adeudo.estado.in_(["PENDIENTE", "EN_REVISION"]),
     ).first()
     if existente:
-        return existente
+        return existente, False
 
-    dias_vencido = (datetime.datetime.utcnow() - p.fecha_retorno_esperada).days
+    dias_vencido = (_utcnow() - p.fecha_retorno_esperada).days
     tipo = "PRESTAMO_NO_DEVUELTO" if dias_vencido > 30 else "PRESTAMO_VENCIDO"
+    persona_tipo = _prestamo_meta(p).get("receptor_tipo", "ALUMNO")
 
     a = Adeudo(
         persona_nombre        = p.solicitante_nombre,
         persona_identificador = p.solicitante_id_escolar,
-        persona_tipo          = "ALUMNO",
+        persona_tipo          = persona_tipo,
         origen_tipo           = "PRESTAMO",
         tipo                  = tipo,
         descripcion           = (
@@ -137,13 +154,14 @@ def _crear_adeudo_prestamo(p: Prestamo, db: Session, reportado_por_id: int = Non
         reportado_por_id      = reportado_por_id,
     )
     db.add(a)
-    return a
+    return a, True
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("", status_code=201, summary="Crear adeudo")
 def crear_adeudo(
+    request: Request,
     body: AdeudoCreate,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_admin),
@@ -171,11 +189,16 @@ def crear_adeudo(
         monto_estimado        = body.monto_estimado,
         estado                = "PENDIENTE",
         reportado_por_id      = current_user.id,
-        fecha_reporte         = datetime.datetime.utcnow(),
+        fecha_reporte         = _utcnow(),
     )
     db.add(a)
     db.commit()
     db.refresh(a)
+    registrar(db, accion=Accion.CREAR_ADEUDO, recurso=Recurso.ADEUDO,
+              usuario=current_user, recurso_id=a.id,
+              detalle={"persona": body.persona_nombre, "identificador": body.persona_identificador,
+                       "tipo": body.tipo, "laboratorio_id": body.laboratorio_id},
+              request=request)
     return _s(a)
 
 
@@ -224,26 +247,22 @@ def resumen_persona(
     Vista unificada: adeudos + préstamos activos/vencidos de una persona.
     Permite al departamento consultar con una sola búsqueda.
     """
-    # Adeudos
     adeudos = db.query(Adeudo).filter(
         Adeudo.persona_identificador == identificador
     ).order_by(Adeudo.fecha_reporte.desc()).all()
 
-    # Préstamos (por id_escolar)
     prestamos = db.query(Prestamo).filter(
         Prestamo.solicitante_id_escolar == identificador
     ).order_by(Prestamo.fecha_salida.desc()).all()
 
-    now = datetime.datetime.utcnow()
+    now = _utcnow()
 
-    # Nombre de la persona (tomar del primer registro encontrado)
     nombre = None
     if adeudos:
         nombre = adeudos[0].persona_nombre
     elif prestamos:
         nombre = prestamos[0].solicitante_nombre
 
-    # Buscar en catálogo de alumnos
     cat = db.query(CatalogoAlumno).filter(
         CatalogoAlumno.matricula == identificador
     ).first()
@@ -340,7 +359,7 @@ def sincronizar_prestamos(
     por cada uno que aún no tenga adeudo activo asociado.
     Retorna cuántos adeudos se crearon.
     """
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     vencidos = db.query(Prestamo).filter(
         Prestamo.estado == "ACTIVO",
         Prestamo.fecha_retorno_esperada < ahora,
@@ -348,8 +367,9 @@ def sincronizar_prestamos(
 
     creados = 0
     for p in vencidos:
-        nuevo = _crear_adeudo_prestamo(p, db, current_user.id)
-        if nuevo not in db.new and db.query(Adeudo).filter(Adeudo.id == nuevo.id).first() is None:
+        p.estado = "VENCIDO"
+        _, es_nuevo = _crear_adeudo_prestamo(p, db, current_user.id)
+        if es_nuevo:
             creados += 1
 
     db.commit()
@@ -400,11 +420,14 @@ def obtener_adeudo(
     a = db.query(Adeudo).filter(Adeudo.id == adeudo_id).first()
     if not a:
         raise HTTPException(404, "Adeudo no encontrado")
+    if current_user.rol == RolUsuario.LAB_ADMIN and a.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(403, "No tienes acceso a este adeudo")
     return _s(a)
 
 
 @router.patch("/{adeudo_id}", summary="Actualizar adeudo")
 def actualizar_adeudo(
+    request: Request,
     adeudo_id: int,
     body: AdeudoUpdate,
     db: Session = Depends(get_db),
@@ -413,6 +436,8 @@ def actualizar_adeudo(
     a = db.query(Adeudo).filter(Adeudo.id == adeudo_id).first()
     if not a:
         raise HTTPException(404, "Adeudo no encontrado")
+    if current_user.rol == RolUsuario.LAB_ADMIN and a.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(403, "No tienes acceso a este adeudo")
 
     ESTADOS = {"PENDIENTE", "EN_REVISION", "RESUELTO", "EXONERADO"}
     if body.estado and body.estado not in ESTADOS:
@@ -421,9 +446,8 @@ def actualizar_adeudo(
     if body.estado:
         a.estado = body.estado
         if body.estado in ("RESUELTO", "EXONERADO"):
-            a.fecha_resolucion = datetime.datetime.utcnow()
+            a.fecha_resolucion = _utcnow()
             a.resuelto_por_id  = current_user.id
-            # Sincronizar incidente vinculado → REPARADO
             if a.incidente_id:
                 inc = db.query(Incidente).filter(Incidente.id == a.incidente_id).first()
                 if inc and inc.estado not in ("REPARADO", "DADO_DE_BAJA"):
@@ -436,6 +460,13 @@ def actualizar_adeudo(
 
     db.commit()
     db.refresh(a)
+    if body.estado and body.estado in ("RESUELTO", "EXONERADO"):
+        registrar(db, accion=Accion.RESOLVER_ADEUDO, recurso=Recurso.ADEUDO,
+                  usuario=current_user, recurso_id=a.id,
+                  detalle={"estado": body.estado, "persona": a.persona_nombre,
+                           "identificador": a.persona_identificador,
+                           "notas": body.notas_resolucion},
+                  request=request)
     return _s(a)
 
 
@@ -448,5 +479,7 @@ def eliminar_adeudo(
     a = db.query(Adeudo).filter(Adeudo.id == adeudo_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Adeudo no encontrado")
+    if current_user.rol == RolUsuario.LAB_ADMIN and a.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a este adeudo")
     db.delete(a)
     db.commit()

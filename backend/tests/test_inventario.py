@@ -12,6 +12,7 @@ Casos cubiertos:
 import pytest
 import datetime
 from tests.conftest import get_token, auth_headers
+from models.inventario import Prestamo
 
 
 class TestActivos:
@@ -161,3 +162,80 @@ class TestPrestamos:
             headers=auth_headers(token),
         )
         assert resp.status_code == 422
+
+    def test_devolucion_danada_conserva_tipo_docente_en_adeudo(self, client, admin_user, lab):
+        """El metadato __meta__ del prestamo se decodifica al crear adeudo por dano."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo_id = self._crear_activo(client, token, lab.id)
+
+        resp_prestamo = client.post(
+            "/inventario/prestamos",
+            json={
+                "activo_id": activo_id,
+                "receptor_nombre": "Docente Responsable",
+                "receptor_matricula": "EMP-100",
+                "receptor_tipo": "DOCENTE",
+                "fecha_devolucion_esperada": self._fecha_futura(7),
+            },
+            headers=auth_headers(token),
+        )
+        assert resp_prestamo.status_code == 201, resp_prestamo.text
+        prestamo_id = resp_prestamo.json()["id"]
+
+        resp_dev = client.post(
+            f"/inventario/prestamos/{prestamo_id}/devolver",
+            json={"condicion_devolucion": "DAÑADO", "notas_devolucion": "Pantalla rota"},
+            headers=auth_headers(token),
+        )
+        assert resp_dev.status_code == 200, resp_dev.text
+
+        resp_adeudos = client.get(
+            "/adeudos?identificador=EMP-100",
+            headers=auth_headers(token),
+        )
+        assert resp_adeudos.status_code == 200, resp_adeudos.text
+        adeudos = resp_adeudos.json()
+        assert len(adeudos) == 1
+        assert adeudos[0]["persona_tipo"] == "DOCENTE"
+        assert adeudos[0]["prestamo_id"] == prestamo_id
+
+    def test_sincronizar_prestamo_vencido_cuenta_y_conserva_tipo_docente(self, client, admin_user, lab, db):
+        """Sincronizar vencidos marca el prestamo y crea un adeudo con tipo correcto."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo_id = self._crear_activo(client, token, lab.id)
+
+        resp_prestamo = client.post(
+            "/inventario/prestamos",
+            json={
+                "activo_id": activo_id,
+                "receptor_nombre": "Docente Vencido",
+                "receptor_matricula": "EMP-200",
+                "receptor_tipo": "DOCENTE",
+                "fecha_devolucion_esperada": self._fecha_futura(7),
+            },
+            headers=auth_headers(token),
+        )
+        assert resp_prestamo.status_code == 201, resp_prestamo.text
+        prestamo_id = resp_prestamo.json()["id"]
+
+        prestamo = db.query(Prestamo).filter(Prestamo.id == prestamo_id).first()
+        prestamo.fecha_retorno_esperada = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(days=2)
+        prestamo.estado = "ACTIVO"
+        db.commit()
+
+        resp_sync = client.post("/adeudos/sincronizar-prestamos", headers=auth_headers(token))
+        assert resp_sync.status_code == 200, resp_sync.text
+        assert resp_sync.json()["adeudos_creados"] == 1
+
+        db.refresh(prestamo)
+        assert prestamo.estado == "VENCIDO"
+
+        resp_adeudos = client.get(
+            "/adeudos?identificador=EMP-200",
+            headers=auth_headers(token),
+        )
+        assert resp_adeudos.status_code == 200, resp_adeudos.text
+        adeudos = resp_adeudos.json()
+        assert len(adeudos) == 1
+        assert adeudos[0]["persona_tipo"] == "DOCENTE"
+        assert adeudos[0]["tipo"] =

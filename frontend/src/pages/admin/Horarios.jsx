@@ -15,6 +15,12 @@ const HORAS = [
   '17:00','18:00','19:00','20:00',
 ];
 
+const ESTADOS_CUMPLIMIENTO = [
+  { value: 'IMPARTIDA', label: 'Impartida', color: '#86efac' },
+  { value: 'NO_ASISTIO', label: 'No asistió', color: '#fca5a5' },
+  { value: 'CANCELADA_TARDIA', label: 'Cancelada tarde', color: '#fdba74' },
+];
+
 // Períodos oficiales UTECAN (para mostrar en el modal)
 const PERIODOS_UTECAN = [
   { n: 1, inicio: '08:00', fin: '09:00' },
@@ -575,6 +581,9 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
   const [cancelando, setCancelando]       = useState(false);
   const [confirmar, setConfirmar]         = useState(false);
   const [error, setError]                 = useState('');
+  const [estadoCumplimiento, setEstadoCumplimiento] = useState('IMPARTIDA');
+  const [motivoCumplimiento, setMotivoCumplimiento] = useState('');
+  const [marcando, setMarcando]           = useState(false);
   // Resolver requerimiento
   const [req, setReq]                     = useState(r?.requerimiento ?? null);
   const [resolviendoReq, setResolviendoReq] = useState(false);
@@ -607,6 +616,21 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al resolver requerimiento');
     } finally { setResolviendoReq(false); }
+  };
+
+  const handleMarcarEstado = async () => {
+    setMarcando(true); setError('');
+    try {
+      await api.post(`/horarios/reservaciones/${r.id}/marcar-estado`, {
+        estado: estadoCumplimiento,
+        motivo: motivoCumplimiento.trim() || undefined,
+      });
+      onCancelada();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al marcar estado');
+    } finally {
+      setMarcando(false);
+    }
   };
 
   // Badge de estado con rayas para EN_DISPUTA
@@ -681,6 +705,49 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
           </div>
 
           {/* ── Requerimientos del docente (panel admin) ── */}
+          {r?.estado !== 'IMPARTIDA' && (
+            <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(15,23,42,0.65)', border:'1px solid rgba(255,255,255,0.08)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Cumplimiento docente</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Registra el resultado de este turno</p>
+                </div>
+                <span className="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-slate-400">{r?.estado}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {ESTADOS_CUMPLIMIENTO.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setEstadoCumplimiento(opt.value)}
+                    className="py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      color: estadoCumplimiento === opt.value ? '#020617' : opt.color,
+                      background: estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.08)'}`,
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                rows={2}
+                value={motivoCumplimiento}
+                onChange={e => setMotivoCumplimiento(e.target.value)}
+                placeholder="Nota opcional"
+                className="input-dark w-full text-sm resize-none"
+              />
+              <button
+                type="button"
+                onClick={handleMarcarEstado}
+                disabled={marcando}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background:'linear-gradient(135deg,#2563eb,#4f46e5)', color:'#fff' }}>
+                {marcando ? 'Guardando...' : 'Marcar estado'}
+              </button>
+            </div>
+          )}
+
           {req && (() => {
             const items = Array.isArray(req.items) ? req.items : [];
             const ESTADO_STYLE = {

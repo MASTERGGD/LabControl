@@ -12,6 +12,12 @@ import TimeGrid from '../../components/TimeGrid';
 const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIAS_CORTO = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
 
+const ESTADOS_CUMPLIMIENTO = [
+  { value: 'IMPARTIDA', label: 'Impartida', color: '#86efac' },
+  { value: 'NO_ASISTIO', label: 'No asistió', color: '#fca5a5' },
+  { value: 'CANCELADA_TARDIA', label: 'Cancelada tarde', color: '#fdba74' },
+];
+
 // Gradientes por estado — dark glassmorphism
 const GRAD_SLOT = {
   MIO:         'linear-gradient(135deg,#4f46e5 0%,#2563eb 100%)',
@@ -258,11 +264,14 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
 // ─── Modal: Ver mi reservación ────────────────────────────────────────────────
 
-function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado }) {
+function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin }) {
   const [cancelando, setCancelando] = useState(false);
   const [cediendo,   setCediendo]   = useState(false);
   const [confirmar,  setConfirmar]  = useState(false);
   const [error,      setError]      = useState('');
+  const [estadoCumplimiento, setEstadoCumplimiento] = useState('IMPARTIDA');
+  const [motivoCumplimiento, setMotivoCumplimiento] = useState('');
+  const [marcando, setMarcando] = useState(false);
   const r = slot.reservacion;
   const haySolicitud = slot.solicitudes_n > 0;
 
@@ -292,6 +301,22 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado }) {
     }
   };
 
+  const handleMarcarEstado = async () => {
+    setMarcando(true); setError('');
+    try {
+      await api.post(`/horarios/reservaciones/${r.id}/marcar-estado`, {
+        estado: estadoCumplimiento,
+        motivo: motivoCumplimiento.trim() || undefined,
+      });
+      onGuardado();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al marcar estado');
+    } finally {
+      setMarcando(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-sm rounded-2xl overflow-hidden shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
@@ -311,6 +336,49 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado }) {
 
           {/* Requerimientos registrados (nuevo modelo) */}
           {r.requerimiento && <RequerimientoPanel req={r.requerimiento} />}
+
+          {esAdmin && r.estado !== 'IMPARTIDA' && (
+            <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(15,23,42,0.65)', border:'1px solid rgba(255,255,255,0.08)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Cumplimiento docente</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Registra el resultado de este turno</p>
+                </div>
+                <span className="text-[11px] px-2 py-0.5 rounded-full border border-white/10 text-slate-400">{r.estado}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {ESTADOS_CUMPLIMIENTO.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setEstadoCumplimiento(opt.value)}
+                    className="py-2 rounded-lg text-xs font-semibold transition-all"
+                    style={{
+                      color: estadoCumplimiento === opt.value ? '#020617' : opt.color,
+                      background: estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.04)',
+                      border: `1px solid ${estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.08)'}`,
+                    }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                rows={2}
+                value={motivoCumplimiento}
+                onChange={e => setMotivoCumplimiento(e.target.value)}
+                placeholder="Nota opcional"
+                className="input-dark w-full text-sm resize-none"
+              />
+              <button
+                type="button"
+                onClick={handleMarcarEstado}
+                disabled={marcando}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background:'linear-gradient(135deg,#2563eb,#4f46e5)', color:'#fff' }}>
+                {marcando ? 'Guardando...' : 'Marcar estado'}
+              </button>
+            </div>
+          )}
 
           {/* ── Solicitud pendiente ── */}
           {haySolicitud && (
@@ -822,7 +890,8 @@ export default function Reservaciones() {
     if (tipo === 'LIBRE')       setModalSlot({ tipo: 'reservar',   slot });
     else if (tipo === 'MIO')    setModalSlot({ tipo: 'mi_reserva', slot });
     else if (tipo === 'OCUPADO' || tipo === 'EN_DISPUTA') {
-      if (esDocente) setModalSlot({ tipo: 'solicitar', slot });
+      if (esAdmin) setModalSlot({ tipo: 'mi_reserva', slot });
+      else if (esDocente) setModalSlot({ tipo: 'solicitar', slot });
     }
     else if (tipo === 'YO_SOLICITE') setModalSlot({ tipo: 'yo_solicite', slot });
   };
@@ -1015,7 +1084,7 @@ export default function Reservaciones() {
       </div>
 
       {/* ── Modales ── */}
-      {modalSlot?.tipo === 'libre' && (
+      {modalSlot?.tipo === 'reservar' && (
         <ModalReservar
           slot={modalSlot.slot}
           cuatrimestre={cuatrimestre}
@@ -1024,12 +1093,20 @@ export default function Reservaciones() {
           onGuardado={recargar}
         />
       )}
-      {modalSlot?.tipo === 'mio' && (
+      {modalSlot?.tipo === 'mi_reserva' && (
         <ModalMiReservacion
           slot={modalSlot.slot}
           onClose={cerrarModal}
           onCancelada={recargar}
           onGuardado={recargar}
+          esAdmin={esAdmin}
+        />
+      )}
+      {modalSlot?.tipo === 'solicitar' && (
+        <ModalSolicitar
+          slot={modalSlot.slot}
+          onClose={cerrarModal}
+          onSolicitado={recargar}
         />
       )}
       {modalSlot?.tipo === 'yo_solicite' && (

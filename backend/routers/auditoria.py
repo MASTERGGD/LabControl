@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import io
 
 from database import get_db
@@ -143,7 +143,7 @@ def resumen_auditoria(
     from sqlalchemy import func
     from datetime import timedelta
 
-    desde = datetime.utcnow() - timedelta(days=dias)
+    desde = datetime.now(timezone.utc) - timedelta(days=dias)
     rows = (
         db.query(AuditLog.accion, func.count(AuditLog.id).label("total"))
         .filter(AuditLog.timestamp >= desde)

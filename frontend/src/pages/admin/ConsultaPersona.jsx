@@ -65,17 +65,32 @@ export default function ConsultaPersona() {
 
   return (
     <AdminLayout>
+      <div className="p-2 space-y-6 max-w-7xl mx-auto">
+
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Consulta de Persona</h1>
-        <p className="text-slate-400 text-sm mt-1">
-          Busca por nombre o matrícula para ver adeudos, préstamos e historial completo de un alumno
-        </p>
+      <div className="flex items-center gap-3">
+        <button onClick={() => window.history.back()}
+          className="text-slate-400 hover:text-white transition-colors">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          </svg>
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Consulta de Persona</h1>
+          <p className="text-slate-400 text-sm">
+            Busca por nombre o matrícula para ver adeudos, préstamos e historial completo de un alumno
+          </p>
+        </div>
       </div>
 
       {/* Buscador */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-6">
-        <label className="text-slate-400 text-sm block mb-3">Nombre o matrícula del alumno</label>
+      <div className="glass rounded-2xl p-6">
+        <label className="block text-sm text-slate-400 mb-1 font-medium">
+          🔍 Buscar alumno por nombre o matrícula
+        </label>
+        <p className="text-xs text-slate-500 mb-3">
+          Escribe el nombre del alumno o su número de matrícula
+        </p>
 
         {!seleccionado ? (
           <AutocompleteInput
@@ -276,7 +291,7 @@ export default function ConsultaPersona() {
 
           {/* Sin registros */}
           {resultado.adeudos.length === 0 && resultado.prestamos.length === 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center">
+            <div className="glass rounded-2xl p-12 text-center">
               <div className="text-5xl mb-3">✅</div>
               <p className="text-slate-300 font-semibold text-lg">Sin adeudos ni préstamos</p>
               <p className="text-slate-500 text-sm mt-1">Este alumno no tiene registros pendientes.</p>
@@ -287,14 +302,16 @@ export default function ConsultaPersona() {
 
       {/* Estado inicial */}
       {!resultado && !loading && !error && (
-        <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-16 text-center">
+        <div className="glass rounded-2xl p-16 text-center">
           <div className="text-6xl mb-4">🔍</div>
           <p className="text-slate-400 font-medium text-lg">Busca un alumno para consultar su historial</p>
-          <p className="text-slate-600 text-sm mt-2">
+          <p className="text-slate-500 text-sm mt-2">
             Escribe el nombre o matrícula — verás adeudos, préstamos y trazabilidad en una sola vista
           </p>
         </div>
       )}
+
+      </div>{/* /max-w-7xl */}
     </AdminLayout>
   );
 }

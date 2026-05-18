@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models.laboratorio import Computadora
 from models.sesion import AsignacionPC, SesionClase
+from models.usuario import Usuario, RolUsuario
 from dependencies import decodificar_token
 from jose import JWTError
 import json
@@ -169,45 +170,37 @@ async def websocket_mapa(
 ):
     """
     ws://.../ws/mapa/{lab_id}?token=<JWT>
-    Requiere token válido. Se desconecta automáticamente si el token es inválido.
+    Requiere token válido. Se desconecta automáticamente si el token es inválido
+    o si el usuario no tiene permiso para ver ese laboratorio.
     """
-    # Validar token
+    # 1. Validar presencia de token
     if not token:
         await websocket.close(code=4001, reason="Token requerido")
         return
+
+    # 2. Decodificar y verificar firma JWT
     try:
-        decodificar_token(token)
+        payload = decodificar_token(token)
     except JWTError:
         await websocket.close(code=4003, reason="Token inválido")
         return
 
-    await manager.conectar(websocket, lab_id)
-    db = SessionLocal()
-
+    # 3. Autorizar acceso al laboratorio especifico.
+    #    SUPER_ADMIN ve cualquier lab.
+    #    LAB_ADMIN solo puede suscribirse al lab que tiene asignado.
+    #    DOCENTE solo puede ver el lab donde tiene una sesion abierta.
+    db_auth = SessionLocal()
     try:
-        # Estado inicial
-        snapshot = _snapshot_lab(lab_id, db)
-        await websocket.send_text(json.dumps({
-            "tipo": "estado_inicial",
-            "lab_id": lab_id,
-            "pcs": snapshot,
-        }, ensure_ascii=False))
+        usuario_id = payload.get("sub")
+        try:
+            usuario_pk = int(usuario_id)
+        except (TypeError, ValueError):
+            await websocket.close(code=4003, reason="Token invalido")
+            return
 
-        # Mantener conexión viva con ping cada 30s
-        while True:
-            try:
-                # Esperar mensaje del cliente (o timeout)
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
-                if data == "ping":
-                    await websocket.send_text(json.dumps({"tipo": "pong"}))
-            except asyncio.TimeoutError:
-                # Enviar ping al cliente
-                await websocket.send_text(json.dumps({"tipo": "ping"}))
-            except WebSocketDisconnect:
-                break
-
-    except WebSocketDisconnect:
-        pass
-    finally:
-        manager.desconectar(websocket, lab_id)
-        db.close()
+        usuario = db_auth.query(Usuario).filter(Usuario.id == usuario_pk).first()
+        if not usuario or not usuario.activo:
+            await websocket.close(code=4003, reason="Usuario no autorizado")
+            return
+        if usuario.rol == RolUsuario.LAB_ADMIN and usuario.laboratorio_id != lab_id:
+            await websocket.cl

@@ -18,6 +18,10 @@ from database import Base
 import datetime
 
 
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class Adeudo(Base):
     __tablename__ = "adeudos"
 
@@ -63,7 +67,7 @@ class Adeudo(Base):
     monto_estimado = Column(Float, nullable=True)
 
     # ── Creación ──────────────────────────────────────────────────────────────
-    fecha_reporte    = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_reporte    = Column(DateTime, default=_utcnow)
     reportado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
     # ── Resolución ────────────────────────────────────────────────────────────
@@ -76,5 +80,4 @@ class Adeudo(Base):
     sesion        = relationship("SesionClase", foreign_keys=[sesion_id])
     computadora   = relationship("Computadora", foreign_keys=[computadora_id])
     prestamo      = relationship("Prestamo",    foreign_keys=[prestamo_id])
-    reportado_por = relationship("Usuario",     foreign_keys=[reportado_por_id])
-    resuelto_por  = relationship("Usuario",     foreign_keys=[resuelto_por_id])
+    reportado_por = relationship("Usuario",     foreign_keys=[r

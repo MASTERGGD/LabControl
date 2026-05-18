@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -8,8 +8,14 @@ from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
+from services.auditoria import registrar, Accion, Recurso
 from rls import assert_lab_write, lab_filter
 import datetime
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
 
 router = APIRouter(prefix="/horarios", tags=["Horarios y Reservaciones"])
 
@@ -88,7 +94,7 @@ def _serializar_horario(h: HorarioDisponible, db: Session) -> dict:
 
     reservacion_activa = db.query(Reservacion).filter(
         Reservacion.horario_id == h.id,
-        Reservacion.estado != "CANCELADA"
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
     ).first()
 
     reservacion_data = None
@@ -216,7 +222,7 @@ def _verificar_conflicto(
         Reservacion.horario_id == horario_id,
         Reservacion.laboratorio_id == laboratorio_id,
         Reservacion.cuatrimestre == cuatrimestre,
-        Reservacion.estado != "CANCELADA",
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
     )
     if excluir_id:
         q = q.filter(Reservacion.id != excluir_id)
@@ -430,7 +436,7 @@ def desactivar_horario(
         raise HTTPException(status_code=404, detail="Horario no encontrado")
     reservado = db.query(Reservacion).filter(
         Reservacion.horario_id == horario_id,
-        Reservacion.estado != "CANCELADA"
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
     ).first()
     if reservado:
         raise HTTPException(status_code=409, detail="No se puede desactivar: el horario tiene reservaciones activas")
@@ -462,7 +468,7 @@ def disponibilidad(
     for h in horarios:
         reservacion = db.query(Reservacion).filter(
             Reservacion.horario_id == h.id,
-            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA"]),
+            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
 
         mi_solicitud  = None
@@ -773,7 +779,7 @@ def solicitar_slot(
 
     r = db.query(Reservacion).filter(
         Reservacion.id == reservacion_id,
-        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA"])
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
     ).first()
     if not r:
         raise HTTPException(status_code=404, detail="Reservación no encontrada o inactiva")
@@ -940,7 +946,7 @@ def ceder_slot(
     if not solicitud:
         raise HTTPException(status_code=404, detail="No hay solicitudes pendientes para este slot")
 
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
 
     # Transferir la reservación al solicitante
     r.docente_id    = solicitud.solicitante_id
@@ -1009,7 +1015,7 @@ def rechazar_solicitud_docente(
     if not solicitud:
         raise HTTPException(status_code=404, detail="No hay solicitudes pendientes para este slot")
 
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     solicitud.estado           = "RECHAZADA"
     solicitud.resuelto_por_id  = current_user.id
     solicitud.fecha_resolucion = ahora
@@ -1119,7 +1125,7 @@ def resolver_conflicto(
         raise HTTPException(status_code=404, detail="Solicitud no encontrada o ya resuelta")
 
     r = db.query(Reservacion).filter(Reservacion.id == s.reservacion_id).first()
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
 
     if data.decision.upper() == "APROBAR":
         # Transferir el slot al solicitante
@@ -1221,7 +1227,7 @@ def bloquear_slot(
     if data.cancelar_reservacion:
         r = db.query(Reservacion).filter(
             Reservacion.horario_id == horario_id,
-            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA"]),
+            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
         if r:
             r.estado = "CANCELADA"
@@ -1337,7 +1343,7 @@ def resolver_requerimiento(
 
     req.estado          = data.estado
     req.nota_admin      = data.nota_admin
-    req.resuelto_en     = datetime.datetime.utcnow()
+    req.resuelto_en     = _utcnow()
     req.resuelto_por_id = current_user.id
     db.commit()
     db.refresh(req)
@@ -1362,3 +1368,116 @@ def resolver_requerimiento(
         pass
 
     return _serializar_requerimiento(req)
+
+
+# ─── Marcar estado de reservación (IMPARTIDA / NO_ASISTIO / CANCELADA_TARDIA) ──
+
+class MarcarEstadoBody(BaseModel):
+    estado: str   # IMPARTIDA | NO_ASISTIO | CANCELADA_TARDIA
+    motivo: Optional[str] = None
+
+_admin_roles = require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
+
+@router.post("/reservaciones/{reservacion_id}/marcar-estado",
+             summary="Marcar estado de una reservación (IMPARTIDA / NO_ASISTIO / CANCELADA_TARDIA)")
+def marcar_estado_reservacion(
+    request: Request,
+    reservacion_id: int,
+    body: MarcarEstadoBody,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_admin_roles),
+):
+    """
+    IMPARTIDA       → estado terminal; la reservación queda marcada como impartida (cuatrimestre concluido).
+    NO_ASISTIO      → evento puntual; registra auditoría/notificación pero la reservación queda PROGRAMADA.
+    CANCELADA_TARDIA → evento puntual; registra auditoría/notificación pero la reservación queda PROGRAMADA.
+    """
+    ESTADOS_VALIDOS = {"IMPARTIDA", "NO_ASISTIO", "CANCELADA_TARDIA"}
+    if body.estado not in ESTADOS_VALIDOS:
+        raise HTTPException(status_code=422, detail=f"Estado inválido. Opciones: {ESTADOS_VALIDOS}")
+
+    res = db.query(Reservacion).filter(Reservacion.id == reservacion_id).first()
+    if not res:
+        raise HTTPException(status_code=404, detail="Reservación no encontrada")
+
+    assert_lab_write(res.laboratorio_id, current_user)
+
+    estado_anterior = res.estado
+
+    if body.estado == "IMPARTIDA":
+        # Estado terminal — marcar como concluida
+        res.estado = "IMPARTIDA"
+        db.commit()
+        registrar(
+            db, accion=Accion.MARCAR_RESERVACION, recurso=Recurso.RESERVACION,
+            usuario=current_user, recurso_id=res.id,
+            detalle={"estado_anterior": estado_anterior, "estado_nuevo": "IMPARTIDA",
+                     "motivo": body.motivo, "materia": res.materia, "grupo": res.grupo},
+            request=request,
+        )
+        # Notificar al docente
+        try:
+            crear_notificacion(
+                db, res.docente_id,
+                tipo="RESERVACION_IMPARTIDA",
+                titulo="Clase marcada como impartida",
+                mensaje=(
+                    f"Tu reservación de {res.materia} ({res.grupo}) — {res.cuatrimestre} "
+                    f"ha sido marcada como IMPARTIDA."
+                    + (f" Nota: {body.motivo}" if body.motivo else "")
+                ),
+                url="/docente/reservaciones",
+            )
+            db.commit()
+        except Exception:
+            pass
+        return {"mensaje": "Reservación marcada como IMPARTIDA", "estado": res.estado}
+
+    # NO_ASISTIO o CANCELADA_TARDIA — eventos puntuales, la reservación queda PROGRAMADA
+    # (no se cambia res.estado)
+    etiqueta = "no asistió" if body.estado == "NO_ASISTIO" else "canceló con poca anticipación"
+    registrar(
+        db, accion=Accion.MARCAR_RESERVACION, recurso=Recurso.RESERVACION,
+        usuario=current_user, recurso_id=res.id,
+        detalle={"evento": body.estado, "estado_reservacion": res.estado,
+                 "motivo": body.motivo, "materia": res.materia, "grupo": res.grupo},
+        request=request,
+    )
+    # Notificar admins y docente
+    try:
+        admins = db.query(Usuario).filter(
+            Usuario.laboratorio_id == res.laboratorio_id,
+            Usuario.rol.in_([RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN])
+        ).all()
+        if not admins:
+            admins = db.query(Usuario).filter(Usuario.rol == RolUsuario.SUPER_ADMIN).all()
+        docente = db.query(Usuario).filter(Usuario.id == res.docente_id).first()
+        docente_nombre = docente.nombre if docente else "El docente"
+        for adm in admins:
+            crear_notificacion(
+                db, adm.id,
+                tipo=body.estado,
+                titulo=f"Evento de asistencia — {res.materia}",
+                mensaje=(
+                    f"{docente_nombre} {etiqueta} a su clase de {res.materia} ({res.grupo})."
+                    + (f" Motivo: {body.motivo}" if body.motivo else "")
+                ),
+                url="/admin/reservaciones",
+            )
+        # Notificar al propio docente
+        crear_notificacion(
+            db, res.docente_id,
+            tipo=body.estado,
+            titulo="Registro de asistencia",
+            mensaje=(
+                f"Se registró que {etiqueta} a tu clase de {res.materia} ({res.grupo})."
+                + (f" Nota: {body.motivo}" if body.motivo else "")
+            ),
+            url="/docente/reservaciones",
+        )
+        db.commit()
+    except Exception:
+        pass
+
+    return {"mensaje": f"Evento {body.estado} registrado. La reservación permanece PROGRAMADA.",
+  

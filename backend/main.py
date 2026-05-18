@@ -37,18 +37,17 @@ from seed import run_seed
 
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
-# Última revisión conocida — actualizar si se agrega una migración nueva
-_ALEMBIC_HEAD = "c9e2f3a84d51"
+# Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
+_ALEMBIC_HEAD = "e4f6a3c02d18"
 
 
 def _current_db_version() -> str | None:
-    """Lee la versión Alembic actual usando psycopg2 con timeout corto."""
+    """Lee la version Alembic actual usando psycopg2 con timeout corto."""
     db_url = os.environ.get("DATABASE_URL", "")
     if "postgresql" not in db_url:
         return None
     try:
         import psycopg2
-        # psycopg2 no acepta el prefijo +psycopg2 de SQLAlchemy
         pg_url = db_url.replace("postgresql+psycopg2://", "postgresql://", 1)
         conn = psycopg2.connect(pg_url, connect_timeout=5)
         conn.autocommit = True
@@ -59,18 +58,18 @@ def _current_db_version() -> str | None:
         conn.close()
         return row[0] if row else None
     except Exception as e:
-        print(f"Alembic: no se pudo leer versión ({e})")
+        print(f"Alembic: no se pudo leer version ({e})")
         return None
 
 
 def _run_migrations():
     """
     Aplica migraciones pendientes con Alembic.
-    Si la BD ya está en la versión head, lo salta sin tocar nada.
+    Si la BD ya esta en la version head, lo salta sin tocar nada.
     """
     current = _current_db_version()
     if current == _ALEMBIC_HEAD:
-        print(f"Alembic: ya en versión {_ALEMBIC_HEAD} — sin cambios.")
+        print(f"Alembic: ya en version {_ALEMBIC_HEAD} -- sin cambios.")
         return
 
     _base = pathlib.Path(__file__).parent.resolve()
@@ -86,52 +85,45 @@ def _run_migrations():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Aplicar migraciones de esquema (crea tablas nuevas, agrega columnas, etc.)
     _run_migrations()
-    # 2. Ejecutar seeder inicial (crea SUPER_ADMIN si no existe)
     db = SessionLocal()
     try:
         run_seed(db)
     finally:
         db.close()
-    yield  # -- App corriendo --
+    yield
 
 
 # --- App ---------------------------------------------------------------------
 
 app = FastAPI(
     title="LabControl UTECAN",
-    description="Sistema de gestion multi-laboratorio -- Universidad Tecnologica de Candelaria",
+    description="Sistema de gestion multi-laboratorio",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# -- CORS ---------------------------------------------------------------------
 _APP_ENV      = os.getenv("APP_ENV", "development")
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 if _APP_ENV == "production":
-    # Produccion: solo el dominio configurado en FRONTEND_URL
-    _CORS_ORIGINS   = list({o for o in ["http://localhost:3000", _FRONTEND_URL] if o})
-    _CORS_ALL       = False
+    _CORS_ORIGINS = list({o for o in ["http://localhost:3000", _FRONTEND_URL] if o})
+    _CORS_ALL     = False
 else:
-    # Desarrollo / LAN: cualquier origen (permite acceder desde otros equipos de la red)
-    _CORS_ORIGINS   = ["*"]
-    _CORS_ALL       = True
+    _CORS_ORIGINS = ["*"]
+    _CORS_ALL     = True
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_credentials=not _CORS_ALL,   # credentials=True es incompatible con allow_origins=["*"]
+    allow_credentials=not _CORS_ALL,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"] if _CORS_ALL else ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
     expose_headers=["Content-Disposition"],
     max_age=600,
 )
 
-# -- Security Headers ---------------------------------------------------------
 app.add_middleware(SecurityHeadersMiddleware)
-
 
 # --- Routers -----------------------------------------------------------------
 
@@ -150,9 +142,7 @@ app.include_router(historial_router.router)
 app.include_router(auditoria_router.router)
 app.include_router(adeudos_router.router)
 
-# WebSocket -- mapa de PCs en tiempo real
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
-
 
 # --- Endpoints base ----------------------------------------------------------
 

@@ -732,4 +732,22 @@ export default function DashboardAdmin() {
             {modulosVisibles.map(m => (
               <button key={m.titulo} onClick={() => navigate(m.ruta)}
                 style={{ background:'rgba(15,23,42,0.60)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:'0.875rem', padding:'0.75rem 0.5rem', textAlign:'center', cursor:'pointer', transition:'all 0.3s ease' }}
-                onMouseEnter={e => { e.currentTarget.style.background='rgba(30,41,59,0.85)'; e.currentTarget.style.b
+                onMouseEnter={e => { e.currentTarget.style.background='rgba(30,41,59,0.85)'; e.currentTarget.style.boxShadow=`0 0 18px ${m.color}22`; e.currentTarget.style.borderColor=`${m.color}38`; e.currentTarget.style.transform='translateY(-2px)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background='rgba(15,23,42,0.60)'; e.currentTarget.style.boxShadow='none'; e.currentTarget.style.borderColor='rgba(255,255,255,0.06)'; e.currentTarget.style.transform='none'; }}>
+                <div style={{ fontSize:24, marginBottom:5 }}>{m.icono}</div>
+                <p style={{ fontSize:11, fontWeight:500, color:'#64748b', margin:'0 0 7px', lineHeight:1.3 }}>{m.titulo}</p>
+                <div style={{ width:'100%', height:2, borderRadius:99, background:m.color, opacity:0.35 }}/>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-slate-700" style={{margin:0}}>LabControl UTECAN v1.0 — Universidad Tecnológica de Candelaria</p>
+          <p className="text-xs text-slate-700" style={{margin:0}}>🔄 Auto-actualiza cada 30s</p>
+        </div>
+
+      </div>
+    </AdminLayout>
+  );
+}

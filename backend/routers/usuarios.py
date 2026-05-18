@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional, List
 from database import get_db
 from models.usuario import Usuario, RolUsuario
@@ -43,8 +43,7 @@ class UsuarioResponse(BaseModel):
     laboratorio_nombre: Optional[str] = None
     activo: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ResetPasswordResponse(BaseModel):
     mensaje: str

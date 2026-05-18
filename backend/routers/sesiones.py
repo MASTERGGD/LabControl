@@ -15,6 +15,11 @@ from routers.notificaciones import crear_notificacion
 import datetime
 import uuid
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 router = APIRouter(prefix="/sesiones", tags=["Sesiones de Clase"])
 
 
@@ -59,7 +64,7 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
     ).count()
 
     # Calcular tiempo restante (en segundos) o exceso si está abierta
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     tiempo_restante_seg = None
     en_overtime = False
     if s.estado == "ABIERTA" and s.fin_estimado:
@@ -148,7 +153,7 @@ async def abrir_sesion(
 ):
     # ── Hora actual en México (UTC-6, sin ajuste DST simplificado) ────────────
     OFFSET_MX = datetime.timedelta(hours=-6)
-    ahora_utc = datetime.datetime.utcnow()
+    ahora_utc = _utcnow()
     ahora_mx  = ahora_utc + OFFSET_MX          # hora local México
     dia_mx    = ahora_mx.weekday()              # 0=lun … 6=dom
     hora_mx   = ahora_mx.strftime("%H:%M")      # "07:00"
@@ -303,6 +308,20 @@ async def abrir_sesion(
     db.commit()
     db.refresh(sesion)
 
+    # Actualizar estado de la reservacion a EN_CURSO
+    if data.reservacion_id:
+        res = db.query(Reservacion).filter(Reservacion.id == data.reservacion_id).first()
+        if res:
+            res.estado = "EN_CURSO"
+            db.commit()
+
+    registrar(db, accion=Accion.ABRIR_SESION, recurso=Recurso.SESION,
+              usuario=current_user, recurso_id=sesion.id,
+              detalle={"laboratorio_id": data.laboratorio_id, "codigo": codigo,
+                       "materia": materia_final, "tipo": tipo_sesion,
+                       "reservacion_id": data.reservacion_id},
+              request=request)
+
     # Broadcast WebSocket
     await manager.broadcast(data.laboratorio_id, {
         "tipo": "sesion_abierta",
@@ -369,7 +388,7 @@ async def cerrar_sesion(
         AsignacionPC.sesion_id == sesion_id,
         AsignacionPC.hora_liberacion == None  # noqa: E711
     ).all()
-    ahora = datetime.datetime.utcnow()
+    ahora = _utcnow()
     for a in asigs_abiertas:
         a.hora_liberacion = ahora
 
@@ -381,6 +400,13 @@ async def cerrar_sesion(
     if s.fin_estimado and ahora > s.fin_estimado:
         overtime_min = int((ahora - s.fin_estimado).total_seconds() / 60)
     s.overtime_min = overtime_min
+
+    # Revertir reservacion a PROGRAMADA si estaba EN_CURSO
+    if s.reservacion_id is not None:
+        res = db.query(Reservacion).filter(Reservacion.id == s.reservacion_id).first()
+        if res and res.estado == "EN_CURSO":
+            res.estado = "PROGRAMADA"
+
     db.commit()
     registrar(db, accion=Accion.CERRAR_SESION, recurso=Recurso.SESION,
               usuario=current_user, recurso_id=s.id,
@@ -455,6 +481,7 @@ def listar_asignaciones(
 
 @router.post("/{sesion_id}/asignaciones", status_code=status.HTTP_201_CREATED, summary="Asignar PC a alumno")
 async def asignar_pc(
+    request: Request,
     sesion_id: int,
     data: AsignacionCreate,
     db: Session = Depends(get_db),
@@ -491,11 +518,17 @@ async def asignar_pc(
         computadora_id=data.computadora_id,
         alumno_nombre=data.alumno_nombre,
         alumno_matricula=data.alumno_matricula,
-        hora_asignacion=datetime.datetime.utcnow(),
+        hora_asignacion=_utcnow(),
     )
     db.add(asig)
     db.commit()
     db.refresh(asig)
+
+    registrar(db, accion=Accion.ASIGNAR_PC, recurso=Recurso.SESION,
+              usuario=current_user, recurso_id=asig.id,
+              detalle={"sesion_id": sesion_id, "computadora_id": data.computadora_id,
+                       "alumno": data.alumno_nombre, "matricula": data.alumno_matricula},
+              request=request)
 
     # Broadcast WebSocket: PC ocupada
     await manager.broadcast(s.laboratorio_id, {
@@ -526,6 +559,7 @@ async def asignar_pc(
 
 @router.delete("/{sesion_id}/asignaciones/{asig_id}", summary="Liberar PC")
 async def liberar_pc(
+    request: Request,
     sesion_id: int,
     asig_id: int,
     db: Session = Depends(get_db),
@@ -544,8 +578,14 @@ async def liberar_pc(
         raise HTTPException(status_code=403, detail="No tienes acceso a esta sesión")
 
     pc = db.query(Computadora).filter(Computadora.id == asig.computadora_id).first()
-    asig.hora_liberacion = datetime.datetime.utcnow()
+    asig.hora_liberacion = _utcnow()
     db.commit()
+
+    registrar(db, accion=Accion.LIBERAR_PC, recurso=Recurso.SESION,
+              usuario=current_user, recurso_id=asig.id,
+              detalle={"sesion_id": sesion_id, "computadora_id": asig.computadora_id,
+                       "pc_codigo": pc.codigo if pc else None},
+              request=request)
 
     # Broadcast WebSocket: PC libre (en sesión)
     await manager.broadcast(s.laboratorio_id, {
@@ -813,7 +853,7 @@ def confirmar_recepcion(
 
     # Marcar sesión como recepción confirmada
     s.recepcion_confirmada = True
-    s.recepcion_fin        = datetime.datetime.utcnow()
+    s.recepcion_fin        = _utcnow()
     db.commit()
 
     return {
@@ -858,3 +898,4 @@ def ultimo_usuario_pc(
             "sesion_fecha":     sesion.inicio.isoformat() if sesion and sesion.inicio else None,
         }
     }
+                                                                                              

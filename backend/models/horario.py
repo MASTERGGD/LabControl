@@ -3,6 +3,11 @@ from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
 class HorarioDisponible(Base):
     __tablename__ = "horarios_disponibles"
 
@@ -52,7 +57,7 @@ class BloqueoSlot(Base):
     horario_id     = Column(Integer, ForeignKey("horarios_disponibles.id"), nullable=False)
     motivo         = Column(String,  nullable=False)   # "Reunión de academia", "Mantenimiento", etc.
     creado_por_id  = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    fecha_creacion = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_creacion = Column(DateTime, default=_utcnow)
     activo         = Column(Boolean, default=True)
 
     horario    = relationship("HorarioDisponible", back_populates="bloqueos")
@@ -76,7 +81,7 @@ class SolicitudConflicto(Base):
     estado            = Column(String,  default="PENDIENTE")  # PENDIENTE | APROBADA | RECHAZADA
     resolucion_notas  = Column(String,  nullable=True)
     resuelto_por_id   = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    fecha_solicitud   = Column(DateTime, default=datetime.datetime.utcnow)
+    fecha_solicitud   = Column(DateTime, default=_utcnow)
     fecha_resolucion  = Column(DateTime, nullable=True)
 
     reservacion = relationship("Reservacion",  back_populates="solicitudes")
@@ -109,9 +114,9 @@ class RequerimientoClase(Base):
     estado         = Column(String, default="PENDIENTE")
     nota_admin     = Column(String, nullable=True)   # Respuesta del admin
 
-    creado_en      = Column(DateTime, default=datetime.datetime.utcnow)
+    creado_en      = Column(DateTime, default=_utcnow)
     resuelto_en    = Column(DateTime, nullable=True)
     resuelto_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
     reservacion  = relationship("Reservacion", back_populates="requerimiento")
-    resuelto_por = relationship("Usuario", foreign_keys=[resuelto_por_id])
+    resuel
