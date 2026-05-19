@@ -333,7 +333,8 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>,
   },
 
-  // ─── Control ──────────────────────────────────────────────────────────────────
+  // ─── Grupo: Seguimiento ─────────────────────────────────────────────────────
+  { divider: true, label: 'Seguimiento', roles: ['SUPER_ADMIN','LAB_ADMIN'] },
   {
     label: 'Reportes', path: '/admin/reportes', roles: ['SUPER_ADMIN','LAB_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
@@ -372,6 +373,7 @@ const BREADCRUMB_MAP = {
   '/admin/adeudos':           [{ label: 'Adeudos' }],
   '/admin/consulta-persona':  [{ label: 'Consulta de Persona' }],
   '/admin/catalogo':          [{ label: 'Directorio Académico' }],
+  '/docente/horario':         [{ label: 'Mi Horario' }],
   '/comunicados':             [{ label: 'Mis Comunicados' }],
   '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
@@ -410,7 +412,110 @@ function Breadcrumb({ pathname }) {
 }
 
 // ─── Sidebar content (definido FUERA de AdminLayout para evitar re-montaje) ───
-function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados }) {
+function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
+  const storageKey = `labcontrol-sidebar-groups-${usuario?.rol || 'anon'}`;
+  const [openGroups, setOpenGroups] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  const groups = [];
+  let current = { key: 'principal', label: 'Principal', items: [], root: true };
+  itemsVisibles.forEach(item => {
+    if (item.divider) {
+      if (current.items.length) groups.push(current);
+      current = { key: item.label, label: item.label, items: [], root: false };
+    } else {
+      current.items.push(item);
+    }
+  });
+  if (current.items.length) groups.push(current);
+
+  const isItemActive = item =>
+    item.exact ? pathname === item.path : pathname === item.path || pathname.startsWith(`${item.path}/`);
+
+  const isGroupActive = group => group.items.some(isItemActive);
+
+  const isGroupOpen = group => {
+    if (group.root || mobile) return true;
+    if (Object.prototype.hasOwnProperty.call(openGroups, group.key)) {
+      return openGroups[group.key] !== false;
+    }
+    return isGroupActive(group);
+  };
+
+  const toggleGroup = key => {
+    setOpenGroups(prev => {
+      const next = { ...prev, [key]: prev[key] === false ? true : false };
+      localStorage.setItem(storageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const renderNavItem = (item, grouped = false) => (
+    <div key={item.path} className="relative group">
+      <NavLink
+        to={item.path}
+        end={!!item.exact}
+        onClick={() => mobile && setMenuMovil(false)}
+        className={({ isActive }) =>
+          `nav-item flex items-center gap-3 py-2.5 text-sm font-medium
+           ${grouped ? 'px-3' : 'px-2.5'}
+           ${isActive ? 'nav-active' : 'text-slate-400'}`
+        }
+      >
+        {grouped && (
+          <span style={{ width: 2, height: 14, borderRadius: 99,
+            background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
+        )}
+        <span className="shrink-0 relative">
+          {item.icon}
+          {!sidebarOpen && !mobile && item.badge && pendientesComunicados > 0 && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-slate-900" />
+          )}
+        </span>
+        {(sidebarOpen || mobile) && (
+          <>
+            <span className="flex-1">{item.label}</span>
+            {item.badge && pendientesComunicados > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full leading-5 min-w-[18px] text-center shrink-0">
+                {pendientesComunicados > 99 ? '99+' : pendientesComunicados}
+              </span>
+            )}
+          </>
+        )}
+      </NavLink>
+
+      {!sidebarOpen && !mobile && (
+        <div className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
+                       opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+             style={{ transform: 'translateY(-50%)' }}>
+          <div style={{
+            position: 'absolute', left: '-4px', top: '50%',
+            transform: 'translateY(-50%)',
+            width: 0, height: 0,
+            borderTop: '4px solid transparent',
+            borderBottom: '4px solid transparent',
+            borderRight: '4px solid var(--tooltip-arrow)',
+          }} />
+          <span style={{
+            display: 'block',
+            background: 'var(--tooltip-bg)',
+            border: '1px solid var(--tooltip-border)',
+            borderRadius: '8px', padding: '5px 11px',
+            fontSize: '12px', fontWeight: 500,
+            color: 'var(--tooltip-text)', whiteSpace: 'nowrap',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          }}>
+            {item.label}
+          </span>
+        </div>
+      )}
+    </div>
+  );
   return (
     <>
       {/* Logo */}
@@ -453,7 +558,40 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 
       {/* Nav */}
       <nav className="flex-1 py-2 px-2 overflow-y-auto overflow-x-visible">
-        {itemsVisibles.map((item, idx) => {
+        {!sidebarOpen && !mobile ? (
+          itemsVisibles.filter(item => !item.divider).map(item => renderNavItem(item, false))
+        ) : (
+          groups.map(group => {
+            const active = isGroupActive(group);
+            const open = isGroupOpen(group);
+            return (
+              <div key={group.key} className={group.root ? '' : 'mt-2'}>
+                {!group.root && (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.key)}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
+                      active ? 'text-blue-300 bg-blue-500/10' : 'text-slate-600 hover:text-slate-400 hover:bg-white/5'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-blue-400' : 'bg-slate-700'}`} />
+                    <span className="flex-1 text-left truncate">{group.label}</span>
+                    <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </button>
+                )}
+                {open && (
+                  <div className={group.root ? 'space-y-1' : 'mt-1 space-y-1'}>
+                    {group.items.map(item => renderNavItem(item, !group.root))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+        {false && itemsVisibles.map((item, idx) => {
           // ── Encabezado de sección ───────────────────────────────────────────
           if (item.divider) {
             return (
@@ -609,7 +747,8 @@ export default function AdminLayout({ children }) {
       >
         <SidebarContent mobile={false} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
                         setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
-                        handleLogout={handleLogout} pendientesComunicados={pendientesComunicados} />
+                        handleLogout={handleLogout} pendientesComunicados={pendientesComunicados}
+                        pathname={location.pathname} />
       </aside>
 
       {/* ── Drawer móvil (< md) ───────────────────────────────────────── */}
@@ -627,7 +766,8 @@ export default function AdminLayout({ children }) {
                  }}>
             <SidebarContent mobile={true} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
                             setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
-                            handleLogout={handleLogout} pendientesComunicados={pendientesComunicados} />
+                            handleLogout={handleLogout} pendientesComunicados={pendientesComunicados}
+                            pathname={location.pathname} />
           </aside>
         </div>
       )}

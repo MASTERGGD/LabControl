@@ -44,7 +44,7 @@ const EMPTY_FORM = {
   titulo: '', contenido: '', categoria: 'GENERAL', prioridad: 'INFORMATIVO',
   requiere_confirmacion: false, area_emisora: '',
   fecha_publicacion: '', fecha_expiracion: '',
-  dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: '',
+  dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [],
 };
 
 const toStartOfDay = value => value ? `${value}T00:00:00` : null;
@@ -56,18 +56,34 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [form, setForm]   = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
+  const [usuarios, setUsuarios] = useState([]);
+  const [busquedaUsuario, setBusquedaUsuario] = useState('');
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+
+  useEffect(() => {
+    setCargandoUsuarios(true);
+    api.get('/usuarios?activo=true')
+      .then(res => setUsuarios(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setUsuarios([]))
+      .finally(() => setCargandoUsuarios(false));
+  }, []);
 
   useEffect(() => {
     if (!comunicado) { setForm(EMPTY_FORM); return; }
     // Reconstruir estado del form desde el comunicado existente
     const dests = comunicado.destinatarios || [];
-    let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = '';
+    let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = [];
     const tiposTodos   = dests.find(d => d.tipo === 'TODOS');
     const tiposRoles   = dests.filter(d => d.tipo === 'ROL').map(d => d.ref);
-    const tiposUsuario = dests.filter(d => d.tipo === 'USUARIO').map(d => d.ref).join(', ');
+    const tiposUsuario = dests.filter(d => d.tipo === 'USUARIO').map(d => ({
+      id: Number(d.ref),
+      nombre: `Usuario #${d.ref}`,
+      email: '',
+      rol: '',
+    }));
     if (tiposTodos) dest_tipo = 'TODOS';
     else if (tiposRoles.length) { dest_tipo = 'ROL'; dest_roles = tiposRoles; }
-    else if (tiposUsuario) { dest_tipo = 'USUARIO'; dest_usuarios = tiposUsuario; }
+    else if (tiposUsuario.length) { dest_tipo = 'USUARIO'; dest_usuarios = tiposUsuario; }
 
     setForm({
       titulo:                comunicado.titulo || '',
@@ -82,6 +98,16 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     });
   }, [comunicado]);
 
+  useEffect(() => {
+    if (!form.dest_usuarios.length || !usuarios.length) return;
+    setForm(f => ({
+      ...f,
+      dest_usuarios: f.dest_usuarios.map(sel =>
+        usuarios.find(u => u.id === sel.id) || sel
+      ),
+    }));
+  }, [usuarios]);
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const buildDestinatarios = () => {
@@ -89,8 +115,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     if (form.dest_tipo === 'ROL')
       return form.dest_roles.map(r => ({ tipo: 'ROL', ref: r }));
     if (form.dest_tipo === 'USUARIO')
-      return form.dest_usuarios.split(',').map(s => s.trim()).filter(Boolean)
-        .map(ref => ({ tipo: 'USUARIO', ref }));
+      return form.dest_usuarios.map(u => ({ tipo: 'USUARIO', ref: String(u.id) }));
     return [];
   };
 
@@ -132,6 +157,27 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       ? form.dest_roles.filter(r => r !== rol)
       : [...form.dest_roles, rol]);
   };
+
+  const agregarUsuario = usuario => {
+    if (form.dest_usuarios.some(u => u.id === usuario.id)) return;
+    set('dest_usuarios', [...form.dest_usuarios, usuario]);
+    setBusquedaUsuario('');
+  };
+
+  const quitarUsuario = usuarioId => {
+    set('dest_usuarios', form.dest_usuarios.filter(u => u.id !== usuarioId));
+  };
+
+  const usuariosFiltrados = usuarios
+    .filter(u => !form.dest_usuarios.some(sel => sel.id === u.id))
+    .filter(u => {
+      const q = busquedaUsuario.trim().toLowerCase();
+      if (!q) return true;
+      return [u.nombre, u.email, u.rol, u.numero_empleado]
+        .filter(Boolean)
+        .some(v => String(v).toLowerCase().includes(q));
+    })
+    .slice(0, 8);
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -239,9 +285,58 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               </div>
             )}
             {form.dest_tipo === 'USUARIO' && (
-              <input className="input-dark mt-2" value={form.dest_usuarios}
-                onChange={e => set('dest_usuarios', e.target.value)}
-                placeholder="IDs de usuarios separados por coma: 1, 5, 12" />
+              <div className="mt-2 space-y-3">
+                {form.dest_usuarios.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {form.dest_usuarios.map(u => (
+                      <span key={u.id}
+                        className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100">
+                        <span className="max-w-[220px] truncate">{u.nombre}</span>
+                        {u.rol && <span className="text-blue-300/70">{u.rol}</span>}
+                        <button type="button" onClick={() => quitarUsuario(u.id)}
+                          className="text-blue-200/70 hover:text-white transition-colors"
+                          title="Quitar destinatario">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    className="input-dark"
+                    value={busquedaUsuario}
+                    onChange={e => setBusquedaUsuario(e.target.value)}
+                    placeholder="Buscar por nombre, correo, rol o número de empleado"
+                  />
+                  <div className="mt-2 rounded-xl border border-white/10 bg-slate-900/95 overflow-hidden">
+                    {cargandoUsuarios ? (
+                      <p className="px-3 py-3 text-sm text-slate-500">Cargando usuarios...</p>
+                    ) : usuariosFiltrados.length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-slate-500">
+                        {busquedaUsuario.trim() ? 'No hay usuarios con esa búsqueda.' : 'No hay usuarios disponibles.'}
+                      </p>
+                    ) : (
+                      usuariosFiltrados.map(u => (
+                        <button key={u.id} type="button"
+                          onClick={() => agregarUsuario(u)}
+                          className="w-full px-3 py-2.5 text-left hover:bg-white/5 transition-colors border-b border-white/5 last:border-b-0">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
+                              <p className="text-xs text-slate-500 truncate">{u.email}</p>
+                            </div>
+                            <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/5 text-slate-400 shrink-0">
+                              {u.rol}
+                            </span>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -33,50 +34,6 @@ function fmtDuracion(inicio, fin) {
 }
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-// ─── DocenteLayout ────────────────────────────────────────────────────────────
-
-function DocenteLayout({ children, titulo, onCambiarPwd }) {
-  const { usuario, logout } = useAuth();
-  const navigate = useNavigate();
-  return (
-    <div className="min-h-screen text-white">
-      <header className="glass-sm border-b border-white/5 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/docente')}
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-            </svg>
-          </button>
-          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
-          </div>
-          <span className="font-bold text-white hidden sm:inline">LabControl</span>
-          {titulo && <span className="text-slate-500 text-sm hidden sm:inline">/ {titulo}</span>}
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-slate-400 hidden sm:block">{usuario?.nombre}</span>
-          <span className="text-xs bg-green-900 text-green-300 px-2 py-1 rounded-full font-medium">DOCENTE</span>
-          <button onClick={() => { logout(); navigate('/login'); }}
-            className="text-sm text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-            </svg>
-            Salir
-          </button>
-        </div>
-      </header>
-      <main className="p-3 sm:p-6 max-w-6xl mx-auto">{children}</main>
-    </div>
-  );
-}
 
 // ─── Tarjeta de sesión ────────────────────────────────────────────────────────
 
@@ -375,7 +332,7 @@ export default function MiHistorial() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DocenteLayout titulo="Mi historial">
+    <AdminLayout>
 
       {/* Encabezado */}
       <div className="mb-6">
@@ -530,6 +487,6 @@ export default function MiHistorial() {
           onClose={() => setDetalleSesion(null)}
         />
       )}
-    </DocenteLayout>
+    </AdminLayout>
   );
 }
