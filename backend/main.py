@@ -31,6 +31,7 @@ from routers import auditoria as auditoria_router
 from routers import adeudos as adeudos_router
 from routers import espacios as espacios_router
 from routers import comunicados as comunicados_router
+from routers import departamentos as departamentos_router
 
 from ws.mapa import websocket_mapa
 
@@ -41,7 +42,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "h3i4j5k6l7m8"
+_ALEMBIC_HEAD = "i4j5k6l7m8n9"
 
 
 def _current_db_version() -> str | None:
@@ -146,6 +147,7 @@ app.include_router(auditoria_router.router)
 app.include_router(adeudos_router.router)
 app.include_router(espacios_router.router)
 app.include_router(comunicados_router.router)
+app.include_router(departamentos_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

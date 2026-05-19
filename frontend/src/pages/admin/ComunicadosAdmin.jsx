@@ -42,9 +42,9 @@ const PRIO_MAP = Object.fromEntries(PRIORIDADES.map(p => [p.v, p]));
 
 const EMPTY_FORM = {
   titulo: '', contenido: '', categoria: 'GENERAL', prioridad: 'INFORMATIVO',
-  requiere_confirmacion: false, area_emisora: '',
+  requiere_confirmacion: false, area_emisora: '', departamento_emisor_id: '',
   fecha_publicacion: '', fecha_expiracion: '',
-  dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [],
+  dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [], dest_departamentos: [],
 };
 
 const toStartOfDay = value => value ? `${value}T00:00:00` : null;
@@ -57,6 +57,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
   const [usuarios, setUsuarios] = useState([]);
+  const [departamentos, setDepartamentos] = useState([]);
   const [busquedaUsuario, setBusquedaUsuario] = useState('');
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
 
@@ -66,15 +67,19 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       .then(res => setUsuarios(Array.isArray(res.data) ? res.data : []))
       .catch(() => setUsuarios([]))
       .finally(() => setCargandoUsuarios(false));
+    api.get('/departamentos?activo=true')
+      .then(res => setDepartamentos(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setDepartamentos([]));
   }, []);
 
   useEffect(() => {
     if (!comunicado) { setForm(EMPTY_FORM); return; }
     // Reconstruir estado del form desde el comunicado existente
     const dests = comunicado.destinatarios || [];
-    let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = [];
+    let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = [], dest_departamentos = [];
     const tiposTodos   = dests.find(d => d.tipo === 'TODOS');
     const tiposRoles   = dests.filter(d => d.tipo === 'ROL').map(d => d.ref);
+    const tiposDeptos  = dests.filter(d => d.tipo === 'DEPARTAMENTO').map(d => d.ref);
     const tiposUsuario = dests.filter(d => d.tipo === 'USUARIO').map(d => ({
       id: Number(d.ref),
       nombre: `Usuario #${d.ref}`,
@@ -83,6 +88,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     }));
     if (tiposTodos) dest_tipo = 'TODOS';
     else if (tiposRoles.length) { dest_tipo = 'ROL'; dest_roles = tiposRoles; }
+    else if (tiposDeptos.length) { dest_tipo = 'DEPARTAMENTO'; dest_departamentos = tiposDeptos; }
     else if (tiposUsuario.length) { dest_tipo = 'USUARIO'; dest_usuarios = tiposUsuario; }
 
     setForm({
@@ -92,9 +98,10 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       prioridad:             comunicado.prioridad || 'INFORMATIVO',
       requiere_confirmacion: comunicado.requiere_confirmacion || false,
       area_emisora:          comunicado.area_emisora || '',
+      departamento_emisor_id: comunicado.departamento_emisor_id || '',
       fecha_publicacion:     comunicado.fecha_publicacion?.slice(0,10) || '',
       fecha_expiracion:      comunicado.fecha_expiracion?.slice(0,10)  || '',
-      dest_tipo, dest_roles, dest_usuarios,
+      dest_tipo, dest_roles, dest_usuarios, dest_departamentos,
     });
   }, [comunicado]);
 
@@ -116,6 +123,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       return form.dest_roles.map(r => ({ tipo: 'ROL', ref: r }));
     if (form.dest_tipo === 'USUARIO')
       return form.dest_usuarios.map(u => ({ tipo: 'USUARIO', ref: String(u.id) }));
+    if (form.dest_tipo === 'DEPARTAMENTO')
+      return form.dest_departamentos.map(id => ({ tipo: 'DEPARTAMENTO', ref: String(id) }));
     return [];
   };
 
@@ -135,6 +144,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         prioridad:             form.prioridad,
         requiere_confirmacion: form.requiere_confirmacion,
         area_emisora:          form.area_emisora?.trim() || null,
+        departamento_emisor_id: form.departamento_emisor_id ? Number(form.departamento_emisor_id) : null,
         fecha_publicacion:     toStartOfDay(form.fecha_publicacion),
         fecha_expiracion:      toEndOfDay(form.fecha_expiracion),
         destinatarios,
@@ -166,6 +176,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 
   const quitarUsuario = usuarioId => {
     set('dest_usuarios', form.dest_usuarios.filter(u => u.id !== usuarioId));
+  };
+
+  const toggleDepartamento = id => {
+    const value = String(id);
+    set('dest_departamentos', form.dest_departamentos.includes(value)
+      ? form.dest_departamentos.filter(depId => depId !== value)
+      : [...form.dest_departamentos, value]);
   };
 
   const usuariosFiltrados = usuarios
@@ -236,6 +253,17 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               placeholder="Ej: Dirección Académica, TI, Administración…" />
           </div>
 
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Departamento emisor</label>
+            <select className="input-dark" value={form.departamento_emisor_id}
+              onChange={e => set('departamento_emisor_id', e.target.value)}>
+              <option value="">Sin departamento asignado</option>
+              {departamentos.map(dep => (
+                <option key={dep.id} value={dep.id}>{dep.nombre} ({dep.clave})</option>
+              ))}
+            </select>
+          </div>
+
           {/* Fechas */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -262,13 +290,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
           <div className="space-y-3 bg-white/5 rounded-xl p-4">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Destinatarios</p>
             <div className="flex gap-2 flex-wrap">
-              {['TODOS','ROL','USUARIO'].map(t => (
+              {['TODOS','ROL','DEPARTAMENTO','USUARIO'].map(t => (
                 <button key={t} type="button"
                   onClick={() => set('dest_tipo', t)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     form.dest_tipo === t ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400 hover:text-white'
                   }`}>
-                  {t === 'TODOS' ? 'Todos los usuarios' : t === 'ROL' ? 'Por rol' : 'Usuarios específicos'}
+                  {t === 'TODOS' ? 'Todos los usuarios' : t === 'ROL' ? 'Por rol' : t === 'DEPARTAMENTO' ? 'Por departamento' : 'Usuarios específicos'}
                 </button>
               ))}
             </div>
@@ -280,6 +308,21 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                       checked={form.dest_roles.includes(r.v)}
                       onChange={() => toggleRol(r.v)} />
                     <span className="text-sm text-slate-300">{r.l}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {form.dest_tipo === 'DEPARTAMENTO' && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {departamentos.length === 0 ? (
+                  <p className="text-sm text-slate-500">No hay departamentos activos.</p>
+                ) : departamentos.map(dep => (
+                  <label key={dep.id} className="flex items-center gap-2 cursor-pointer rounded-lg bg-white/5 px-3 py-2">
+                    <input type="checkbox" className="accent-blue-500"
+                      checked={form.dest_departamentos.includes(String(dep.id))}
+                      onChange={() => toggleDepartamento(dep.id)} />
+                    <span className="text-sm text-slate-300">{dep.nombre}</span>
+                    <span className="text-xs text-slate-500">{dep.clave}</span>
                   </label>
                 ))}
               </div>
@@ -578,7 +621,7 @@ export default function ComunicadosAdmin() {
                       <h3 className="font-semibold text-white truncate">{c.titulo}</h3>
                       <p className="text-sm text-slate-400 mt-0.5 line-clamp-2">{c.contenido}</p>
                       <div className="flex gap-3 mt-2 text-xs text-slate-500">
-                        {c.area_emisora && <span>📍 {c.area_emisora}</span>}
+                        {(c.departamento_emisor_nombre || c.area_emisora) && <span>📍 {c.departamento_emisor_nombre || c.area_emisora}</span>}
                         <span>por {c.autor_nombre}</span>
                         {c.fecha_publicacion && <span>📅 {c.fecha_publicacion?.slice(0,10)}</span>}
                       </div>

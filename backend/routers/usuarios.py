@@ -5,6 +5,7 @@ from typing import Optional, List
 from database import get_db
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
+from models.departamento import Departamento
 from dependencies import hashear_password, verificar_password, get_current_user, require_roles
 from rls import usuario_lab_filter, resolve_lab_id
 import secrets
@@ -24,6 +25,7 @@ class UsuarioCreate(BaseModel):
     password: str = Field(..., min_length=6)
     rol: RolUsuario = RolUsuario.DOCENTE
     laboratorio_id: Optional[int] = None
+    departamento_id: Optional[int] = None
 
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=100)
@@ -31,6 +33,7 @@ class UsuarioUpdate(BaseModel):
     numero_empleado: Optional[str] = None
     rol: Optional[RolUsuario] = None
     laboratorio_id: Optional[int] = None
+    departamento_id: Optional[int] = None
     activo: Optional[bool] = None
 
 class UsuarioResponse(BaseModel):
@@ -41,6 +44,9 @@ class UsuarioResponse(BaseModel):
     rol: str
     laboratorio_id: Optional[int]
     laboratorio_nombre: Optional[str] = None
+    departamento_id: Optional[int] = None
+    departamento_nombre: Optional[str] = None
+    departamento_clave: Optional[str] = None
     activo: bool
 
     model_config = ConfigDict(from_attributes=True)
@@ -58,9 +64,12 @@ class CambiarPasswordPropio(BaseModel):
 
 def _serializar(u: Usuario, db: Session) -> dict:
     lab_nombre = None
+    dep = None
     if u.laboratorio_id:
         lab = db.query(Laboratorio).filter(Laboratorio.id == u.laboratorio_id).first()
         lab_nombre = lab.nombre if lab else None
+    if u.departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == u.departamento_id).first()
     return {
         "id": u.id,
         "nombre": u.nombre,
@@ -69,6 +78,9 @@ def _serializar(u: Usuario, db: Session) -> dict:
         "rol": u.rol.value,
         "laboratorio_id": u.laboratorio_id,
         "laboratorio_nombre": lab_nombre,
+        "departamento_id": u.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "departamento_clave": dep.clave if dep else None,
         "activo": u.activo,
     }
 
@@ -85,6 +97,14 @@ def _validar_laboratorio(laboratorio_id: Optional[int], rol: RolUsuario, db: Ses
         if not lab:
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado o inactivo")
 
+def _validar_departamento(departamento_id: Optional[int], rol: RolUsuario, db: Session):
+    if rol == RolUsuario.ADMINISTRATIVO and not departamento_id:
+        raise HTTPException(status_code=422, detail="Un usuario ADMINISTRATIVO debe tener departamento asignado")
+    if departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_id, Departamento.activo == True).first()
+        if not dep:
+            raise HTTPException(status_code=404, detail="Departamento no encontrado o inactivo")
+
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +113,7 @@ def listar_usuarios(
     rol: Optional[str] = None,
     activo: Optional[bool] = None,
     laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
@@ -113,6 +134,8 @@ def listar_usuarios(
     # Para LAB_ADMIN ya está forzado por usuario_lab_filter; ignoramos el parámetro
     if laboratorio_id and current_user.rol == RolUsuario.SUPER_ADMIN:
         query = query.filter(Usuario.laboratorio_id == laboratorio_id)
+    if departamento_id:
+        query = query.filter(Usuario.departamento_id == departamento_id)
 
     usuarios = query.order_by(Usuario.nombre).all()
     return [_serializar(u, db) for u in usuarios]
@@ -131,6 +154,7 @@ def crear_usuario(
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese número de empleado")
 
     _validar_laboratorio(data.laboratorio_id, data.rol, db)
+    _validar_departamento(data.departamento_id, data.rol, db)
 
     usuario = Usuario(
         nombre=data.nombre,
@@ -139,6 +163,7 @@ def crear_usuario(
         password_hash=hashear_password(data.password),
         rol=data.rol,
         laboratorio_id=data.laboratorio_id,
+        departamento_id=data.departamento_id,
         activo=True,
     )
     db.add(usuario)
@@ -201,7 +226,9 @@ def editar_usuario(
     # Verificar lab si rol cambia a LAB_ADMIN
     nuevo_rol = RolUsuario(campos["rol"]) if "rol" in campos else u.rol
     nuevo_lab = campos.get("laboratorio_id", u.laboratorio_id)
+    nuevo_dep = campos.get("departamento_id", u.departamento_id)
     _validar_laboratorio(nuevo_lab, nuevo_rol, db)
+    _validar_departamento(nuevo_dep, nuevo_rol, db)
 
     for campo, valor in campos.items():
         setattr(u, campo, valor)
@@ -340,10 +367,10 @@ async def bulk_excel(
     Carga masiva de usuarios desde Excel.
 
     El archivo debe tener las columnas:
-    nombre | email | numero_empleado (opcional) | rol | laboratorio_id (opcional)
+    nombre | email | numero_empleado (opcional) | rol | laboratorio_id (opcional) | departamento_id/departamento_clave (opcional)
 
     La contraseña inicial se genera automáticamente y se devuelve en la respuesta.
-    Rol aceptado: SUPER_ADMIN, LAB_ADMIN, DOCENTE
+    Rol aceptado: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO
     """
     try:
         import pandas as pd
@@ -367,7 +394,7 @@ async def bulk_excel(
         raise HTTPException(
             status_code=422,
             detail=f"Columnas requeridas faltantes: {', '.join(faltantes)}. "
-                   f"Se necesita: nombre, email, rol. Opcional: numero_empleado, laboratorio_id"
+                   f"Se necesita: nombre, email, rol. Opcional: numero_empleado, laboratorio_id, departamento_id, departamento_clave"
         )
 
     creados   = []
@@ -381,6 +408,8 @@ async def bulk_excel(
         rol_str = str(row.get('rol', '')).strip().upper()
         num_emp = str(row.get('numero_empleado', '')).strip() if 'numero_empleado' in df.columns else None
         lab_id  = row.get('laboratorio_id', None)
+        dep_id  = row.get('departamento_id', None)
+        dep_clave = str(row.get('departamento_clave', '')).strip() if 'departamento_clave' in df.columns else ''
 
         # Validar campos
         if not nombre or not email or not rol_str:
@@ -390,7 +419,7 @@ async def bulk_excel(
         try:
             rol = RolUsuario(rol_str)
         except ValueError:
-            errores.append({"fila": fila, "email": email, "error": f"Rol inválido: '{rol_str}'. Use: SUPER_ADMIN, LAB_ADMIN, DOCENTE"})
+            errores.append({"fila": fila, "email": email, "error": f"Rol inválido: '{rol_str}'. Use: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO"})
             continue
 
         # Verificar duplicados
@@ -413,6 +442,27 @@ async def bulk_excel(
             errores.append({"fila": fila, "email": email, "error": "LAB_ADMIN requiere laboratorio_id"})
             continue
 
+        dep_id_int = None
+        if dep_id and str(dep_id).strip() not in ('', 'nan', 'None'):
+            try:
+                dep_id_int = int(float(str(dep_id)))
+            except (ValueError, TypeError):
+                errores.append({"fila": fila, "email": email, "error": f"departamento_id inválido: '{dep_id}'"})
+                continue
+        elif dep_clave and dep_clave.lower() != 'nan':
+            dep = db.query(Departamento).filter(Departamento.clave.ilike(dep_clave), Departamento.activo == True).first()
+            if not dep:
+                errores.append({"fila": fila, "email": email, "error": f"departamento_clave no encontrada: '{dep_clave}'"})
+                continue
+            dep_id_int = dep.id
+
+        if dep_id_int and not db.query(Departamento).filter(Departamento.id == dep_id_int, Departamento.activo == True).first():
+            errores.append({"fila": fila, "email": email, "error": f"Departamento {dep_id_int} no existe o está inactivo"})
+            continue
+        if rol == RolUsuario.ADMINISTRATIVO and not dep_id_int:
+            errores.append({"fila": fila, "email": email, "error": "ADMINISTRATIVO requiere departamento_id o departamento_clave"})
+            continue
+
         password_tmp = _generar_password()
         usuario = Usuario(
             nombre=nombre,
@@ -421,6 +471,7 @@ async def bulk_excel(
             password_hash=hashear_password(password_tmp),
             rol=rol,
             laboratorio_id=lab_id_int,
+            departamento_id=dep_id_int,
             activo=True,
         )
         db.add(usuario)

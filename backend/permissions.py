@@ -10,6 +10,7 @@ en vez de require_roles() con roles hardcodeados.
 Roles disponibles:
   SUPER_ADMIN  → control total institucional
   LAB_ADMIN    → control de su laboratorio asignado
+  ADMINISTRATIVO → gestión de comunicados de su departamento
   DOCENTE      → reservaciones y sesiones de clase propias
 
 Convención de acciones:
@@ -28,6 +29,7 @@ from dependencies import get_current_user
 # Alias cortos para leer la matriz más fácil
 SA  = RolUsuario.SUPER_ADMIN
 LA  = RolUsuario.LAB_ADMIN
+AD  = RolUsuario.ADMINISTRATIVO
 DO  = RolUsuario.DOCENTE
 
 # ── Matriz de permisos ─────────────────────────────────────────────────────────
@@ -49,7 +51,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "usuarios:write":           frozenset({SA}),            # crear / editar usuario
     "usuarios:delete":          frozenset({SA}),            # desactivar
     "usuarios:reset":           frozenset({SA}),            # reset de contraseña
-    "usuarios:self":            frozenset({SA, LA, DO}),   # cambiar propia contraseña
+    "usuarios:self":            frozenset({SA, LA, AD, DO}),   # cambiar propia contraseña
     "usuarios:import":          frozenset({SA}),            # importar desde Excel
 
     # ── Horarios ────────────────────────────────────────────────────────────────
@@ -101,7 +103,13 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "reportes:export":          frozenset({SA, LA}),        # descargar Excel
 
     # ── Notificaciones ───────────────────────────────────────────────────────────
-    "notificaciones:own":       frozenset({SA, LA, DO}),   # ver / marcar las propias
+    "notificaciones:own":       frozenset({SA, LA, AD, DO}),   # ver / marcar las propias
+
+    # Departamentos y comunicados institucionales
+    "departamentos:read":       frozenset({SA, LA, AD, DO}),
+    "departamentos:write":      frozenset({SA}),
+    "comunicados:own":          frozenset({SA, LA, AD, DO}),
+    "comunicados:write":        frozenset({SA, LA, AD}),
 }
 
 

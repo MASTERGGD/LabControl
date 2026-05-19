@@ -32,12 +32,13 @@ from models.comunicado import (
     Comunicado, ComunicadoDestinatario, ComunicadoLectura,
     CategoriaComunicado, EstadoComunicado, PrioridadComunicado, TipoDestinatario,
 )
+from models.departamento import Departamento
 from models.usuario import RolUsuario, Usuario
 from services.auditoria import registrar
 
 router = APIRouter(prefix="/comunicados", tags=["Comunicados"])
 
-ROLES_ADMIN = [RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN]
+ROLES_ADMIN = [RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.ADMINISTRATIVO]
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,12 @@ def _comunicado_aplica_a(comunicado: Comunicado, usuario: Usuario) -> bool:
         if dest.tipo_destinatario == TipoDestinatario.ROL and dest.destinatario_ref == usuario.rol.value:
             return True
         if dest.tipo_destinatario == TipoDestinatario.USUARIO and dest.destinatario_ref == str(usuario.id):
+            return True
+        if (
+            dest.tipo_destinatario == TipoDestinatario.DEPARTAMENTO
+            and usuario.departamento_id
+            and dest.destinatario_ref == str(usuario.departamento_id)
+        ):
             return True
     return False
 
@@ -78,6 +85,8 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         "estado":                c.estado,
         "requiere_confirmacion": c.requiere_confirmacion,
         "area_emisora":          c.area_emisora,
+        "departamento_emisor_id": c.departamento_emisor_id,
+        "departamento_emisor_nombre": c.departamento_emisor.nombre if c.departamento_emisor else None,
         "fecha_publicacion":     c.fecha_publicacion.isoformat() if c.fecha_publicacion else None,
         "fecha_expiracion":      c.fecha_expiracion.isoformat() if c.fecha_expiracion else None,
         "autor_id":              c.autor_id,
@@ -114,8 +123,8 @@ def _ensure_lectura(db: Session, comunicado_id: int, usuario_id: int) -> Comunic
 # ─── Schemas Pydantic ──────────────────────────────────────────────────────────
 
 class DestinatarioIn(BaseModel):
-    tipo: str          # TODOS | ROL | USUARIO
-    ref:  Optional[str] = None   # None para TODOS, nombre_rol para ROL, str(id) para USUARIO
+    tipo: str          # TODOS | ROL | USUARIO | DEPARTAMENTO
+    ref:  Optional[str] = None
 
 
 class ComunicadoCreate(BaseModel):
@@ -126,6 +135,7 @@ class ComunicadoCreate(BaseModel):
     prioridad:             str = "INFORMATIVO"
     requiere_confirmacion: bool = False
     area_emisora:          Optional[str] = None
+    departamento_emisor_id: Optional[int] = None
     fecha_publicacion:     Optional[datetime.datetime] = None
     fecha_expiracion:      Optional[datetime.datetime] = None
     destinatarios:         List[DestinatarioIn] = []
@@ -139,6 +149,7 @@ class ComunicadoUpdate(BaseModel):
     prioridad:             Optional[str] = None
     requiere_confirmacion: Optional[bool] = None
     area_emisora:          Optional[str] = None
+    departamento_emisor_id: Optional[int] = None
     fecha_publicacion:     Optional[datetime.datetime] = None
     fecha_expiracion:      Optional[datetime.datetime] = None
     destinatarios:         Optional[List[DestinatarioIn]] = None
@@ -249,6 +260,10 @@ def listar_comunicados(
     usuario:   Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
     q = db.query(Comunicado)
+    if usuario.rol == RolUsuario.ADMINISTRATIVO:
+        if not usuario.departamento_id:
+            return []
+        q = q.filter(Comunicado.departamento_emisor_id == usuario.departamento_id)
     if estado:
         q = q.filter(Comunicado.estado == estado)
     if categoria:
@@ -263,6 +278,16 @@ def crear_comunicado(
     db:      Session = Depends(get_db),
     usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
+    departamento_emisor_id = body.departamento_emisor_id
+    if usuario.rol == RolUsuario.ADMINISTRATIVO:
+        if not usuario.departamento_id:
+            raise HTTPException(403, "Tu usuario administrativo no tiene departamento asignado")
+        departamento_emisor_id = usuario.departamento_id
+    if departamento_emisor_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_emisor_id, Departamento.activo == True).first()
+        if not dep:
+            raise HTTPException(404, "Departamento emisor no encontrado o inactivo")
+
     c = Comunicado(
         titulo=body.titulo,
         contenido=body.contenido,
@@ -271,6 +296,7 @@ def crear_comunicado(
         estado=EstadoComunicado.BORRADOR,
         requiere_confirmacion=body.requiere_confirmacion,
         area_emisora=body.area_emisora,
+        departamento_emisor_id=departamento_emisor_id,
         fecha_publicacion=body.fecha_publicacion,
         fecha_expiracion=body.fecha_expiracion,
         autor_id=usuario.id,
@@ -303,6 +329,8 @@ def get_comunicado(
     c = db.query(Comunicado).filter_by(id=comunicado_id).first()
     if not c:
         raise HTTPException(404, "Comunicado no encontrado")
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
+        raise HTTPException(403, "No tienes acceso a este comunicado")
     return _serializar(c)
 
 
@@ -316,12 +344,19 @@ def editar_comunicado(
     c = db.query(Comunicado).filter_by(id=comunicado_id).first()
     if not c:
         raise HTTPException(404, "Comunicado no encontrado")
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
+        raise HTTPException(403, "No puedes editar comunicados de otro departamento")
     if c.estado == EstadoComunicado.ARCHIVADO:
         raise HTTPException(400, "No se puede editar un comunicado archivado")
 
     for field, val in body.model_dump(exclude_none=True).items():
         if field == "destinatarios":
             continue
+        if field == "departamento_emisor_id":
+            if usuario.rol == RolUsuario.ADMINISTRATIVO:
+                val = usuario.departamento_id
+            elif val and not db.query(Departamento).filter(Departamento.id == val, Departamento.activo == True).first():
+                raise HTTPException(404, "Departamento emisor no encontrado o inactivo")
         setattr(c, field, val)
 
     if body.destinatarios is not None:
@@ -353,6 +388,8 @@ def eliminar_comunicado(
     c = db.query(Comunicado).filter_by(id=comunicado_id).first()
     if not c:
         raise HTTPException(404, "Comunicado no encontrado")
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
+        raise HTTPException(403, "No puedes publicar comunicados de otro departamento")
     if c.estado == EstadoComunicado.PUBLICADO:
         raise HTTPException(400, "Archiva el comunicado antes de eliminarlo")
     registrar(db, usuario.id, "ELIMINAR_COMUNICADO",
@@ -370,6 +407,8 @@ def publicar_comunicado(
     c = db.query(Comunicado).filter_by(id=comunicado_id).first()
     if not c:
         raise HTTPException(404, "Comunicado no encontrado")
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
+        raise HTTPException(403, "No puedes archivar comunicados de otro departamento")
     if c.estado == EstadoComunicado.PUBLICADO:
         raise HTTPException(400, "Ya está publicado")
     if not c.destinatarios:
@@ -394,6 +433,8 @@ def archivar_comunicado(
     c = db.query(Comunicado).filter_by(id=comunicado_id).first()
     if not c:
         raise HTTPException(404, "Comunicado no encontrado")
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
+        raise HTTPException(403, "No tienes acceso al reporte de este comunicado")
     c.estado = EstadoComunicado.ARCHIVADO
     c.actualizado_en = _utcnow()
     db.commit()

@@ -3,7 +3,7 @@ models/comunicado.py — Módulo de Comunicados Institucionales
 
 Modelos:
   Comunicado            — Aviso/comunicado institucional
-  ComunicadoDestinatario — A quién va dirigido (TODOS / ROL / USUARIO)
+  ComunicadoDestinatario — A quién va dirigido (TODOS / ROL / USUARIO / DEPARTAMENTO)
   ComunicadoLectura     — Registro de lectura y confirmación por usuario
 """
 
@@ -50,9 +50,10 @@ class EstadoComunicado(str, enum.Enum):
 
 
 class TipoDestinatario(str, enum.Enum):
-    TODOS   = "TODOS"
-    ROL     = "ROL"
-    USUARIO = "USUARIO"
+    TODOS        = "TODOS"
+    ROL          = "ROL"
+    USUARIO      = "USUARIO"
+    DEPARTAMENTO = "DEPARTAMENTO"
 
 
 # ─── Modelos ───────────────────────────────────────────────────────────────────
@@ -67,7 +68,8 @@ class Comunicado(Base):
     prioridad             = Column(String(20), nullable=False, default="INFORMATIVO")
     estado                = Column(String(20), nullable=False, default="BORRADOR")
     requiere_confirmacion = Column(Boolean, nullable=False, default=False)
-    area_emisora          = Column(String(200), nullable=True)   # string libre, sin FK a departamento
+    area_emisora          = Column(String(200), nullable=True)
+    departamento_emisor_id = Column(Integer, ForeignKey("departamentos.id", ondelete="SET NULL"), nullable=True)
     fecha_publicacion     = Column(DateTime, nullable=True)
     fecha_expiracion      = Column(DateTime, nullable=True)
     autor_id              = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
@@ -75,6 +77,7 @@ class Comunicado(Base):
     actualizado_en        = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
     autor          = relationship("Usuario", foreign_keys=[autor_id])
+    departamento_emisor = relationship("Departamento", back_populates="comunicados_emitidos")
     destinatarios  = relationship("ComunicadoDestinatario", back_populates="comunicado",
                                   cascade="all, delete-orphan")
     lecturas       = relationship("ComunicadoLectura", back_populates="comunicado",
@@ -93,6 +96,7 @@ class ComunicadoDestinatario(Base):
     # TODOS → destinatario_ref = None
     # ROL   → destinatario_ref = nombre del rol (ej. "DOCENTE")
     # USUARIO → destinatario_ref = str(usuario_id)
+    # DEPARTAMENTO → destinatario_ref = str(departamento_id)
     tipo_destinatario = Column(String(20), nullable=False)
     destinatario_ref  = Column(String(100), nullable=True)
 

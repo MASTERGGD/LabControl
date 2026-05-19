@@ -5,23 +5,25 @@ import { useToast } from '../../context/ToastContext';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
-const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'DOCENTE'];
+const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO', 'DOCENTE'];
 const ROL_COLOR = {
   SUPER_ADMIN: 'bg-blue-900/60 text-blue-300',
   LAB_ADMIN:   'bg-purple-900/60 text-purple-300',
+  ADMINISTRATIVO: 'bg-amber-900/60 text-amber-300',
   DOCENTE:     'bg-green-900/60 text-green-300',
 };
 
 
 // ─── Modal Crear / Editar ──────────────────────────────────────────────────────
 
-function ModalUsuario({ usuario, labs, onClose, onSave }) {
+function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
   const [form, setForm] = useState({
     nombre:          usuario?.nombre          || '',
     email:           usuario?.email           || '',
     numero_empleado: usuario?.numero_empleado || '',
     rol:             usuario?.rol             || 'DOCENTE',
     laboratorio_id:  usuario?.laboratorio_id  ?? '',
+    departamento_id: usuario?.departamento_id ?? '',
     password:        '',
     activo:          usuario?.activo          ?? true,
   });
@@ -31,7 +33,7 @@ function ModalUsuario({ usuario, labs, onClose, onSave }) {
 
   const handleChange = (e) => {
     const val = e.target.name === 'activo' ? e.target.checked
-              : e.target.name === 'laboratorio_id' ? (e.target.value === '' ? '' : Number(e.target.value))
+              : ['laboratorio_id', 'departamento_id'].includes(e.target.name) ? (e.target.value === '' ? '' : Number(e.target.value))
               : e.target.value;
     setForm({ ...form, [e.target.name]: val });
     setError('');
@@ -44,6 +46,7 @@ function ModalUsuario({ usuario, labs, onClose, onSave }) {
       const payload = { ...form };
       if (!payload.numero_empleado) delete payload.numero_empleado;
       if (!payload.laboratorio_id && payload.laboratorio_id !== 0) delete payload.laboratorio_id;
+      if (!payload.departamento_id && payload.departamento_id !== 0) delete payload.departamento_id;
       if (esEdicion) {
         delete payload.password; // no se cambia desde aquí
         await api.put(`/usuarios/${usuario.id}`, payload);
@@ -60,6 +63,7 @@ function ModalUsuario({ usuario, labs, onClose, onSave }) {
   };
 
   const necesitaLab = form.rol === 'LAB_ADMIN';
+  const necesitaDepartamento = form.rol === 'ADMINISTRATIVO';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -105,7 +109,7 @@ function ModalUsuario({ usuario, labs, onClose, onSave }) {
                 <label className="block text-sm text-slate-400 mb-1">Rol *</label>
                 <SelectDark
                   value={form.rol}
-                  onChange={v => setForm({ ...form, rol: v, laboratorio_id: '' })}
+                  onChange={v => setForm({ ...form, rol: v, laboratorio_id: v === 'LAB_ADMIN' ? form.laboratorio_id : '', departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : form.departamento_id })}
                   options={ROLES.map(r => ({ value: r, label: r }))}
                 />
               </div>
@@ -123,6 +127,22 @@ function ModalUsuario({ usuario, labs, onClose, onSave }) {
                   ]}
                 />
               </div>
+            </div>
+
+            {/* Departamento */}
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Departamento {necesitaDepartamento && <span className="text-red-400">*</span>}
+              </label>
+              <SelectDark
+                value={form.departamento_id}
+                onChange={v => setForm({ ...form, departamento_id: v === '' ? '' : Number(v) })}
+                placeholder="— Ninguno —"
+                options={[
+                  { value: '', label: '— Ninguno —' },
+                  ...departamentos.map(d => ({ value: d.id, label: `${d.nombre} (${d.clave})` })),
+                ]}
+              />
             </div>
 
             {/* Password (solo en creación) */}
@@ -468,6 +488,7 @@ export default function Usuarios() {
 
   const [usuarios, setUsuarios]   = useState([]);
   const [labs, setLabs]           = useState([]);
+  const [departamentos, setDepartamentos] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
 
@@ -504,12 +525,14 @@ export default function Usuarios() {
       if (filtroActivo === 'activos')   params.append('activo', 'true');
       if (filtroActivo === 'inactivos') params.append('activo', 'false');
 
-      const [rU, rL] = await Promise.all([
+      const [rU, rL, rD] = await Promise.all([
         api.get(`/usuarios?${params}`),
         api.get('/laboratorios?solo_activos=true'),
+        api.get('/departamentos?activo=true'),
       ]);
       setUsuarios(rU.data);
       setLabs(rL.data);
+      setDepartamentos(Array.isArray(rD.data) ? rD.data : []);
     } catch {
       setError('No se pudieron cargar los usuarios');
     } finally {
@@ -538,7 +561,9 @@ export default function Usuarios() {
     const q = busqueda.toLowerCase();
     return u.nombre.toLowerCase().includes(q)
       || u.email.toLowerCase().includes(q)
-      || (u.numero_empleado || '').toLowerCase().includes(q);
+      || (u.numero_empleado || '').toLowerCase().includes(q)
+      || (u.departamento_nombre || '').toLowerCase().includes(q)
+      || (u.departamento_clave || '').toLowerCase().includes(q);
   });
 
   // ── Autocomplete ────────────────────────────────────────────────────────────
@@ -547,7 +572,7 @@ export default function Usuarios() {
     if (val.length >= 2) {
       const q = val.toLowerCase();
       const matches = usuarios
-        .filter(u => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+        .filter(u => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.departamento_nombre || '').toLowerCase().includes(q))
         .slice(0, 7);
       setSugerencias(matches);
       setShowSugerencias(matches.length > 0);
@@ -793,6 +818,7 @@ export default function Usuarios() {
                 <th className="text-left px-4 py-3.5">Usuario</th>
                 <th className="text-left px-4 py-3.5">Rol</th>
                 <th className="text-left px-4 py-3.5">Laboratorio</th>
+                <th className="text-left px-4 py-3.5">Departamento</th>
                 <th className="text-left px-4 py-3.5">Estado</th>
                 <th className="text-right px-4 py-3.5">Acciones</th>
               </tr>
@@ -867,6 +893,16 @@ export default function Usuarios() {
                       {u.laboratorio_nombre || <span className="text-slate-600">—</span>}
                     </td>
 
+                    {/* Departamento */}
+                    <td className="px-4 py-4 text-slate-300 text-sm">
+                      {u.departamento_nombre ? (
+                        <div>
+                          <p className="leading-tight">{u.departamento_nombre}</p>
+                          {u.departamento_clave && <p className="text-xs text-slate-500">{u.departamento_clave}</p>}
+                        </div>
+                      ) : <span className="text-slate-600">—</span>}
+                    </td>
+
                     {/* Estado */}
                     <td className="px-4 py-4">
                       <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ${
@@ -925,6 +961,7 @@ export default function Usuarios() {
         <ModalUsuario
           usuario={userEditar}
           labs={labs}
+          departamentos={departamentos}
           onClose={() => { setModalCrear(false); setUserEditar(null); }}
           onSave={() => { setModalCrear(false); setUserEditar(null); cargar(); }}
         />

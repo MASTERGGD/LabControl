@@ -14,11 +14,13 @@
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   LAB_ADMIN:   'LAB_ADMIN',
+  ADMINISTRATIVO: 'ADMINISTRATIVO',
   DOCENTE:     'DOCENTE',
 };
 
 const SA = ROLES.SUPER_ADMIN;
 const LA = ROLES.LAB_ADMIN;
+const AD = ROLES.ADMINISTRATIVO;
 const DO = ROLES.DOCENTE;
 
 // ── Matriz de permisos ─────────────────────────────────────────────────────────
@@ -90,6 +92,10 @@ export const PERMISSIONS = {
 
   // Notificaciones
   'notificaciones:own':     [SA, LA, DO],
+  'comunicados:own':        [SA, LA, AD, DO],
+  'comunicados:write':      [SA, LA, AD],
+  'departamentos:read':     [SA, LA, AD, DO],
+  'departamentos:write':    [SA],
 };
 
 // ── Permisos requeridos por ruta ───────────────────────────────────────────────
@@ -100,6 +106,7 @@ export const ROUTE_PERMISSIONS = {
   '/admin/laboratorios':          [SA, LA],
   '/admin/laboratorios/:labId':   [SA, LA],
   '/admin/usuarios':              [SA],
+  '/admin/departamentos':         [SA],
   '/admin/horarios':              [SA, LA],
   '/admin/reservaciones':         [SA, LA, DO],
   '/admin/inventario':            [SA, LA],
@@ -113,6 +120,8 @@ export const ROUTE_PERMISSIONS = {
   '/docente':                             [DO],
   '/docente/reservaciones':       [DO],
   '/docente/sesion/:sesionId':    [SA, LA, DO],
+  '/comunicados':                 [SA, LA, AD, DO],
+  '/admin/comunicados':           [SA, LA, AD],
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

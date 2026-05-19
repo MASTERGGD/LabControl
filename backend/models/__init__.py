@@ -1,4 +1,5 @@
 from .usuario import Usuario, RolUsuario
+from .departamento import Departamento
 from .laboratorio import Laboratorio, Computadora
 from .horario import HorarioDisponible, Reservacion, SolicitudConflicto
 from .sesion import SesionClase, AsignacionPC, ObservacionPC

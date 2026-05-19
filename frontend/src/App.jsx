@@ -13,6 +13,7 @@ import DashboardDocente from './pages/DashboardDocente';
 import Laboratorios from './pages/admin/Laboratorios';
 import LaboratorioDetalle from './pages/admin/LaboratorioDetalle';
 import Usuarios from './pages/admin/Usuarios';
+import Departamentos from './pages/admin/Departamentos';
 import Horarios from './pages/admin/Horarios';
 import Reservaciones from './pages/admin/Reservaciones';
 import Inventario from './pages/admin/Inventario';
@@ -62,6 +63,7 @@ function RutaProtegida({ children, rolesPermitidos, path }) {
 const RUTAS_POR_ROL = {
   SUPER_ADMIN: '/admin',
   LAB_ADMIN:   '/lab',
+  ADMINISTRATIVO: '/admin/comunicados',
   DOCENTE:     '/docente',
   ALUMNO:      '/alumno',
 };
@@ -124,6 +126,14 @@ function AppRoutes() {
         element={
           <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
             <Usuarios />
+          </RutaProtegida>
+        }
+      />
+      <Route
+        path="/admin/departamentos"
+        element={
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+            <Departamentos />
           </RutaProtegida>
         }
       />
@@ -211,12 +221,12 @@ function AppRoutes() {
 
       {/* Comunicados Institucionales */}
       <Route path="/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE']}>
           <MisComunicados />
         </RutaProtegida>
       }/>
       <Route path="/admin/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO']}>
           <ComunicadosAdmin />
         </RutaProtegida>
       }/>
