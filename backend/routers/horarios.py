@@ -1431,6 +1431,19 @@ def marcar_estado_reservacion(
             db.commit()
         except Exception:
             pass
+        # Registrar evento de cumplimiento IMPARTIDA (manual por admin)
+        from models.cumplimiento import EventoCumplimiento as _EC
+        import datetime as _dt
+        _ec = _EC(
+            reservacion_id    = reservacion_id,
+            sesion_id         = None,
+            tipo              = "IMPARTIDA",
+            fecha             = _dt.datetime.now(_dt.timezone.utc).date(),
+            motivo            = body.motivo,
+            registrado_por_id = current_user.id,
+        )
+        db.add(_ec)
+        db.commit()
         return {"mensaje": "Reservación marcada como IMPARTIDA", "estado": res.estado}
 
     # NO_ASISTIO o CANCELADA_TARDIA — eventos puntuales, la reservación queda PROGRAMADA
@@ -1478,6 +1491,20 @@ def marcar_estado_reservacion(
         db.commit()
     except Exception:
         pass
+
+    # Registrar evento de cumplimiento
+    from models.cumplimiento import EventoCumplimiento as _EC2
+    import datetime as _dt2
+    _ec2 = _EC2(
+        reservacion_id    = reservacion_id,
+        sesion_id         = None,
+        tipo              = body.estado,   # NO_ASISTIO | CANCELADA_TARDIA
+        fecha             = _dt2.datetime.now(_dt2.timezone.utc).date(),
+        motivo            = body.motivo,
+        registrado_por_id = current_user.id,
+    )
+    db.add(_ec2)
+    db.commit()
 
     return {"mensaje": f"Evento {body.estado} registrado. La reservación permanece PROGRAMADA.",
             "estado": res.estado}

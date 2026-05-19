@@ -60,112 +60,143 @@ function GraficaComparativa({ tendencia, cuatActual, cuatAnterior }) {
   if (!tendencia) return null;
 
   const { actual, anterior } = tendencia;
-  const maxVal = Math.max(...actual.map(d => d.count), ...anterior.map(d => d.count), 1);
+  const maxValRaw = Math.max(...actual.map(d => d.count), ...anterior.map(d => d.count), 1);
+  const maxVal = Math.max(5, Math.ceil(maxValRaw / 5) * 5);
+  const anteriorTotal = anterior.reduce((acc, d) => acc + (d.count || 0), 0);
 
-  // Dimensiones mini — barras cortas, ancho fijo con scroll si hay muchos meses
-  const BWIDTH = 20, PAIR_GAP = 34, PAD = 8;
-  const H = 65;
-  const W = Math.max(PAD * 2 + actual.length * PAIR_GAP, 320);
-  const barH = (v) => Math.max((v / maxVal) * (H - 10), v > 0 ? 2 : 0);
+  const H = 150;
+  const PAD_L = 42;
+  const PAD_R = 22;
+  const PAD_T = 26;
+  const PAD_B = 30;
+  const INNER_H = H - PAD_T - PAD_B;
+  const GROUP_W = 84;
+  const BWIDTH = 22;
+  const W = Math.max(PAD_L + PAD_R + actual.length * GROUP_W, 620);
+  const yFor = (v) => PAD_T + INNER_H - (v / maxVal) * INNER_H;
+  const barH = (v) => Math.max((v / maxVal) * INNER_H, v > 0 ? 3 : 0);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map(t => Math.round(maxVal * t));
 
   return (
-    <div className="glass p-5" style={{ maxHeight: 300 }}>
-      {/* ── Header + leyenda ── */}
-      <div className="flex items-start justify-between mb-3 flex-wrap gap-2">
+    <div className="glass p-5">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em' }}>
+          <p style={{ margin: 0, fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.16em' }}>
             Sesiones mes a mes
           </p>
-          <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>Comparativa entre cuatrimestres</p>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8' }}>
+            Comparativa entre cuatrimestres
+            {anteriorTotal === 0 && <span style={{ color: '#64748b' }}> · periodo anterior sin sesiones</span>}
+          </p>
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(59,130,246,0.8)' }}/>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: '#3b82f6' }}/>
             <span className="text-slate-300">{cuatActual}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(100,116,139,0.5)' }}/>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: 'rgba(100,116,139,0.55)' }}/>
             <span className="text-slate-500">{cuatAnterior}</span>
           </div>
         </div>
       </div>
 
-      {/* ── SVG de barras — ancho fijo + scroll si hay muchos meses ── */}
-      <div style={{ overflowX: 'auto', overflowY: 'hidden', position: 'relative' }}>
-          <svg viewBox={`0 0 ${W} ${H + 22}`} width={W} height={H + 22} style={{ display: 'block', minWidth: 200 }}>
-            {/* Grid lines horizontales casi invisibles */}
-            {[0.25, 0.5, 0.75, 1].map(t => (
-              <line key={t}
-                x1={PAD} y1={H - t * (H - 14)} x2={W - PAD} y2={H - t * (H - 14)}
-                stroke="#ffffff" strokeOpacity={0.04} strokeWidth={1}/>
-            ))}
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', position: 'relative', paddingBottom: 2 }}>
+        <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ display: 'block', minWidth: 560 }}>
+          <defs>
+            <linearGradient id="barActual" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#60a5fa" />
+              <stop offset="100%" stopColor="#2563eb" />
+            </linearGradient>
+            <linearGradient id="barAnterior" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#64748b" stopOpacity="0.65" />
+              <stop offset="100%" stopColor="#334155" stopOpacity="0.35" />
+            </linearGradient>
+          </defs>
 
-            {actual.map((d, i) => {
-              const ant  = anterior[i] || { count: 0 };
-              const x    = PAD + i * PAIR_GAP;
-              const hAct = barH(d.count);
-              const hAnt = barH(ant.count);
-              const isHov = hovered === i;
-              return (
-                <g key={i}
-                  onMouseEnter={() => setHovered(i)}
-                  onMouseLeave={() => setHovered(null)}
-                  style={{ cursor: 'default' }}>
+          {ticks.map(t => {
+            const y = yFor(t);
+            return (
+              <g key={t}>
+                <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y}
+                  stroke="#ffffff" strokeOpacity={t === 0 ? 0.12 : 0.07} strokeWidth={1}/>
+                <text x={PAD_L - 10} y={y + 3} textAnchor="end" fontSize={10} fill="#64748b">
+                  {t}
+                </text>
+              </g>
+            );
+          })}
 
-                  {/* Highlight de fondo al hover */}
-                  {isHov && (
-                    <rect x={x - 3} y={0} width={BWIDTH * 2 + 9} height={H + 2}
-                      rx={4} fill="rgba(255,255,255,0.04)"/>
-                  )}
+          {actual.map((d, i) => {
+            const ant = anterior[i] || { count: 0 };
+            const groupX = PAD_L + i * GROUP_W + 14;
+            const xAnt = groupX;
+            const xAct = groupX + BWIDTH + 8;
+            const hAct = barH(d.count);
+            const hAnt = barH(ant.count);
+            const isHov = hovered === i;
+            const topY = Math.min(yFor(d.count), yFor(ant.count));
+            const tipX = Math.min(groupX - 8, W - 152);
+            const tipY = Math.max(PAD_T - 18, topY - 44);
 
-                  {/* Barra anterior */}
-                  <rect x={x} y={H - hAnt} width={BWIDTH} height={hAnt}
-                    rx={3} fill="rgba(100,116,139,0.45)"
-                    style={{ transition: 'opacity 0.2s' }}
-                    opacity={hovered !== null && !isHov ? 0.4 : 1}/>
+            return (
+              <g key={i} onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)} style={{ cursor: 'default' }}>
+                {isHov && (
+                  <rect x={groupX - 9} y={PAD_T - 12} width={BWIDTH * 2 + 34} height={INNER_H + PAD_B + 10}
+                    rx={8} fill="rgba(255,255,255,0.045)"/>
+                )}
 
-                  {/* Barra actual — glow azul */}
-                  <rect x={x + BWIDTH + 2} y={H - hAct} width={BWIDTH} height={hAct}
-                    rx={3} fill="rgba(59,130,246,0.82)"
-                    style={{ filter: isHov ? 'drop-shadow(0 0 5px rgba(59,130,246,0.7))' : 'none', transition: 'all 0.2s' }}
-                    opacity={hovered !== null && !isHov ? 0.35 : 1}/>
+                <rect x={xAnt} y={PAD_T + INNER_H - hAnt} width={BWIDTH} height={hAnt}
+                  rx={5} fill="url(#barAnterior)"
+                  opacity={hovered !== null && !isHov ? 0.35 : 1}/>
 
-                  {/* Label mes */}
-                  <text x={x + BWIDTH} y={H + 14} textAnchor="middle"
-                    fontSize={9} fill={isHov ? '#94a3b8' : '#475569'}
-                    fontWeight={isHov ? 600 : 400}>
-                    {d.nombre.slice(0, 3)}
+                <rect x={xAct} y={PAD_T + INNER_H - hAct} width={BWIDTH} height={hAct}
+                  rx={5} fill="url(#barActual)"
+                  style={{ filter: isHov ? 'drop-shadow(0 0 7px rgba(59,130,246,0.75))' : 'drop-shadow(0 0 3px rgba(59,130,246,0.25))' }}
+                  opacity={hovered !== null && !isHov ? 0.35 : 1}/>
+
+                {d.count > 0 && (
+                  <text x={xAct + BWIDTH / 2} y={PAD_T + INNER_H - hAct - 8}
+                    textAnchor="middle" fontSize={11} fill="#dbeafe" fontWeight={800}>
+                    {d.count}
                   </text>
+                )}
+                {ant.count > 0 && (
+                  <text x={xAnt + BWIDTH / 2} y={PAD_T + INNER_H - hAnt - 8}
+                    textAnchor="middle" fontSize={10} fill="#94a3b8" fontWeight={700}>
+                    {ant.count}
+                  </text>
+                )}
 
-                  {/* Tooltip flotante al hover */}
-                  {isHov && (
-                    <g>
-                      <rect x={x - 8} y={H - Math.max(hAct, hAnt) - 38}
-                        width={70} height={32} rx={6}
-                        fill="rgba(15,23,42,0.92)" stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
-                      <text x={x + 27} y={H - Math.max(hAct, hAnt) - 24}
-                        textAnchor="middle" fontSize={9} fill="#93c5fd" fontWeight={700}>
-                        Actual: {d.count}
-                      </text>
-                      <text x={x + 27} y={H - Math.max(hAct, hAnt) - 12}
-                        textAnchor="middle" fontSize={9} fill="#64748b">
-                        Ant: {ant.count}
-                      </text>
-                    </g>
-                  )}
-                </g>
-              );
-            })}
+                <text x={groupX + BWIDTH + 4} y={H - 8} textAnchor="middle"
+                  fontSize={11} fill={isHov ? '#cbd5e1' : '#64748b'} fontWeight={isHov ? 700 : 500}>
+                  {d.nombre.slice(0, 3)}
+                </text>
 
-            {/* Línea base */}
-            <line x1={PAD} y1={H} x2={W - PAD} y2={H} stroke="#1e293b" strokeWidth={1}/>
-          </svg>
-        </div>
+                {isHov && (
+                  <g>
+                    <rect x={tipX} y={tipY} width={136} height={38} rx={8}
+                      fill="rgba(15,23,42,0.92)" stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
+                    <text x={tipX + 68} y={tipY + 15} textAnchor="middle" fontSize={10} fill="#93c5fd" fontWeight={800}>
+                      {d.nombre}: {d.count} sesiones
+                    </text>
+                    <text x={tipX + 68} y={tipY + 29} textAnchor="middle" fontSize={10} fill="#94a3b8">
+                      Anterior: {ant.count}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          <line x1={PAD_L} y1={PAD_T + INNER_H} x2={W - PAD_R} y2={PAD_T + INNER_H} stroke="#334155" strokeWidth={1}/>
+        </svg>
+      </div>
     </div>
   );
 }
 
-// ─── Heatmap de horas pico ────────────────────────────────────────────────────
+// --- Heatmap de horas pico ----------------------------------------------------
 function HeatmapHorasPico({ datos, cuatrimestre }) {
   if (!datos?.length) return null;
 

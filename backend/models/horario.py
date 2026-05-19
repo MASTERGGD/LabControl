@@ -44,6 +44,7 @@ class Reservacion(Base):
     sesiones    = relationship("SesionClase", back_populates="reservacion")
     solicitudes = relationship("SolicitudConflicto", back_populates="reservacion", cascade="all, delete-orphan")
     requerimiento = relationship("RequerimientoClase", back_populates="reservacion", uselist=False, cascade="all, delete-orphan")
+    eventos_cumplimiento = relationship("EventoCumplimiento", back_populates="reservacion", cascade="all, delete-orphan")
 
 
 class BloqueoSlot(Base):

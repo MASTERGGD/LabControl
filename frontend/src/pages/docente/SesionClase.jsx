@@ -6,11 +6,29 @@ import { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
+import AdminLayout from '../../components/AdminLayout';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIAS_CORTO = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+const DIAS_ESPACIOS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+const HORAS_ESPACIOS = ['07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21'];
+const TIPO_ESPACIO_DESC = {
+  AUDIOVISUAL: 'Eventos, presentaciones, audio y proyeccion.',
+  RECTORIA: 'Reuniones formales y actividades directivas.',
+  OTRO: 'Espacio institucional de uso general.',
+};
+const REQUERIMIENTOS_SALA = [
+  { key: 'PROYECTOR', label: 'Proyector' },
+  { key: 'AUDIO', label: 'Audio' },
+  { key: 'MICROFONO', label: 'Microfono' },
+  { key: 'ACOMODO_SILLAS', label: 'Sillas' },
+  { key: 'PRESIDIUM', label: 'Presidium' },
+  { key: 'INTERNET', label: 'Internet' },
+  { key: 'COFFEE_BREAK', label: 'Coffee break' },
+  { key: 'OTRO', label: 'Otro' },
+];
 
 /** Convierte 'HH:MM' a minutos desde medianoche */
 function toMin(t) {
@@ -31,6 +49,28 @@ function fmtMin(m) {
   return `${m} min (${h > 0 ? `${h}h ` : ''}${min > 0 ? `${min}min` : ''})`.replace(/\s+/g, ' ').trim();
 }
 
+function getLunesEspacios(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function addDaysEspacios(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function fmtDateEspacios(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function fmtDisplayEspacios(date) {
+  return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+}
+
 const ESTILOS_SLOT = {
   LIBRE:       { bg: 'bg-green-900/40 border-green-700/60 hover:bg-green-900/70',   texto: 'text-green-300',  cursor: 'cursor-pointer' },
   MIO:         { bg: 'bg-blue-600 border-blue-500 hover:bg-blue-500',               texto: 'text-white',      cursor: 'cursor-pointer' },
@@ -45,6 +85,19 @@ const ESTILOS_SLOT = {
 function DocenteLayout({ children, onCambiarPwd }) {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
+  const [pendientesComunicados, setPendientesComunicados] = useState(0);
+
+  useEffect(() => {
+    const cargarPendientes = () => {
+      api.get('/comunicados/pendientes-count')
+        .then(res => setPendientesComunicados(res.data?.pendientes ?? 0))
+        .catch(() => {});
+    };
+    cargarPendientes();
+    const timer = setInterval(cargarPendientes, 60_000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="min-h-screen text-white">
       <header className="glass-sm border-b border-white/5 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -60,6 +113,31 @@ function DocenteLayout({ children, onCambiarPwd }) {
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-400 hidden sm:block">{usuario?.nombre}</span>
           <span className="text-xs bg-green-900 text-green-300 px-2 py-1 rounded-full font-medium">DOCENTE</span>
+          <button
+            onClick={() => navigate('/comunicados')}
+            className="relative text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/8 transition-colors"
+            title="Mis comunicados"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/>
+            </svg>
+            {pendientesComunicados > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {pendientesComunicados > 9 ? '9+' : pendientesComunicados}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => navigate('/docente/historial')}
+            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/8 transition-colors"
+            title="Mi historial de sesiones"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/>
+            </svg>
+          </button>
           <button onClick={onCambiarPwd}
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/8 transition-colors"
             title="Cambiar contraseña">
@@ -1261,6 +1339,317 @@ function Leyenda() {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
+function ModalSolicitarSala({ onClose }) {
+  const { usuario } = useAuth();
+  const [espacios, setEspacios] = useState([]);
+  const [espacioSel, setEspacioSel] = useState(null);
+  const [semanaInicio, setSemanaInicio] = useState(getLunesEspacios(new Date()));
+  const [solicitudes, setSolicitudes] = useState([]);
+  const [bloqueSel, setBloqueSel] = useState(null);
+  const [loadingEspacios, setLoadingEspacios] = useState(true);
+  const [loadingDisp, setLoadingDisp] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    area_solicitante: '',
+    hora_inicio: '',
+    hora_fin: '',
+    motivo: '',
+    numero_asistentes: '',
+    observaciones: '',
+    requerimientos: [],
+  });
+
+  useEffect(() => {
+    api.get('/espacios/institucionales?solo_activos=true')
+      .then(r => {
+        const data = Array.isArray(r.data) ? r.data : [];
+        setEspacios(data);
+        if (data.length > 0) setEspacioSel(data[0]);
+      })
+      .catch(() => setEspacios([]))
+      .finally(() => setLoadingEspacios(false));
+  }, []);
+
+  useEffect(() => {
+    if (!espacioSel) return;
+    setLoadingDisp(true);
+    setError('');
+    api.get(`/espacios/institucionales/${espacioSel.id}/disponibilidad?fecha_inicio=${fmtDateEspacios(semanaInicio)}`)
+      .then(r => setSolicitudes(r.data?.solicitudes || []))
+      .catch(() => setSolicitudes([]))
+      .finally(() => setLoadingDisp(false));
+  }, [espacioSel, semanaInicio]);
+
+  const dias = Array.from({ length: 7 }, (_, i) => addDaysEspacios(semanaInicio, i));
+  const semanaFin = addDaysEspacios(semanaInicio, 6);
+  const hIni = parseInt(espacioSel?.hora_inicio_permitida?.split(':')[0] || '8', 10);
+  const hFin = parseInt(espacioSel?.hora_fin_permitida?.split(':')[0] || '20', 10);
+  const horas = HORAS_ESPACIOS.filter(h => parseInt(h, 10) >= hIni && parseInt(h, 10) < hFin);
+  const mapa = {};
+
+  for (const s of solicitudes) {
+    const ini = parseInt((s.hora_inicio || '00:00').split(':')[0], 10);
+    const fin = parseInt((s.hora_fin || '00:00').split(':')[0], 10);
+    for (let h = ini; h < fin; h += 1) {
+      const key = `${s.fecha}_${String(h).padStart(2, '0')}`;
+      if (!mapa[key]) mapa[key] = [];
+      mapa[key].push(s);
+    }
+  }
+
+  const seleccionarBloque = (fecha, hora) => {
+    const horaFin = String(Math.min(parseInt(hora, 10) + 1, hFin)).padStart(2, '0');
+    setBloqueSel({ fecha, hora });
+    setForm(f => ({ ...f, hora_inicio: `${hora}:00`, hora_fin: `${horaFin}:00` }));
+    setError('');
+  };
+
+  const setCampo = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const toggleReq = (tipo) => {
+    setForm(f => {
+      const existe = f.requerimientos.some(r => r.tipo === tipo);
+      return {
+        ...f,
+        requerimientos: existe
+          ? f.requerimientos.filter(r => r.tipo !== tipo)
+          : [...f.requerimientos, { tipo, descripcion: '', cantidad: 1, requerido: true }],
+      };
+    });
+  };
+  const tieneReq = (tipo) => form.requerimientos.some(r => r.tipo === tipo);
+  const setReqDesc = (tipo, descripcion) => {
+    setForm(f => ({
+      ...f,
+      requerimientos: f.requerimientos.map(r => r.tipo === tipo ? { ...r, descripcion } : r),
+    }));
+  };
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    if (!espacioSel || !bloqueSel) {
+      setError('Selecciona un bloque disponible en el calendario.');
+      return;
+    }
+    if (toMin(form.hora_fin) <= toMin(form.hora_inicio)) {
+      setError('La hora de fin debe ser mayor que la de inicio.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.post('/espacios/solicitudes', {
+        espacio_id: espacioSel.id,
+        area_solicitante: form.area_solicitante,
+        fecha: bloqueSel.fecha,
+        hora_inicio: form.hora_inicio,
+        hora_fin: form.hora_fin,
+        motivo: form.motivo,
+        numero_asistentes: form.numero_asistentes ? Number(form.numero_asistentes) : null,
+        observaciones: form.observaciones,
+        requerimientos: form.requerimientos,
+      });
+      onClose();
+      window.setTimeout(() => alert('Solicitud de sala enviada correctamente.'), 50);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al enviar la solicitud.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} aria-label="Cerrar" />
+      <section className="relative h-full w-full max-w-5xl overflow-y-auto border-l border-white/10 shadow-2xl"
+        style={{ background: '#0b1120' }}>
+        <div className="sticky top-0 z-10 border-b border-white/8 px-4 sm:px-6 py-4 flex items-start justify-between gap-3"
+          style={{ background: 'rgba(15,23,42,0.96)' }}>
+          <div>
+            <p className="text-xs text-emerald-300 font-semibold uppercase tracking-wide">Espacios institucionales</p>
+            <h2 className="text-xl font-bold text-white mt-1">Solicitar sala</h2>
+            <p className="text-sm text-slate-400 mt-1">Elige Rectoria, Audiovisual u otro espacio y envia tu solicitud.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-white/8">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-4 sm:p-6 space-y-5">
+          {loadingEspacios ? (
+            <div className="glass rounded-2xl p-8 text-center text-slate-400 animate-pulse">Cargando salas...</div>
+          ) : espacios.length === 0 ? (
+            <div className="glass rounded-2xl p-8 text-center text-slate-400">No hay espacios institucionales activos.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {espacios.map(esp => {
+                  const active = espacioSel?.id === esp.id;
+                  return (
+                    <button key={esp.id}
+                      onClick={() => { setEspacioSel(esp); setBloqueSel(null); }}
+                      className={`text-left rounded-2xl border p-4 transition-all ${active ? 'border-emerald-500/70 bg-emerald-500/12' : 'border-white/10 bg-white/5 hover:bg-white/8'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-bold text-white">{esp.nombre}</p>
+                        {active && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">{TIPO_ESPACIO_DESC[esp.tipo] || TIPO_ESPACIO_DESC.OTRO}</p>
+                      <p className="text-xs text-slate-500 mt-3">
+                        {esp.hora_inicio_permitida}-{esp.hora_fin_permitida}
+                        {esp.capacidad ? ` · ${esp.capacidad} personas` : ''}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 items-start">
+                <div className="glass rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between gap-3">
+                    <button onClick={() => setSemanaInicio(addDaysEspacios(semanaInicio, -7))}
+                      className="p-2 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+                      </svg>
+                    </button>
+                    <div className="text-center">
+                      <p className="text-sm text-white font-semibold">{fmtDisplayEspacios(semanaInicio)} - {fmtDisplayEspacios(semanaFin)}</p>
+                      <p className="text-xs text-slate-500">Disponibilidad de {espacioSel?.nombre}</p>
+                    </div>
+                    <button onClick={() => setSemanaInicio(addDaysEspacios(semanaInicio, 7))}
+                      className="p-2 text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  {loadingDisp ? (
+                    <div className="p-8 text-center text-slate-400 animate-pulse">Cargando disponibilidad...</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            <th className="w-16 p-2 text-slate-500 font-normal text-right pr-3">Hora</th>
+                            {dias.map((d, i) => (
+                              <th key={i} className="p-2 text-center text-slate-400 font-normal min-w-[86px]">
+                                <div>{DIAS_ESPACIOS[i]}</div>
+                                <div className="text-sm text-slate-200 font-semibold">{d.getDate()}</div>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {horas.map(h => (
+                            <tr key={h} className="border-b border-white/3">
+                              <td className="p-1 pr-3 text-right text-blue-300 whitespace-nowrap font-semibold">{h}:00</td>
+                              {dias.map((d, di) => {
+                                const fecha = fmtDateEspacios(d);
+                                const key = `${fecha}_${h}`;
+                                const bloques = mapa[key] || [];
+                                const pasado = d < new Date() && fecha !== fmtDateEspacios(new Date());
+                                const ocupada = bloques.some(b => b.estado === 'APROBADA');
+                                const pendiente = bloques.some(b => b.estado === 'PENDIENTE');
+                                const selected = bloqueSel?.fecha === fecha && bloqueSel?.hora === h;
+
+                                if (ocupada || pendiente || pasado) {
+                                  return (
+                                    <td key={di} className="p-1">
+                                      <div className={`h-12 rounded-lg border flex items-center justify-center px-1 ${ocupada ? 'bg-blue-950/70 border-blue-700/60 text-blue-300' : pendiente ? 'bg-amber-950/60 border-amber-700/60 text-amber-300' : 'bg-slate-900/50 border-slate-800 text-slate-700'}`}>
+                                        <span className="truncate">{ocupada ? 'Ocupado' : pendiente ? 'Pendiente' : ''}</span>
+                                      </div>
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td key={di} className="p-1">
+                                    <button type="button" onClick={() => seleccionarBloque(fecha, h)}
+                                      className={`h-12 w-full rounded-lg border transition-all ${selected ? 'bg-emerald-500/30 border-emerald-400 text-emerald-200 ring-2 ring-emerald-400/30' : 'bg-emerald-950/30 border-emerald-800/70 text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500'}`}>
+                                      {selected ? 'Seleccionado' : '+ Disponible'}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <form onSubmit={enviar} className="glass rounded-2xl p-4 space-y-3">
+                  <div className="rounded-xl bg-white/5 border border-white/8 px-3 py-2">
+                    <p className="text-xs text-slate-500">Solicitante</p>
+                    <p className="text-sm text-white font-semibold truncate">{usuario?.nombre}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Bloque seleccionado</label>
+                    <div className="input-dark text-sm text-slate-200">
+                      {bloqueSel ? `${bloqueSel.fecha} · ${form.hora_inicio}-${form.hora_fin}` : 'Elige un bloque disponible'}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Inicio</label>
+                      <input type="time" className="input-dark" value={form.hora_inicio} onChange={e => setCampo('hora_inicio', e.target.value)} required />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Fin</label>
+                      <input type="time" className="input-dark" value={form.hora_fin} onChange={e => setCampo('hora_fin', e.target.value)} required />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Area / departamento</label>
+                    <input className="input-dark" value={form.area_solicitante} onChange={e => setCampo('area_solicitante', e.target.value)} placeholder="Ej. Coordinacion academica" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Motivo *</label>
+                    <input className="input-dark" value={form.motivo} required minLength={5} onChange={e => setCampo('motivo', e.target.value)} placeholder="Ej. Reunion, presentacion, evento..." />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Asistentes</label>
+                    <input type="number" min="1" className="input-dark" value={form.numero_asistentes} onChange={e => setCampo('numero_asistentes', e.target.value)} placeholder="Ej. 25" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-2">Requerimientos</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {REQUERIMIENTOS_SALA.map(req => (
+                        <button key={req.key} type="button" onClick={() => toggleReq(req.key)}
+                          className={`rounded-lg border px-2 py-2 text-xs text-left ${tieneReq(req.key) ? 'bg-blue-500/20 border-blue-500/50 text-blue-200' : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20'}`}>
+                          {req.label}
+                        </button>
+                      ))}
+                    </div>
+                    {tieneReq('OTRO') && (
+                      <input className="input-dark mt-2" placeholder="Describe el requerimiento"
+                        value={form.requerimientos.find(r => r.tipo === 'OTRO')?.descripcion || ''}
+                        onChange={e => setReqDesc('OTRO', e.target.value)} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">Observaciones</label>
+                    <textarea className="input-dark resize-none" rows={2} value={form.observaciones} onChange={e => setCampo('observaciones', e.target.value)} placeholder="Detalles adicionales" />
+                  </div>
+                  {error && <p className="text-sm text-red-300 bg-red-950/40 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>}
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+                    <button type="submit" disabled={saving} className="btn-blue flex-1">{saving ? 'Enviando...' : 'Enviar'}</button>
+                  </div>
+                </form>
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function SesionClase() {
   const navigate    = useNavigate();
   const { usuario } = useAuth();
@@ -1274,7 +1663,6 @@ export default function SesionClase() {
   const [sesionActiva, setSesionActiva]       = useState(null);
   const [modalSlot, setModalSlot]             = useState(null);
   const [modalLibre, setModalLibre]           = useState(false);
-  const [modalPwd, setModalPwd]               = useState(false);
   const [solicRecibidas, setSolicRecibidas]   = useState([]);
   const [accionando, setAccionando]           = useState(null); // reservacion_id en proceso
 
@@ -1354,7 +1742,7 @@ export default function SesionClase() {
   const cerrar = () => setModalSlot(null);
 
   return (
-    <DocenteLayout onCambiarPwd={() => setModalPwd(true)}>
+    <AdminLayout>
 
       {/* ── Panel: Solicitudes recibidas (otro docente quiere mi espacio) ──── */}
       {solicRecibidas.length > 0 && (
@@ -1432,13 +1820,15 @@ export default function SesionClase() {
             </p>
           )}
         </div>
-        <button onClick={() => setModalLibre(true)}
-          className="flex items-center gap-2 input-dark hover:bg-gray-600 text-white px-3 py-2 text-sm font-medium transition-colors shrink-0 rounded-lg">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-          </svg>
-          {esMobil ? 'Sin reserva' : 'Sesión sin reservación'}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button onClick={() => setModalLibre(true)}
+            className="flex items-center gap-2 input-dark hover:bg-gray-600 text-white px-3 py-2 text-sm font-medium transition-colors shrink-0 rounded-lg">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
+            </svg>
+            {esMobil ? 'Sin reserva' : 'Sesión sin reservación'}
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -1530,7 +1920,6 @@ export default function SesionClase() {
           onSesionIniciada={setSesionActiva}
         />
       )}
-      {modalPwd && <ModalCambiarPassword onClose={() => setModalPwd(false)} />}
-    </DocenteLayout>
+    </AdminLayout>
   );
 }

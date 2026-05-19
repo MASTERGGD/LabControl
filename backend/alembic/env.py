@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from database import Base          # noqa: E402
 from models import (               # noqa: E402
     catalogo, horario, inventario, laboratorio,
-    notificacion, sesion, usuario, auditoria, adeudo,
+    notificacion, sesion, usuario, auditoria, adeudo, espacio, comunicado,
 )
 
 target_metadata = Base.metadata
@@ -77,11 +77,6 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # Evitar que el lock de alembic_version bloquee el arranque indefinidamente
-        if not is_sqlite:
-            connection.execute(
-                __import__("sqlalchemy").text("SET lock_timeout = '10s'")
-            )
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -90,6 +85,12 @@ def run_migrations_online() -> None:
             render_as_batch=is_sqlite,
         )
         with context.begin_transaction():
+            # SET LOCAL aplica sólo a esta transacción — evita locks indefinidos
+            # y debe ir DENTRO del bloque para no disparar autobegin antes de time
+            if not is_sqlite:
+                connection.execute(
+                    __import__("sqlalchemy").text("SET LOCAL lock_timeout = '10s'")
+                )
             context.run_migrations()
 
 

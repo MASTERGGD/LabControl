@@ -215,12 +215,19 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
 
 // ─── Modal Crear / Editar ─────────────────────────────────────────────────────
 function ModalLab({ lab, onClose, onSave }) {
-  const [form, setForm]       = useState({ nombre: lab?.nombre || '', ubicacion: lab?.ubicacion || '', capacidad: lab?.capacidad ?? 25 });
+  const [form, setForm]       = useState({
+    nombre: lab?.nombre || '',
+    ubicacion: lab?.ubicacion || '',
+    capacidad: lab?.capacidad ?? 25,
+    activo: lab?.activo ?? true,
+  });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    const val = e.target.name === 'capacidad' ? Number(e.target.value) : e.target.value;
+    const val = e.target.name === 'capacidad' ? Number(e.target.value)
+              : e.target.name === 'activo'   ? e.target.checked
+              : e.target.value;
     setForm({ ...form, [e.target.name]: val }); setError('');
   };
 
@@ -262,6 +269,26 @@ function ModalLab({ lab, onClose, onSave }) {
             <input name="capacidad" type="number" min="1" max="200" value={form.capacidad}
               onChange={handleChange} className="input-dark" />
           </div>
+          {lab && (
+            <label className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
+              form.activo
+                ? 'bg-emerald-950/20 border-emerald-700/40'
+                : 'bg-slate-900/70 border-slate-700 hover:border-emerald-600/50'
+            }`}>
+              <input type="checkbox" name="activo" checked={form.activo} onChange={handleChange}
+                className="w-4 h-4 mt-0.5 rounded accent-emerald-600" />
+              <span>
+                <span className={`block text-sm font-semibold ${form.activo ? 'text-emerald-300' : 'text-slate-300'}`}>
+                  {form.activo ? 'Laboratorio activo' : 'Laboratorio inactivo'}
+                </span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  {form.activo
+                    ? 'Visible para horarios, sesiones, reportes y filtros principales.'
+                    : 'Conserva historial. Activalo para volver a usarlo en operacion.'}
+                </span>
+              </span>
+            </label>
+          )}
           {error && (
             <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>
           )}

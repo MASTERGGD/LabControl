@@ -15,10 +15,11 @@ export default function Login() {
   const { login, usuario } = useAuth();
 
   // Si ya hay sesión activa → ir directo al dashboard
-  if (usuario) return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
   const [form, setForm]       = useState({ email: '', password: '' });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+
+  if (usuario) return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });

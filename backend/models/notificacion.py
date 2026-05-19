@@ -18,6 +18,6 @@ class Notificacion(Base):
     mensaje     = Column(String, nullable=False)
     leida       = Column(Boolean, default=False, nullable=False)
     fecha       = Column(DateTime, default=_utcnow, nullable=False)
-    url         = Column(String, nullable=True)    # ruta frontend opcional
+    url         = Column(String, nullable=True)
 
-    usuario = relationship("Usuario", backref="notificaciones")
+    usuario = relationship("Usuario")

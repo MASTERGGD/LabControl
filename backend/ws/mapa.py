@@ -203,47 +203,47 @@ async def websocket_mapa(
             await websocket.close(code=4003, reason="Usuario no autorizado")
             return
         if usuario.rol == RolUsuario.LAB_ADMIN and usuario.laboratorio_id != lab_id:
-            await websocket.close(code=4003, reason="Sin acceso a este laboratorio")
+            await websocket.close(code=4003, reason="Acceso denegado a este laboratorio")
             return
+
+        # DOCENTE: solo puede ver el lab de su sesion activa
         if usuario.rol == RolUsuario.DOCENTE:
-            sesion = db_auth.query(SesionClase).filter(
+            from models.sesion import SesionClase
+            sesion_activa = db_auth.query(SesionClase).filter(
                 SesionClase.docente_id == usuario.id,
-                SesionClase.laboratorio_id == lab_id,
                 SesionClase.estado == "ABIERTA",
+                SesionClase.laboratorio_id == lab_id,
             ).first()
-            if not sesion:
-                await websocket.close(code=4003, reason="Sin sesion abierta en este laboratorio")
+            if not sesion_activa:
+                await websocket.close(code=4003, reason="Sin sesion activa en este laboratorio")
                 return
+
+    except Exception:
+        await websocket.close(code=4003, reason="Error de autorizacion")
+        return
     finally:
         db_auth.close()
 
-    await manager.conectar(websocket, lab_id)
-    db = SessionLocal()
-
+    # 4. Conectar y mantener el ciclo de mensajes
+    await manager.connect(lab_id, websocket)
     try:
-        # Estado inicial
-        snapshot = _snapshot_lab(lab_id, db)
-        await websocket.send_text(json.dumps({
-            "tipo": "estado_inicial",
-            "lab_id": lab_id,
-            "pcs": snapshot,
-        }, ensure_ascii=False))
+        # Enviar snapshot inicial del estado del lab
+        db_snap = SessionLocal()
+        try:
+            snapshot = _snapshot_lab(lab_id, db_snap)
+            await websocket.send_json({"tipo": "snapshot", "pcs": snapshot})
+        finally:
+            db_snap.close()
 
-        # Mantener conexión viva con ping cada 30s
+        # Mantener conexion — escuchar mensajes del cliente (ping/pong o comandos)
         while True:
             try:
-                # Esperar mensaje del cliente (o timeout)
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                data = await websocket.receive_text()
                 if data == "ping":
-                    await websocket.send_text(json.dumps({"tipo": "pong"}))
-            except asyncio.TimeoutError:
-                # Enviar ping al cliente
-                await websocket.send_text(json.dumps({"tipo": "ping"}))
-            except WebSocketDisconnect:
+                    await websocket.send_text("pong")
+            except Exception:
                 break
-
-    except WebSocketDisconnect:
+    except Exception:
         pass
     finally:
-        manager.desconectar(websocket, lab_id)
-        db.close()
+        manager.disconnect(lab_id, websocket)

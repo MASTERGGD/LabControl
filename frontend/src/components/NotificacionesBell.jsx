@@ -28,7 +28,7 @@ const TIPO_CONFIG = {
   PRESTAMO_VENCIDO: { color: 'text-red-400',    bg: 'bg-red-900/30',    icon: '🔴', label: 'Préstamo' },
   MANTENIMIENTO:    { color: 'text-orange-400',  bg: 'bg-orange-900/30', icon: '🔧', label: 'Mantenimiento' },
   RESERVACION:      { color: 'text-blue-400',    bg: 'bg-blue-900/30',   icon: '📅', label: 'Reservación' },
-  OVERTIME:         { color: 'text-purple-400',  bg: 'bg-purple-900/30', icon: '⏰', label: 'Overtime' },
+  OVERTIME:         { color: 'text-purple-400',  bg: 'bg-purple-900/30', icon: '⏰', label: 'Tiempo extra' },
 };
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -42,8 +42,6 @@ export default function NotificacionesBell() {
   const bellRef                 = useRef(null);
   const dropdownRef             = useRef(null);
   const pollRef                 = useRef(null);
-
-  if (!usuario) return null;
 
   // ── Cerrar al hacer click fuera (solo cuando está abierto) ────────────────
   useEffect(() => {
@@ -59,12 +57,12 @@ export default function NotificacionesBell() {
 
   // ── Polling conteo no leídas (60 s) ──────────────────────────────────────
   const fetchCount = useCallback(async () => {
-    if (!sessionStorage.getItem('token')) return;
+    if (!usuario || !sessionStorage.getItem('token')) return;
     try {
       const { data } = await api.get('/notificaciones/no-leidas');
       setNoLeidas(data.count);
     } catch (_) {}
-  }, []);
+  }, [usuario]);
 
   useEffect(() => {
     fetchCount();
@@ -125,6 +123,8 @@ export default function NotificacionesBell() {
 
   const cfg = (tipo) =>
     TIPO_CONFIG[tipo] || { color: 'text-slate-400', bg: 'bg-white/4', icon: '🔔', label: tipo };
+
+  if (!usuario) return null;
 
   // ── Panel de notificaciones (portaleado a document.body) ──────────────────
   const panel = open ? createPortal(

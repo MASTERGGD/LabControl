@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import SelectDark from '../../components/SelectDark';
 import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
@@ -243,9 +244,9 @@ function ModalCrear({ labs, onCreado, onClose, initialValues }) {
 }
 
 // ── Modal Resolver ─────────────────────────────────────────────────────────────
-function ModalResolver({ adeudo, onActualizado, onClose }) {
+function ModalResolver({ adeudo, onActualizado, onClose, estadoInicial }) {
   const { toast: addToast } = useToast();
-  const [estado, setEstado]   = useState(adeudo.estado);
+  const [estado, setEstado]   = useState(estadoInicial || adeudo.estado);
   const [notas, setNotas]     = useState(adeudo.notas_resolucion || '');
   const [monto, setMonto]     = useState(adeudo.monto_estimado ?? '');
   const [loading, setLoading] = useState(false);
@@ -312,46 +313,238 @@ function ModalResolver({ adeudo, onActualizado, onClose }) {
   );
 }
 
-// ── Modal Detalle ──────────────────────────────────────────────────────────────
-function ModalDetalle({ adeudo, onClose }) {
-  if (!adeudo) return null;
-  const rows = [
-    ['Tipo persona',   `${PERSONA_ICON[adeudo.persona_tipo]} ${adeudo.persona_tipo}`],
-    ['Identificador',  adeudo.persona_identificador],
-    ['Nombre',         adeudo.persona_nombre],
-    ['Tipo incidente', <TipoBadge key="t" tipo={adeudo.tipo} />],
-    ['Origen',         <OrigenBadge key="o" origen={adeudo.origen_tipo} />],
-    ['Estado',         <EstadoBadge key="e" estado={adeudo.estado} />],
-    ['Laboratorio',    adeudo.laboratorio_nombre || '—'],
-    ['Cuatrimestre',   adeudo.cuatrimestre || '—'],
-    ['Monto estimado', adeudo.monto_estimado != null ? `$${adeudo.monto_estimado.toFixed(2)}` : '—'],
-    ['Sesión',         adeudo.sesion_id ? `#${adeudo.sesion_id} (${adeudo.sesion_codigo || ''})` : '—'],
-    ['PC',             adeudo.computadora_codigo || '—'],
-    ['Préstamo ID',    adeudo.prestamo_id ? `#${adeudo.prestamo_id}` : '—'],
-    ['Fecha reporte',  adeudo.fecha_reporte ? new Date(adeudo.fecha_reporte).toLocaleString('es-MX') : '—'],
-    ['Reportado por',  adeudo.reportado_por || '—'],
-    ['Fecha resolución', adeudo.fecha_resolucion ? new Date(adeudo.fecha_resolucion).toLocaleString('es-MX') : '—'],
-    ['Resuelto por',   adeudo.resuelto_por || '—'],
-    ['Notas',          adeudo.notas_resolucion || '—'],
-  ];
+// ── Helpers de sección ────────────────────────────────────────────────────────
+function Section({ label, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
-          <h3 className="text-white font-semibold text-base">Detalle #{adeudo.id}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div className="p-6">
-          <p className="text-slate-300 text-sm bg-slate-800/60 rounded-xl p-4 mb-4">{adeudo.descripcion}</p>
-          <div className="space-y-3">
-            {rows.map(([k, v]) => (
-              <div key={k} className="flex gap-3 text-sm">
-                <span className="text-slate-500 w-36 shrink-0">{k}</span>
-                <span className="text-slate-200">{v}</span>
+    <div>
+      <p style={{fontSize:9,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',
+        color:'#334155',marginBottom:8,paddingBottom:5,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+function Grid2({ children }) {
+  return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px 16px'}}>{children}</div>;
+}
+function Field({ label, value }) {
+  if (!value || value === '—') return null;
+  return (
+    <div>
+      <p style={{fontSize:9,color:'#475569',margin:'0 0 2px',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em'}}>{label}</p>
+      <p style={{fontSize:12,color:'#cbd5e1',margin:0,fontWeight:500,lineHeight:1.3}}>{value}</p>
+    </div>
+  );
+}
+
+// ── Drawer Detalle ─────────────────────────────────────────────────────────────
+function DrawerDetalle({ adeudo, onClose, onActualizado }) {
+  const { toast: addToast } = useToast();
+  const navigate = useNavigate();
+  const [quickLoading, setQuickLoading] = useState(false);
+  if (!adeudo) return null;
+
+  const esPendiente  = adeudo.estado === 'PENDIENTE';
+  const esEnRevision = adeudo.estado === 'EN_REVISION';
+  const esActivo     = esPendiente || esEnRevision;
+
+  // Clean double-dash PC codes (PC--03 → PC-03)
+  const pcCode = adeudo.computadora_codigo?.replace(/--+/g, '-') || null;
+
+  const ACCENT = {
+    PENDIENTE:   { dot:'#ef4444', text:'#f87171', bg:'rgba(239,68,68,0.08)',   border:'rgba(239,68,68,0.22)'   },
+    EN_REVISION: { dot:'#f59e0b', text:'#fbbf24', bg:'rgba(245,158,11,0.08)',  border:'rgba(245,158,11,0.22)'  },
+    RESUELTO:    { dot:'#10b981', text:'#34d399', bg:'rgba(16,185,129,0.08)',  border:'rgba(16,185,129,0.22)'  },
+    EXONERADO:   { dot:'#64748b', text:'#94a3b8', bg:'rgba(100,116,139,0.08)', border:'rgba(100,116,139,0.22)' },
+  };
+  const accent = ACCENT[adeudo.estado] || ACCENT.PENDIENTE;
+  const ESTADO_LBL = { PENDIENTE:'pendiente', EN_REVISION:'en revisión', RESUELTO:'resuelto', EXONERADO:'exonerado' };
+
+  const cambiarEstado = async (nuevoEstado) => {
+    setQuickLoading(true);
+    try {
+      await api.patch(`/adeudos/${adeudo.id}`, { estado: nuevoEstado });
+      addToast(`Marcado como ${ESTADO_LBL[nuevoEstado]}`, 'success');
+      onActualizado('refresh');
+    } catch { addToast('Error al actualizar', 'error'); }
+    finally { setQuickLoading(false); }
+  };
+
+  const BtnAction = ({ onClick, color, bg, border, children, disabled }) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{padding:'9px 14px',borderRadius:10,fontSize:12,fontWeight:600,
+        background:bg,border:`1px solid ${border}`,color,cursor:'pointer',
+        transition:'all .2s',opacity:disabled?0.5:1,whiteSpace:'nowrap'}}
+      onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.filter='brightness(1.25)'; }}
+      onMouseLeave={e=>{ e.currentTarget.style.filter='none'; }}>
+      {children}
+    </button>
+  );
+
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'center',
+        justifyContent:'center',background:'rgba(0,0,0,0.72)',backdropFilter:'blur(6px)'}}
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        style={{background:'#0f172a',border:'1px solid rgba(255,255,255,0.07)',
+          borderRadius:'1.25rem',boxShadow:'0 32px 80px rgba(0,0,0,0.7)',
+          width:'100%',maxWidth:480,margin:'0 16px',
+          display:'flex',flexDirection:'column',maxHeight:'90vh',overflow:'hidden'}}>
+
+        {/* ── HEADER ── */}
+        <div style={{padding:'20px 24px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,flexWrap:'wrap'}}>
+                <span style={{width:8,height:8,borderRadius:'50%',background:accent.dot,flexShrink:0,
+                  boxShadow:`0 0 10px ${accent.dot}88`}}/>
+                <span style={{fontSize:11,fontWeight:700,color:accent.text,
+                  textTransform:'uppercase',letterSpacing:'0.1em'}}>
+                  Adeudo {ESTADO_LBL[adeudo.estado]}
+                </span>
+                <span style={{fontSize:10,color:'#475569',background:'rgba(255,255,255,0.04)',
+                  border:'1px solid rgba(255,255,255,0.07)',borderRadius:6,padding:'1px 7px'}}>
+                  #{adeudo.id}
+                </span>
               </div>
-            ))}
+              <p style={{fontSize:14,fontWeight:600,color:'#f1f5f9',margin:0,lineHeight:1.45,
+                display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
+                {adeudo.descripcion}
+              </p>
+            </div>
+            <button onClick={onClose}
+              style={{width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',
+                borderRadius:8,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',
+                color:'#64748b',cursor:'pointer',flexShrink:0}}
+              onMouseEnter={e=>{e.currentTarget.style.color='#f1f5f9';e.currentTarget.style.background='rgba(255,255,255,0.12)'}}
+              onMouseLeave={e=>{e.currentTarget.style.color='#64748b';e.currentTarget.style.background='rgba(255,255,255,0.05)'}}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ── BODY scrollable ── */}
+        <div style={{overflowY:'auto',flex:1,padding:'20px 24px',display:'flex',flexDirection:'column',gap:18}}>
+
+          {/* Resumen: tipo + origen + monto */}
+          <div style={{background:accent.bg,border:`1px solid ${accent.border}`,borderRadius:'0.875rem',
+            padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <TipoBadge tipo={adeudo.tipo}/>
+              <OrigenBadge origen={adeudo.origen_tipo}/>
+            </div>
+            {adeudo.monto_estimado != null && (
+              <span style={{fontSize:20,fontWeight:800,color:accent.text,letterSpacing:'-0.02em'}}>
+                ${adeudo.monto_estimado.toFixed(2)}
+              </span>
+            )}
+          </div>
+
+          {/* ── Persona responsable ── */}
+          <Section label="Persona responsable">
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+              <div style={{width:42,height:42,borderRadius:'50%',flexShrink:0,
+                background:'rgba(99,102,241,0.12)',border:'1.5px solid rgba(99,102,241,0.28)',
+                display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>
+                {PERSONA_ICON[adeudo.persona_tipo]}
+              </div>
+              <div>
+                <p style={{fontSize:13,fontWeight:700,color:'#f1f5f9',margin:0}}>{adeudo.persona_nombre || '—'}</p>
+                <p style={{fontSize:11,color:'#64748b',fontFamily:'monospace',margin:'3px 0 0'}}>{adeudo.persona_identificador}</p>
+                <p style={{fontSize:10,color:'#475569',margin:'2px 0 0',textTransform:'uppercase',letterSpacing:'0.06em'}}>{adeudo.persona_tipo}</p>
+              </div>
+            </div>
+          </Section>
+
+          {/* ── Incidente ── */}
+          {(pcCode || adeudo.sesion_id || adeudo.prestamo_id || adeudo.laboratorio_nombre) && (
+            <Section label="Incidente">
+              <Grid2>
+                <Field label="PC" value={pcCode}/>
+                <Field label="Laboratorio" value={adeudo.laboratorio_nombre}/>
+                <Field label="Cuatrimestre" value={adeudo.cuatrimestre}/>
+                {adeudo.sesion_id && <Field label="Sesión" value={`#${adeudo.sesion_id}${adeudo.sesion_codigo ? ` · ${adeudo.sesion_codigo}` : ''}`}/>}
+                {adeudo.prestamo_id && <Field label="Préstamo" value={`#${adeudo.prestamo_id}`}/>}
+              </Grid2>
+            </Section>
+          )}
+
+          {/* ── Seguimiento ── */}
+          <Section label="Seguimiento">
+            <Grid2>
+              <Field label="Reportado por" value={adeudo.reportado_por}/>
+              <Field label="Fecha reporte" value={adeudo.fecha_reporte
+                ? new Date(adeudo.fecha_reporte).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'})
+                : null}/>
+              <Field label="Resuelto por" value={adeudo.resuelto_por}/>
+              <Field label="Fecha resolución" value={adeudo.fecha_resolucion
+                ? new Date(adeudo.fecha_resolucion).toLocaleString('es-MX',{dateStyle:'short',timeStyle:'short'})
+                : null}/>
+            </Grid2>
+            {adeudo.notas_resolucion && (
+              <div style={{marginTop:10,padding:'10px 12px',background:'rgba(255,255,255,0.03)',
+                border:'1px solid rgba(255,255,255,0.06)',borderRadius:8}}>
+                <p style={{fontSize:9,color:'#475569',margin:'0 0 4px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>Notas</p>
+                <p style={{fontSize:12,color:'#cbd5e1',margin:0,lineHeight:1.5}}>{adeudo.notas_resolucion}</p>
+              </div>
+            )}
+          </Section>
+        </div>
+
+        {/* ── FOOTER fijo ── */}
+        <div style={{borderTop:'1px solid rgba(255,255,255,0.06)',padding:'14px 24px',
+          flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+
+          {/* Acciones primarias */}
+          {esActivo && (
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={() => onActualizado('resolver')}
+                style={{flex:1,padding:'10px',borderRadius:10,fontSize:13,fontWeight:700,
+                  background:'linear-gradient(135deg,#3b82f6,#2563eb)',color:'white',
+                  border:'none',cursor:'pointer',boxShadow:'0 0 18px rgba(59,130,246,0.28)',transition:'all .2s'}}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow='0 0 26px rgba(59,130,246,0.45)'}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow='0 0 18px rgba(59,130,246,0.28)'}>
+                ✏️ Actualizar estado
+              </button>
+              {esPendiente && (
+                <BtnAction onClick={() => cambiarEstado('EN_REVISION')} disabled={quickLoading}
+                  color="#fbbf24" bg="rgba(245,158,11,0.1)" border="rgba(245,158,11,0.3)">
+                  🟡 En revisión
+                </BtnAction>
+              )}
+              {/* Exonerar abre modal con estado precargado — acción sensible */}
+              <BtnAction onClick={() => onActualizado('exonerar')} disabled={quickLoading}
+                color="#94a3b8" bg="rgba(100,116,139,0.1)" border="rgba(100,116,139,0.3)">
+                ⚪ Exonerar
+              </BtnAction>
+            </div>
+          )}
+
+          {/* Acciones de navegación */}
+          <div style={{display:'flex',gap:8}}>
+            {adeudo.persona_tipo === 'ALUMNO' && adeudo.persona_identificador && (
+              <button onClick={() => navigate(`/admin/historial-alumno?matricula=${adeudo.persona_identificador}`)}
+                style={{flex:1,padding:'8px',borderRadius:9,fontSize:11,fontWeight:600,
+                  background:'rgba(139,92,246,0.08)',border:'1px solid rgba(139,92,246,0.22)',
+                  color:'#a78bfa',cursor:'pointer',transition:'all .2s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(139,92,246,0.18)'}
+                onMouseLeave={e=>e.currentTarget.style.background='rgba(139,92,246,0.08)'}>
+                Ver historial alumno →
+              </button>
+            )}
+            {adeudo.sesion_id && (
+              <button onClick={() => navigate(`/admin/sesiones?id=${adeudo.sesion_id}`)}
+                style={{flex:1,padding:'8px',borderRadius:9,fontSize:11,fontWeight:600,
+                  background:'rgba(56,189,248,0.08)',border:'1px solid rgba(56,189,248,0.22)',
+                  color:'#7dd3fc',cursor:'pointer',transition:'all .2s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='rgba(56,189,248,0.18)'}
+                onMouseLeave={e=>e.currentTarget.style.background='rgba(56,189,248,0.08)'}>
+                {adeudo.incidente_id ? 'Ver incidente →' : 'Ver sesión →'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -372,9 +565,10 @@ export default function Adeudos() {
   const [filtroCuatri, setFiltroCuatri] = useState('');
   const [filtroLab, setFiltroLab]       = useState('');
   const [showCrear, setShowCrear]       = useState(false);
-  const [seleccionado, setSeleccionado] = useState(null);
-  const [modoModal, setModoModal]       = useState(null);
-  const [confirmEliminarId, setConfirmEliminarId] = useState(null);
+  const [seleccionado, setSeleccionado]       = useState(null);
+  const [modoModal, setModoModal]             = useState(null);
+  const [estadoParaResolver, setEstadoParaResolver] = useState(null);
+  const [confirmEliminarId, setConfirmEliminarId]   = useState(null);
 
   const fetchAdeudos = useCallback(async () => {
     setLoading(true);
@@ -584,8 +778,9 @@ export default function Adeudos() {
       {modoModal === 'resolver' && seleccionado && (
         <ModalResolver
           adeudo={seleccionado}
-          onActualizado={() => { setModoModal(null); setSeleccionado(null); fetchAdeudos(); }}
-          onClose={() => { setModoModal(null); setSeleccionado(null); }}
+          estadoInicial={estadoParaResolver}
+          onActualizado={() => { setModoModal(null); setSeleccionado(null); setEstadoParaResolver(null); fetchAdeudos(); }}
+          onClose={() => { setModoModal(null); setSeleccionado(null); setEstadoParaResolver(null); }}
         />
       )}
       {confirmEliminarId && (
@@ -608,9 +803,20 @@ export default function Adeudos() {
         </div>
       )}
       {modoModal === 'detalle' && seleccionado && (
-        <ModalDetalle
+        <DrawerDetalle
           adeudo={seleccionado}
-          onClose={() => { setModoModal(null); setSeleccionado(null); }}
+          onClose={() => { setModoModal(null); setSeleccionado(null); setEstadoParaResolver(null); }}
+          onActualizado={(accion) => {
+            if (accion === 'resolver') {
+              setEstadoParaResolver(null);
+              setModoModal('resolver');
+            } else if (accion === 'exonerar') {
+              setEstadoParaResolver('EXONERADO');
+              setModoModal('resolver');
+            } else {
+              setModoModal(null); setSeleccionado(null); setEstadoParaResolver(null); fetchAdeudos();
+            }
+          }}
         />
       )}
     </AdminLayout>

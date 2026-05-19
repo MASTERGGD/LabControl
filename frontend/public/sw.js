@@ -11,6 +11,12 @@
 const CACHE_NAME    = 'labcontrol-shell-v3';
 const FONT_CACHE    = 'labcontrol-fonts-v3';
 
+// ── En desarrollo (localhost) → nunca cachear, todo va a la red ───────────────
+const IS_DEV = self.location.hostname === 'localhost'
+            || self.location.hostname === '127.0.0.1'
+            || self.location.hostname.startsWith('192.168.');
+
+
 // ── Install: activar inmediatamente sin pre-caché de HTML ─────────────────────
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -38,6 +44,11 @@ self.addEventListener('fetch', event => {
   // Ignorar todo lo que no sea http/https o no sea GET
   if (!url.protocol.startsWith('http') || request.method !== 'GET') {
     return;
+  }
+
+  // En desarrollo: pasar siempre a la red, sin caché → F5 siempre trae lo nuevo
+  if (IS_DEV) {
+    return; // el navegador maneja la petición normalmente
   }
 
   // 1. API calls (puerto 8000 o /api/) → siempre network, sin interceptar

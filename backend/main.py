@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import engine, Base, SessionLocal
 import models
+from models import cumplimiento  # noqa: F401  — registra EventoCumplimiento en Base.metadata
 import os
 
 # Alembic -- migraciones de esquema
@@ -28,6 +29,8 @@ from routers import asistencia as asistencia_router
 from routers import historial as historial_router
 from routers import auditoria as auditoria_router
 from routers import adeudos as adeudos_router
+from routers import espacios as espacios_router
+from routers import comunicados as comunicados_router
 
 from ws.mapa import websocket_mapa
 
@@ -38,7 +41,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "e4f6a3c02d18"
+_ALEMBIC_HEAD = "h3i4j5k6l7m8"
 
 
 def _current_db_version() -> str | None:
@@ -141,6 +144,8 @@ app.include_router(asistencia_router.router)
 app.include_router(historial_router.router)
 app.include_router(auditoria_router.router)
 app.include_router(adeudos_router.router)
+app.include_router(espacios_router.router)
+app.include_router(comunicados_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

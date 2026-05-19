@@ -329,14 +329,13 @@ def verificar_eventos(
                 crear_notificacion(
                     db, adm.id,
                     tipo="OVERTIME",
-                    titulo=f"Sesión en overtime — {lab_nombre}",
+                    titulo=f"Sesión con tiempo extra — {lab_nombre}",
                     mensaje=(
-                        f"{ref} lleva {minutos_extra} minuto(s) de overtime en {lab_nombre}. "
+                        f"{ref} lleva {minutos_extra} min de tiempo extra en {lab_nombre}. "
                         f"Docente: {s.docente.nombre if s.docente else 'N/D'}."
                     ),
                     url="/admin/sesiones",
                 )
                 generadas += 1
 
-    db.commit()
-    return {"generadas": generadas, "timestamp": ahora.isoformat()}
+   

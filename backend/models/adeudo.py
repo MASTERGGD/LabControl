@@ -81,4 +81,3 @@ class Adeudo(Base):
     computadora   = relationship("Computadora", foreign_keys=[computadora_id])
     prestamo      = relationship("Prestamo",    foreign_keys=[prestamo_id])
     reportado_por = relationship("Usuario",     foreign_keys=[reportado_por_id])
-    resuelto_por  = relationship("Usuario",     foreign_keys=[resuelto_por_id])

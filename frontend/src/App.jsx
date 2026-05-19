@@ -27,6 +27,13 @@ import Adeudos from './pages/admin/Adeudos';
 import ConsultaPersona from './pages/admin/ConsultaPersona';
 import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
+import MiHistorial from './pages/docente/MiHistorial';
+import EspaciosAdmin from './pages/admin/EspaciosAdmin';
+import ApartarEspacio from './pages/espacios/ApartarEspacio';
+import BandejaEspacios from './pages/espacios/BandejaEspacios';
+import MisSolicitudes from './pages/espacios/MisSolicitudes';
+import ComunicadosAdmin from './pages/admin/ComunicadosAdmin';
+import MisComunicados from './pages/comunicados/MisComunicados';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -180,6 +187,40 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
 
+      {/* Espacios Institucionales */}
+      <Route path="/admin/espacios" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+          <EspaciosAdmin />
+        </RutaProtegida>
+      }/>
+      <Route path="/espacios/apartar" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+          <ApartarEspacio />
+        </RutaProtegida>
+      }/>
+      <Route path="/espacios/bandeja" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+          <BandejaEspacios />
+        </RutaProtegida>
+      }/>
+      <Route path="/espacios/mis-solicitudes" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+          <MisSolicitudes />
+        </RutaProtegida>
+      }/>
+
+      {/* Comunicados Institucionales */}
+      <Route path="/comunicados" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+          <MisComunicados />
+        </RutaProtegida>
+      }/>
+      <Route path="/admin/comunicados" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN']}>
+          <ComunicadosAdmin />
+        </RutaProtegida>
+      }/>
+
       {/* Asistencia de sesión — SUPER_ADMIN, LAB_ADMIN y DOCENTE */}
       <Route path="/admin/sesion/:sesionId/asistencia" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'DOCENTE']}>
@@ -196,6 +237,11 @@ function AppRoutes() {
 
       {/* Docente */}
       <Route path="/docente" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <DashboardDocente />
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/horario" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <SesionClase />
         </RutaProtegida>
@@ -220,6 +266,13 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
 
+      {/* Historial del docente */}
+      <Route path="/docente/historial" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <MiHistorial />
+        </RutaProtegida>
+      }/>
+
       {/* Raíz → redirección inteligente */}
       <Route path="/" element={<RootRedirect />} />
 
@@ -235,7 +288,7 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <AppRoutes />
             <PWAInstallBanner />
           </BrowserRouter>

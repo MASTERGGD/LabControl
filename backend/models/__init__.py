@@ -6,3 +6,6 @@ from .inventario import Activo, Prestamo, Incidente, MantenimientoPreventivo
 from .notificacion import Notificacion
 from .catalogo import CatalogoAlumno, CatalogoMateria
 from .auditoria import AuditLog
+from .cumplimiento import EventoCumplimiento
+from .espacio import EspacioInstitucional, EspacioResponsable, SolicitudEspacio, RequerimientoSolicitud
+from .comunicado import Comunicado, ComunicadoDestinatario, ComunicadoLectura

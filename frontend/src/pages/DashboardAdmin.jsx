@@ -116,6 +116,72 @@ function KpiMini({ valor, label, sub, color = '#3b82f6', alert, onClick, icon })
 }
 
 // ─── Tarjeta de sesión activa ─────────────────────────────────────────────────
+function KpiPrincipal({ valor, label, sub, color, icon, alert, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!onClick}
+      className={`relative text-left transition-all ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default'}`}
+      style={{
+        background: 'rgba(30,41,59,0.58)',
+        border: `1px solid ${alert ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.08)'}`,
+        borderRadius: '0.875rem',
+        padding: '1.15rem 1.15rem',
+        minHeight: 132,
+        overflow: 'hidden',
+      }}
+      onMouseEnter={e => {
+        if (!onClick) return;
+        e.currentTarget.style.borderColor = `${color}99`;
+        e.currentTarget.style.boxShadow = `0 0 22px ${color}24`;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = alert ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.08)';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      {alert && (
+        <span className="absolute top-5 right-5 w-2 h-2 rounded-full"
+          style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
+      )}
+      <div style={{ fontSize: 20, marginBottom: 18 }}>{icon}</div>
+      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850, color: alert ? '#f87171' : '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
+        {valor}
+      </p>
+      <p style={{ margin: '7px 0 0', fontSize: 13, color: '#94a3b8' }}>{label}</p>
+      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color }}>{sub}</p>}
+    </button>
+  );
+}
+
+function KpiRow({ stats, sesiones, navigate }) {
+  if (!stats) return null;
+  const pcs = stats.pcs || {};
+  const incidentes = stats.incidentes_abiertos ?? stats.alertas?.incidentes_total ?? 0;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-3">
+      <KpiPrincipal valor={sesiones?.length ?? 0} label="Sesiones activas"
+        sub={(sesiones?.length ?? 0) > 0 ? 'En curso' : 'Sin actividad'}
+        color="#38bdf8" icon="🟢" onClick={() => navigate('/admin/sesiones')} />
+      <KpiPrincipal valor={stats.sesiones_hoy ?? 0} label="Sesiones hoy"
+        sub={stats.sesiones_semana ? `${stats.sesiones_semana} esta semana` : '0 esta semana'}
+        color="#60a5fa" icon="🧮" />
+      <KpiPrincipal valor={stats.alumnos_hoy ?? 0} label="Alumnos hoy"
+        sub="Únicos en sesiones" color="#60a5fa" icon="🎓" />
+      <KpiPrincipal valor={`${pcs.operativas ?? 0}/${pcs.total ?? 0}`} label="PCs operativas"
+        sub={`${pcs.mantenimiento ?? 0} en mant.`} color="#38bdf8" icon="💻"
+        onClick={() => navigate('/admin/laboratorios')} />
+      <KpiPrincipal valor={stats.prestamos?.activos ?? 0} label="Préstamos activos"
+        sub={stats.prestamos?.vencidos > 0 ? `${stats.prestamos.vencidos} vencidos` : 'Al corriente'}
+        color={stats.prestamos?.vencidos > 0 ? '#f59e0b' : '#60a5fa'} icon="📥"
+        alert={stats.prestamos?.vencidos > 0} onClick={() => navigate('/admin/prestamos')} />
+      <KpiPrincipal valor={incidentes} label="Incidentes abiertos"
+        sub={incidentes > 0 ? 'Requieren atención' : 'Sin incidentes'} color="#ef4444" icon="🛠️"
+        alert={incidentes > 0} onClick={incidentes > 0 ? () => navigate('/admin/mantenimiento') : null} />
+    </div>
+  );
+}
+
 function TarjetaSesion({ sesion, onIr }) {
   const seg = useTiempoRestante(sesion.fin_estimado);
   const abs = seg !== null ? Math.abs(seg) : 0;
@@ -164,7 +230,7 @@ function TarjetaSesion({ sesion, onIr }) {
       <div style={{ marginTop: 8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <span className="text-xs text-slate-500">{sesion.pcs_ocupadas} PCs en uso</span>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${overtime ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'}`}>
-          {overtime ? '⚠️ Overtime' : '🟢 Activa'}
+          {overtime ? '⚠️ Tiempo extra' : '🟢 Activa'}
         </span>
       </div>
     </div>
@@ -273,13 +339,13 @@ function HeroCard({ stats, sesiones, cargando, onIr, onRefresh }) {
               <span style={{ fontSize: 11, color: '#475569' }}>alumnos</span>
             </div>
 
-            {/* Overtime badge */}
+            {/* Badge tiempo extra */}
             {overtime > 0 && (
               <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20,
                 background: 'rgba(239,68,68,0.14)', color: '#f87171',
                 fontWeight: 600, border: '1px solid rgba(239,68,68,0.22)',
               }}>
-                ⚠ {overtime} overtime
+                ⚠ {overtime} con tiempo extra
               </span>
             )}
 
@@ -316,7 +382,7 @@ function HeroCard({ stats, sesiones, cargando, onIr, onRefresh }) {
 }
 
 // ─── SIDEBAR: acciones rápidas + KPIs mini ────────────────────────────────────
-function SidebarAcciones({ navigate, stats }) {
+function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
   const acciones = [
     { icon:'📌', label:'Nueva reservación',  sub:'Asignar horario',  ruta:'/admin/reservaciones', color:'#d97706' },
     { icon:'📤', label:'Registrar préstamo',  sub:'Equipos y activos', ruta:'/admin/prestamos',    color:'#db2777' },
@@ -378,8 +444,8 @@ function SidebarAcciones({ navigate, stats }) {
         </div>
       </div>
 
-      {/* Mini KPIs (2 columnas) */}
-      {stats && (
+      {/* Mini KPIs (2 columnas) — se ocultan cuando la tarjeta está en fila de 3 col */}
+      {stats && !soloAcciones && (
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
           <KpiMini
             valor={stats.prestamos?.activos ?? 0}
@@ -550,15 +616,25 @@ function WidgetProximas({ reservaciones, navigate }) {
 // ─── Panel de alertas accionables ────────────────────────────────────────────
 // ─── Panel de alertas accionables ────────────────────────────────────────────
 function FilaAlerta({ icono, texto, sub, urgente, onClick, boton }) {
+  const accent = urgente
+    ? { dot:'#ef4444', text:'#fecaca', bg:'rgba(239,68,68,0.055)', btnBg:'rgba(59,130,246,0.14)', btnText:'#bfdbfe', btnBorder:'rgba(59,130,246,0.28)' }
+    : { dot:'#f59e0b', text:'#e2e8f0', bg:'transparent', btnBg:'rgba(255,255,255,0.055)', btnText:'#cbd5e1', btnBorder:'rgba(255,255,255,0.08)' };
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 border-b border-white/5 last:border-0 ${urgente ? 'bg-red-950/30' : 'hover:bg-white/3'} transition-colors`}>
-      <span className="text-base shrink-0">{icono}</span>
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.025]"
+      style={{ background: accent.bg }}>
+      <span className="w-2.5 h-2.5 rounded-full shrink-0"
+        style={{ background: accent.dot, boxShadow: `0 0 10px ${accent.dot}66` }} />
       <div className="flex-1 min-w-0">
-        <p className={`text-xs font-medium truncate ${urgente ? 'text-red-300' : 'text-slate-200'}`} style={{margin:0}}>{texto}</p>
-        {sub && <p className="text-xs text-slate-500 truncate" style={{margin:0}}>{sub}</p>}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs shrink-0 opacity-80">{icono}</span>
+          <p className="text-sm font-medium truncate" style={{margin:0, color: accent.text}}>{texto}</p>
+        </div>
+        {sub && <p className="text-xs text-slate-500 truncate" style={{margin:'2px 0 0', paddingLeft: 22}}>{sub}</p>}
       </div>
       {boton && (
-        <button onClick={onClick} className={`shrink-0 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${urgente ? 'bg-red-800/60 hover:bg-red-700/60 text-red-200' : 'bg-white/8 hover:bg-white/12 text-slate-300'}`}>
+        <button onClick={onClick}
+          className="shrink-0 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors hover:brightness-110"
+          style={{ background: accent.btnBg, color: accent.btnText, border: `1px solid ${accent.btnBorder}` }}>
           {boton}
         </button>
       )}
@@ -570,13 +646,15 @@ function SeccionAlerta({ titulo, count, color, icono, children, onVerTodos }) {
   if (count === 0) return null;
   return (
     <div className="flex-1 min-w-0">
-      <div className={`flex items-center justify-between px-4 py-2 border-b ${color.border}`}>
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/6"
+        style={{ borderTop: `2px solid ${color.accent}` }}>
         <div className="flex items-center gap-2">
           <span className="text-sm">{icono}</span>
-          <span className={`text-xs font-semibold ${color.text}`}>{titulo}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${color.badge}`}>{count}</span>
+          <span className="text-xs font-semibold" style={{ color: color.text }}>{titulo}</span>
+          <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
+            style={{ background: color.badgeBg, color: color.badgeText }}>{count}</span>
         </div>
-        <button onClick={onVerTodos} className={`text-xs ${color.link} hover:underline`} style={{background:'none',border:'none',cursor:'pointer'}}>Ver todos →</button>
+        <button onClick={onVerTodos} className="text-xs hover:underline" style={{background:'none',border:'none',cursor:'pointer', color: color.link}}>Ver todos →</button>
       </div>
       {children}
     </div>
@@ -587,18 +665,20 @@ function PanelAlertas({ alertas, navigate }) {
   if (!alertas || alertas.total === 0) return null;
   const { incidentes_pendientes, incidentes_total, prestamos_vencidos, prestamos_total, adeudos_criticos, adeudos_total } = alertas;
   return (
-    <div className="rounded-xl border border-red-800/50 bg-red-950/20 overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-red-800/40 bg-red-900/20">
-        <span className="w-7 h-7 rounded-lg bg-red-700/60 flex items-center justify-center text-sm shrink-0">🚨</span>
+    <div className="rounded-xl overflow-hidden"
+      style={{ background:'rgba(15,23,42,0.78)', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 18px 45px rgba(0,0,0,0.18)' }}>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/6"
+        style={{ background:'linear-gradient(90deg, rgba(239,68,68,0.09), rgba(245,158,11,0.045), rgba(15,23,42,0))' }}>
+        <span className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ background:'rgba(239,68,68,0.13)', color:'#fca5a5', border:'1px solid rgba(239,68,68,0.24)' }}>🚨</span>
         <div className="flex-1">
-          <p className="text-sm font-bold text-red-300" style={{margin:0}}>Requiere tu atención ahora</p>
-          <p className="text-xs text-red-400/70" style={{margin:0}}>{alertas.total} elemento{alertas.total !== 1 ? 's' : ''} pendiente{alertas.total !== 1 ? 's' : ''}</p>
+          <p className="text-sm font-bold text-slate-100" style={{margin:0}}>Atención operativa</p>
+          <p className="text-xs text-slate-500" style={{margin:0}}>{alertas.total} elemento{alertas.total !== 1 ? 's' : ''} pendiente{alertas.total !== 1 ? 's' : ''}</p>
         </div>
-        <span className="text-xs text-red-400/60">Actualiza cada 30s</span>
+        <span className="text-xs text-slate-500">Actualiza cada 30s</span>
       </div>
       <div className="divide-y divide-white/5 md:divide-y-0 md:divide-x md:flex">
         <SeccionAlerta titulo="Incidentes sin atender" count={incidentes_total} icono="🛠️"
-          color={{ border:'border-orange-900/40', text:'text-orange-300', badge:'bg-orange-900/60 text-orange-200', link:'text-orange-400' }}
+          color={{ accent:'#f97316', text:'#fdba74', badgeBg:'rgba(249,115,22,0.16)', badgeText:'#fed7aa', link:'#fb923c' }}
           onVerTodos={() => navigate('/admin/mantenimiento')}>
           {incidentes_pendientes.map(inc => (
             <FilaAlerta key={inc.id}
@@ -609,7 +689,7 @@ function PanelAlertas({ alertas, navigate }) {
           {incidentes_total > 5 && <p className="text-xs text-slate-500 px-4 py-2" style={{margin:0}}>+{incidentes_total - 5} más</p>}
         </SeccionAlerta>
         <SeccionAlerta titulo="Préstamos vencidos" count={prestamos_total} icono="📤"
-          color={{ border:'border-yellow-900/40', text:'text-yellow-300', badge:'bg-yellow-900/60 text-yellow-200', link:'text-yellow-400' }}
+          color={{ accent:'#eab308', text:'#fde68a', badgeBg:'rgba(234,179,8,0.16)', badgeText:'#fef3c7', link:'#facc15' }}
           onVerTodos={() => navigate('/admin/prestamos')}>
           {prestamos_vencidos.map(p => (
             <FilaAlerta key={p.id} icono="⏰" texto={p.persona}
@@ -619,7 +699,7 @@ function PanelAlertas({ alertas, navigate }) {
           {prestamos_total > 5 && <p className="text-xs text-slate-500 px-4 py-2" style={{margin:0}}>+{prestamos_total - 5} más</p>}
         </SeccionAlerta>
         <SeccionAlerta titulo="Adeudos +7 días" count={adeudos_total} icono="⚠️"
-          color={{ border:'border-red-900/40', text:'text-red-300', badge:'bg-red-900/60 text-red-200', link:'text-red-400' }}
+          color={{ accent:'#ef4444', text:'#fca5a5', badgeBg:'rgba(239,68,68,0.16)', badgeText:'#fecaca', link:'#f87171' }}
           onVerTodos={() => navigate('/admin/adeudos')}>
           {adeudos_criticos.map(a => (
             <FilaAlerta key={a.id} icono="💸" texto={a.persona}
@@ -696,34 +776,37 @@ export default function DashboardAdmin() {
           )}
         </div>
 
-        {/* Panel de alertas */}
-        {stats?.alertas?.total > 0 && <PanelAlertas alertas={stats.alertas} navigate={navigate}/>}
+        {/* KPIs principales — fila de 6 tarjetas compactas */}
+        <KpiRow stats={stats} sesiones={sesiones} navigate={navigate} />
 
-        {/* BENTO ROW 1 — Hero 60% + Sidebar 40% */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <div className="lg:col-span-3">
+        {/* Alertas operativas (solo cuando hay pendientes) */}
+        {stats?.alertas && <PanelAlertas alertas={stats.alertas} navigate={navigate}/>}
+
+        {/* BENTO ROW 1 - En este momento (izq) + Sesiones últimos 7 días (der) */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          <div className="xl:col-span-4">
             <HeroCard stats={stats} sesiones={sesiones} cargando={cargando}
               onIr={irASesion} onRefresh={() => { cargarSesiones(); cargarStats(labId); }}/>
           </div>
-          <div className="lg:col-span-2">
-            <SidebarAcciones navigate={navigate} stats={stats}/>
-          </div>
-        </div>
-
-        {/* BENTO ROW 2 — Chart 60% + PCs 40% */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-          <div className="lg:col-span-3">
+          <div className="xl:col-span-8">
             {stats?.sesiones_7d && <GraficaSesiones datos={stats.sesiones_7d}/>}
           </div>
-          <div className="lg:col-span-2">
-            <WidgetEquipos pcs={stats?.pcs} navigate={navigate}/>
-          </div>
         </div>
 
-        {/* BENTO ROW 3 — Próximas reservaciones */}
-        {stats?.proximas_reservaciones?.length > 0 && (
-          <WidgetProximas reservaciones={stats.proximas_reservaciones} navigate={navigate}/>
-        )}
+        {/* BENTO ROW 2 - Estado + acciones + reservaciones */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div>
+            <WidgetEquipos pcs={stats?.pcs} navigate={navigate}/>
+          </div>
+          <div>
+            <SidebarAcciones navigate={navigate} stats={stats} soloAcciones/>
+          </div>
+          <div>
+            {stats?.proximas_reservaciones?.length > 0 && (
+              <WidgetProximas reservaciones={stats.proximas_reservaciones} navigate={navigate}/>
+            )}
+          </div>
+        </div>
 
         {/* Módulos */}
         <div>

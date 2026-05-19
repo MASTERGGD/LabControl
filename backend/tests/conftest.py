@@ -38,6 +38,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database import Base, get_db
 from models.usuario import Usuario, RolUsuario
+from models.cumplimiento import EventoCumplimiento  # noqa: F401
 from models.laboratorio import Laboratorio
 from dependencies import hashear_password
 
@@ -184,9 +185,10 @@ def lab(db):
 
 def get_token(client, email, password):
     resp = client.post("/auth/login", data={"username": email, "password": password})
-    assert resp.status_code == 200, "Login fallo ({0}): {1}".format(resp.status_code, resp.text)
-    return resp.json()["access_token"]
+    assert resp.status_code == 200, f"Login failed: {resp.text}"
+    return f"Bearer {resp.json()['access_token']}"
 
 
-def auth_headers(token):
-    return {"Authorization": "Bearer " + token}
+def auth_headers(token: str) -> dict:
+    """Wraps a Bearer token string into an Authorization header dict."""
+    return {"Authorization": token}

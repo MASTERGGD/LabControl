@@ -62,6 +62,9 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         AsignacionPC.sesion_id == s.id,
         AsignacionPC.hora_liberacion == None  # noqa: E711
     ).count()
+    total_alumnos = db.query(AsignacionPC).filter(
+        AsignacionPC.sesion_id == s.id
+    ).count()
 
     # Calcular tiempo restante (en segundos) o exceso si está abierta
     ahora = _utcnow()
@@ -87,6 +90,7 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         "fin_real": s.fin_real.isoformat() if s.fin_real else None,
         "estado": s.estado,
         "pcs_ocupadas": asigs,
+        "total_alumnos": total_alumnos,
         "observacion_general": s.observacion_general,
         "reservacion_id": s.reservacion_id,
         "overtime_min": s.overtime_min or 0,
@@ -104,6 +108,52 @@ def _get_sesion_activa_docente(docente_id: int, db: Session) -> Optional[SesionC
 
 
 # ─── Sesiones ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/historial", summary="Historial de sesiones del docente (con filtros)")
+def historial_docente(
+    laboratorio_id: Optional[int]  = None,
+    fecha_inicio:   Optional[str]  = None,   # "YYYY-MM-DD"
+    fecha_fin:      Optional[str]  = None,   # "YYYY-MM-DD"
+    materia:        Optional[str]  = None,
+    limit:          int            = 100,
+    offset:         int            = 0,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """Devuelve las sesiones CERRADAS del docente autenticado."""
+    q = db.query(SesionClase).filter(SesionClase.estado == "CERRADA")
+
+    if current_user.rol == RolUsuario.DOCENTE:
+        q = q.filter(SesionClase.docente_id == current_user.id)
+    elif current_user.rol == RolUsuario.LAB_ADMIN:
+        q = q.filter(SesionClase.laboratorio_id == current_user.laboratorio_id)
+
+    if laboratorio_id:
+        q = q.filter(SesionClase.laboratorio_id == laboratorio_id)
+    if materia:
+        q = q.filter(SesionClase.materia.ilike(f"%{materia}%"))
+    if fecha_inicio:
+        try:
+            fi = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            q  = q.filter(SesionClase.inicio >= fi)
+        except ValueError:
+            pass
+    if fecha_fin:
+        try:
+            ff = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d")
+            ff = ff.replace(hour=23, minute=59, second=59)
+            q  = q.filter(SesionClase.inicio <= ff)
+        except ValueError:
+            pass
+
+    total    = q.count()
+    sesiones = q.order_by(SesionClase.inicio.desc()).offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "sesiones": [_serializar_sesion(s, db) for s in sesiones],
+    }
+
 
 @router.get("", summary="Listar sesiones")
 def listar_sesiones(
@@ -395,7 +445,7 @@ async def cerrar_sesion(
     s.estado = "CERRADA"
     s.fin_real = ahora
     s.observacion_general = data.observacion_general
-    # Calcular overtime
+    # Calcular tiempo extra
     overtime_min = 0
     if s.fin_estimado and ahora > s.fin_estimado:
         overtime_min = int((ahora - s.fin_estimado).total_seconds() / 60)
@@ -415,7 +465,7 @@ async def cerrar_sesion(
               request=request)
     db.refresh(s)
 
-    # ── Notificacion de overtime al cerrar ───────────────────────────────────
+    # ── Notificación de tiempo extra al cerrar ───────────────────────────────
     if overtime_min > 0:
         try:
             lab = db.query(Laboratorio).filter(Laboratorio.id == s.laboratorio_id).first()
@@ -430,10 +480,10 @@ async def cerrar_sesion(
                 crear_notificacion(
                     db, adm.id,
                     tipo="OVERTIME",
-                    titulo=f"Sesión cerrada con overtime — {lab_nombre}",
+                    titulo=f"Sesión cerrada con tiempo extra — {lab_nombre}",
                     mensaje=(
                         f"La sesión #{s.id} de {docente_nombre} en {lab_nombre} "
-                        f"tuvo {overtime_min} min de overtime. "
+                        f"tuvo {overtime_min} min de tiempo extra. "
                         f"Fin estimado: {s.fin_estimado.strftime('%H:%M') if s.fin_estimado else 'N/D'}, "
                         f"fin real: {ahora.strftime('%H:%M')}."
                     ),
@@ -748,6 +798,7 @@ class RecepcionItem(BaseModel):
     estado:         str           # "OK" | "CON_PROBLEMA"
     descripcion:    Optional[str] = None
     prioridad:      str           = "MEDIA"  # ALTA | MEDIA | BAJA
+    bloquear:       bool          = False    # Si True → PC pasa a MANTENIMIENTO
 
 class RecepcionConfirmar(BaseModel):
     observaciones: List[RecepcionItem] = []
@@ -808,6 +859,10 @@ def confirmar_recepcion(
             )
             db.add(incidente)
             db.flush()  # get incidente.id
+
+            # Bloquear PC si se solicitó
+            if obs.bloquear:
+                pc.estado = "MANTENIMIENTO"
 
             # Buscar último usuario de esa PC en sesiones anteriores
             ultimo_uso = (

@@ -65,4 +65,4 @@ class ObservacionPC(Base):
     # RECEPCION_INICIO | DURANTE_SESION | CIERRE
 
     sesion = relationship("SesionClase", back_populates="observaciones_pc")
-    computadora = relationship("Computadora", back_populates="observaciones")
+    computadora = relationship("Computadora", back_populates="observaciones_pc")

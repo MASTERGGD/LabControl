@@ -52,7 +52,9 @@ class Prestamo(Base):
     observaciones_salida = Column(String, nullable=True)
     observaciones_retorno = Column(String, nullable=True)
 
-    activo = relationship("Activo", back_populates="prestamos")
+    activo         = relationship("Activo", back_populates="prestamos")
+    docente_responsable = relationship("Usuario", foreign_keys=[docente_responsable_id])
+    autorizado          = relationship("Usuario", foreign_keys=[autorizado_por])
 
 
 class Incidente(Base):
@@ -87,7 +89,10 @@ class Incidente(Base):
     fecha_resolucion   = Column(DateTime, nullable=True)
     costo_reparacion   = Column(Float, nullable=True)
 
-    activo = relationship("Activo", back_populates="incidentes")
+    activo         = relationship("Activo", back_populates="incidentes")
+    computadora    = relationship("Computadora", back_populates="incidentes")
+    laboratorio    = relationship("Laboratorio", back_populates="incidentes")
+    reportado_por  = relationship("Usuario", foreign_keys=[reportado_por_id])
 
 
 class MantenimientoPreventivo(Base):
@@ -128,4 +133,7 @@ class MantenimientoPreventivo(Base):
 
     fecha_creacion = Column(DateTime, default=_utcnow)
 
-    activo = relationship("Activo", back_populates="mantenimientos_preventivos")
+    activo         = relationship("Activo", back_populates="mantenimientos_preventivos")
+    computadora    = relationship("Computadora")
+    laboratorio    = relationship("Laboratorio")
+    completado_por = relationship("Usuario", foreign_keys=[completado_por_id])

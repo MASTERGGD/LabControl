@@ -233,18 +233,20 @@ function ModalSesionLibre({ usuario, onClose }) {
 }
 
 // ─── Navegación ───────────────────────────────────────────────────────────────
+// divider: true  →  encabezado de sección (no es un NavLink)
+// inGroup: true  →  ítem dentro de una sección (indentación extra en sidebar abierto)
 const NAV_ITEMS = [
   {
-    label: 'Dashboard', path: '/admin', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'],
+    label: 'Dashboard', path: '/admin', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+  },
+  {
+    label: 'Inicio docente', path: '/docente', exact: true, roles: ['DOCENTE'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
   },
   {
     label: 'Laboratorios', path: '/admin/laboratorios', roles: ['SUPER_ADMIN','LAB_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>,
-  },
-  {
-    label: 'Usuarios', path: '/admin/usuarios', roles: ['SUPER_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
   },
   {
     label: 'Horarios', path: '/admin/horarios', roles: ['SUPER_ADMIN','LAB_ADMIN'],
@@ -266,28 +268,78 @@ const NAV_ITEMS = [
     label: 'Mantenimiento', path: '/admin/mantenimiento', roles: ['SUPER_ADMIN','LAB_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
   },
+
+  // ─── Grupo: Docencia ───────────────────────────────────────────────────────
+  { divider: true, label: 'Laboratorios', roles: ['DOCENTE'] },
   {
-    label: 'Catálogos', path: '/admin/catalogo', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Solicitar laboratorio', path: '/docente/horario', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
+  },
+  {
+    label: 'Historial de sesiones', path: '/docente/historial', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
+  },
+
+  // ─── Grupo: Personas ──────────────────────────────────────────────────────────
+  { divider: true, label: 'Personas', roles: ['SUPER_ADMIN','LAB_ADMIN'] },
+  {
+    label: 'Usuarios', path: '/admin/usuarios', roles: ['SUPER_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
+  },
+  {
+    label: 'Directorio', path: '/admin/catalogo', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>,
   },
+  {
+    label: 'Consulta Persona', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"/></svg>,
+  },
+  {
+    label: 'Historial Alumno', path: '/admin/historial-alumno', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>,
+  },
+  {
+    label: 'Adeudos', path: '/admin/adeudos', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>,
+  },
+
+  // ─── Grupo: Espacios ──────────────────────────────────────────────────────────
+  { divider: true, label: 'Salas y espacios', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'] },
+  {
+    label: 'Solicitar sala o espacio', path: '/espacios/apartar', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
+  },
+  {
+    label: 'Mis solicitudes de espacios', path: '/espacios/mis-solicitudes', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>,
+  },
+  {
+    label: 'Bandeja aprobación', path: '/espacios/bandeja', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  },
+  {
+    label: 'Gestión de espacios', path: '/admin/espacios', roles: ['SUPER_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>,
+  },
+
+  // ─── Grupo: Comunicados ───────────────────────────────────────────────────────
+  { divider: true, label: 'Comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'] },
+  {
+    label: 'Mis comunicados', path: '/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'], inGroup: true, badge: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>,
+  },
+  {
+    label: 'Gestión comunicados', path: '/admin/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>,
+  },
+
+  // ─── Control ──────────────────────────────────────────────────────────────────
   {
     label: 'Reportes', path: '/admin/reportes', roles: ['SUPER_ADMIN','LAB_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
   },
   {
-    label: 'Historial Alumno', path: '/admin/historial-alumno', roles: ['SUPER_ADMIN','LAB_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>,
-  },
-  {
-    label: 'Adeudos', path: '/admin/adeudos', roles: ['SUPER_ADMIN','LAB_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>,
-  },
-  {
-    label: 'Consulta Persona', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN','LAB_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"/></svg>,
-  },
-  {
-    label: 'Bitacora', path: '/admin/auditoria', roles: ['SUPER_ADMIN'],
+    label: 'Bitácora', path: '/admin/auditoria', roles: ['SUPER_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>,
   },
 ];
@@ -302,17 +354,26 @@ const ROL_BADGE = {
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
 const BREADCRUMB_MAP = {
   '/admin':                   [{ label: 'Dashboard' }],
+  '/docente':                 [{ label: 'Inicio Docente' }],
+  '/docente/horario':         [{ label: 'Mi Horario' }],
+  '/docente/historial':       [{ label: 'Historial de Sesiones' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],
   '/admin/usuarios':          [{ label: 'Usuarios' }],
   '/admin/horarios':          [{ label: 'Horarios' }],
   '/admin/reservaciones':     [{ label: 'Reservaciones' }],
+  '/admin/espacios':          [{ label: 'Gestión de Espacios' }],
+  '/espacios/apartar':        [{ label: 'Solicitar Sala o Espacio' }],
+  '/espacios/bandeja':        [{ label: 'Bandeja de Aprobación' }],
+  '/espacios/mis-solicitudes':[{ label: 'Mis Solicitudes de Espacios' }],
   '/admin/inventario':        [{ label: 'Inventario' }],
   '/admin/prestamos':         [{ label: 'Préstamos' }],
   '/admin/mantenimiento':     [{ label: 'Mantenimiento' }],
   '/admin/auditoria':          [{ label: 'Bitacora de Auditoria' }],
   '/admin/adeudos':           [{ label: 'Adeudos' }],
   '/admin/consulta-persona':  [{ label: 'Consulta de Persona' }],
-  '/admin/catalogo':          [{ label: 'Catálogos' }],
+  '/admin/catalogo':          [{ label: 'Directorio Académico' }],
+  '/comunicados':             [{ label: 'Mis Comunicados' }],
+  '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
 };
 
@@ -349,7 +410,7 @@ function Breadcrumb({ pathname }) {
 }
 
 // ─── Sidebar content (definido FUERA de AdminLayout para evitar re-montaje) ───
-function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout }) {
+function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados }) {
   return (
     <>
       {/* Logo */}
@@ -391,49 +452,93 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
       )}
 
       {/* Nav */}
-      <nav className="flex-1 py-2 px-2 space-y-0 overflow-y-auto overflow-x-visible">
-        {itemsVisibles.map(item => (
-          <div key={item.path} className="relative group">
-            <NavLink
-              to={item.path}
-              end={!!item.exact}
-              className={({ isActive }) =>
-                `nav-item flex items-center gap-3 px-2.5 py-2.5 text-sm font-medium
-                 ${isActive ? 'nav-active' : 'text-slate-400'}`
-              }
-            >
-              <span className="shrink-0">{item.icon}</span>
-              {(sidebarOpen || mobile) && <span>{item.label}</span>}
-            </NavLink>
-
-            {/* Tooltip — solo en desktop colapsado */}
-            {!sidebarOpen && !mobile && (
-              <div className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
-                             opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                   style={{ transform: 'translateY(-50%)' }}>
-                <div style={{
-                  position: 'absolute', left: '-4px', top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: 0, height: 0,
-                  borderTop: '4px solid transparent',
-                  borderBottom: '4px solid transparent',
-                  borderRight: '4px solid var(--tooltip-arrow)',
-                }} />
-                <span style={{
-                  display: 'block',
-                  background: 'var(--tooltip-bg)',
-                  border: '1px solid var(--tooltip-border)',
-                  borderRadius: '8px', padding: '5px 11px',
-                  fontSize: '12px', fontWeight: 500,
-                  color: 'var(--tooltip-text)', whiteSpace: 'nowrap',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-                }}>
-                  {item.label}
-                </span>
+      <nav className="flex-1 py-2 px-2 overflow-y-auto overflow-x-visible">
+        {itemsVisibles.map((item, idx) => {
+          // ── Encabezado de sección ───────────────────────────────────────────
+          if (item.divider) {
+            return (
+              <div key={`sec-${idx}`} className="mt-3 mb-0.5">
+                {(sidebarOpen || mobile) ? (
+                  <p style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: '0.16em',
+                    textTransform: 'uppercase', color: 'var(--sidebar-section-label, #334155)',
+                    padding: '0 10px 4px',
+                    borderTop: '1px solid rgba(255,255,255,0.05)',
+                    paddingTop: 10, margin: 0,
+                  }}>
+                    {item.label}
+                  </p>
+                ) : (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', margin: '4px 4px 6px' }} />
+                )}
               </div>
-            )}
-          </div>
-        ))}
+            );
+          }
+          // ── Ítem de navegación ─────────────────────────────────────────────
+          const grouped = item.inGroup && (sidebarOpen || mobile);
+          return (
+            <div key={item.path} className="relative group">
+              <NavLink
+                to={item.path}
+                end={!!item.exact}
+                className={({ isActive }) =>
+                  `nav-item flex items-center gap-3 py-2.5 text-sm font-medium
+                   ${grouped ? 'px-3' : 'px-2.5'}
+                   ${isActive ? 'nav-active' : 'text-slate-400'}`
+                }
+              >
+                {grouped && (
+                  <span style={{ width: 2, height: 14, borderRadius: 99,
+                    background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
+                )}
+                {/* Icono — con punto rojo cuando sidebar colapsado y hay pendientes */}
+                <span className="shrink-0 relative">
+                  {item.icon}
+                  {!sidebarOpen && !mobile && item.badge && pendientesComunicados > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-slate-900" />
+                  )}
+                </span>
+                {(sidebarOpen || mobile) && (
+                  <>
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge && pendientesComunicados > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 rounded-full leading-5 min-w-[18px] text-center shrink-0">
+                        {pendientesComunicados > 99 ? '99+' : pendientesComunicados}
+                      </span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+
+              {/* Tooltip — solo en desktop colapsado */}
+              {!sidebarOpen && !mobile && (
+                <div className="pointer-events-none absolute left-full top-1/2 ml-3 z-50
+                               opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                     style={{ transform: 'translateY(-50%)' }}>
+                  <div style={{
+                    position: 'absolute', left: '-4px', top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 0, height: 0,
+                    borderTop: '4px solid transparent',
+                    borderBottom: '4px solid transparent',
+                    borderRight: '4px solid var(--tooltip-arrow)',
+                  }} />
+                  <span style={{
+                    display: 'block',
+                    background: 'var(--tooltip-bg)',
+                    border: '1px solid var(--tooltip-border)',
+                    borderRadius: '8px', padding: '5px 11px',
+                    fontSize: '12px', fontWeight: 500,
+                    color: 'var(--tooltip-text)', whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+                  }}>
+                    {item.label}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       {/* Toggle desktop / Logout móvil */}
@@ -470,9 +575,22 @@ export default function AdminLayout({ children }) {
   const [menuMovil,    setMenuMovil]    = useState(false);
   const [modalPwd,     setModalPwd]     = useState(false);
   const [modalLibre,   setModalLibre]   = useState(false);
+  const [pendientesComunicados, setPendientesComunicados] = useState(0);
 
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
+
+  // Polling: badge de comunicados pendientes cada 60 s
+  useEffect(() => {
+    const fetchPendientes = () => {
+      api.get('/comunicados/pendientes-count')
+        .then(res => setPendientesComunicados(res.data?.pendientes ?? 0))
+        .catch(() => {});
+    };
+    fetchPendientes();
+    const timer = setInterval(fetchPendientes, 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleLogout = useCallback(() => { logout(); navigate('/login'); }, [logout, navigate]);
   const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
@@ -491,7 +609,7 @@ export default function AdminLayout({ children }) {
       >
         <SidebarContent mobile={false} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
                         setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
-                        handleLogout={handleLogout} />
+                        handleLogout={handleLogout} pendientesComunicados={pendientesComunicados} />
       </aside>
 
       {/* ── Drawer móvil (< md) ───────────────────────────────────────── */}
@@ -509,7 +627,7 @@ export default function AdminLayout({ children }) {
                  }}>
             <SidebarContent mobile={true} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
                             setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
-                            handleLogout={handleLogout} />
+                            handleLogout={handleLogout} pendientesComunicados={pendientesComunicados} />
           </aside>
         </div>
       )}
@@ -558,6 +676,7 @@ export default function AdminLayout({ children }) {
           <div className="flex items-center gap-2">
 
             {/* Uso libre — oculto en móvil */}
+            {usuario?.rol !== 'DOCENTE' && (
             <button
               onClick={() => setModalLibre(true)}
               className="hidden sm:flex btn-emerald items-center gap-2 px-3 py-1.5 text-sm"
@@ -569,6 +688,7 @@ export default function AdminLayout({ children }) {
               </svg>
               <span className="hidden md:inline">Uso libre</span>
             </button>
+            )}
 
             {/* Campana */}
             <NotificacionesBell />

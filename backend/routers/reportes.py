@@ -174,6 +174,17 @@ def _datos_mes(db: Session, lab_id: int, mes: int, anio: int) -> dict:
     inc_reparados  = sum(1 for i in incidentes if i.estado == "REPARADO")
     inc_baja       = sum(1 for i in incidentes if i.estado == "DADO_DE_BAJA")
 
+    # ── Adeudos vinculados a los incidentes del periodo ───────────────────────
+    inc_ids = [i.id for i in incidentes]
+    adeudos_inc = db.query(Adeudo).filter(
+        Adeudo.incidente_id.in_(inc_ids)
+    ).all() if inc_ids else []
+    # dict: incidente_id → adeudo (el más reciente si hubiera varios)
+    adeudo_por_incidente: dict = {}
+    for a in adeudos_inc:
+        if a.incidente_id not in adeudo_por_incidente:
+            adeudo_por_incidente[a.incidente_id] = a
+
     # ── Mes anterior para comparativa ─────────────────────────────────────────
     mes_ant  = mes - 1 if mes > 1 else 12
     anio_ant = anio if mes > 1 else anio - 1
@@ -230,6 +241,7 @@ def _datos_mes(db: Session, lab_id: int, mes: int, anio: int) -> dict:
             "reparados": inc_reparados, "baja": inc_baja,
             "detalle": incidentes,
         },
+        "adeudo_por_incidente": adeudo_por_incidente,
         "activos_map": activos_map,
         "comparativa": {
             "sesiones_mes_ant": ses_ant,
@@ -568,9 +580,20 @@ def _build_excel(d: dict) -> io.BytesIO:
     t7.alignment = _left(); ws7.row_dimensions[1].height = 28
 
     HDRS7 = [("#",5),("Equipo",30),("Tipo",14),("Descripción",40),
-             ("Prioridad",12),("Estado",16),("Fecha Reporte",14),("Fecha Resolución",16)]
+             ("Prioridad",12),("Estado",16),("Fecha Reporte",14),("Fecha Resolución",16),
+             ("Adeudo",18)]
     for col, (h, w) in enumerate(HDRS7, 1):
         _set_hdr(ws7, 2, col, h, bg="78281F", width=w)
+
+    # Colores semánticos para la columna Adeudo
+    ADEUDO_COLORS = {
+        "PENDIENTE":   ("FFF3CD", "856404"),   # amarillo — requiere atención
+        "EN_REVISION": ("CCE5FF", "004085"),   # azul — en proceso
+        "RESUELTO":    ("D4EDDA", "155724"),   # verde — cerrado
+        "EXONERADO":   ("E2E3E5", "383D41"),   # gris — exonerado
+    }
+
+    adeudo_map = d.get("adeudo_por_incidente", {})
 
     inc_ord = sorted(d["incidentes"]["detalle"], key=lambda i: i.fecha_reporte or datetime.datetime.min, reverse=True)
     for r, i in enumerate(inc_ord, 3):
@@ -580,12 +603,37 @@ def _build_excel(d: dict) -> io.BytesIO:
         prio_colors = {"ALTA": "FFCDD2", "MEDIA": "FFF9C4", "BAJA": "E8F5E9"}
         if i.prioridad:
             fill_bg = prio_colors.get(i.prioridad.upper(), fill_bg)
+
+        # Datos del adeudo vinculado (si existe)
+        adeudo = adeudo_map.get(i.id)
+        adeudo_label = "—"
+        adeudo_fill  = None
+        adeudo_font_color = "000000"
+        if adeudo:
+            lbl_map = {"PENDIENTE":"Pendiente","EN_REVISION":"En revisión",
+                       "RESUELTO":"Resuelto","EXONERADO":"Exonerado"}
+            adeudo_label = lbl_map.get(adeudo.estado, adeudo.estado)
+            if adeudo.monto_estimado:
+                adeudo_label += f" (${adeudo.monto_estimado:.2f})"
+            bg_hex, fg_hex = ADEUDO_COLORS.get(adeudo.estado, ("FFFFFF","000000"))
+            adeudo_fill       = bg_hex
+            adeudo_font_color = fg_hex
+
         _data_row(ws7, r, [
             r-2, nombre_eq, i.tipo, i.descripcion or "—",
             i.prioridad, i.estado,
             i.fecha_reporte.strftime("%d/%m/%Y") if i.fecha_reporte else "—",
             i.fecha_resolucion.strftime("%d/%m/%Y") if i.fecha_resolucion else "Pendiente",
+            adeudo_label,
         ], bg=fill_bg)
+
+        # Sobreescribir color de la celda Adeudo si hay dato
+        if adeudo and adeudo_fill:
+            col_adeudo = len(HDRS7)  # última columna
+            cell = ws7.cell(row=r, column=col_adeudo)
+            cell.fill = PatternFill("solid", fgColor=adeudo_fill)
+            cell.font = Font(size=9, bold=(adeudo.estado == "PENDIENTE"),
+                             color=adeudo_font_color)
 
     if not inc_ord:
         ws7.cell(row=3, column=1, value="No se reportaron incidentes en este periodo.").font = Font(italic=True, color="888888")
@@ -1075,4 +1123,170 @@ def reporte_comparativo(
             "horas_anterior":   horas_ant,
                },
         "labs": [{"id": l.id, "nombre": l.nombre} for l in labs],
+    }
+
+
+# ─── Reporte de Cumplimiento Docente ─────────────────────────────────────────
+
+def _contar_ocurrencias(dia_semana: int, fecha_inicio: datetime.date, fecha_fin: datetime.date) -> int:
+    """Cuenta cuántas veces cae ese día de la semana en el rango [inicio, fin]."""
+    count = 0
+    d = fecha_inicio
+    while d <= fecha_fin:
+        if d.weekday() == dia_semana:
+            count += 1
+        d += datetime.timedelta(days=1)
+    return count
+
+
+DIAS_NOMBRES = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado", 6: "Domingo"}
+
+
+@router.get("/cumplimiento", summary="Cumplimiento docente por cuatrimestre")
+def reporte_cumplimiento(
+    laboratorio_id: Optional[int] = None,
+    cuatrimestre: Optional[str] = None,
+    docente_id: Optional[int] = None,
+    fecha_inicio: Optional[str] = None,  # YYYY-MM-DD
+    fecha_fin: Optional[str] = None,     # YYYY-MM-DD
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    from models.horario import Reservacion, HorarioDisponible
+    from models.cumplimiento import EventoCumplimiento
+
+    # Parse fechas
+    f_ini: Optional[datetime.date] = None
+    f_fin: Optional[datetime.date] = None
+    if fecha_inicio:
+        try:
+            f_ini = datetime.date.fromisoformat(fecha_inicio)
+        except ValueError:
+            pass
+    if fecha_fin:
+        try:
+            f_fin = datetime.date.fromisoformat(fecha_fin)
+        except ValueError:
+            pass
+
+    # Fallback: mes actual si no se proveen fechas
+    if not f_ini or not f_fin:
+        hoy = datetime.date.today()
+        f_ini = hoy.replace(day=1)
+        # último día del mes
+        last_day = calendar.monthrange(hoy.year, hoy.month)[1]
+        f_fin = hoy.replace(day=last_day)
+
+    # Consulta base de reservaciones
+    q = db.query(Reservacion).filter(Reservacion.estado != "CANCELADA")
+    if laboratorio_id:
+        q = q.filter(Reservacion.laboratorio_id == laboratorio_id)
+    if cuatrimestre:
+        q = q.filter(Reservacion.cuatrimestre == cuatrimestre)
+    if docente_id:
+        q = q.filter(Reservacion.docente_id == docente_id)
+
+    reservaciones = q.all()
+
+    # Agrupar por docente
+    docentes_dict: dict = {}  # docente_id → {datos}
+
+    for res in reservaciones:
+        did = res.docente_id
+        if did not in docentes_dict:
+            doc = db.query(Usuario).filter(Usuario.id == did).first()
+            docentes_dict[did] = {
+                "docente_id": did,
+                "docente_nombre": doc.nombre if doc else f"#{did}",
+                "reservaciones_activas": 0,
+                "clases_esperadas": 0,
+                "impartidas": 0,
+                "no_asistio": 0,
+                "cancelacion_tardia": 0,
+                "detalle": [],
+            }
+
+        docentes_dict[did]["reservaciones_activas"] += 1
+
+        # Calcular clases esperadas para esta reservación
+        horario = db.query(HorarioDisponible).filter(HorarioDisponible.id == res.horario_id).first()
+        clases_esp = 0
+        dia_nombre = ""
+        hora_ini_str = ""
+        if horario:
+            dia_nombre = DIAS_NOMBRES.get(horario.dia_semana, str(horario.dia_semana))
+            hora_ini_str = horario.hora_inicio
+            clases_esp = _contar_ocurrencias(horario.dia_semana, f_ini, f_fin)
+
+        docentes_dict[did]["clases_esperadas"] += clases_esp
+
+        # Contar eventos de cumplimiento para esta reservación en el rango
+        eventos_q = db.query(EventoCumplimiento).filter(
+            EventoCumplimiento.reservacion_id == res.id,
+            EventoCumplimiento.fecha >= f_ini,
+            EventoCumplimiento.fecha <= f_fin,
+        ).all()
+
+        impartidas = sum(1 for e in eventos_q if e.tipo == "IMPARTIDA")
+        no_asistio = sum(1 for e in eventos_q if e.tipo == "NO_ASISTIO")
+        cancelacion = sum(1 for e in eventos_q if e.tipo == "CANCELADA_TARDIA")
+
+        docentes_dict[did]["impartidas"] += impartidas
+        docentes_dict[did]["no_asistio"] += no_asistio
+        docentes_dict[did]["cancelacion_tardia"] += cancelacion
+
+        docentes_dict[did]["detalle"].append({
+            "reservacion_id": res.id,
+            "materia": res.materia,
+            "grupo": res.grupo,
+            "dia_nombre": dia_nombre,
+            "hora_inicio": hora_ini_str,
+            "clases_esperadas": clases_esp,
+            "impartidas": impartidas,
+            "no_asistio": no_asistio,
+            "cancelacion_tardia": cancelacion,
+            "eventos": [
+                {
+                    "tipo": e.tipo,
+                    "fecha": e.fecha.isoformat() if e.fecha else None,
+                    "motivo": e.motivo,
+                }
+                for e in sorted(eventos_q, key=lambda x: x.fecha)
+            ],
+        })
+
+    # Calcular métricas finales por docente
+    result = []
+    for did, d in docentes_dict.items():
+        total_registrados = d["impartidas"] + d["no_asistio"] + d["cancelacion_tardia"]
+        sin_registro = max(0, d["clases_esperadas"] - total_registrados)
+        total_para_pct = max(d["impartidas"] + d["no_asistio"] + d["cancelacion_tardia"], 1)
+        porcentaje = round((d["impartidas"] / total_para_pct) * 100, 1)
+
+        if porcentaje >= 85:
+            semaforo = "verde"
+        elif porcentaje >= 70:
+            semaforo = "amarillo"
+        else:
+            semaforo = "rojo"
+
+        result.append({
+            **d,
+            "sin_registro": sin_registro,
+            "porcentaje_cumplimiento": porcentaje,
+            "semaforo": semaforo,
+        })
+
+    # Ordenar por porcentaje ascendente (peores primero)
+    result.sort(key=lambda x: x["porcentaje_cumplimiento"])
+
+    return {
+        "filtros": {
+            "laboratorio_id": laboratorio_id,
+            "cuatrimestre": cuatrimestre,
+            "docente_id": docente_id,
+            "fecha_inicio": f_ini.isoformat(),
+            "fecha_fin": f_fin.isoformat(),
+        },
+        "docentes": result,
     }

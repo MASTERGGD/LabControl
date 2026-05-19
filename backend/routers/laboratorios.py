@@ -298,7 +298,7 @@ def bulk_computadoras(
         numero   = inicio + i
         fila_idx = i // pcs_por_fila
         fila     = chr(ord('A') + fila_idx) if filas > 1 else 'A'
-        codigo   = f"{data.prefijo_codigo}-{numero:02d}"
+        codigo   = f"{data.prefijo_codigo.rstrip('-').rstrip()}-{numero:02d}"
         pc = Computadora(
             laboratorio_id = lab_id,
             numero  = numero,

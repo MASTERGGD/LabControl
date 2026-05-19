@@ -16,6 +16,7 @@ class Laboratorio(Base):
     activos = relationship("Activo", back_populates="laboratorio")
     horarios = relationship("HorarioDisponible", back_populates="laboratorio")
     reservaciones = relationship("Reservacion", back_populates="laboratorio")
+    incidentes    = relationship("Incidente", back_populates="laboratorio")
 
 class Computadora(Base):
     __tablename__ = "computadoras"
@@ -31,4 +32,5 @@ class Computadora(Base):
 
     laboratorio = relationship("Laboratorio", back_populates="computadoras")
     asignaciones = relationship("AsignacionPC", back_populates="computadora")
-    observaciones = relationship("ObservacionPC", back_populates="computadora")
+    observaciones_pc = relationship("ObservacionPC", back_populates="computadora")
+    incidentes       = relationship("Incidente",    back_populates="computadora")

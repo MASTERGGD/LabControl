@@ -1,0 +1,116 @@
+"""
+models/comunicado.py — Módulo de Comunicados Institucionales
+
+Modelos:
+  Comunicado            — Aviso/comunicado institucional
+  ComunicadoDestinatario — A quién va dirigido (TODOS / ROL / USUARIO)
+  ComunicadoLectura     — Registro de lectura y confirmación por usuario
+"""
+
+from __future__ import annotations
+
+import datetime
+import enum
+
+from sqlalchemy import (
+    Boolean, Column, DateTime, ForeignKey,
+    Integer, String, Text, UniqueConstraint,
+)
+from sqlalchemy.orm import relationship
+
+from database import Base
+
+
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+# ─── Enums ─────────────────────────────────────────────────────────────────────
+
+class CategoriaComunicado(str, enum.Enum):
+    ACADEMICO      = "ACADEMICO"
+    ADMINISTRATIVO = "ADMINISTRATIVO"
+    EVENTOS        = "EVENTOS"
+    MANTENIMIENTO  = "MANTENIMIENTO"
+    RRHH           = "RRHH"
+    GENERAL        = "GENERAL"
+    URGENTE        = "URGENTE"
+
+
+class PrioridadComunicado(str, enum.Enum):
+    INFORMATIVO = "INFORMATIVO"
+    IMPORTANTE  = "IMPORTANTE"
+    URGENTE     = "URGENTE"
+
+
+class EstadoComunicado(str, enum.Enum):
+    BORRADOR   = "BORRADOR"
+    PUBLICADO  = "PUBLICADO"
+    ARCHIVADO  = "ARCHIVADO"
+
+
+class TipoDestinatario(str, enum.Enum):
+    TODOS   = "TODOS"
+    ROL     = "ROL"
+    USUARIO = "USUARIO"
+
+
+# ─── Modelos ───────────────────────────────────────────────────────────────────
+
+class Comunicado(Base):
+    __tablename__ = "comunicados"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    titulo                = Column(String(200), nullable=False)
+    contenido             = Column(Text, nullable=False)
+    categoria             = Column(String(30), nullable=False, default="GENERAL")
+    prioridad             = Column(String(20), nullable=False, default="INFORMATIVO")
+    estado                = Column(String(20), nullable=False, default="BORRADOR")
+    requiere_confirmacion = Column(Boolean, nullable=False, default=False)
+    area_emisora          = Column(String(200), nullable=True)   # string libre, sin FK a departamento
+    fecha_publicacion     = Column(DateTime, nullable=True)
+    fecha_expiracion      = Column(DateTime, nullable=True)
+    autor_id              = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    creado_en             = Column(DateTime, default=_utcnow, nullable=False)
+    actualizado_en        = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+
+    autor          = relationship("Usuario", foreign_keys=[autor_id])
+    destinatarios  = relationship("ComunicadoDestinatario", back_populates="comunicado",
+                                  cascade="all, delete-orphan")
+    lecturas       = relationship("ComunicadoLectura", back_populates="comunicado",
+                                  cascade="all, delete-orphan")
+
+
+class ComunicadoDestinatario(Base):
+    __tablename__ = "comunicado_destinatarios"
+    __table_args__ = (
+        UniqueConstraint("comunicado_id", "tipo_destinatario", "destinatario_ref",
+                         name="uq_comunicado_destinatario"),
+    )
+
+    id               = Column(Integer, primary_key=True, index=True)
+    comunicado_id    = Column(Integer, ForeignKey("comunicados.id", ondelete="CASCADE"), nullable=False, index=True)
+    # TODOS → destinatario_ref = None
+    # ROL   → destinatario_ref = nombre del rol (ej. "DOCENTE")
+    # USUARIO → destinatario_ref = str(usuario_id)
+    tipo_destinatario = Column(String(20), nullable=False)
+    destinatario_ref  = Column(String(100), nullable=True)
+
+    comunicado = relationship("Comunicado", back_populates="destinatarios")
+
+
+class ComunicadoLectura(Base):
+    __tablename__ = "comunicado_lecturas"
+    __table_args__ = (
+        UniqueConstraint("comunicado_id", "usuario_id", name="uq_comunicado_lectura"),
+    )
+
+    id            = Column(Integer, primary_key=True, index=True)
+    comunicado_id = Column(Integer, ForeignKey("comunicados.id", ondelete="CASCADE"), nullable=False, index=True)
+    usuario_id    = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    leido_en      = Column(DateTime, nullable=True)
+    confirmado_en = Column(DateTime, nullable=True)
+    creado_en     = Column(DateTime, default=_utcnow, nullable=False)
+
+    comunicado = relationship("Comunicado", back_populates="lecturas")
+    usuario    = relationship("Usuario", foreign_keys=[usuario_id])

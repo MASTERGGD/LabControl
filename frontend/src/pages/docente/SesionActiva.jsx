@@ -5,15 +5,134 @@ import api from '../../hooks/useApi';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
 
-// ─── Colores por estado de PC ──────────────────────────────────────────────────
+// ─── Estilos visuales por estado de PC ────────────────────────────────────────
 const PC_ESTILOS = {
-  OCUPADA:       { bg: 'bg-red-900/70 border-red-600',    texto: 'text-red-200',    label: 'Ocupada'   },
-  EN_CLASE:      { bg: 'bg-green-900/50 border-green-700', texto: 'text-green-300',  label: 'Libre'     },
-  OPERATIVO:     { bg: 'bg-gray-700 border-gray-600',      texto: 'text-gray-300',   label: 'Libre'     },
-  MANTENIMIENTO: { bg: 'bg-yellow-900/50 border-yellow-700', texto: 'text-yellow-300', label: 'Mant.'  },
-  DAÑADO:        { bg: 'bg-orange-900/50 border-orange-700', texto: 'text-orange-300', label: 'Dañado' },
-  BAJA:          { bg: 'bg-gray-800 border-gray-700 opacity-40', texto: 'text-slate-500', label: 'Baja'  },
+  OCUPADA:       { bg:'rgba(15,30,65,0.92)',  border:'rgba(59,130,246,0.65)',  glow:'rgba(59,130,246,0.18)',  label:'Ocupada' },
+  EN_CLASE:      { bg:'rgba(3,17,9,0.88)',    border:'rgba(22,101,52,0.45)',   glow:'transparent',            label:'Libre'   },
+  OPERATIVO:     { bg:'rgba(3,17,9,0.88)',    border:'rgba(22,101,52,0.45)',   glow:'transparent',            label:'Libre'   },
+  MANTENIMIENTO: { bg:'rgba(45,28,0,0.92)',   border:'rgba(217,119,6,0.75)',   glow:'rgba(217,119,6,0.12)',   label:'Mant.'   },
+  DAÑADO:        { bg:'rgba(50,10,10,0.92)',  border:'rgba(220,38,38,0.65)',   glow:'rgba(220,38,38,0.12)',   label:'Dañado'  },
+  BAJA:          { bg:'rgba(15,23,42,0.60)',  border:'rgba(51,65,85,0.40)',    glow:'transparent',            label:'Baja'    },
 };
+
+// ─── Tarjeta visual de PC ─────────────────────────────────────────────────────
+function TarjetaPC({ pc, onClick, highlighted }) {
+  const est = PC_ESTILOS[pc.estado] || PC_ESTILOS.OPERATIVO;
+  const clickable = ['OCUPADA','EN_CLASE','OPERATIVO'].includes(pc.estado) && !pc.bloqueada;
+  const ocupada   = pc.estado === 'OCUPADA' && pc.alumno;
+  const mant      = pc.estado === 'MANTENIMIENTO';
+  const dano      = pc.estado === 'DAÑADO';
+  const baja      = pc.estado === 'BAJA';
+
+  // Iniciales del alumno
+  const initials = ocupada
+    ? pc.alumno.nombre.split(' ').slice(0,2).map(w => w[0]).join('').toUpperCase()
+    : null;
+
+  // Apellido + inicial → "García R."
+  const shortName = ocupada
+    ? (() => {
+        const p = pc.alumno.nombre.trim().split(/\s+/);
+        if (p.length === 1) return p[0];
+        const ap = p[0].charAt(0).toUpperCase() + p[0].slice(1).toLowerCase();
+        const ini = p[p.length - 1].charAt(0).toUpperCase();
+        return `${ap} ${ini}.`;
+      })()
+    : null;
+
+  return (
+    <button
+      onClick={() => clickable && onClick(pc)}
+      disabled={!clickable}
+      style={{
+        position: 'relative',
+        background: est.bg,
+        border: `1.5px solid ${est.border}`,
+        borderRadius: '0.875rem',
+        padding: ocupada ? '11px 9px 10px' : '14px 10px 12px',
+        minWidth: 90,
+        textAlign: 'center',
+        cursor: clickable ? 'pointer' : 'default',
+        transition: 'all 0.2s cubic-bezier(.4,0,.2,1)',
+        boxShadow: highlighted
+          ? '0 0 0 2px #60a5fa, 0 0 18px rgba(59,130,246,0.35)'
+          : (ocupada ? `0 0 14px ${est.glow}` : 'none'),
+        opacity: baja ? 0.45 : 1,
+        outline: 'none',
+      }}
+      onMouseEnter={e => {
+        if (!clickable) return;
+        e.currentTarget.style.transform = 'translateY(-2px) scale(1.03)';
+        e.currentTarget.style.boxShadow = highlighted
+          ? '0 0 0 2px #60a5fa, 0 0 22px rgba(59,130,246,0.4)'
+          : `0 6px 20px ${est.glow || 'rgba(0,0,0,0.3)'}, 0 0 0 1px ${est.border}`;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = highlighted
+          ? '0 0 0 2px #60a5fa, 0 0 18px rgba(59,130,246,0.35)'
+          : (ocupada ? `0 0 14px ${est.glow}` : 'none');
+      }}
+      title={ocupada ? `${pc.alumno.nombre}\n${pc.alumno.matricula}` : pc.estado}
+    >
+      {/* Indicador de estado top-right */}
+      {ocupada && (
+        <span style={{
+          position:'absolute', top:5, right:6,
+          width:6, height:6, borderRadius:'50%',
+          background:'#3b82f6',
+          boxShadow:'0 0 6px rgba(59,130,246,0.8)',
+        }}/>
+      )}
+
+      {/* Contenido según estado */}
+      {ocupada ? (
+        <>
+          {/* Avatar con iniciales */}
+          <div style={{
+            width:28, height:28, borderRadius:'50%',
+            background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',
+            margin:'0 auto 5px',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:10, fontWeight:800, color:'#fff', letterSpacing:'0.02em',
+            boxShadow:'0 2px 8px rgba(59,130,246,0.35)',
+          }}>
+            {initials}
+          </div>
+          <p style={{fontSize:10, fontWeight:700, color:'#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:9, color:'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
+            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:70}}>
+            {shortName}
+          </p>
+          <p style={{fontSize:8, color:'rgba(100,116,139,0.85)', margin:'1px 0 0'}}>{pc.alumno.matricula}</p>
+        </>
+      ) : mant ? (
+        <>
+          <p style={{fontSize:15, margin:'0 0 3px', lineHeight:1}}>🔧</p>
+          <p style={{fontSize:10, fontWeight:700, color:'#fbbf24', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:9, color:'rgba(251,191,36,0.55)', margin:'2px 0 0'}}>Mant.</p>
+        </>
+      ) : dano ? (
+        <>
+          <p style={{fontSize:15, margin:'0 0 3px', lineHeight:1}}>⚠️</p>
+          <p style={{fontSize:10, fontWeight:700, color:'#fca5a5', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:9, color:'rgba(252,165,165,0.55)', margin:'2px 0 0'}}>Dañada</p>
+        </>
+      ) : baja ? (
+        <>
+          <p style={{fontSize:10, fontWeight:700, color:'#475569', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:9, color:'rgba(71,85,105,0.6)', margin:'2px 0 0'}}>Baja</p>
+        </>
+      ) : (
+        /* Libre */
+        <>
+          <p style={{fontSize:10, fontWeight:700, color:'#4ade80', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:9, color:'rgba(74,222,128,0.4)', margin:'2px 0 0'}}>Libre</p>
+        </>
+      )}
+    </button>
+  );
+}
 
 // ─── Modal Asignar Alumno ─────────────────────────────────────────────────────
 
@@ -737,27 +856,55 @@ function Temporizador({ segundos }) {
 
 // ─── Revisión de Recepción ────────────────────────────────────────────────────
 
-function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
-  // estados[pc_id] = { conProblema: bool, descripcion: string }
-  const [estados, setEstados]           = useState({});
-  const [ultimosUsuarios, setUltimosUsuarios] = useState({});  // pc_id -> {alumno_nombre, alumno_matricula, sesion_codigo, sesion_materia}
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState('');
+const TIPO_PROBLEMA_OPTS = [
+  { id:'DAÑO_FISICO',  label:'Daño físico'  },
+  { id:'NO_ENCIENDE',  label:'No enciende'  },
+  { id:'PERIFERICO',   label:'Periférico'   },
+  { id:'RED',          label:'Red / Internet'},
+  { id:'OTRO',         label:'Otro'         },
+];
 
-  // PCs que el docente debe inspeccionar (disponibles en teoría)
+function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
+  // estados[pc_id] = { revisada, conProblema, tipo, descripcion, bloquear, prioridad }
+  const [estados, setEstados]                 = useState({});
+  const [ultimosUsuarios, setUltimosUsuarios] = useState({});
+  const [loading, setLoading]                 = useState(false);
+  const [error, setError]                     = useState('');
+
   const pcsMapeables = pcs.filter(p => !['BAJA','MANTENIMIENTO','DAÑADO'].includes(p.estado));
-  // PCs ya fuera de servicio — el docente solo necesita saber que existen
   const pcsYaFuera   = pcs.filter(p => ['MANTENIMIENTO','DAÑADO'].includes(p.estado));
+
+  // Agrupar por fila
+  const filas = {};
+  pcsMapeables.forEach(pc => {
+    const fila = pc.fila || '—';
+    if (!filas[fila]) filas[fila] = [];
+    filas[fila].push(pc);
+  });
+  const filasOrd = Object.keys(filas).sort();
+
+  const total     = pcsMapeables.length;
+  const revisadas = pcsMapeables.filter(p => estados[p.pc_id]?.revisada).length;
+  const pendientes = total - revisadas;
+  const progreso  = total > 0 ? Math.round((revisadas / total) * 100) : 0;
+  const conProblemasCount = pcsMapeables.filter(p => estados[p.pc_id]?.conProblema).length;
+  const listo     = pendientes === 0;
 
   const marcarPC = async (pcId, conProblema) => {
     setEstados(prev => ({
       ...prev,
-      [pcId]: { conProblema, descripcion: prev[pcId]?.descripcion || '' }
+      [pcId]: {
+        ...prev[pcId],
+        revisada:    true,
+        conProblema,
+        tipo:        conProblema ? (prev[pcId]?.tipo || '') : '',
+        descripcion: conProblema ? (prev[pcId]?.descripcion || '') : '',
+        bloquear:    conProblema ? (prev[pcId]?.bloquear || false) : false,
+        prioridad:   conProblema ? (prev[pcId]?.prioridad || 'MEDIA') : 'MEDIA',
+      }
     }));
-
-    // Fetch ultimo usuario si marcamos problema y aun no lo tenemos
     if (conProblema && ultimosUsuarios[pcId] === undefined) {
-      setUltimosUsuarios(prev => ({ ...prev, [pcId]: { loading: true } })); // marcar como cargando
+      setUltimosUsuarios(prev => ({ ...prev, [pcId]: { loading: true } }));
       try {
         const { data } = await api.get(`/sesiones/pc/${pcId}/ultimo-usuario`);
         setUltimosUsuarios(prev => ({ ...prev, [pcId]: data.ultimo_usuario || null }));
@@ -767,24 +914,35 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
     }
   };
 
+  const setDetalle = (pcId, campo, valor) =>
+    setEstados(prev => ({ ...prev, [pcId]: { ...prev[pcId], [campo]: valor } }));
+
   const handleConfirmar = async () => {
-    setLoading(true);
-    setError('');
+    setLoading(true); setError('');
     try {
-      const items = pcsMapeables.map(pc => ({
-        computadora_id: pc.pc_id,
-        estado:         estados[pc.pc_id]?.conProblema ? 'CON_PROBLEMA' : 'OK',
-        descripcion:    estados[pc.pc_id]?.descripcion || '',
-      }));
+      const items = pcsMapeables.map(pc => {
+        const est = estados[pc.pc_id] || {};
+        // build descripcion with tipo prefix
+        let desc = est.descripcion || '';
+        if (est.conProblema && est.tipo) {
+          const tipoLabel = TIPO_PROBLEMA_OPTS.find(t => t.id === est.tipo)?.label || est.tipo;
+          desc = desc ? `[${tipoLabel}] ${desc}` : `[${tipoLabel}]`;
+        }
+        return {
+          computadora_id: pc.pc_id,
+          estado:         est.conProblema ? 'CON_PROBLEMA' : 'OK',
+          descripcion:    desc || '',
+          prioridad:      est.prioridad || 'MEDIA',
+          bloquear:       !!est.bloquear,
+        };
+      });
       await api.post(`/sesiones/${sesionId}/confirmar-recepcion`, { observaciones: items });
       onConfirmada();
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Error al confirmar recepcion');
+      setError(err?.response?.data?.detail || 'Error al confirmar');
       setLoading(false);
     }
   };
-
-  const conProblemasCount = pcsMapeables.filter(p => estados[p.pc_id]?.conProblema).length;
 
   if (pcsMapeables.length === 0) {
     return (
@@ -798,160 +956,430 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
   }
 
   return (
-    <div className="min-h-screen text-white flex flex-col">
-      {/* Header */}
-      <header className="glass-sm border-b border-white/5 px-4 py-3 flex items-center justify-between shrink-0">
+    <div style={{minHeight:'100dvh',background:'#0b1120',color:'white',display:'flex',flexDirection:'column'}}>
+
+      {/* ── HEADER ── */}
+      <header style={{background:'rgba(15,23,42,0.95)',borderBottom:'1px solid rgba(255,255,255,0.06)',
+        padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div>
-          <h2 className="font-semibold text-white text-sm">Revision de Recepcion</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {sesion.tipo_sesion === 'LIBRE'
-              ? `Sesión Libre · ${sesion.laboratorio_nombre}`
-              : `${sesion.materia} · ${sesion.grupo} · ${sesion.laboratorio_nombre}`}
+          <p style={{fontSize:11,color:'#64748b',margin:'0 0 2px',textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}}>
+            {sesion.tipo_sesion === 'LIBRE' ? 'Uso Libre' : sesion.materia} · {sesion.laboratorio_nombre}
+          </p>
+          <h2 style={{fontSize:16,fontWeight:700,color:'#f1f5f9',margin:0,lineHeight:1.2}}>
+            Recepción del laboratorio
+          </h2>
+          <p style={{fontSize:11,color:'#94a3b8',margin:'2px 0 0'}}>
+            Revisión obligatoria antes de iniciar la clase
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/40 border border-amber-600/40 rounded-lg">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block"></span>
-          <span className="text-xs text-amber-300 font-medium">Inspeccion obligatoria</span>
+        <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',
+          background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.35)',borderRadius:8}}>
+          <span style={{width:7,height:7,borderRadius:'50%',background:'#f59e0b',
+            boxShadow:'0 0 8px #f59e0b',display:'inline-block'}}/>
+          <span style={{fontSize:11,color:'#fbbf24',fontWeight:600}}>Inspección obligatoria</span>
         </div>
       </header>
 
-      {/* Banner instruccion */}
-      <div className="px-4 py-3 bg-amber-900/20 border-b border-amber-700/30 flex items-start gap-3">
-        <span className="text-amber-400 text-lg mt-0.5">🔍</span>
-        <div>
-          <p className="text-sm text-amber-200 font-semibold">Revise cada computadora antes de iniciar la clase.</p>
-          <p className="text-xs text-amber-300/70 mt-0.5">
-            Si encuentra algun problema (dano fisico, equipo que no enciende, etc.), marquelo como "Problema" y descríbalo.
-            Esto crea un reporte automatico con trazabilidad del ultimo usuario.
+      {/* ── INSTRUCCIÓN + PROGRESO ── */}
+      <div style={{background:'rgba(245,158,11,0.06)',borderBottom:'1px solid rgba(245,158,11,0.12)',
+        padding:'12px 20px',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}>
+          <p style={{fontSize:12,color:'#fcd34d',margin:0,flex:1}}>
+            🔍 Revise cada equipo. Si detecta un problema, márquelo y descríbalo — se genera reporte automático con trazabilidad.
           </p>
-        </div>
-      </div>
-
-      {/* Banner PCs ya fuera de servicio */}
-      {pcsYaFuera.length > 0 && (
-        <div className="px-4 py-2 bg-yellow-900/20 border-b border-yellow-700/30 flex items-center gap-3 flex-wrap">
-          <span className="text-yellow-400 text-sm">🔧</span>
-          <span className="text-xs text-yellow-300">
-            <span className="font-semibold">{pcsYaFuera.length} PC{pcsYaFuera.length !== 1 ? 's' : ''} ya fuera de servicio</span>
-            {' '}({pcsYaFuera.map(p => p.codigo).join(', ')}) — no requieren revisión de recepción.
-          </span>
-        </div>
-      )}
-
-      {/* Grid de PCs */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto">
-          {pcsMapeables.map(pc => {
-            const conProblema = !!estados[pc.pc_id]?.conProblema;
-            const ultimoUsu   = ultimosUsuarios[pc.pc_id];
-            const cargandoUsu = conProblema && ultimosUsuarios[pc.pc_id] === null && ultimosUsuarios.hasOwnProperty(pc.pc_id) === false;
-
-            return (
-              <div
-                key={pc.pc_id}
-                className={`rounded-xl border p-3 transition-all ${
-                  conProblema
-                    ? 'border-orange-500/50 bg-orange-950/30'
-                    : 'border-white/10 bg-gray-800/40'
-                }`}
-              >
-                {/* Fila superior: codigo + botones */}
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="font-bold text-sm text-white">{pc.codigo}</p>
-                    {pc.fila && <p className="text-[10px] text-slate-500 leading-none">Fila {pc.fila}</p>}
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => marcarPC(pc.pc_id, false)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                        !conProblema
-                          ? 'bg-green-700 text-green-100 ring-1 ring-green-500/50'
-                          : 'bg-gray-700/60 text-slate-400 hover:bg-gray-700'
-                      }`}
-                    >
-                      ✓ OK
-                    </button>
-                    <button
-                      onClick={() => marcarPC(pc.pc_id, true)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                        conProblema
-                          ? 'bg-orange-600 text-white ring-1 ring-orange-400/50'
-                          : 'bg-gray-700/60 text-slate-400 hover:bg-gray-700'
-                      }`}
-                    >
-                      ⚠ Problema
-                    </button>
-                  </div>
-                </div>
-
-                {/* Detalle cuando hay problema */}
-                {conProblema && (
-                  <div className="space-y-2 pt-2 border-t border-orange-500/20">
-                    <textarea
-                      rows={2}
-                      placeholder="Describe el problema observado..."
-                      value={estados[pc.pc_id]?.descripcion || ''}
-                      onChange={e =>
-                        setEstados(prev => ({
-                          ...prev,
-                          [pc.pc_id]: { ...prev[pc.pc_id], descripcion: e.target.value }
-                        }))
-                      }
-                      className="w-full bg-gray-900/60 border border-orange-700/40 text-white text-xs rounded-lg px-2.5 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-orange-500 placeholder-slate-600"
-                    />
-
-                    {/* Ultimo usuario */}
-                    {ultimoUsu?.loading ? (
-                      <p className="text-[10px] text-slate-500 italic">Buscando ultimo usuario...</p>
-                    ) : ultimoUsu && !ultimoUsu.loading ? (
-                      <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                        <span className="text-sm">🎓</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-semibold text-amber-300 truncate">{ultimoUsu.alumno_nombre}</p>
-                          <p className="text-[10px] text-amber-400/70 truncate">
-                            {ultimoUsu.alumno_matricula}
-                            {ultimoUsu.sesion_materia ? ` · ${ultimoUsu.sesion_materia}` : ''}
-                          </p>
-                        </div>
-                        <span className="text-[9px] text-amber-500/60 whitespace-nowrap">ultimo uso</span>
-                      </div>
-                    ) : ultimosUsuarios.hasOwnProperty(pc.pc_id) ? (
-                      <p className="text-[10px] text-slate-500 italic">Sin historial de uso previo</p>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Footer con resumen y confirmar */}
-      <footer className="glass-sm border-t border-white/5 px-4 py-3 flex items-center justify-between gap-4 shrink-0">
-        <div className="text-sm">
-          {conProblemasCount > 0 ? (
-            <span className="text-orange-300 font-medium">
-              {conProblemasCount} PC{conProblemasCount !== 1 ? 's' : ''} con problema detectado
+          {pcsYaFuera.length > 0 && (
+            <span style={{fontSize:10,color:'#94a3b8',background:'rgba(255,255,255,0.04)',
+              border:'1px solid rgba(255,255,255,0.08)',borderRadius:6,padding:'3px 8px',whiteSpace:'nowrap'}}>
+              🔧 {pcsYaFuera.length} excluida{pcsYaFuera.length>1?'s':''}: {pcsYaFuera.map(p=>p.codigo).join(', ')}
             </span>
-          ) : (
-            <span className="text-green-400">Todo en orden — sin novedades</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          {error && <p className="text-red-400 text-xs max-w-xs text-right">{error}</p>}
-          <button
-            onClick={handleConfirmar}
-            disabled={loading}
-            className="px-5 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-semibold transition-colors"
-          >
-            {loading ? 'Confirmando...' : `Confirmar Recepcion${conProblemasCount > 0 ? ` (${conProblemasCount} incidente${conProblemasCount !== 1 ? 's' : ''})` : ''}`}
-          </button>
+        {/* Barra de progreso */}
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{flex:1,height:5,background:'rgba(255,255,255,0.07)',borderRadius:99,overflow:'hidden'}}>
+            <div style={{width:`${progreso}%`,height:'100%',borderRadius:99,
+              background: progreso === 100
+                ? 'linear-gradient(90deg,#10b981,#34d399)'
+                : 'linear-gradient(90deg,#f59e0b,#fbbf24)',
+              transition:'width .3s ease'}}/>
+          </div>
+          <span style={{fontSize:11,fontWeight:700,color: progreso===100 ? '#34d399' : '#fbbf24',
+            whiteSpace:'nowrap',minWidth:90,textAlign:'right'}}>
+            {revisadas}/{total} revisadas
+          </span>
+          {conProblemasCount > 0 && (
+            <span style={{fontSize:10,color:'#f87171',background:'rgba(239,68,68,0.1)',
+              border:'1px solid rgba(239,68,68,0.25)',borderRadius:6,padding:'2px 7px',whiteSpace:'nowrap'}}>
+              ⚠ {conProblemasCount} problema{conProblemasCount>1?'s':''}
+            </span>
+          )}
         </div>
+      </div>
+
+      {/* ── GRID POR FILA ── */}
+      <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
+        <div style={{maxWidth:860,margin:'0 auto',display:'flex',flexDirection:'column',gap:24}}>
+          {filasOrd.map(fila => (
+            <div key={fila}>
+              {/* Cabecera de fila */}
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',
+                  color:'#334155',padding:'3px 8px',background:'rgba(255,255,255,0.04)',
+                  border:'1px solid rgba(255,255,255,0.06)',borderRadius:5}}>
+                  Fila {fila}
+                </span>
+                <div style={{flex:1,height:1,background:'rgba(255,255,255,0.05)'}}/>
+                <span style={{fontSize:10,color:'#475569'}}>
+                  {filas[fila].filter(p => estados[p.pc_id]?.revisada).length}/{filas[fila].length}
+                </span>
+              </div>
+
+              {/* Tarjetas */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:8}}>
+                {filas[fila].map(pc => {
+                  const est = estados[pc.pc_id] || {};
+                  const revisada     = !!est.revisada;
+                  const conProblema  = !!est.conProblema;
+                  const ultimoUsu    = ultimosUsuarios[pc.pc_id];
+
+                  return (
+                    <div key={pc.pc_id} style={{
+                      background: conProblema
+                        ? 'rgba(120,53,15,0.25)'
+                        : revisada ? 'rgba(6,78,59,0.2)' : 'rgba(255,255,255,0.03)',
+                      border: conProblema
+                        ? '1.5px solid rgba(251,146,60,0.4)'
+                        : revisada ? '1.5px solid rgba(52,211,153,0.3)' : '1px solid rgba(255,255,255,0.07)',
+                      borderRadius:12,
+                      padding:'10px 12px',
+                      transition:'all .2s',
+                    }}>
+                      {/* Fila superior: código + botones */}
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                        <div>
+                          <p style={{fontSize:13,fontWeight:800,color:'#f1f5f9',margin:0,letterSpacing:'0.03em'}}>
+                            {pc.codigo}
+                          </p>
+                          {pc.fila && (
+                            <p style={{fontSize:9,color:'#475569',margin:'1px 0 0',textTransform:'uppercase',letterSpacing:'0.06em'}}>
+                              Fila {pc.fila}
+                            </p>
+                          )}
+                        </div>
+                        <div style={{display:'flex',gap:5,flexShrink:0}}>
+                          <button onClick={() => marcarPC(pc.pc_id, false)}
+                            style={{
+                              padding:'5px 11px',borderRadius:8,fontSize:11,fontWeight:700,
+                              cursor:'pointer',transition:'all .15s',border:'none',
+                              background: !conProblema && revisada
+                                ? 'linear-gradient(135deg,#059669,#10b981)'
+                                : 'rgba(255,255,255,0.07)',
+                              color: !conProblema && revisada ? 'white' : '#64748b',
+                              boxShadow: !conProblema && revisada ? '0 0 12px rgba(16,185,129,0.3)' : 'none',
+                            }}>
+                            ✓ OK
+                          </button>
+                          <button onClick={() => marcarPC(pc.pc_id, true)}
+                            style={{
+                              padding:'5px 11px',borderRadius:8,fontSize:11,fontWeight:700,
+                              cursor:'pointer',transition:'all .15s',border:'none',
+                              background: conProblema
+                                ? 'linear-gradient(135deg,#dc2626,#ef4444)'
+                                : 'rgba(255,255,255,0.07)',
+                              color: conProblema ? 'white' : '#64748b',
+                              boxShadow: conProblema ? '0 0 12px rgba(239,68,68,0.3)' : 'none',
+                            }}>
+                            ⚠ Problema
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Panel guiado cuando hay problema */}
+                      {conProblema && (
+                        <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(251,146,60,0.2)',
+                          display:'flex',flexDirection:'column',gap:8}}>
+
+                          {/* Tipo de problema */}
+                          <div>
+                            <p style={{fontSize:9,color:'#94a3b8',margin:'0 0 5px',fontWeight:600,
+                              textTransform:'uppercase',letterSpacing:'0.08em'}}>Tipo de problema</p>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                              {TIPO_PROBLEMA_OPTS.map(opt => (
+                                <button key={opt.id}
+                                  onClick={() => setDetalle(pc.pc_id,'tipo',opt.id)}
+                                  style={{
+                                    padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,
+                                    cursor:'pointer',transition:'all .15s',
+                                    background: est.tipo === opt.id
+                                      ? 'rgba(251,146,60,0.25)' : 'rgba(255,255,255,0.05)',
+                                    border: est.tipo === opt.id
+                                      ? '1px solid rgba(251,146,60,0.5)' : '1px solid rgba(255,255,255,0.07)',
+                                    color: est.tipo === opt.id ? '#fb923c' : '#64748b',
+                                  }}>
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Descripción */}
+                          <textarea rows={2}
+                            placeholder="Describe el problema observado..."
+                            value={est.descripcion || ''}
+                            onChange={e => setDetalle(pc.pc_id,'descripcion',e.target.value)}
+                            style={{
+                              width:'100%',background:'rgba(0,0,0,0.3)',
+                              border:'1px solid rgba(251,146,60,0.25)',color:'white',
+                              fontSize:11,borderRadius:7,padding:'6px 9px',
+                              resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box',
+                            }}
+                          />
+
+                          {/* Prioridad + Bloquear */}
+                          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                            <div style={{display:'flex',gap:4}}>
+                              {[['BAJA','🟢'],['MEDIA','🟡'],['ALTA','🔴']].map(([v,ico]) => (
+                                <button key={v} onClick={() => setDetalle(pc.pc_id,'prioridad',v)}
+                                  style={{
+                                    padding:'2px 8px',borderRadius:5,fontSize:9,fontWeight:700,
+                                    cursor:'pointer',
+                                    background: est.prioridad===v ? 'rgba(255,255,255,0.12)':'rgba(255,255,255,0.04)',
+                                    border: est.prioridad===v ? '1px solid rgba(255,255,255,0.2)':'1px solid rgba(255,255,255,0.06)',
+                                    color: est.prioridad===v ? '#f1f5f9':'#475569',
+                                  }}>
+                                  {ico} {v}
+                                </button>
+                              ))}
+                            </div>
+                            <label style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',userSelect:'none'}}>
+                              <input type="checkbox" checked={!!est.bloquear}
+                                onChange={e => setDetalle(pc.pc_id,'bloquear',e.target.checked)}
+                                style={{accentColor:'#f87171'}}/>
+                              <span style={{fontSize:10,color:'#f87171',fontWeight:600}}>Bloquear PC</span>
+                            </label>
+                          </div>
+
+                          {/* Último usuario */}
+                          {ultimoUsu?.loading ? (
+                            <p style={{fontSize:10,color:'#64748b',fontStyle:'italic',margin:0}}>
+                              Buscando último usuario…
+                            </p>
+                          ) : ultimoUsu && !ultimoUsu.loading ? (
+                            <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',
+                              background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:7}}>
+                              <span style={{fontSize:14}}>🎓</span>
+                              <div style={{minWidth:0,flex:1}}>
+                                <p style={{fontSize:11,fontWeight:600,color:'#fcd34d',margin:0,
+                                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                                  {ultimoUsu.alumno_nombre}
+                                </p>
+                                <p style={{fontSize:9,color:'rgba(251,191,36,0.6)',margin:'1px 0 0'}}>
+                                  {ultimoUsu.alumno_matricula}
+                                  {ultimoUsu.sesion_materia ? ` · ${ultimoUsu.sesion_materia}` : ''}
+                                </p>
+                              </div>
+                              <span style={{fontSize:9,color:'#64748b',whiteSpace:'nowrap'}}>último uso</span>
+                            </div>
+                          ) : ultimosUsuarios.hasOwnProperty(pc.pc_id) ? (
+                            <p style={{fontSize:10,color:'#475569',fontStyle:'italic',margin:0}}>
+                              Sin historial de uso previo
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── FOOTER FIJO ── */}
+      <footer style={{background:'rgba(15,23,42,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',
+        padding:'12px 20px',flexShrink:0,display:'flex',alignItems:'center',
+        justifyContent:'space-between',gap:12}}>
+        <div>
+          {!listo ? (
+            <p style={{fontSize:13,color:'#94a3b8',margin:0}}>
+              <span style={{fontWeight:700,color:'#f1f5f9'}}>{pendientes}</span> equipo{pendientes!==1?'s':''} por revisar
+            </p>
+          ) : conProblemasCount > 0 ? (
+            <p style={{fontSize:13,color:'#fb923c',fontWeight:600,margin:0}}>
+              ⚠ {conProblemasCount} problema{conProblemasCount!==1?'s':''} registrado{conProblemasCount!==1?'s':''}
+            </p>
+          ) : (
+            <p style={{fontSize:13,color:'#34d399',fontWeight:600,margin:0}}>
+              ✓ Todos los equipos en orden
+            </p>
+          )}
+          {error && <p style={{fontSize:11,color:'#f87171',margin:'2px 0 0'}}>{error}</p>}
+        </div>
+        <button
+          onClick={handleConfirmar}
+          disabled={!listo || loading}
+          style={{
+            padding:'10px 24px',borderRadius:10,fontSize:13,fontWeight:700,
+            border:'none',cursor: listo && !loading ? 'pointer' : 'not-allowed',
+            transition:'all .2s',
+            background: listo && !loading
+              ? 'linear-gradient(135deg,#059669,#10b981)'
+              : 'rgba(255,255,255,0.07)',
+            color: listo && !loading ? 'white' : '#475569',
+            boxShadow: listo && !loading ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
+            opacity: loading ? 0.7 : 1,
+          }}>
+          {loading
+            ? 'Confirmando…'
+            : listo
+            ? `Iniciar clase${conProblemasCount > 0 ? ` (${conProblemasCount} incidente${conProblemasCount!==1?'s':''})` : ''}`
+            : `Faltan ${pendientes} por revisar`}
+        </button>
       </footer>
     </div>
   );
 }
+// ─── Panel de detalle de PC seleccionada ──────────────────────────────────────
+function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onReportarDano }) {
+  const libre   = pc.estado === 'EN_CLASE' || pc.estado === 'OPERATIVO';
+  const ocupada = pc.estado === 'OCUPADA';
+
+  const estadoColor = ocupada ? '#3b82f6' : '#4ade80';
+  const estadoLabel = ocupada ? 'Ocupada' : 'Libre';
+
+  return (
+    <div style={{display:'flex', flexDirection:'column', height:'100%'}}>
+      {/* Header del panel */}
+      <div style={{
+        padding:'1rem 1.25rem 0.875rem',
+        borderBottom:'1px solid rgba(255,255,255,0.07)',
+        display:'flex', alignItems:'flex-start', justifyContent:'space-between',
+      }}>
+        <div>
+          <p style={{fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase',
+            letterSpacing:'0.14em', margin:'0 0 4px'}}>PC Seleccionada</p>
+          <p style={{fontSize:22, fontWeight:800, color:'#f1f5f9', margin:0}}>{pc.codigo}</p>
+          {pc.fila && <p style={{fontSize:11, color:'#475569', margin:'2px 0 0'}}>Fila {pc.fila}</p>}
+        </div>
+        <button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer',
+          color:'#475569', padding:4, borderRadius:8}}
+          className="hover:text-white transition-colors">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Cuerpo */}
+      <div style={{flex:1, padding:'1rem 1.25rem', overflowY:'auto'}}>
+
+        {/* Badge estado */}
+        <div style={{
+          display:'inline-flex', alignItems:'center', gap:6,
+          background: ocupada ? 'rgba(59,130,246,0.12)' : 'rgba(74,222,128,0.10)',
+          border:`1px solid ${estadoColor}33`,
+          borderRadius:20, padding:'4px 12px', marginBottom:16,
+        }}>
+          <span style={{width:7, height:7, borderRadius:'50%', background:estadoColor,
+            boxShadow:`0 0 6px ${estadoColor}88`, flexShrink:0}}/>
+          <span style={{fontSize:12, fontWeight:600, color:estadoColor}}>{estadoLabel}</span>
+        </div>
+
+        {/* Info alumno (si está ocupada) */}
+        {ocupada && pc.alumno && (
+          <div style={{
+            background:'rgba(30,41,59,0.5)', border:'1px solid rgba(255,255,255,0.07)',
+            borderRadius:'0.875rem', padding:'0.875rem 1rem', marginBottom:14,
+          }}>
+            <div style={{display:'flex', alignItems:'center', gap:10}}>
+              <div style={{
+                width:40, height:40, borderRadius:'50%', flexShrink:0,
+                background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:14, fontWeight:800, color:'#fff',
+              }}>
+                {pc.alumno.nombre.trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
+              </div>
+              <div style={{minWidth:0}}>
+                <p style={{fontSize:13, fontWeight:600, color:'#e2e8f0', margin:0,
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
+                  {pc.alumno.nombre}
+                </p>
+                <p style={{fontSize:11, color:'#64748b', margin:'2px 0 0'}}>{pc.alumno.matricula}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Acciones */}
+        <div style={{display:'flex', flexDirection:'column', gap:8}}>
+          {libre && (
+            <button onClick={() => onAsignar(pc)}
+              style={{
+                width:'100%', padding:'11px 16px', borderRadius:'0.75rem', border:'none',
+                background:'linear-gradient(135deg,#16a34a,#15803d)', color:'#fff',
+                fontSize:13, fontWeight:700, cursor:'pointer',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+              }}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              </svg>
+              Asignar alumno
+            </button>
+          )}
+          {ocupada && (
+            <>
+              <button onClick={() => onLiberar(pc)}
+                style={{
+                  width:'100%', padding:'11px 16px', borderRadius:'0.75rem', border:'none',
+                  background:'rgba(59,130,246,0.15)', color:'#93c5fd',
+                  border:'1px solid rgba(59,130,246,0.30)',
+                  fontSize:13, fontWeight:600, cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                }}>
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/>
+                </svg>
+                Liberar PC
+              </button>
+              <button onClick={() => onObservacion(pc)}
+                style={{
+                  width:'100%', padding:'11px 16px', borderRadius:'0.75rem',
+                  background:'transparent', color:'#94a3b8',
+                  border:'1px solid rgba(255,255,255,0.10)',
+                  fontSize:13, fontWeight:600, cursor:'pointer',
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                }}>
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                </svg>
+                Agregar observación
+              </button>
+            </>
+          )}
+          <button onClick={() => onReportarDano(pc)}
+            style={{
+              width:'100%', padding:'11px 16px', borderRadius:'0.75rem',
+              background:'transparent', color:'#f87171',
+              border:'1px solid rgba(239,68,68,0.20)',
+              fontSize:13, fontWeight:600, cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+            }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            Reportar daño
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 export default function SesionActiva() {
   const { sesionId } = useParams();
@@ -962,6 +1390,8 @@ export default function SesionActiva() {
   const [sesion, setSesion]         = useState(null);
   const [pcs, setPcs]               = useState([]);
   const [busqueda, setBusqueda]     = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('todas');
+  const [selectedPc, setSelectedPc]    = useState(null);
   const [modalAsignar, setModalAsignar]   = useState(null);  // pc seleccionada
   const [modalOcupada, setModalOcupada]   = useState(null);
   const [modalCerrar, setModalCerrar]     = useState(false);
@@ -1025,6 +1455,7 @@ export default function SesionActiva() {
   // Conectar WebSocket (con fallback a polling si falla en 5s)
   useEffect(() => {
     if (!sesion) return;
+    let shouldFallback = true;
     const token = sessionStorage.getItem('token');
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBase  = process.env.REACT_APP_WS_URL || `${wsProto}://${window.location.hostname}:8000`;
@@ -1047,7 +1478,7 @@ export default function SesionActiva() {
     };
     ws.onclose = () => {
       setWsConectado(false);
-      iniciarPolling(); // fallback al cerrar
+      if (shouldFallback) iniciarPolling(); // fallback solo ante cierre inesperado
     };
     ws.onerror = () => {
       setWsConectado(false);
@@ -1073,6 +1504,7 @@ export default function SesionActiva() {
     }, 25000);
 
     return () => {
+      shouldFallback = false;
       clearTimeout(wsTimerRef.current);
       clearInterval(pingInterval);
       detenerPolling();
@@ -1080,15 +1512,20 @@ export default function SesionActiva() {
     };
   }, [sesion, navigate, iniciarPolling, detenerPolling]);
 
-  // Filtrar PCs por búsqueda
-  const pcsFiltradas = busqueda
-    ? pcs.filter(pc =>
-        pc.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
-        (pc.alumno?.nombre || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-        (pc.alumno?.matricula || '').toLowerCase().includes(busqueda.toLowerCase()) ||
-        (pc.fila || '').toLowerCase().includes(busqueda.toLowerCase())
-      )
-    : pcs;
+  // Filtrar PCs por estado + búsqueda
+  const pcsFiltradas = pcs.filter(pc => {
+    if (filtroEstado === 'libres'   && pc.estado !== 'EN_CLASE' && pc.estado !== 'OPERATIVO') return false;
+    if (filtroEstado === 'ocupadas' && pc.estado !== 'OCUPADA') return false;
+    if (filtroEstado === 'mant'     && pc.estado !== 'MANTENIMIENTO' && pc.estado !== 'DAÑADO') return false;
+    if (!busqueda) return true;
+    const q = busqueda.toLowerCase();
+    return (
+      pc.codigo.toLowerCase().includes(q) ||
+      (pc.alumno?.nombre || '').toLowerCase().includes(q) ||
+      (pc.alumno?.matricula || '').toLowerCase().includes(q) ||
+      (pc.fila || '').toLowerCase().includes(q)
+    );
+  });
 
   // Agrupar por fila
   const filas = {};
@@ -1103,15 +1540,8 @@ export default function SesionActiva() {
   const pcsLibres   = pcs.filter(p => p.estado === 'EN_CLASE' || p.estado === 'OPERATIVO').length;
 
   const handlePcClick = (pc) => {
-    // PCs bloqueadas por mantenimiento/daño no son interactuables
-    if (pc.bloqueada || pc.estado === 'MANTENIMIENTO' || pc.estado === 'DAÑADO' || pc.estado === 'BAJA') {
-      return;
-    }
-    if (pc.estado === 'OCUPADA') {
-      setModalOcupada(pc);
-    } else if (pc.estado === 'EN_CLASE' || pc.estado === 'OPERATIVO') {
-      setModalAsignar(pc);
-    }
+    if (pc.bloqueada || pc.estado === 'MANTENIMIENTO' || pc.estado === 'DAÑADO' || pc.estado === 'BAJA') return;
+    setSelectedPc(pc);
   };
 
   const handleSesionCerrada = () => {
@@ -1204,19 +1634,39 @@ export default function SesionActiva() {
         </div>
       </header>
 
-      {/* Buscador */}
-      <div className="px-4 py-3 bg-gray-850 border-b border-white/5/50">
-        <div className="relative max-w-sm">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Buscador + Chips de filtro */}
+      <div className="px-4 py-2.5 border-b border-white/5 flex flex-wrap items-center gap-2"
+           style={{background:'rgba(8,14,30,0.75)'}}>
+        <div className="relative flex-1 min-w-[160px] max-w-xs">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar PC, alumno, matrícula, fila..."
-            className="bg-gray-700 border border-gray-600 text-white text-sm rounded-lg pl-9 pr-4 py-2 w-full focus:outline-none focus:ring-2 focus:ring-green-500"/>
+            placeholder="PC, alumno, matrícula…"
+            className="bg-white/5 border border-white/10 text-white text-sm rounded-xl pl-9 pr-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-green-500"/>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {[
+            { id:'todas',    label:'Todas',    count: pcs.length },
+            { id:'libres',   label:'Libres',   count: pcsLibres },
+            { id:'ocupadas', label:'Ocupadas', count: pcsOcupadas },
+            { id:'mant',     label:'Mant.',    count: pcs.filter(p => p.estado==='MANTENIMIENTO'||p.estado==='DAÑADO').length },
+          ].map(f => (
+            <button key={f.id} onClick={() => setFiltroEstado(f.id)}
+              style={{
+                padding:'5px 11px', borderRadius:20, fontSize:12, fontWeight:600,
+                whiteSpace:'nowrap', transition:'all 0.15s', flexShrink:0,
+                background: filtroEstado===f.id ? '#16a34a' : 'rgba(255,255,255,0.06)',
+                border:`1px solid ${filtroEstado===f.id ? '#16a34a' : 'rgba(255,255,255,0.09)'}`,
+                color: filtroEstado===f.id ? '#fff' : '#64748b',
+              }}>
+              {f.label}{f.count > 0 ? ` ${f.count}` : ''}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Banner overtime (visible en móvil donde el topbar no muestra el timer) */}
+      {/* Banner tiempo extra (visible en móvil donde el topbar no muestra el timer) */}
       {countdown !== null && countdown < 0 && (
         <div className="bg-red-900/70 border-b border-red-700 px-4 py-2 flex items-center justify-between text-sm sm:hidden">
           <span className="text-red-300 font-semibold animate-pulse">
@@ -1229,8 +1679,10 @@ export default function SesionActiva() {
         </div>
       )}
 
-      {/* Mapa de PCs */}
-      <div className="flex-1 overflow-auto p-4">
+      {/* Mapa de PCs + Panel detalle */}
+      <div className="flex-1 overflow-hidden flex min-h-0">
+      {/* Scroll area del mapa */}
+      <div className="flex-1 overflow-auto p-4 lg:p-5">
         {pcs.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
             {wsConectado || modoPolling ? 'Sin computadoras registradas en este laboratorio' : 'Conectando al servidor...'}
@@ -1246,29 +1698,12 @@ export default function SesionActiva() {
                 )}
                 <div className="flex flex-wrap gap-2">
                   {filas[fila].sort((a,b) => a.numero - b.numero).map(pc => {
-                    const estilo = PC_ESTILOS[pc.estado] || PC_ESTILOS.OPERATIVO;
-                    const clickable = ['OCUPADA','EN_CLASE','OPERATIVO'].includes(pc.estado) && !pc.bloqueada;
+                    const highlighted = !!(busqueda && (
+                      pc.alumno?.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
+                      pc.alumno?.matricula?.includes(busqueda)
+                    ));
                     return (
-                      <button
-                        key={pc.pc_id}
-                        onClick={() => clickable && handlePcClick(pc)}
-                        disabled={!clickable}
-                        className={`rounded-xl border p-3 text-center transition-all min-w-[80px]
-                          ${estilo.bg} ${clickable ? 'hover:scale-105 hover:shadow-lg cursor-pointer' : 'cursor-default'}
-                          ${busqueda && (pc.alumno?.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-                            pc.alumno?.matricula?.includes(busqueda))
-                            ? 'ring-2 ring-blue-400' : ''}`}
-                        title={pc.alumno ? `${pc.alumno.nombre}\n${pc.alumno.matricula}` : pc.estado}
-                      >
-                        <p className={`text-xs font-bold ${estilo.texto}`}>{pc.codigo}</p>
-                        {pc.alumno ? (
-                          <p className="text-xs text-white/80 mt-0.5 leading-tight truncate max-w-[70px]">
-                            {pc.alumno.nombre.split(' ')[0]}
-                          </p>
-                        ) : (
-                          <p className={`text-xs mt-0.5 ${estilo.texto} opacity-70`}>{estilo.label}</p>
-                        )}
-                      </button>
+                      <TarjetaPC key={pc.pc_id} pc={pc} onClick={handlePcClick} highlighted={highlighted}/>
                     );
                   })}
                 </div>
@@ -1278,26 +1713,29 @@ export default function SesionActiva() {
         ) : (
           /* Sin filas definidas — grid plano */
           <div className="flex flex-wrap gap-2">
-            {pcsFiltradas.sort((a,b) => a.numero - b.numero).map(pc => {
-              const estilo = PC_ESTILOS[pc.estado] || PC_ESTILOS.OPERATIVO;
-              const clickable = ['OCUPADA','EN_CLASE','OPERATIVO'].includes(pc.estado) && !pc.bloqueada;
-              return (
-                <button key={pc.pc_id}
-                  onClick={() => clickable && handlePcClick(pc)}
-                  disabled={!clickable}
-                  className={`rounded-xl border p-3 text-center transition-all min-w-[72px]
-                    ${estilo.bg} ${clickable ? 'hover:scale-105 cursor-pointer' : 'cursor-default'}`}>
-                  <p className={`text-xs font-bold ${estilo.texto}`}>{pc.codigo}</p>
-                  {pc.alumno
-                    ? <p className="text-xs text-white/80 mt-0.5 truncate max-w-[64px]">{pc.alumno.nombre.split(' ')[0]}</p>
-                    : <p className={`text-xs mt-0.5 ${estilo.texto} opacity-70`}>{estilo.label}</p>
-                  }
-                </button>
-              );
-            })}
+            {pcsFiltradas.sort((a,b) => a.numero - b.numero).map(pc => (
+              <TarjetaPC key={pc.pc_id} pc={pc} onClick={handlePcClick} highlighted={false}/>
+            ))}
           </div>
         )}
-      </div>
+      </div>{/* fin scroll mapa */}
+
+      {/* Panel detalle — desktop: columna lateral */}
+      {selectedPc && (
+        <aside className="hidden lg:flex w-80 shrink-0 flex-col border-l border-white/8 overflow-auto"
+               style={{background:'rgba(6,10,24,0.92)'}}>
+          <PanelDetallePC
+            pc={selectedPc}
+            onClose={() => setSelectedPc(null)}
+            onAsignar={(pc) => { setSelectedPc(null); setModalAsignar(pc); }}
+            onLiberar={(pc) => { setSelectedPc(null); setModalOcupada(pc); }}
+            onObservacion={(pc) => { setSelectedPc(null); setModalObs(pc); }}
+            onReportarDano={(pc) => { setSelectedPc(null); setModalDano(pc); }}
+          />
+        </aside>
+      )}
+
+      </div>{/* fin flex mapa+panel */}
 
       {/* Leyenda inferior */}
       <footer className="glass-sm border-t border-white/5 px-4 py-2 flex items-center gap-4 text-xs text-slate-400 shrink-0">
@@ -1312,6 +1750,29 @@ export default function SesionActiva() {
         ))}
         <span className="ml-auto">{sesion.codigo_sesion}</span>
       </footer>
+
+      {/* Bottom sheet móvil — PC seleccionada */}
+      {selectedPc && (
+        <div className="lg:hidden fixed inset-0 z-40 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+               onClick={() => setSelectedPc(null)}/>
+          <div className="relative rounded-t-2xl overflow-hidden"
+               style={{background:'#0a1020', border:'1px solid rgba(255,255,255,0.08)', maxHeight:'72vh', overflowY:'auto'}}>
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div style={{width:36, height:4, borderRadius:99, background:'rgba(255,255,255,0.15)'}}/>
+            </div>
+            <PanelDetallePC
+              pc={selectedPc}
+              onClose={() => setSelectedPc(null)}
+              onAsignar={(pc) => { setSelectedPc(null); setModalAsignar(pc); }}
+              onLiberar={(pc) => { setSelectedPc(null); setModalOcupada(pc); }}
+              onObservacion={(pc) => { setSelectedPc(null); setModalObs(pc); }}
+              onReportarDano={(pc) => { setSelectedPc(null); setModalDano(pc); }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Modales */}
       {modalAsignar && (
