@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import api from '../hooks/useApi';
 
 const AuthContext = createContext(null);
 
@@ -11,6 +12,16 @@ export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(
     JSON.parse(store.getItem('usuario') || 'null')
   );
+
+  useEffect(() => {
+    if (!store.getItem('token')) return;
+    api.get('/auth/me')
+      .then(({ data }) => {
+        store.setItem('usuario', JSON.stringify(data));
+        setUsuario(data);
+      })
+      .catch(() => {});
+  }, []);
 
   const login = (userData, token) => {
     store.setItem('token', token);

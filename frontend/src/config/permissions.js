@@ -103,6 +103,7 @@ export const PERMISSIONS = {
 export const ROUTE_PERMISSIONS = {
   '/admin':                       [SA, LA],
   '/lab':                         [SA, LA],
+  '/administrativo':              [AD],
   '/admin/laboratorios':          [SA, LA],
   '/admin/laboratorios/:labId':   [SA, LA],
   '/admin/usuarios':              [SA],

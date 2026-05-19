@@ -10,6 +10,7 @@ import { ROUTE_PERMISSIONS } from './config/permissions';
 import Login from './pages/Login';
 import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardDocente from './pages/DashboardDocente';
+import DashboardAdministrativo from './pages/DashboardAdministrativo';
 import Laboratorios from './pages/admin/Laboratorios';
 import LaboratorioDetalle from './pages/admin/LaboratorioDetalle';
 import Usuarios from './pages/admin/Usuarios';
@@ -63,7 +64,7 @@ function RutaProtegida({ children, rolesPermitidos, path }) {
 const RUTAS_POR_ROL = {
   SUPER_ADMIN: '/admin',
   LAB_ADMIN:   '/lab',
-  ADMINISTRATIVO: '/admin/comunicados',
+  ADMINISTRATIVO: '/administrativo',
   DOCENTE:     '/docente',
   ALUMNO:      '/alumno',
 };
@@ -98,6 +99,14 @@ function AppRoutes() {
         element={
           <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
             <DashboardAdmin />
+          </RutaProtegida>
+        }
+      />
+      <Route
+        path="/administrativo"
+        element={
+          <RutaProtegida rolesPermitidos={['ADMINISTRATIVO']}>
+            <DashboardAdministrativo />
           </RutaProtegida>
         }
       />

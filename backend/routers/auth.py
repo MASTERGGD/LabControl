@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
 from database import get_db
+from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, crear_access_token, verificar_password
 from services.auditoria import registrar, Accion, Recurso
@@ -30,9 +31,29 @@ class UsuarioResponse(BaseModel):
     email: str
     rol: str
     laboratorio_id: int | None
+    departamento_id: int | None = None
+    departamento_nombre: str | None = None
+    departamento_clave: str | None = None
     activo: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
+    dep = None
+    if usuario.departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == usuario.departamento_id).first()
+    return {
+        "id": usuario.id,
+        "nombre": usuario.nombre,
+        "email": usuario.email,
+        "rol": usuario.rol.value,
+        "laboratorio_id": usuario.laboratorio_id,
+        "departamento_id": usuario.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "departamento_clave": dep.clave if dep else None,
+        "activo": usuario.activo,
+    }
 
 
 # --- Endpoints ----------------------------------------------------------------
@@ -89,18 +110,11 @@ def login(
     return {
         "access_token": token,
         "token_type": "bearer",
-        "usuario": {
-            "id": usuario.id,
-            "nombre": usuario.nombre,
-            "email": usuario.email,
-            "rol": usuario.rol.value,
-            "laboratorio_id": usuario.laboratorio_id,
-            "activo": usuario.activo,
-        },
+        "usuario": _serializar_usuario(usuario, db),
     }
 
 
 @router.get("/me", response_model=UsuarioResponse, summary="Usuario actual")
-def me(current_user: Usuario = Depends(get_current_user)):
+def me(current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """Devuelve los datos del usuario autenticado (requiere token Bearer valido)."""
-    return current_user
+    return _serializar_usuario(current_user, db)

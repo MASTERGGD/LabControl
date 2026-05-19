@@ -7,9 +7,11 @@
  * - Panel lateral de reporte de lecturas
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = [
@@ -53,6 +55,7 @@ const toEndOfDay = value => value ? `${value}T23:59:59` : null;
 // ─── Modal Crear/Editar ────────────────────────────────────────────────────────
 function ModalComunicado({ comunicado, onClose, onSaved }) {
   const { toast: showToast } = useToast();
+  const { usuario: usuarioActual } = useAuth();
   const [form, setForm]   = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -73,7 +76,15 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   }, []);
 
   useEffect(() => {
-    if (!comunicado) { setForm(EMPTY_FORM); return; }
+    if (!comunicado) {
+      setForm({
+        ...EMPTY_FORM,
+        departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
+          ? (usuarioActual?.departamento_id || '')
+          : '',
+      });
+      return;
+    }
     // Reconstruir estado del form desde el comunicado existente
     const dests = comunicado.destinatarios || [];
     let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = [], dest_departamentos = [];
@@ -103,7 +114,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       fecha_expiracion:      comunicado.fecha_expiracion?.slice(0,10)  || '',
       dest_tipo, dest_roles, dest_usuarios, dest_departamentos,
     });
-  }, [comunicado]);
+  }, [comunicado, usuarioActual]);
 
   useEffect(() => {
     if (!form.dest_usuarios.length || !usuarios.length) return;
@@ -144,7 +155,9 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         prioridad:             form.prioridad,
         requiere_confirmacion: form.requiere_confirmacion,
         area_emisora:          form.area_emisora?.trim() || null,
-        departamento_emisor_id: form.departamento_emisor_id ? Number(form.departamento_emisor_id) : null,
+        departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
+          ? (usuarioActual?.departamento_id || null)
+          : (form.departamento_emisor_id ? Number(form.departamento_emisor_id) : null),
         fecha_publicacion:     toStartOfDay(form.fecha_publicacion),
         fecha_expiracion:      toEndOfDay(form.fecha_expiracion),
         destinatarios,
@@ -195,6 +208,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         .some(v => String(v).toLowerCase().includes(q));
     })
     .slice(0, 8);
+
+  const esAdministrativo = usuarioActual?.rol === 'ADMINISTRATIVO';
+  const departamentoAsignado = departamentos.find(dep => dep.id === Number(usuarioActual?.departamento_id));
+  const nombreDepartamentoEmisor = usuarioActual?.departamento_nombre
+    || departamentoAsignado?.nombre
+    || 'Departamento no asignado';
+  const claveDepartamentoEmisor = usuarioActual?.departamento_clave || departamentoAsignado?.clave;
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -253,16 +273,33 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               placeholder="Ej: Dirección Académica, TI, Administración…" />
           </div>
 
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Departamento emisor</label>
-            <select className="input-dark" value={form.departamento_emisor_id}
-              onChange={e => set('departamento_emisor_id', e.target.value)}>
-              <option value="">Sin departamento asignado</option>
-              {departamentos.map(dep => (
-                <option key={dep.id} value={dep.id}>{dep.nombre} ({dep.clave})</option>
-              ))}
-            </select>
-          </div>
+          {esAdministrativo ? (
+            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-300">
+                Departamento emisor
+              </p>
+              <p className="text-white font-semibold mt-1">
+                Emite como: {nombreDepartamentoEmisor}
+              </p>
+              {claveDepartamentoEmisor && (
+                <p className="text-xs text-amber-200/70 mt-0.5">{claveDepartamentoEmisor}</p>
+              )}
+              <p className="text-xs text-slate-400 mt-2">
+                Tu usuario administrativo solo puede emitir comunicados desde el departamento asignado.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Departamento emisor</label>
+              <select className="input-dark" value={form.departamento_emisor_id}
+                onChange={e => set('departamento_emisor_id', e.target.value)}>
+                <option value="">Sin departamento asignado</option>
+                {departamentos.map(dep => (
+                  <option key={dep.id} value={dep.id}>{dep.nombre} ({dep.clave})</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Fechas */}
           <div className="grid grid-cols-2 gap-3">
@@ -493,10 +530,11 @@ function PanelLecturas({ comunicado, onClose }) {
 // ─── Página principal ──────────────────────────────────────────────────────────
 export default function ComunicadosAdmin() {
   const { toast: showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [comunicados, setComunicados] = useState([]);
   const [loading, setLoading]         = useState(true);
-  const [filtroEstado, setFiltroEstado]   = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [filtroEstado, setFiltroEstado]   = useState(searchParams.get('estado') || '');
+  const [filtroCategoria, setFiltroCategoria] = useState(searchParams.get('categoria') || '');
   const [modal,    setModal]    = useState(null);   // null | 'crear' | objeto comunicado
   const [lecturas, setLecturas] = useState(null);   // comunicado seleccionado para reporte
   const [confirming, setConfirming] = useState(null); // { id, accion }
@@ -514,6 +552,19 @@ export default function ComunicadosAdmin() {
   }, [filtroEstado, filtroCategoria]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  useEffect(() => {
+    const estado = searchParams.get('estado') || '';
+    const categoria = searchParams.get('categoria') || '';
+    if (estado !== filtroEstado) setFiltroEstado(estado);
+    if (categoria !== filtroCategoria) setFiltroCategoria(categoria);
+    if (searchParams.get('nuevo') === '1') {
+      setModal('crear');
+      const next = new URLSearchParams(searchParams);
+      next.delete('nuevo');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, filtroEstado, filtroCategoria]);
 
   const accion = async (id, endpoint, label) => {
     try {

@@ -245,6 +245,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
   },
   {
+    label: 'Inicio administrativo', path: '/administrativo', exact: true, roles: ['ADMINISTRATIVO'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+  },
+  {
     label: 'Laboratorios', path: '/admin/laboratorios', roles: ['SUPER_ADMIN','LAB_ADMIN'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>,
   },
@@ -360,6 +364,7 @@ const ROL_BADGE = {
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
 const BREADCRUMB_MAP = {
   '/admin':                   [{ label: 'Dashboard' }],
+  '/administrativo':          [{ label: 'Inicio Administrativo' }],
   '/docente':                 [{ label: 'Inicio Docente' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
@@ -419,6 +424,9 @@ function Breadcrumb({ pathname }) {
 
 // ─── Sidebar content (definido FUERA de AdminLayout para evitar re-montaje) ───
 function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
+  const homePath = usuario?.rol === 'ADMINISTRATIVO'
+    ? '/administrativo'
+    : usuario?.rol === 'DOCENTE' ? '/docente' : '/admin';
   const storageKey = `labcontrol-sidebar-groups-${usuario?.rol || 'anon'}`;
   const [openGroups, setOpenGroups] = useState(() => {
     try {
@@ -461,19 +469,21 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
     });
   };
 
-  const renderNavItem = (item, grouped = false) => (
-    <div key={item.path} className="relative group">
+  const renderNavItem = (item, grouped = false) => {
+    const compact = !sidebarOpen && !mobile;
+    return (
+    <div key={item.path} className={`relative group ${compact ? 'mb-1' : ''}`}>
       <NavLink
         to={item.path}
         end={!!item.exact}
         onClick={() => mobile && setMenuMovil(false)}
         className={({ isActive }) =>
-          `nav-item flex items-center gap-3 py-2.5 text-sm font-medium
-           ${grouped ? 'px-3' : 'px-2.5'}
+          `nav-item flex items-center text-sm font-medium
+           ${compact ? 'w-11 h-11 mx-auto justify-center px-0 py-0 gap-0' : `gap-3 py-2.5 ${grouped ? 'px-3' : 'px-2.5'}`}
            ${isActive ? 'nav-active' : 'text-slate-400'}`
         }
       >
-        {grouped && (
+        {grouped && !compact && (
           <span style={{ width: 2, height: 14, borderRadius: 99,
             background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
         )}
@@ -521,14 +531,15 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
         </div>
       )}
     </div>
-  );
+    );
+  };
   return (
     <>
       {/* Logo */}
-      <div className="px-3 py-3 flex items-center gap-3"
+      <div className={`px-3 py-3 flex ${(!sidebarOpen && !mobile) ? 'justify-center' : 'items-center gap-3'}`}
            style={{borderBottom:'1px solid var(--sidebar-border)'}}>
-        <NavLink to="/admin" onClick={() => mobile && setMenuMovil(false)}
-                 className="flex items-center gap-3 flex-1 min-w-0 group">
+        <NavLink to={homePath} onClick={() => mobile && setMenuMovil(false)}
+                 className={`flex items-center group ${(!sidebarOpen && !mobile) ? 'justify-center w-10 h-10 flex-none' : 'gap-3 flex-1 min-w-0'}`}>
           <div className="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center group-hover:opacity-80 transition-opacity"
                style={{background:'var(--logo-bg)'}}>
             <svg className="w-[18px] h-[18px] text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -536,10 +547,12 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
           </div>
-          <div>
+          {(sidebarOpen || mobile) && (
+          <div className="min-w-0 overflow-hidden">
             <p className="text-white font-bold text-sm leading-none">LabControl</p>
             <p className="text-[10px] mt-0.5" style={{color:'var(--sidebar-subtitle)'}}>UTECAN</p>
           </div>
+          )}
         </NavLink>
         {mobile && (
           <button onClick={() => setMenuMovil(false)}
@@ -563,7 +576,10 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
       )}
 
       {/* Nav */}
-      <nav className="flex-1 py-2 px-2 overflow-y-auto overflow-x-visible">
+      <nav
+        className="flex-1 py-2 px-2 overflow-y-auto overflow-x-visible [&::-webkit-scrollbar]:hidden"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
         {!sidebarOpen && !mobile ? (
           itemsVisibles.filter(item => !item.divider).map(item => renderNavItem(item, false))
         ) : (
@@ -698,11 +714,17 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
         </button>
       ) : (
         <button onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="mx-2 mb-4 p-2 rounded-xl transition-colors flex items-center justify-center"
-          style={{background:'var(--nav-toggle-bg)', color:'var(--nav-toggle-color)'}}>
-          <svg className={`w-4 h-4 transition-transform ${sidebarOpen ? '' : 'rotate-180'}`}
+          className={`${sidebarOpen ? 'mx-2' : 'mx-auto w-11 h-11'} mb-4 p-2 rounded-xl transition-colors flex items-center justify-center`}
+          style={{background:'var(--nav-toggle-bg)', color:'var(--nav-toggle-color)'}}
+          title={sidebarOpen ? 'Contraer menú' : 'Expandir menú'}
+          aria-label={sidebarOpen ? 'Contraer menú' : 'Expandir menú'}>
+          <svg className="w-4 h-4"
             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+            {sidebarOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+            )}
           </svg>
         </button>
       )}
@@ -715,6 +737,9 @@ export default function AdminLayout({ children }) {
   const { usuario, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const homePath = usuario?.rol === 'ADMINISTRATIVO'
+    ? '/administrativo'
+    : usuario?.rol === 'DOCENTE' ? '/docente' : '/admin';
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [menuMovil,    setMenuMovil]    = useState(false);
   const [modalPwd,     setModalPwd]     = useState(false);
@@ -744,7 +769,7 @@ export default function AdminLayout({ children }) {
 
       {/* ── Sidebar desktop (md+) ─────────────────────────────────────── */}
       <aside
-        className={`hidden md:flex ${sidebarOpen ? 'w-56' : 'w-[60px]'} shrink-0 flex-col transition-all duration-200`}
+        className={`hidden md:flex ${sidebarOpen ? 'w-56' : 'w-[68px]'} shrink-0 flex-col transition-all duration-200`}
         style={{
           background: 'linear-gradient(180deg,var(--sidebar-from) 0%,var(--sidebar-to) 100%)',
           borderRight: '1px solid var(--sidebar-border)',
@@ -804,7 +829,7 @@ export default function AdminLayout({ children }) {
           </button>
 
           {/* Logo centrado en móvil */}
-          <NavLink to="/admin" className="md:hidden flex items-center gap-2">
+          <NavLink to={homePath} className="md:hidden flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg flex items-center justify-center"
                  style={{background:'var(--logo-bg)'}}>
               <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -822,7 +847,7 @@ export default function AdminLayout({ children }) {
           <div className="flex items-center gap-2">
 
             {/* Uso libre — oculto en móvil */}
-            {usuario?.rol !== 'DOCENTE' && (
+            {['SUPER_ADMIN','LAB_ADMIN'].includes(usuario?.rol) && (
             <button
               onClick={() => setModalLibre(true)}
               className="hidden sm:flex btn-emerald items-center gap-2 px-3 py-1.5 text-sm"
