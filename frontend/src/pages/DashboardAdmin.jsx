@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import AdminLayout from '../components/AdminLayout';
 import api from '../hooks/useApi';
 import SelectDark from '../components/SelectDark';
+import { useTheme } from '../context/ThemeContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const MODULOS = [
@@ -117,18 +118,21 @@ function KpiMini({ valor, label, sub, color = '#3b82f6', alert, onClick, icon })
 
 // ─── Tarjeta de sesión activa ─────────────────────────────────────────────────
 function KpiPrincipal({ valor, label, sub, color, icon, alert, onClick }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   return (
     <button
       onClick={onClick}
       disabled={!onClick}
       className={`relative text-left transition-all ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default'}`}
       style={{
-        background: 'rgba(30,41,59,0.58)',
-        border: `1px solid ${alert ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.08)'}`,
+        background: isDay ? '#FFFFFF' : 'rgba(30,41,59,0.58)',
+        border: `1px solid ${alert ? (isDay ? '#EF4444' : 'rgba(239,68,68,0.55)') : isDay ? '#CBD5E1' : 'rgba(255,255,255,0.08)'}`,
         borderRadius: '0.875rem',
         padding: '1.15rem 1.15rem',
         minHeight: 132,
         overflow: 'hidden',
+        boxShadow: isDay ? '0 1px 2px rgba(15,23,42,0.04)' : undefined,
       }}
       onMouseEnter={e => {
         if (!onClick) return;
@@ -145,11 +149,11 @@ function KpiPrincipal({ valor, label, sub, color, icon, alert, onClick }) {
           style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
       )}
       <div style={{ fontSize: 20, marginBottom: 18 }}>{icon}</div>
-      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850, color: alert ? '#f87171' : '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
+      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850, color: alert ? '#DC2626' : isDay ? '#0F172A' : '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
         {valor}
       </p>
-      <p style={{ margin: '7px 0 0', fontSize: 13, color: '#94a3b8' }}>{label}</p>
-      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color }}>{sub}</p>}
+      <p style={{ margin: '7px 0 0', fontSize: 13, color: isDay ? '#475569' : '#94a3b8', fontWeight: 600 }}>{label}</p>
+      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color: alert ? '#DC2626' : isDay ? '#2563EB' : color, fontWeight: 600 }}>{sub}</p>}
     </button>
   );
 }
@@ -383,7 +387,10 @@ function HeroCard({ stats, sesiones, cargando, onIr, onRefresh }) {
 
 // ─── SIDEBAR: acciones rápidas + KPIs mini ────────────────────────────────────
 function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const acciones = [
+    { icon:'PC', label:'Abrir uso libre',     sub:'Sesion sin reservacion', onClick: () => window.dispatchEvent(new Event('labcontrol:abrir-uso-libre')), color:'#059669' },
     { icon:'📌', label:'Nueva reservación',  sub:'Asignar horario',  ruta:'/admin/reservaciones', color:'#d97706' },
     { icon:'📤', label:'Registrar préstamo',  sub:'Equipos y activos', ruta:'/admin/prestamos',    color:'#db2777' },
     { icon:'🔧', label:'Reportar incidente',  sub:'PC o equipo',       ruta:'/admin/mantenimiento', color:'#dc2626' },
@@ -395,21 +402,22 @@ function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
 
       {/* Acciones rápidas */}
       <div style={{
-        background: 'rgba(30,41,59,0.55)',
+        background: isDay ? '#FFFFFF' : 'rgba(30,41,59,0.55)',
         backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.07)'}`,
         borderRadius: '1.25rem',
         overflow: 'hidden',
         flex: 1,
+        boxShadow: isDay ? '0 1px 3px rgba(15,23,42,0.06)' : undefined,
       }}>
-        <div style={{ padding:'0.9rem 1.25rem 0.75rem', borderBottom:'1px solid rgba(255,255,255,0.04)' }}>
-          <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#475569', textTransform:'uppercase', letterSpacing:'0.14em' }}>
+        <div style={{ padding:'0.9rem 1.25rem 0.75rem', borderBottom:`1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.04)'}` }}>
+          <p style={{ margin:0, fontSize:10, fontWeight:800, color: isDay ? '#334155' : '#64748B', textTransform:'uppercase', letterSpacing:'0.14em' }}>
             Acciones rápidas
           </p>
         </div>
         <div style={{ padding:'0.625rem' }}>
           {acciones.map(a => (
-            <button key={a.label} onClick={() => navigate(a.ruta)}
+            <button key={a.label} onClick={() => a.onClick ? a.onClick() : navigate(a.ruta)}
               style={{
                 width:'100%', display:'flex', alignItems:'center', gap:12,
                 background:'transparent', border:'none', cursor:'pointer',
@@ -418,7 +426,7 @@ function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
                 transition:'background 0.2s, box-shadow 0.3s',
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                e.currentTarget.style.background = isDay ? '#F8FAFC' : 'rgba(255,255,255,0.05)';
                 e.currentTarget.style.boxShadow  = `0 0 14px ${a.color}18`;
               }}
               onMouseLeave={e => {
@@ -427,8 +435,8 @@ function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
               }}>
               <div style={{
                 width:38, height:38, borderRadius:11, flexShrink:0,
-                background:`linear-gradient(135deg, rgba(255,255,255,0.10) 0%, ${a.color}22 100%)`,
-                border:`1px solid ${a.color}30`,
+                background: isDay ? '#F8FAFC' : `linear-gradient(135deg, rgba(255,255,255,0.10) 0%, ${a.color}22 100%)`,
+                border:`1px solid ${isDay ? '#E2E8F0' : `${a.color}30`}`,
                 display:'flex', alignItems:'center', justifyContent:'center',
                 fontSize:17,
                 boxShadow:`inset 0 1px 0 rgba(255,255,255,0.08)`,
@@ -436,8 +444,8 @@ function SidebarAcciones({ navigate, stats, soloAcciones = false }) {
                 {a.icon}
               </div>
               <div>
-                <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#e2e8f0' }}>{a.label}</p>
-                <p style={{ margin:0, fontSize:11, color:'#475569' }}>{a.sub}</p>
+                <p style={{ margin:0, fontSize:13, fontWeight:700, color: isDay ? '#0F172A' : '#e2e8f0' }}>{a.label}</p>
+                <p style={{ margin:0, fontSize:11, color: isDay ? '#475569' : '#64748B', fontWeight: 500 }}>{a.sub}</p>
               </div>
             </button>
           ))}
@@ -616,12 +624,30 @@ function WidgetProximas({ reservaciones, navigate }) {
 // ─── Panel de alertas accionables ────────────────────────────────────────────
 // ─── Panel de alertas accionables ────────────────────────────────────────────
 function FilaAlerta({ icono, texto, sub, urgente, onClick, boton }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const accent = urgente
-    ? { dot:'#ef4444', text:'#fecaca', bg:'rgba(239,68,68,0.055)', btnBg:'rgba(59,130,246,0.14)', btnText:'#bfdbfe', btnBorder:'rgba(59,130,246,0.28)' }
-    : { dot:'#f59e0b', text:'#e2e8f0', bg:'transparent', btnBg:'rgba(255,255,255,0.055)', btnText:'#cbd5e1', btnBorder:'rgba(255,255,255,0.08)' };
+    ? {
+        dot:'#ef4444',
+        text: isDay ? '#991B1B' : '#fecaca',
+        sub: isDay ? '#7F1D1D' : '#64748b',
+        bg: isDay ? '#FEF2F2' : 'rgba(239,68,68,0.055)',
+        btnBg: isDay ? '#2563EB' : 'rgba(59,130,246,0.14)',
+        btnText: isDay ? '#FFFFFF' : '#bfdbfe',
+        btnBorder: isDay ? '#2563EB' : 'rgba(59,130,246,0.28)'
+      }
+    : {
+        dot:'#f97316',
+        text: isDay ? '#9A3412' : '#e2e8f0',
+        sub: isDay ? '#7C2D12' : '#64748b',
+        bg: isDay ? '#FFF7ED' : 'transparent',
+        btnBg: isDay ? '#2563EB' : 'rgba(255,255,255,0.055)',
+        btnText: isDay ? '#FFFFFF' : '#cbd5e1',
+        btnBorder: isDay ? '#2563EB' : 'rgba(255,255,255,0.08)'
+      };
   return (
-    <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.025]"
-      style={{ background: accent.bg }}>
+    <div className="flex items-center gap-3 px-4 py-3 last:border-0 transition-colors"
+      style={{ background: accent.bg, borderBottom: `1px solid ${isDay ? '#FED7AA' : 'rgba(255,255,255,0.05)'}` }}>
       <span className="w-2.5 h-2.5 rounded-full shrink-0"
         style={{ background: accent.dot, boxShadow: `0 0 10px ${accent.dot}66` }} />
       <div className="flex-1 min-w-0">
@@ -629,7 +655,7 @@ function FilaAlerta({ icono, texto, sub, urgente, onClick, boton }) {
           <span className="text-xs shrink-0 opacity-80">{icono}</span>
           <p className="text-sm font-medium truncate" style={{margin:0, color: accent.text}}>{texto}</p>
         </div>
-        {sub && <p className="text-xs text-slate-500 truncate" style={{margin:'2px 0 0', paddingLeft: 22}}>{sub}</p>}
+        {sub && <p className="text-xs truncate" style={{margin:'2px 0 0', paddingLeft: 22, color: accent.sub, fontWeight: 500}}>{sub}</p>}
       </div>
       {boton && (
         <button onClick={onClick}
@@ -643,14 +669,16 @@ function FilaAlerta({ icono, texto, sub, urgente, onClick, boton }) {
 }
 
 function SeccionAlerta({ titulo, count, color, icono, children, onVerTodos }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   if (count === 0) return null;
   return (
     <div className="flex-1 min-w-0">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/6"
-        style={{ borderTop: `2px solid ${color.accent}` }}>
+      <div className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderTop: `2px solid ${color.accent}`, borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)'}` }}>
         <div className="flex items-center gap-2">
           <span className="text-sm">{icono}</span>
-          <span className="text-xs font-semibold" style={{ color: color.text }}>{titulo}</span>
+          <span className="text-xs font-semibold" style={{ color: isDay ? color.dayText : color.text }}>{titulo}</span>
           <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
             style={{ background: color.badgeBg, color: color.badgeText }}>{count}</span>
         </div>
@@ -826,7 +854,7 @@ export default function DashboardAdmin() {
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <p className="text-xs text-slate-700" style={{margin:0}}>LabControl UTECAN v1.0 — Universidad Tecnológica de Candelaria</p>
+          <p className="text-xs text-slate-700" style={{margin:0}}>SIGA UTECAN v1.0 — Universidad Tecnológica de Candelaria</p>
           <p className="text-xs text-slate-700" style={{margin:0}}>🔄 Auto-actualiza cada 30s</p>
         </div>
 

@@ -15,13 +15,21 @@ import { useAuth } from '../../context/AuthContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = [
-  { v: 'ACADEMICO',      l: 'Académico',        color: 'bg-blue-500/20 text-blue-300 border-blue-500/30'     },
-  { v: 'ADMINISTRATIVO', l: 'Administrativo',    color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
-  { v: 'EVENTOS',        l: 'Eventos',           color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-  { v: 'MANTENIMIENTO',  l: 'Mantenimiento',     color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
-  { v: 'RRHH',           l: 'Recursos Humanos',  color: 'bg-pink-500/20 text-pink-300 border-pink-500/30'     },
   { v: 'GENERAL',        l: 'General',           color: 'bg-teal-500/20 text-teal-300 border-teal-500/30'     },
   { v: 'URGENTE',        l: 'Urgente',           color: 'bg-red-500/20 text-red-300 border-red-500/30'        },
+  { v: 'EVENTOS',        l: 'Eventos institucionales', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+  { v: 'ACADEMICO',      l: 'Académico',         color: 'bg-blue-500/20 text-blue-300 border-blue-500/30'     },
+  { v: 'SERVICIOS_ESCOLARES', l: 'Servicios Escolares', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
+  { v: 'TUTORIA',        l: 'Tutoría',           color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
+  { v: 'LABORATORIOS',   l: 'Laboratorios / TI', color: 'bg-sky-500/20 text-sky-300 border-sky-500/30' },
+  { v: 'ADMINISTRATIVO', l: 'Administrativo',    color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
+  { v: 'RRHH',           l: 'Recursos Humanos',  color: 'bg-pink-500/20 text-pink-300 border-pink-500/30'     },
+  { v: 'MANTENIMIENTO',  l: 'Mantenimiento',     color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
+  { v: 'CONVOCATORIAS',  l: 'Convocatorias',     color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
+  { v: 'BECAS',          l: 'Becas y apoyos',    color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+  { v: 'CALENDARIO_ACADEMICO', l: 'Calendario académico', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+  { v: 'SEGURIDAD',      l: 'Seguridad / Protección Civil', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+  { v: 'VINCULACION',    l: 'Vinculación',       color: 'bg-lime-500/20 text-lime-300 border-lime-500/30' },
 ];
 const PRIORIDADES = [
   { v: 'INFORMATIVO', l: 'Informativo', dot: 'bg-slate-400' },
@@ -44,8 +52,9 @@ const PRIO_MAP = Object.fromEntries(PRIORIDADES.map(p => [p.v, p]));
 
 const EMPTY_FORM = {
   titulo: '', contenido: '', categoria: 'GENERAL', prioridad: 'INFORMATIVO',
-  requiere_confirmacion: false, area_emisora: '', departamento_emisor_id: '',
-  fecha_publicacion: '', fecha_expiracion: '',
+  requiere_confirmacion: false, requiere_retroalimentacion: false, fijado: false,
+  area_emisora: '', departamento_emisor_id: '',
+  fecha_publicacion: '', fecha_expiracion: '', fecha_limite_respuesta: '',
   dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [], dest_departamentos: [],
 };
 
@@ -61,28 +70,58 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [error,  setError]  = useState('');
   const [usuarios, setUsuarios] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  const [categoriasPermitidas, setCategoriasPermitidas] = useState(CATEGORIAS);
   const [busquedaUsuario, setBusquedaUsuario] = useState('');
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const [adjuntosNuevos, setAdjuntosNuevos] = useState([]);
+
+  const esTutorAdmin = usuarioActual?.rol === 'TUTORIA_ADMIN';
 
   useEffect(() => {
     setCargandoUsuarios(true);
-    api.get('/usuarios?activo=true')
+    api.get(esTutorAdmin ? '/usuarios?rol=DOCENTE&activo=true' : '/usuarios?activo=true')
       .then(res => setUsuarios(Array.isArray(res.data) ? res.data : []))
       .catch(() => setUsuarios([]))
       .finally(() => setCargandoUsuarios(false));
     api.get('/departamentos?activo=true')
       .then(res => setDepartamentos(Array.isArray(res.data) ? res.data : []))
       .catch(() => setDepartamentos([]));
-  }, []);
+  }, [esTutorAdmin]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (!esTutorAdmin && usuarioActual?.rol !== 'ADMINISTRATIVO' && form.departamento_emisor_id) {
+      params.set('departamento_id', form.departamento_emisor_id);
+    }
+    api.get(`/comunicados/categorias-permitidas${params.toString() ? `?${params}` : ''}`)
+      .then(res => {
+        const permitidas = Array.isArray(res.data)
+          ? res.data.map(cat => {
+              const local = CAT_MAP[cat.value];
+              return { v: cat.value, l: local?.l || cat.label, color: local?.color || 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
+            })
+          : CATEGORIAS;
+        setCategoriasPermitidas(permitidas);
+        if (permitidas.length && !permitidas.some(cat => cat.v === form.categoria)) {
+          setForm(f => ({ ...f, categoria: permitidas[0].v }));
+        }
+      })
+      .catch(() => setCategoriasPermitidas(CATEGORIAS));
+  }, [esTutorAdmin, usuarioActual?.rol, form.departamento_emisor_id, form.categoria]);
 
   useEffect(() => {
     if (!comunicado) {
       setForm({
         ...EMPTY_FORM,
+        categoria: EMPTY_FORM.categoria,
+        area_emisora: esTutorAdmin ? 'Tutoría' : EMPTY_FORM.area_emisora,
+        dest_tipo: esTutorAdmin ? 'ROL' : EMPTY_FORM.dest_tipo,
+        dest_roles: esTutorAdmin ? ['DOCENTE'] : EMPTY_FORM.dest_roles,
         departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
           ? (usuarioActual?.departamento_id || '')
           : '',
       });
+      setAdjuntosNuevos([]);
       return;
     }
     // Reconstruir estado del form desde el comunicado existente
@@ -108,13 +147,17 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       categoria:             comunicado.categoria || 'GENERAL',
       prioridad:             comunicado.prioridad || 'INFORMATIVO',
       requiere_confirmacion: comunicado.requiere_confirmacion || false,
+      requiere_retroalimentacion: comunicado.requiere_retroalimentacion || false,
+      fijado:                comunicado.fijado || false,
       area_emisora:          comunicado.area_emisora || '',
       departamento_emisor_id: comunicado.departamento_emisor_id || '',
       fecha_publicacion:     comunicado.fecha_publicacion?.slice(0,10) || '',
       fecha_expiracion:      comunicado.fecha_expiracion?.slice(0,10)  || '',
+      fecha_limite_respuesta: comunicado.fecha_limite_respuesta?.slice(0,10) || '',
       dest_tipo, dest_roles, dest_usuarios, dest_departamentos,
     });
-  }, [comunicado, usuarioActual]);
+    setAdjuntosNuevos([]);
+  }, [comunicado, usuarioActual, esTutorAdmin]);
 
   useEffect(() => {
     if (!form.dest_usuarios.length || !usuarios.length) return;
@@ -129,6 +172,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const buildDestinatarios = () => {
+    if (esTutorAdmin && form.dest_tipo === 'ROL') return [{ tipo: 'ROL', ref: 'DOCENTE' }];
     if (form.dest_tipo === 'TODOS') return [{ tipo: 'TODOS', ref: null }];
     if (form.dest_tipo === 'ROL')
       return form.dest_roles.map(r => ({ tipo: 'ROL', ref: r }));
@@ -154,20 +198,33 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         categoria:             form.categoria,
         prioridad:             form.prioridad,
         requiere_confirmacion: form.requiere_confirmacion,
-        area_emisora:          form.area_emisora?.trim() || null,
-        departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
+        requiere_retroalimentacion: form.requiere_retroalimentacion,
+        fecha_limite_respuesta: toEndOfDay(form.fecha_limite_respuesta),
+        fijado:                form.fijado,
+        area_emisora:          esTutorAdmin ? 'Tutoría' : (form.area_emisora?.trim() || null),
+        departamento_emisor_id: esTutorAdmin ? null : usuarioActual?.rol === 'ADMINISTRATIVO'
           ? (usuarioActual?.departamento_id || null)
           : (form.departamento_emisor_id ? Number(form.departamento_emisor_id) : null),
         fecha_publicacion:     toStartOfDay(form.fecha_publicacion),
         fecha_expiracion:      toEndOfDay(form.fecha_expiracion),
         destinatarios,
       };
+      let guardado;
       if (comunicado) {
-        await api.put(`/comunicados/${comunicado.id}`, payload);
+        const { data } = await api.put(`/comunicados/${comunicado.id}`, payload);
+        guardado = data;
         showToast('Comunicado actualizado', 'success');
       } else {
-        await api.post('/comunicados', payload);
+        const { data } = await api.post('/comunicados', payload);
+        guardado = data;
         showToast('Comunicado creado', 'success');
+      }
+      for (const file of adjuntosNuevos) {
+        const fd = new FormData();
+        fd.append('archivo', file);
+        await api.post(`/comunicados/${guardado.id}/adjuntos`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
       }
       onSaved();
     } catch (err) {
@@ -198,6 +255,18 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       : [...form.dest_departamentos, value]);
   };
 
+  const elegirAdjuntos = files => {
+    const nuevos = Array.from(files || []);
+    const permitidos = nuevos.filter(file =>
+      ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)
+      && file.size <= 5 * 1024 * 1024
+    );
+    if (permitidos.length !== nuevos.length) {
+      setError('Solo se aceptan PDF, JPG, PNG o WEBP de hasta 5 MB');
+    }
+    setAdjuntosNuevos(prev => [...prev, ...permitidos].slice(0, 5));
+  };
+
   const usuariosFiltrados = usuarios
     .filter(u => !form.dest_usuarios.some(sel => sel.id === u.id))
     .filter(u => {
@@ -210,6 +279,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     .slice(0, 8);
 
   const esAdministrativo = usuarioActual?.rol === 'ADMINISTRATIVO';
+  const rolesDisponibles = esTutorAdmin ? ROLES_OPTS.filter(r => r.v === 'DOCENTE') : ROLES_OPTS;
+  const tiposDestinatario = esTutorAdmin ? ['ROL','USUARIO'] : ['TODOS','ROL','DEPARTAMENTO','USUARIO'];
   const departamentoAsignado = departamentos.find(dep => dep.id === Number(usuarioActual?.departamento_id));
   const nombreDepartamentoEmisor = usuarioActual?.departamento_nombre
     || departamentoAsignado?.nombre
@@ -253,8 +324,11 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               <label className="block text-sm text-slate-400 mb-1">Categoría</label>
               <select className="input-dark" value={form.categoria}
                 onChange={e => set('categoria', e.target.value)}>
-                {CATEGORIAS.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
+                {categoriasPermitidas.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
               </select>
+              <p className="text-xs text-slate-500 mt-1">
+                Se muestran solo las categorías válidas para el departamento emisor.
+              </p>
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Prioridad</label>
@@ -270,10 +344,23 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
             <label className="block text-sm text-slate-400 mb-1">Área emisora</label>
             <input className="input-dark" value={form.area_emisora}
               onChange={e => set('area_emisora', e.target.value)}
-              placeholder="Ej: Dirección Académica, TI, Administración…" />
+              placeholder="Ej: Dirección Académica, TI, Administración…"
+              disabled={esTutorAdmin} />
           </div>
 
-          {esAdministrativo ? (
+          {esTutorAdmin ? (
+            <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300">
+                Emisión de Tutoría
+              </p>
+              <p className="text-white font-semibold mt-1">
+                Los comunicados se enviarán desde el proceso de Tutoría.
+              </p>
+              <p className="text-xs text-slate-400 mt-2">
+                Puedes enviarlos a todos los docentes o seleccionar docentes específicos.
+              </p>
+            </div>
+          ) : esAdministrativo ? (
             <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-amber-300">
                 Departamento emisor
@@ -323,30 +410,94 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
             <span className="text-sm text-slate-300">Requiere confirmación de lectura</span>
           </label>
 
+          <div className="space-y-3 bg-white/5 rounded-xl p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-blue-500"
+                checked={form.requiere_retroalimentacion}
+                onChange={e => set('requiere_retroalimentacion', e.target.checked)} />
+              <span className="text-sm text-slate-300">Requiere retroalimentación</span>
+            </label>
+            {form.requiere_retroalimentacion && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Fecha límite de respuesta</label>
+                <input type="date" className="input-dark" value={form.fecha_limite_respuesta}
+                  onChange={e => set('fecha_limite_respuesta', e.target.value)} />
+              </div>
+            )}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-blue-500"
+                checked={form.fijado}
+                onChange={e => set('fijado', e.target.checked)} />
+              <span className="text-sm text-slate-300">Fijar comunicado arriba</span>
+            </label>
+          </div>
+
+          <div className="space-y-3 bg-white/5 rounded-xl p-4">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Adjuntos</p>
+              <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG o WEBP. Máximo 5 MB por archivo.</p>
+            </div>
+            {comunicado?.adjuntos?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {comunicado.adjuntos.map(a => (
+                  <span key={a.id} className="text-xs px-2.5 py-1 rounded-full bg-white/5 text-slate-300 border border-white/10">
+                    {a.nombre_original}
+                  </span>
+                ))}
+              </div>
+            )}
+            {adjuntosNuevos.length > 0 && (
+              <div className="space-y-1">
+                {adjuntosNuevos.map((file, idx) => (
+                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg bg-black/20 px-3 py-2">
+                    <span className="text-sm text-slate-300 truncate">{file.name}</span>
+                    <button type="button" onClick={() => setAdjuntosNuevos(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-xs text-red-300 hover:text-red-200">Quitar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="block rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-3 text-center cursor-pointer hover:border-blue-500/40 transition-colors">
+              <span className="text-sm text-slate-300">Seleccionar archivos</span>
+              <input type="file" className="hidden" multiple accept=".pdf,image/jpeg,image/png,image/webp"
+                onChange={e => { elegirAdjuntos(e.target.files); e.target.value = ''; }} />
+            </label>
+          </div>
+
           {/* Destinatarios */}
           <div className="space-y-3 bg-white/5 rounded-xl p-4">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Destinatarios</p>
             <div className="flex gap-2 flex-wrap">
-              {['TODOS','ROL','DEPARTAMENTO','USUARIO'].map(t => (
+              {tiposDestinatario.map(t => (
                 <button key={t} type="button"
                   onClick={() => set('dest_tipo', t)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     form.dest_tipo === t ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400 hover:text-white'
                   }`}>
-                  {t === 'TODOS' ? 'Todos los usuarios' : t === 'ROL' ? 'Por rol' : t === 'DEPARTAMENTO' ? 'Por departamento' : 'Usuarios específicos'}
+                  {esTutorAdmin && t === 'ROL'
+                    ? 'Todos los docentes'
+                    : esTutorAdmin && t === 'USUARIO'
+                      ? 'Docentes específicos'
+                      : t === 'TODOS' ? 'Todos los usuarios' : t === 'ROL' ? 'Por rol' : t === 'DEPARTAMENTO' ? 'Por departamento' : 'Usuarios específicos'}
                 </button>
               ))}
             </div>
             {form.dest_tipo === 'ROL' && (
               <div className="flex flex-wrap gap-2 mt-2">
-                {ROLES_OPTS.map(r => (
+                {rolesDisponibles.map(r => (
                   <label key={r.v} className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" className="accent-blue-500"
                       checked={form.dest_roles.includes(r.v)}
-                      onChange={() => toggleRol(r.v)} />
+                      onChange={() => toggleRol(r.v)}
+                      disabled={esTutorAdmin} />
                     <span className="text-sm text-slate-300">{r.l}</span>
                   </label>
                 ))}
+                {esTutorAdmin && (
+                  <p className="basis-full text-xs text-cyan-300/80">
+                    El Responsable de Tutoría solo puede emitir avisos al personal docente.
+                  </p>
+                )}
               </div>
             )}
             {form.dest_tipo === 'DEPARTAMENTO' && (
@@ -442,11 +593,32 @@ function PanelLecturas({ comunicado, onClose }) {
   const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const cargar = useCallback(() => {
+    setLoading(true);
     api.get(`/comunicados/${comunicado.id}/lecturas`)
       .then(r => setData(r.data))
       .finally(() => setLoading(false));
   }, [comunicado.id]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const revisar = async respuestaId => {
+    await api.post(`/comunicados/${comunicado.id}/respuestas/${respuestaId}/revisar`, { estado: 'REVISADO' });
+    cargar();
+  };
+
+  const descargarRespuestaAdjunto = async (respuestaId, adjunto) => {
+    const res = await api.get(
+      `/comunicados/${comunicado.id}/respuestas/${respuestaId}/adjuntos/${adjunto.id}/descargar`,
+      { responseType: 'blob' }
+    );
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = adjunto.nombre_original;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -477,7 +649,9 @@ function PanelLecturas({ comunicado, onClose }) {
                 {[
                   { label: 'Total',     value: data.total,      color: 'text-white'       },
                   { label: 'Leídos',    value: data.leidos,     color: 'text-green-300'   },
-                  { label: 'Pendientes',value: data.pendientes, color: 'text-amber-300'   },
+                  { label: comunicado.requiere_retroalimentacion ? 'Respondidos' : 'Pendientes',
+                    value: comunicado.requiere_retroalimentacion ? data.respondidos : data.pendientes,
+                    color: comunicado.requiere_retroalimentacion ? 'text-cyan-300' : 'text-amber-300' },
                 ].map(s => (
                   <div key={s.label} className="bg-white/5 rounded-xl p-3 text-center">
                     <p className="text-xs text-slate-500">{s.label}</p>
@@ -496,7 +670,8 @@ function PanelLecturas({ comunicado, onClose }) {
               <div className="space-y-2">
                 {data.detalle.map(u => (
                   <div key={u.usuario_id}
-                    className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
+                    className="bg-white/5 rounded-xl px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
                       <p className="text-xs text-slate-500">{u.rol}</p>
@@ -516,6 +691,44 @@ function PanelLecturas({ comunicado, onClose }) {
                         </span>
                       )}
                     </div>
+                    </div>
+                    {comunicado.requiere_retroalimentacion && (
+                      <div className="mt-3 border-t border-white/5 pt-3">
+                        {u.respuesta ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className={`text-xs px-2 py-1 rounded-full border ${
+                                u.respuesta.estado === 'REVISADO'
+                                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
+                                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                              }`}>
+                                {u.respuesta.estado === 'REVISADO' ? 'Revisado' : 'Respondido'}
+                              </span>
+                              {u.respuesta.estado !== 'REVISADO' && (
+                                <button onClick={() => revisar(u.respuesta.id)}
+                                  className="text-xs px-2 py-1 rounded-lg bg-green-600/50 hover:bg-green-600 text-white">
+                                  Marcar revisado
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-sm text-slate-300 whitespace-pre-line">{u.respuesta.comentario}</p>
+                            {u.respuesta.adjuntos?.length > 0 && (
+                              <div className="flex flex-wrap gap-2">
+                                {u.respuesta.adjuntos.map(a => (
+                                  <button key={a.id} type="button"
+                                    onClick={() => descargarRespuestaAdjunto(u.respuesta.id, a)}
+                                    className="text-xs text-blue-300 hover:text-blue-200">
+                                    {a.nombre_original}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-300">Sin respuesta</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -528,6 +741,202 @@ function PanelLecturas({ comunicado, onClose }) {
 }
 
 // ─── Página principal ──────────────────────────────────────────────────────────
+function PanelRespaldos({ onClose }) {
+  const { toast: showToast } = useToast();
+  const [estado, setEstado] = useState(null);
+  const [respaldos, setRespaldos] = useState([]);
+  const [contenido, setContenido] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [procesando, setProcesando] = useState(false);
+
+  const cargar = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [estadoRes, respaldosRes] = await Promise.all([
+        api.get('/comunicados/respaldos/estado'),
+        api.get('/comunicados/respaldos'),
+      ]);
+      setEstado(estadoRes.data);
+      setRespaldos(Array.isArray(respaldosRes.data) ? respaldosRes.data : []);
+    } catch {
+      showToast('Error al cargar respaldos', 'error');
+    } finally { setLoading(false); }
+  }, [showToast]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const generar = async () => {
+    setProcesando(true);
+    try {
+      await api.post('/comunicados/respaldos', {
+        estado: 'ARCHIVADO',
+        antiguedad_dias: null,
+        max_mb: 500,
+      });
+      showToast('Respaldo generado', 'success');
+      cargar();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No se pudo generar el respaldo', 'error');
+    } finally { setProcesando(false); }
+  };
+
+  const importar = async e => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('archivo', file);
+    setProcesando(true);
+    try {
+      await api.post('/comunicados/respaldos/importar', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      showToast('Respaldo importado', 'success');
+      cargar();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No se pudo importar el respaldo', 'error');
+    } finally { setProcesando(false); }
+  };
+
+  const descargar = async respaldo => {
+    try {
+      const res = await api.get(`/comunicados/respaldos/${respaldo.id}/descargar`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = respaldo.nombre_archivo;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast('No se pudo descargar el respaldo', 'error');
+    }
+  };
+
+  const verContenido = async respaldo => {
+    setContenido({ loading: true, respaldo });
+    try {
+      const { data } = await api.get(`/comunicados/respaldos/${respaldo.id}/contenido`);
+      setContenido(data);
+    } catch {
+      showToast('No se pudo leer el respaldo', 'error');
+      setContenido(null);
+    }
+  };
+
+  const comunicados = contenido?.manifest?.comunicados || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-slate-900 border-l border-white/10 flex flex-col h-full overflow-hidden animate-slideInRight">
+        <div className="px-6 py-5 border-b border-white/5 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-white">Respaldos de comunicados</h3>
+            <p className="text-sm text-slate-400 mt-0.5">Paquetes ZIP con historial, destinatarios y lecturas</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white mt-1">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {loading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="h-20 glass rounded-xl animate-pulse" />)}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-slate-500">Comunicados</p>
+                  <p className="text-2xl font-bold text-white mt-1">{estado?.total_comunicados || 0}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-slate-500">Archivados</p>
+                  <p className="text-2xl font-bold text-amber-300 mt-1">{estado?.archivados || 0}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <p className="text-xs text-slate-500">Estimado</p>
+                  <p className="text-2xl font-bold text-cyan-300 mt-1">{estado?.tamano_estimado_mb || 0} MB</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button onClick={generar} disabled={procesando}
+                  className="btn-blue disabled:opacity-50">
+                  {procesando ? 'Procesando...' : 'Generar respaldo'}
+                </button>
+                <label className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm cursor-pointer transition-colors">
+                  Importar ZIP
+                  <input type="file" accept=".zip" className="hidden" onChange={importar} disabled={procesando} />
+                </label>
+              </div>
+
+              <div className="space-y-3">
+                {respaldos.length === 0 ? (
+                  <div className="bg-white/5 rounded-xl p-6 text-center">
+                    <p className="text-white font-semibold">Sin respaldos registrados</p>
+                    <p className="text-sm text-slate-400 mt-1">Genera un paquete cuando tengas comunicados archivados.</p>
+                  </div>
+                ) : respaldos.map(r => (
+                  <div key={r.id} className="bg-white/5 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white truncate">{r.nombre_archivo}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {r.total_comunicados} comunicados - {r.tamano_mb} MB - {r.creado_en?.slice(0,10)}
+                        </p>
+                        <p className="text-[11px] text-slate-600 mt-1 truncate">SHA-256: {r.sha256}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => verContenido(r)}
+                          className="text-xs px-3 py-1.5 bg-blue-600/40 hover:bg-blue-600/70 text-blue-300 rounded-lg transition-colors">
+                          Ver
+                        </button>
+                        <button onClick={() => descargar(r)} disabled={!r.disponible}
+                          className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg transition-colors disabled:opacity-40">
+                          Descargar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {contenido && (
+                <div className="border-t border-white/5 pt-5">
+                  <h4 className="font-semibold text-white">Contenido del respaldo</h4>
+                  {contenido.loading ? (
+                    <p className="text-sm text-slate-400 mt-2">Leyendo respaldo...</p>
+                  ) : comunicados.length === 0 ? (
+                    <p className="text-sm text-slate-400 mt-2">El respaldo no contiene comunicados.</p>
+                  ) : (
+                    <div className="mt-3 space-y-2 max-h-80 overflow-y-auto pr-1">
+                      {comunicados.slice(0, 50).map(c => (
+                        <div key={`${c.id}-${c.creado_en}`} className="bg-black/20 rounded-lg px-3 py-2">
+                          <p className="text-sm font-medium text-white truncate">{c.titulo}</p>
+                          <p className="text-xs text-slate-500">
+                            {c.estado} - {c.categoria} - {c.creado_en?.slice(0,10)} - {c.lecturas?.length || 0} lecturas
+                          </p>
+                        </div>
+                      ))}
+                      {comunicados.length > 50 && (
+                        <p className="text-xs text-slate-500">Mostrando 50 de {comunicados.length} comunicados.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ComunicadosAdmin() {
   const { toast: showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -537,6 +946,7 @@ export default function ComunicadosAdmin() {
   const [filtroCategoria, setFiltroCategoria] = useState(searchParams.get('categoria') || '');
   const [modal,    setModal]    = useState(null);   // null | 'crear' | objeto comunicado
   const [lecturas, setLecturas] = useState(null);   // comunicado seleccionado para reporte
+  const [panelRespaldos, setPanelRespaldos] = useState(false);
   const [confirming, setConfirming] = useState(null); // { id, accion }
 
   const cargar = useCallback(async () => {
@@ -595,12 +1005,18 @@ export default function ComunicadosAdmin() {
             <h1 className="text-2xl font-bold text-white">Comunicados</h1>
             <p className="text-slate-400 text-sm mt-0.5">Gestión de comunicados institucionales</p>
           </div>
-          <button onClick={() => setModal('crear')} className="btn-blue flex items-center gap-2 self-start">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-            </svg>
-            Nuevo comunicado
-          </button>
+          <div className="flex gap-2 self-start">
+            <button onClick={() => setPanelRespaldos(true)}
+              className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-sm transition-colors">
+              Respaldos
+            </button>
+            <button onClick={() => setModal('crear')} className="btn-blue flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
+              </svg>
+              Nuevo comunicado
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
@@ -666,6 +1082,21 @@ export default function ComunicadosAdmin() {
                         {c.requiere_confirmacion && (
                           <span className="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded-full">
                             Req. confirmación
+                          </span>
+                        )}
+                        {c.requiere_retroalimentacion && (
+                          <span className="text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-1 rounded-full">
+                            Retroalimentación
+                          </span>
+                        )}
+                        {c.fijado && (
+                          <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full">
+                            Fijado
+                          </span>
+                        )}
+                        {c.adjuntos?.length > 0 && (
+                          <span className="text-xs bg-white/5 text-slate-300 border border-white/10 px-2 py-1 rounded-full">
+                            {c.adjuntos.length} adjunto{c.adjuntos.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </div>
@@ -766,6 +1197,12 @@ export default function ComunicadosAdmin() {
         <PanelLecturas
           comunicado={lecturas}
           onClose={() => setLecturas(null)}
+        />
+      )}
+
+      {panelRespaldos && (
+        <PanelRespaldos
+          onClose={() => setPanelRespaldos(false)}
         />
       )}
     </AdminLayout>

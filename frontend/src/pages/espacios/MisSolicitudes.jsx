@@ -16,6 +16,7 @@ const ESTADO_CFG = {
   APROBADA:   { label: 'Aprobada',    dot: 'bg-green-400',  bg: 'bg-green-500/20 border-green-500/30',  text: 'text-green-300'  },
   RECHAZADA:  { label: 'Rechazada',   dot: 'bg-red-400',    bg: 'bg-red-500/20 border-red-500/30',      text: 'text-red-300'    },
   CANCELADA:  { label: 'Cancelada',   dot: 'bg-slate-400',  bg: 'bg-slate-500/20 border-slate-500/30', text: 'text-slate-400'  },
+  LIBERADA:   { label: 'Liberada',    dot: 'bg-violet-400', bg: 'bg-violet-500/20 border-violet-500/30', text: 'text-violet-300' },
   FINALIZADA: { label: 'Finalizada',  dot: 'bg-blue-400',   bg: 'bg-blue-500/20 border-blue-500/30',   text: 'text-blue-300'   },
 };
 const TIPO_ICON = { AUDIOVISUAL: '🎥', RECTORIA: '🏛️', OTRO: '🏢' };
@@ -26,16 +27,42 @@ const REQS_LABEL = {
 };
 
 // ─── Drawer Detalle ────────────────────────────────────────────────────────────
+const solicitudDateTime = (solicitud, hora) => new Date(`${solicitud.fecha}T${hora}:00`);
+
+const estaEnHorario = (solicitud) => {
+  const ahora = new Date();
+  return ahora >= solicitudDateTime(solicitud, solicitud.hora_inicio) &&
+         ahora <= solicitudDateTime(solicitud, solicitud.hora_fin);
+};
+
 function DrawerDetalle({ solicitud, onClose, onCancelada }) {
   const { toast: showToast } = useToast();
   const [canceling, setCanceling]   = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [motivoCancelacion, setMotivoCancelacion] = useState('');
+  const [cierre, setCierre] = useState({
+    climas_apagados: false,
+    luces_apagadas: false,
+    microfonos_apagados: false,
+    equipo_apagado: false,
+    sala_cerrada: false,
+    sin_incidencias: true,
+    observaciones: '',
+  });
+  const [extension, setExtension] = useState({ minutos: 15, motivo: '' });
   const cfg = ESTADO_CFG[solicitud.estado] || ESTADO_CFG.PENDIENTE;
+  const puedeFinalizar = solicitud.estado === 'APROBADA' && estaEnHorario(solicitud);
 
   const cancelar = async () => {
+    if (!motivoCancelacion.trim() || motivoCancelacion.trim().length < 5) {
+      showToast('Escribe el motivo de cancelacion', 'error');
+      return;
+    }
     setCanceling(true);
     try {
-      await api.post(`/espacios/solicitudes/${solicitud.id}/cancelar`, {});
+      await api.post(`/espacios/solicitudes/${solicitud.id}/cancelar`, {
+        motivo_cancelacion: motivoCancelacion.trim(),
+      });
       showToast('Solicitud cancelada', 'success');
       onCancelada();
     } catch (err) {
@@ -43,6 +70,39 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
       setConfirming(false);
     } finally { setCanceling(false); }
   };
+
+  const finalizar = async () => {
+    if (!puedeFinalizar) {
+      showToast('Solo puedes finalizar dentro del horario reservado. Si aun no inicia, cancela la reserva.', 'error');
+      return;
+    }
+    try {
+      await api.post(`/espacios/solicitudes/${solicitud.id}/finalizar`, cierre);
+      showToast('Evento finalizado con checklist', 'success');
+      onCancelada();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Error al finalizar', 'error');
+    }
+  };
+
+  const pedirExtension = async () => {
+    if (!extension.motivo.trim()) {
+      showToast('Escribe el motivo de la extension', 'error');
+      return;
+    }
+    try {
+      await api.post(`/espacios/solicitudes/${solicitud.id}/solicitar-extension`, {
+        minutos: Number(extension.minutos),
+        motivo: extension.motivo,
+      });
+      showToast('Extension solicitada al responsable', 'success');
+      onCancelada();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No fue posible solicitar extension', 'error');
+    }
+  };
+
+  const toggleCierre = (key) => setCierre(v => ({ ...v, [key]: !v[key] }));
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -144,10 +204,62 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
               </div>
             </section>
           )}
+          {solicitud.estado === 'APROBADA' && (
+            <section>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Cierre operativo</h4>
+              <div className="space-y-2 bg-white/5 rounded-xl p-3">
+                {[
+                  ['climas_apagados', 'Climas apagados'],
+                  ['luces_apagadas', 'Lamparas apagadas'],
+                  ['microfonos_apagados', 'Microfonos apagados'],
+                  ['equipo_apagado', 'Equipo/proyector apagado'],
+                  ['sala_cerrada', 'Sala cerrada'],
+                ].map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm text-slate-300">
+                    <input type="checkbox" checked={cierre[key]} onChange={() => toggleCierre(key)} />
+                    {label}
+                  </label>
+                ))}
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input type="checkbox" checked={cierre.sin_incidencias} onChange={() => toggleCierre('sin_incidencias')} />
+                  Sin incidencias
+                </label>
+                <textarea className="input-dark resize-none text-sm" rows={2}
+                  placeholder="Observaciones de cierre..."
+                  value={cierre.observaciones}
+                  onChange={e => setCierre(v => ({ ...v, observaciones: e.target.value }))} />
+              </div>
+            </section>
+          )}
+          {solicitud.estado === 'APROBADA' && solicitud.extension?.estado !== 'PENDIENTE' && (
+            <section>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Solicitar mas tiempo</h4>
+              <div className="grid grid-cols-[90px,1fr] gap-2">
+                <select className="input-dark text-sm" value={extension.minutos}
+                  onChange={e => setExtension(v => ({ ...v, minutos: e.target.value }))}>
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={45}>45 min</option>
+                  <option value={60}>60 min</option>
+                </select>
+                <input className="input-dark text-sm" placeholder="Motivo de extension"
+                  value={extension.motivo}
+                  onChange={e => setExtension(v => ({ ...v, motivo: e.target.value }))} />
+              </div>
+            </section>
+          )}
           {solicitud.estado === 'RECHAZADA' && solicitud.motivo_rechazo && (
             <section>
               <h4 className="text-xs font-semibold text-red-400/70 uppercase tracking-wider mb-2">Motivo de rechazo</h4>
               <p className="text-sm text-red-300 bg-red-500/10 border border-red-500/20 rounded-xl p-3">{solicitud.motivo_rechazo}</p>
+            </section>
+          )}
+          {solicitud.estado === 'LIBERADA' && solicitud.motivo_liberacion && (
+            <section>
+              <h4 className="text-xs font-semibold text-violet-300 uppercase tracking-wider mb-2">Horario liberado</h4>
+              <p className="text-sm text-violet-100 bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
+                Tu solicitud aprobada fue liberada por un evento institucional prioritario. Motivo: {solicitud.motivo_liberacion}
+              </p>
             </section>
           )}
 
@@ -159,7 +271,25 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
 
         {/* Footer */}
         {(solicitud.estado === 'PENDIENTE' || solicitud.estado === 'APROBADA') && (
-          <div className="p-4 border-t border-white/5">
+          <div className="p-4 border-t border-white/5 space-y-2">
+            {solicitud.estado === 'APROBADA' && (
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={pedirExtension}
+                  className="bg-amber-600/80 hover:bg-amber-600 text-white rounded-xl py-2.5 text-sm font-medium transition-colors">
+                  Solicitar extension
+                </button>
+                <button onClick={finalizar} disabled={!puedeFinalizar}
+                  title={!puedeFinalizar ? 'Solo puedes finalizar dentro del horario reservado' : undefined}
+                  className="bg-green-600 hover:bg-green-500 text-white rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                  Finalizar evento
+                </button>
+              </div>
+            )}
+            {solicitud.estado === 'APROBADA' && !puedeFinalizar && (
+              <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                Solo se puede finalizar durante el horario reservado. Si ya no usaras la sala, cancela la reserva.
+              </p>
+            )}
             {!confirming ? (
               <button onClick={() => setConfirming(true)}
                 className="w-full bg-red-600/70 hover:bg-red-600 text-white rounded-xl py-2.5 text-sm font-medium transition-colors">
@@ -168,12 +298,17 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-slate-300 text-center">¿Cancelar esta solicitud?</p>
+                <textarea className="input-dark resize-none text-sm" rows={3}
+                  placeholder="Motivo de cancelacion"
+                  value={motivoCancelacion}
+                  onChange={e => setMotivoCancelacion(e.target.value)}
+                  required />
                 <div className="flex gap-2">
                   <button onClick={() => setConfirming(false)} disabled={canceling}
                     className="flex-1 bg-white/10 hover:bg-white/15 text-slate-300 rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50">
                     No, volver
                   </button>
-                  <button onClick={cancelar} disabled={canceling}
+                  <button onClick={cancelar} disabled={canceling || motivoCancelacion.trim().length < 5}
                     className="flex-1 bg-red-600 hover:bg-red-500 text-white rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50">
                     {canceling ? 'Cancelando…' : 'Sí, cancelar'}
                   </button>
@@ -223,7 +358,7 @@ export default function MisSolicitudes() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="w-full max-w-[1440px] 2xl:max-w-[1600px] 2xl:mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -240,13 +375,14 @@ export default function MisSolicitudes() {
         </div>
 
         {/* Filtros de estado */}
-        <div className="flex gap-1 glass rounded-xl p-1 self-start w-fit">
+        <div className="flex gap-1 glass rounded-xl p-1 self-start w-fit max-w-full overflow-x-auto">
           {[
             { k: '',           l: 'Todas' },
             { k: 'PENDIENTE',  l: 'Pendientes' },
             { k: 'APROBADA',   l: 'Aprobadas'  },
             { k: 'RECHAZADA',  l: 'Rechazadas' },
             { k: 'CANCELADA',  l: 'Canceladas' },
+            { k: 'LIBERADA',   l: 'Liberadas' },
           ].map(({ k, l }) => (
             <button key={k} onClick={() => setFiltro(k)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -263,7 +399,7 @@ export default function MisSolicitudes() {
             {[1,2,3].map(i => <div key={i} className="glass rounded-2xl h-24 animate-pulse" />)}
           </div>
         ) : solicitudes.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center space-y-3">
+          <div className="glass rounded-2xl p-12 2xl:p-16 text-center space-y-3">
             <div className="text-5xl">📋</div>
             <p className="text-white font-semibold">Sin solicitudes {filtro ? ESTADO_CFG[filtro]?.label?.toLowerCase() : ''}</p>
             <p className="text-slate-400 text-sm">
@@ -287,7 +423,7 @@ export default function MisSolicitudes() {
                     const cfg = ESTADO_CFG[s.estado] || ESTADO_CFG.PENDIENTE;
                     return (
                       <div key={s.id} onClick={() => setDetalle(s)}
-                        className="glass rounded-2xl p-4 cursor-pointer hover:bg-white/5 transition-colors">
+                        className="glass rounded-2xl p-4 2xl:p-5 cursor-pointer hover:bg-white/5 transition-colors">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -302,6 +438,9 @@ export default function MisSolicitudes() {
                             <p className="font-medium text-white text-sm truncate">{s.motivo}</p>
                             {s.estado === 'RECHAZADA' && s.motivo_rechazo && (
                               <p className="text-xs text-red-400 mt-0.5 truncate">Rechazada: {s.motivo_rechazo}</p>
+                            )}
+                            {s.estado === 'LIBERADA' && s.motivo_liberacion && (
+                              <p className="text-xs text-violet-300 mt-0.5 truncate">Liberada: {s.motivo_liberacion}</p>
                             )}
                             {s.requerimientos?.length > 0 && (
                               <p className="text-xs text-slate-500 mt-0.5">

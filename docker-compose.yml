@@ -69,6 +69,8 @@ services:
       # Sin esto webpack no detecta cambios y hay que hacer Ctrl+Shift+R manualmente.
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
+      # Evita errores del runtime React Refresh/HMR en chunks grandes como Tutoría.
+      - FAST_REFRESH=false
     # Sin REACT_APP_API_URL: el frontend usa window.location.hostname automaticamente
     depends_on:
       - backend

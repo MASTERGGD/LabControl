@@ -5,11 +5,13 @@ import { useToast } from '../../context/ToastContext';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
-const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO', 'DOCENTE'];
+const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'DOCENTE'];
 const ROL_COLOR = {
   SUPER_ADMIN: 'bg-blue-900/60 text-blue-300',
   LAB_ADMIN:   'bg-purple-900/60 text-purple-300',
   ADMINISTRATIVO: 'bg-amber-900/60 text-amber-300',
+  TUTORIA_ADMIN: 'bg-cyan-900/60 text-cyan-300',
+  SERVICIOS_ESCOLARES: 'bg-indigo-900/60 text-indigo-300',
   DOCENTE:     'bg-green-900/60 text-green-300',
 };
 
@@ -18,14 +20,15 @@ const ROL_COLOR = {
 
 function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
   const [form, setForm] = useState({
-    nombre:          usuario?.nombre          || '',
-    email:           usuario?.email           || '',
-    numero_empleado: usuario?.numero_empleado || '',
-    rol:             usuario?.rol             || 'DOCENTE',
-    laboratorio_id:  usuario?.laboratorio_id  ?? '',
-    departamento_id: usuario?.departamento_id ?? '',
-    password:        '',
-    activo:          usuario?.activo          ?? true,
+    nombre:              usuario?.nombre              || '',
+    email:               usuario?.email               || '',
+    numero_empleado:     usuario?.numero_empleado     || '',
+    rol:                 usuario?.rol                 || 'DOCENTE',
+    laboratorio_id:      usuario?.laboratorio_id      ?? '',
+    departamento_id:     usuario?.departamento_id     ?? '',
+    password:            '',
+    activo:              usuario?.activo              ?? true,
+    acceso_consultorio:  usuario?.acceso_consultorio  ?? false,
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
@@ -109,7 +112,12 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                 <label className="block text-sm text-slate-400 mb-1">Rol *</label>
                 <SelectDark
                   value={form.rol}
-                  onChange={v => setForm({ ...form, rol: v, laboratorio_id: v === 'LAB_ADMIN' ? form.laboratorio_id : '', departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : form.departamento_id })}
+                  onChange={v => setForm({
+                    ...form,
+                    rol: v,
+                    laboratorio_id: v === 'LAB_ADMIN' ? form.laboratorio_id : '',
+                    departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : '',
+                  })}
                   options={ROLES.map(r => ({ value: r, label: r }))}
                 />
               </div>
@@ -155,13 +163,29 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
               </div>
             )}
 
-            {/* Activo (solo en edición) */}
+            {/* Activo + Acceso consultorio (solo en edición) */}
             {esEdicion && (
-              <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
-                <input type="checkbox" name="activo" checked={form.activo} onChange={handleChange}
-                  className="w-4 h-4 rounded accent-blue-600" />
-                Usuario activo
-              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer">
+                  <input type="checkbox" name="activo" checked={form.activo} onChange={handleChange}
+                    className="w-4 h-4 rounded accent-blue-600" />
+                  Usuario activo
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" name="acceso_consultorio"
+                    checked={form.acceso_consultorio}
+                    onChange={e => setForm({ ...form, acceso_consultorio: e.target.checked })}
+                    className="w-4 h-4 rounded accent-rose-500" />
+                  <span className={form.acceso_consultorio ? "text-rose-300 font-medium" : "text-slate-400"}>
+                    🏥 Acceso al Consultorio Médico
+                  </span>
+                </label>
+                {form.acceso_consultorio && (
+                  <p className="text-xs text-rose-300 bg-rose-900/20 border border-rose-700/30 rounded-lg px-3 py-1.5">
+                    Este usuario verá el módulo de consultorio en su menú aunque su rol sea DOCENTE o ADMINISTRATIVO.
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -348,7 +372,7 @@ function ModalExcel({ onClose, onSave }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-slate-500 text-xs">Roles válidos: SUPER_ADMIN, LAB_ADMIN, DOCENTE</p>
+                <p className="text-slate-500 text-xs">Roles validos: SUPER_ADMIN, LAB_ADMIN, ADMINISTRATIVO, TUTORIA_ADMIN, SERVICIOS_ESCOLARES, DOCENTE</p>
               </div>
 
               {/* Selector de archivo */}

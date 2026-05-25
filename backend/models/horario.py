@@ -31,10 +31,12 @@ class Reservacion(Base):
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=False)
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     docente_suplente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    materia = Column(String, nullable=False)
-    grupo = Column(String, nullable=False)
-    cuatrimestre = Column(String, nullable=False)
-    estado = Column(String, default="PROGRAMADA")
+    materia             = Column(String, nullable=False)
+    carrera             = Column(String, nullable=True)   # carrera académica de la materia
+    cuatrimestre        = Column(String, nullable=False)  # período escolar (ej. "ENE-ABR-2025")
+    cuatrimestre_materia = Column(String, nullable=True)  # cuatrimestre de la materia (1–12)
+    grupo               = Column(String, nullable=False)
+    estado              = Column(String, default="PROGRAMADA")
     creado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     observaciones = Column(String, nullable=True)
 

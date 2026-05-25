@@ -1,6 +1,6 @@
 /**
  * RBAC — Matriz de permisos del frontend
- * LabControl UTECAN
+ * SIGA UTECAN
  *
  * Espejo del archivo backend/permissions.py
  * Mantener sincronizados cuando se agreguen módulos.
@@ -15,12 +15,18 @@ export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   LAB_ADMIN:   'LAB_ADMIN',
   ADMINISTRATIVO: 'ADMINISTRATIVO',
+  TUTORIA_ADMIN: 'TUTORIA_ADMIN',
+  SERVICIOS_ESCOLARES: 'SERVICIOS_ESCOLARES',
+  ALUMNO: 'ALUMNO',
   DOCENTE:     'DOCENTE',
 };
 
 const SA = ROLES.SUPER_ADMIN;
 const LA = ROLES.LAB_ADMIN;
 const AD = ROLES.ADMINISTRATIVO;
+const TA = ROLES.TUTORIA_ADMIN;
+const SE = ROLES.SERVICIOS_ESCOLARES;
+const AL = ROLES.ALUMNO;
 const DO = ROLES.DOCENTE;
 
 // ── Matriz de permisos ─────────────────────────────────────────────────────────
@@ -39,7 +45,7 @@ export const PERMISSIONS = {
   'usuarios:write':         [SA],
   'usuarios:delete':        [SA],
   'usuarios:reset':         [SA],
-  'usuarios:self':          [SA, LA, DO],
+  'usuarios:self':          [SA, LA, AD, TA, SE, AL, DO],
   'usuarios:import':        [SA],
 
   // Horarios
@@ -81,29 +87,38 @@ export const PERMISSIONS = {
   'incidentes:admin':       [SA, LA],
 
   // Catálogo
-  'catalogo:read':          [SA, LA, DO],
-  'catalogo:write':         [SA, LA],
-  'catalogo:delete':        [SA, LA],
-  'catalogo:import':        [SA, LA],
+  'catalogo:read':          [SA, LA, SE, DO],
+  'catalogo:write':         [SA, LA, SE],
+  'catalogo:delete':        [SA, LA, SE],
+  'catalogo:import':        [SA, LA, SE],
 
   // Reportes
   'reportes:read':          [SA, LA],
   'reportes:export':        [SA, LA],
 
   // Notificaciones
-  'notificaciones:own':     [SA, LA, DO],
-  'comunicados:own':        [SA, LA, AD, DO],
-  'comunicados:write':      [SA, LA, AD],
-  'departamentos:read':     [SA, LA, AD, DO],
+  'notificaciones:own':     [SA, LA, AD, TA, SE, AL, DO],
+  'comunicados:own':        [SA, LA, AD, TA, SE, AL, DO],
+  'comunicados:write':      [SA, LA, AD, TA, SE],
+  'departamentos:read':     [SA, LA, AD, TA, SE, DO],
   'departamentos:write':    [SA],
+  'tutoria:admin':          [SA, LA, TA],
+  'tutoria:own':            [DO],
 };
 
 // ── Permisos requeridos por ruta ───────────────────────────────────────────────
 // Fuente de verdad para RutaProtegida en App.jsx
 export const ROUTE_PERMISSIONS = {
-  '/admin':                       [SA, LA],
+  '/admin':                       [SA],
   '/lab':                         [SA, LA],
   '/administrativo':              [AD],
+  '/servicios-escolares':         [SA, SE],
+  '/servicios-escolares/alumnos': [SA, SE],
+  '/servicios-escolares/estudios-socioeconomicos': [SA, SE],
+  '/alumno':                      [AL],
+  '/alumno/estudio-socioeconomico': [AL],
+  '/admin/tutoria':               [SA, LA, TA],
+  '/admin/tutoria/estudio-socioeconomico': [SA, LA, TA],
   '/admin/laboratorios':          [SA, LA],
   '/admin/laboratorios/:labId':   [SA, LA],
   '/admin/usuarios':              [SA],
@@ -121,8 +136,8 @@ export const ROUTE_PERMISSIONS = {
   '/docente':                             [DO],
   '/docente/reservaciones':       [DO],
   '/docente/sesion/:sesionId':    [SA, LA, DO],
-  '/comunicados':                 [SA, LA, AD, DO],
-  '/admin/comunicados':           [SA, LA, AD],
+  '/comunicados':                 [SA, LA, AD, TA, DO],
+  '/admin/comunicados':           [SA, LA, AD, TA],
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

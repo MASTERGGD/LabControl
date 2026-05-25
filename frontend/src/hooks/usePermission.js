@@ -1,6 +1,6 @@
 /**
  * usePermission — Hook de RBAC para componentes React
- * LabControl UTECAN
+ * SIGA UTECAN
  *
  * Usa la matriz de PERMISSIONS definida en src/config/permissions.js
  * y el usuario autenticado del AuthContext.

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../hooks/useApi';
 
 /** Convierte cualquier error de axios/FastAPI a string legible */
@@ -12,6 +13,8 @@ export function formatApiError(err, fallback = 'Error al procesar') {
 
 /**
  * AutocompleteInput — campo de búsqueda con dropdown de sugerencias.
+ * El dropdown se renderiza vía portal en document.body para evitar
+ * problemas de z-index / overflow con contenedores padre.
  *
  * Props:
  *   endpoint    {string}   URL del endpoint buscar, ej. "/catalogo/materias/buscar"
@@ -39,14 +42,47 @@ export default function AutocompleteInput({
   const [abierto, setAbierto]         = useState(false);
   const [cargando, setCargando]       = useState(false);
   const [activo, setActivo]           = useState(-1);
-  const wrapperRef   = useRef(null);
-  const timerRef     = useRef(null);
-  const justSelected = useRef(false); // evita re-buscar al seleccionar
+  const [dropPos, setDropPos]         = useState({ top: 0, left: 0, width: 0 });
 
-  // Cerrar dropdown al hacer clic fuera
+  const wrapperRef    = useRef(null);
+  const inputRef      = useRef(null);
+  const timerRef      = useRef(null);
+  const justSelected  = useRef(false);
+
+  // Calcular posición del dropdown relativa al input (fixed, escapa cualquier contenedor)
+  const calcPos = useCallback(() => {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom;
+    const dropH = Math.min(sugerencias.length * 48 + 8, 224); // max-h-56 = 224px
+
+    if (spaceBelow < dropH && r.top > dropH) {
+      // Abrir hacia arriba
+      setDropPos({ bottom: window.innerHeight - r.top + 4, top: 'auto', left: r.left, width: r.width });
+    } else {
+      setDropPos({ top: r.bottom + 4, bottom: 'auto', left: r.left, width: r.width });
+    }
+  }, [sugerencias.length]);
+
+  // Recalcular posición al abrir y en scroll/resize
+  useEffect(() => {
+    if (!abierto) return;
+    calcPos();
+    window.addEventListener('scroll', calcPos, true);
+    window.addEventListener('resize', calcPos);
+    return () => {
+      window.removeEventListener('scroll', calcPos, true);
+      window.removeEventListener('resize', calcPos);
+    };
+  }, [abierto, calcPos]);
+
+  // Cerrar al hacer clic fuera
   useEffect(() => {
     const handler = (e) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+      if (
+        wrapperRef.current && !wrapperRef.current.contains(e.target) &&
+        !e.target.closest('[data-autocomplete-dropdown]')
+      ) {
         setAbierto(false);
         setActivo(-1);
       }
@@ -55,7 +91,7 @@ export default function AutocompleteInput({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Búsqueda con debounce — se omite si acaba de seleccionarse un item
+  // Búsqueda con debounce
   useEffect(() => {
     clearTimeout(timerRef.current);
     if (justSelected.current) { justSelected.current = false; return; }
@@ -105,16 +141,61 @@ export default function AutocompleteInput({
     }
   };
 
+  // Dropdown renderizado como portal
+  const dropdown = abierto && (sugerencias.length > 0 || (!cargando && value.length >= minChars)) && createPortal(
+    <div
+      data-autocomplete-dropdown
+      style={{
+        position: 'fixed',
+        top:    dropPos.top    !== 'auto' ? dropPos.top    : undefined,
+        bottom: dropPos.bottom !== 'auto' ? dropPos.bottom : undefined,
+        left:   dropPos.left,
+        width:  dropPos.width,
+        zIndex: 9999,
+      }}
+    >
+      {sugerencias.length > 0 ? (
+        <ul
+          className="rounded-xl overflow-hidden shadow-2xl max-h-56 overflow-y-auto"
+          style={{ background: '#0d1b2e', border: '1px solid rgba(255,255,255,0.1)' }}
+        >
+          {sugerencias.map((item, idx) => (
+            <li
+              key={item.id ?? idx}
+              onMouseDown={() => handleSelect(item)}
+              style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+              className={`px-3 py-2.5 cursor-pointer text-sm transition-colors
+                ${idx === activo
+                  ? 'bg-blue-500/20 text-blue-200'
+                  : 'text-slate-200 hover:bg-white/5'}`}
+            >
+              {renderItem ? renderItem(item) : String(item)}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div
+          className="rounded-xl px-3 py-3 text-sm text-slate-500 text-center"
+          style={{ background: '#0d1b2e', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          Sin resultados para «{value}»
+        </div>
+      )}
+    </div>,
+    document.body
+  );
+
   return (
     <div ref={wrapperRef} className="relative w-full">
       <div className="relative">
         <input
+          ref={inputRef}
           type="text"
           value={value}
           disabled={disabled}
           placeholder={placeholder}
           onChange={e => { onChange(e.target.value); }}
-          onFocus={() => sugerencias.length > 0 && setAbierto(true)}
+          onFocus={() => { if (sugerencias.length > 0) { calcPos(); setAbierto(true); } }}
           onKeyDown={handleKeyDown}
           className={`input-dark pr-8 ${className}`}
           autoComplete="off"
@@ -126,36 +207,11 @@ export default function AutocompleteInput({
           <button
             type="button"
             onClick={() => { onChange(''); setSugerencias([]); setAbierto(false); }}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-base leading-none"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base leading-none"
           >×</button>
         )}
       </div>
-
-      {abierto && sugerencias.length > 0 && (
-        <ul className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden shadow-2xl max-h-56 overflow-y-auto"
-          style={{ background:'#0d1b2e', border:'1px solid rgba(255,255,255,0.1)' }}>
-          {sugerencias.map((item, idx) => (
-            <li
-              key={item.id ?? idx}
-              onMouseDown={() => handleSelect(item)}
-              style={{ borderBottom:'1px solid rgba(255,255,255,0.04)' }}
-              className={`px-3 py-2.5 cursor-pointer text-sm transition-colors
-                ${idx === activo
-                  ? 'bg-blue-500/20 text-blue-200'
-                  : 'text-slate-200 hover:bg-white/5'}`}
-            >
-              {renderItem ? renderItem(item) : String(item)}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {abierto && !cargando && sugerencias.length === 0 && value.length >= minChars && (
-        <div className="absolute z-50 w-full mt-1 rounded-xl px-3 py-3 text-sm text-slate-500 text-center"
-          style={{ background:'#0d1b2e', border:'1px solid rgba(255,255,255,0.08)' }}>
-          Sin resultados para «{value}»
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }

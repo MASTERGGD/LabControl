@@ -30,6 +30,8 @@ from dependencies import get_current_user
 SA  = RolUsuario.SUPER_ADMIN
 LA  = RolUsuario.LAB_ADMIN
 AD  = RolUsuario.ADMINISTRATIVO
+TA  = RolUsuario.TUTORIA_ADMIN
+SE  = RolUsuario.SERVICIOS_ESCOLARES
 DO  = RolUsuario.DOCENTE
 
 # ── Matriz de permisos ─────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "usuarios:write":           frozenset({SA}),            # crear / editar usuario
     "usuarios:delete":          frozenset({SA}),            # desactivar
     "usuarios:reset":           frozenset({SA}),            # reset de contraseña
-    "usuarios:self":            frozenset({SA, LA, AD, DO}),   # cambiar propia contraseña
+    "usuarios:self":            frozenset({SA, LA, AD, TA, DO}),   # cambiar propia contraseña
     "usuarios:import":          frozenset({SA}),            # importar desde Excel
 
     # ── Horarios ────────────────────────────────────────────────────────────────
@@ -103,13 +105,28 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "reportes:export":          frozenset({SA, LA}),        # descargar Excel
 
     # ── Notificaciones ───────────────────────────────────────────────────────────
-    "notificaciones:own":       frozenset({SA, LA, AD, DO}),   # ver / marcar las propias
+    "notificaciones:own":       frozenset({SA, LA, AD, TA, DO}),   # ver / marcar las propias
 
     # Departamentos y comunicados institucionales
-    "departamentos:read":       frozenset({SA, LA, AD, DO}),
+    "departamentos:read":       frozenset({SA, LA, AD, TA, DO}),
     "departamentos:write":      frozenset({SA}),
-    "comunicados:own":          frozenset({SA, LA, AD, DO}),
-    "comunicados:write":        frozenset({SA, LA, AD}),
+    "comunicados:own":          frozenset({SA, LA, AD, TA, DO}),
+    "comunicados:write":        frozenset({SA, LA, AD, TA}),
+
+    # Tutoria
+    "tutoria:admin":            frozenset({SA, LA, TA}),
+    "tutoria:own":              frozenset({DO}),
+
+    # Servicios Escolares comparte catalogo academico y comunicados.
+    "usuarios:self":            frozenset({SA, LA, AD, TA, SE, DO}),
+    "catalogo:read":            frozenset({SA, LA, SE, DO}),
+    "catalogo:write":           frozenset({SA, LA, SE}),
+    "catalogo:delete":          frozenset({SA, LA, SE}),
+    "catalogo:import":          frozenset({SA, LA, SE}),
+    "notificaciones:own":       frozenset({SA, LA, AD, TA, SE, DO}),
+    "departamentos:read":       frozenset({SA, LA, AD, TA, SE, DO}),
+    "comunicados:own":          frozenset({SA, LA, AD, TA, SE, DO}),
+    "comunicados:write":        frozenset({SA, LA, AD, TA, SE}),
 }
 
 

@@ -39,7 +39,23 @@ class EstadoSolicitud(str, enum.Enum):
     APROBADA   = "APROBADA"
     RECHAZADA  = "RECHAZADA"
     CANCELADA  = "CANCELADA"
+    LIBERADA   = "LIBERADA"
     FINALIZADA = "FINALIZADA"
+
+
+class EstadoOperativoEspacio(str, enum.Enum):
+    DISPONIBLE         = "DISPONIBLE"
+    REQUIERE_LIMPIEZA = "REQUIERE_LIMPIEZA"
+    REQUIERE_ACOMODO  = "REQUIERE_ACOMODO"
+    REVISION_TECNICA   = "REVISION_TECNICA"
+    FUERA_SERVICIO     = "FUERA_SERVICIO"
+
+
+class EstadoExtension(str, enum.Enum):
+    SIN_SOLICITUD = "SIN_SOLICITUD"
+    PENDIENTE     = "PENDIENTE"
+    APROBADA      = "APROBADA"
+    RECHAZADA     = "RECHAZADA"
 
 
 class TipoRequerimiento(str, enum.Enum):
@@ -65,7 +81,7 @@ class EspacioInstitucional(Base):
 
     id          = Column(Integer, primary_key=True, index=True)
     nombre      = Column(String(120), nullable=False, unique=True)
-    tipo        = Column(Enum(TipoEspacio), nullable=False)
+    tipo        = Column(Enum(TipoEspacio, native_enum=False, length=20), nullable=False)
     ubicacion   = Column(String(200), nullable=True)
     capacidad   = Column(Integer,     nullable=True)
     descripcion = Column(Text,        nullable=True)
@@ -78,11 +94,23 @@ class EspacioInstitucional(Base):
     # ¿Las solicitudes requieren aprobación explícita o se auto-aprueban?
     requiere_aprobacion = Column(Boolean, default=True, nullable=False)
 
+    # Margen operativo para limpieza, acomodo y revision entre eventos.
+    buffer_antes_minutos   = Column(Integer, default=0, nullable=False)
+    buffer_despues_minutos = Column(Integer, default=30, nullable=False)
+    estado_operativo       = Column(Enum(EstadoOperativoEspacio, native_enum=False, length=30),
+                                    default=EstadoOperativoEspacio.DISPONIBLE, nullable=False)
+    aviso_operativo        = Column(Text, nullable=True)
+
     creado_en = Column(DateTime, default=_utcnow, nullable=False)
 
     # Relaciones
     responsables = relationship(
         "EspacioResponsable",
+        back_populates="espacio",
+        cascade="all, delete-orphan",
+    )
+    apoyos = relationship(
+        "EspacioApoyo",
         back_populates="espacio",
         cascade="all, delete-orphan",
     )
@@ -112,6 +140,26 @@ class EspacioResponsable(Base):
     usuario = relationship("Usuario")
 
 
+class EspacioApoyo(Base):
+    """
+    Usuarios o areas de apoyo que reciben avisos operativos cuando una sala
+    se aprueba, cambia, requiere preparacion o queda pendiente de cierre.
+    """
+    __tablename__ = "espacios_apoyos"
+    __table_args__ = (
+        UniqueConstraint("espacio_id", "usuario_id", name="uq_espacio_apoyo"),
+    )
+
+    id          = Column(Integer, primary_key=True, index=True)
+    espacio_id  = Column(Integer, ForeignKey("espacios_institucionales.id", ondelete="CASCADE"), nullable=False, index=True)
+    usuario_id  = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    rol_apoyo   = Column(String(120), nullable=True)
+    asignado_en = Column(DateTime, default=_utcnow)
+
+    espacio = relationship("EspacioInstitucional", back_populates="apoyos")
+    usuario = relationship("Usuario")
+
+
 class SolicitudEspacio(Base):
     """
     Solicitud de uso de un espacio institucional por fecha y bloque horario.
@@ -138,7 +186,7 @@ class SolicitudEspacio(Base):
     observaciones      = Column(Text,    nullable=True)
 
     # Estado
-    estado        = Column(Enum(EstadoSolicitud), default=EstadoSolicitud.PENDIENTE, nullable=False, index=True)
+    estado        = Column(Enum(EstadoSolicitud, native_enum=False, length=20), default=EstadoSolicitud.PENDIENTE, nullable=False, index=True)
     motivo_rechazo = Column(Text, nullable=True)
 
     # Auditoría de ciclo de vida
@@ -147,12 +195,37 @@ class SolicitudEspacio(Base):
     aprobado_en  = Column(DateTime, nullable=True)
     cancelado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     cancelado_en  = Column(DateTime, nullable=True)
+    liberado_por  = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    liberado_en   = Column(DateTime, nullable=True)
+    motivo_liberacion = Column(Text, nullable=True)
+    evento_prioritario = Column(Boolean, default=False, nullable=False)
+    finalizado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    finalizado_en  = Column(DateTime, nullable=True)
+
+    cierre_climas_apagados     = Column(Boolean, default=False, nullable=False)
+    cierre_luces_apagadas      = Column(Boolean, default=False, nullable=False)
+    cierre_microfonos_apagados = Column(Boolean, default=False, nullable=False)
+    cierre_equipo_apagado      = Column(Boolean, default=False, nullable=False)
+    cierre_sala_cerrada        = Column(Boolean, default=False, nullable=False)
+    cierre_sin_incidencias     = Column(Boolean, default=True, nullable=False)
+    cierre_observaciones       = Column(Text, nullable=True)
+
+    extension_minutos_solicitados = Column(Integer, nullable=True)
+    extension_motivo              = Column(Text, nullable=True)
+    extension_estado              = Column(Enum(EstadoExtension, native_enum=False, length=20),
+                                           default=EstadoExtension.SIN_SOLICITUD, nullable=False)
+    extension_solicitada_en       = Column(DateTime, nullable=True)
+    extension_resuelta_por        = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    extension_resuelta_en         = Column(DateTime, nullable=True)
 
     # Relaciones
     espacio      = relationship("EspacioInstitucional", back_populates="solicitudes")
     solicitante  = relationship("Usuario", foreign_keys=[solicitante_id])
     aprobador    = relationship("Usuario", foreign_keys=[aprobado_por])
     cancelador   = relationship("Usuario", foreign_keys=[cancelado_por])
+    liberador    = relationship("Usuario", foreign_keys=[liberado_por])
+    finalizador   = relationship("Usuario", foreign_keys=[finalizado_por])
+    extension_responsable = relationship("Usuario", foreign_keys=[extension_resuelta_por])
     requerimientos = relationship(
         "RequerimientoSolicitud",
         back_populates="solicitud",
@@ -169,7 +242,7 @@ class RequerimientoSolicitud(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     solicitud_id = Column(Integer, ForeignKey("solicitudes_espacio.id", ondelete="CASCADE"), nullable=False, index=True)
-    tipo         = Column(Enum(TipoRequerimiento), nullable=False)
+    tipo         = Column(Enum(TipoRequerimiento, native_enum=False, length=30), nullable=False)
     descripcion  = Column(Text,    nullable=True)   # Texto libre para OTRO o detalles
     cantidad     = Column(Integer, default=1)
     requerido    = Column(Boolean, default=True)

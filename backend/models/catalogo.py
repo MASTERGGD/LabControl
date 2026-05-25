@@ -1,4 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, UniqueConstraint
+import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Boolean, UniqueConstraint
+from sqlalchemy.orm import relationship
 from database import Base
 
 
@@ -16,6 +19,14 @@ class CatalogoAlumno(Base):
     periodo          = Column(String, nullable=False)    # MAY-AGO 2026, ENE-ABR 2026, …
     activo           = Column(Boolean, default=True)
 
+    # ── Acceso SIGA ────────────────────────────────────────────────────────
+    correo_institucional = Column(String(120), nullable=True)   # correo @utecan.edu.mx
+    usuario_id           = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+
+    # ── Relaciones ──────────────────────────────────────────────────────────
+    usuario                = relationship("Usuario", foreign_keys=[usuario_id])
+    fichas_socioeconomicas = relationship("FichaSocioeconomica", back_populates="alumno", foreign_keys="FichaSocioeconomica.alumno_id")
+
     __table_args__ = (
         UniqueConstraint("matricula", "periodo", name="uq_alumno_matricula_periodo"),
     )
@@ -30,3 +41,14 @@ class CatalogoMateria(Base):
     cuatrimestre_oficial = Column(Integer, nullable=True)   # cuatrimestre del plan (3, 5, 9…)
     periodo              = Column(String, nullable=True)    # periodo de vigencia
     activo               = Column(Boolean, default=True)
+
+
+class CatalogoCarrera(Base):
+    __tablename__ = "catalogo_carreras"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    clave           = Column(String(30), nullable=False, unique=True, index=True)
+    nombre          = Column(String(180), nullable=False, unique=True, index=True)
+    activo          = Column(Boolean, default=True, nullable=False)
+    creado_en       = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    actualizado_en  = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)

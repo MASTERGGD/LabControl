@@ -4,9 +4,12 @@ import api from '../../hooks/useApi';
 import SelectDark     from '../../components/SelectDark';
 import DatePickerDark from '../../components/DatePickerDark';
 import AutocompleteInput from '../../components/AutocompleteInput';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Combobox de búsqueda de activos ─────────────────────────────────────────
 function ActivoCombobox({ activos, value, onChange }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [query, setQuery]         = useState('');
   const [abierto, setAbierto]     = useState(false);
   const [destacado, setDestacado] = useState(-1);
@@ -75,7 +78,7 @@ function ActivoCombobox({ activos, value, onChange }) {
   return (
     <div className="activo-combobox relative">
       <div className="flex items-center rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/60"
-        style={{ background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(255,255,255,0.12)' }}>
+        style={{ background: isDay ? '#FFFFFF' : 'rgba(15,23,42,0.7)', border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.12)'}` }}>
         <span className="pl-3 text-slate-500 text-sm select-none">🔍</span>
         <input
           ref={inputRef}
@@ -85,7 +88,7 @@ function ActivoCombobox({ activos, value, onChange }) {
           onFocus={() => setAbierto(true)}
           onChange={e => { setQuery(e.target.value); setAbierto(true); setDestacado(-1); }}
           onKeyDown={handleKey}
-          className="flex-1 px-2 py-2 text-sm text-slate-200 outline-none placeholder-slate-600"
+          className={`flex-1 px-2 py-2 text-sm outline-none placeholder-slate-500 ${isDay ? 'text-slate-950' : 'text-slate-200'}`}
           style={{ background: 'transparent' }}
           autoComplete="off"
         />
@@ -110,9 +113,9 @@ function ActivoCombobox({ activos, value, onChange }) {
           ref={listaRef}
           className="absolute z-50 mt-1 w-full rounded-xl shadow-2xl max-h-64 overflow-y-auto"
           style={{
-            background: 'rgba(15,23,42,0.96)',
+            background: isDay ? '#FFFFFF' : 'rgba(15,23,42,0.96)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.10)',
+            border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.10)'}`,
           }}
         >
           {filtrados.length === 0 ? (
@@ -122,7 +125,7 @@ function ActivoCombobox({ activos, value, onChange }) {
           ) : (
             <>
               <div className="px-3 py-1.5 text-xs text-slate-600 sticky top-0"
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(15,23,42,0.98)' }}>
+                style={{ borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)'}`, background: isDay ? '#F8FAFC' : 'rgba(15,23,42,0.98)' }}>
                 {filtrados.length} activo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''}
                 {query && ` · filtrando por "${query}"`}
               </div>
@@ -134,8 +137,8 @@ function ActivoCombobox({ activos, value, onChange }) {
                   className="w-full text-left px-4 py-2.5 text-sm transition"
                   style={{
                     background: destacado === i ? 'rgba(59,130,246,0.15)' : 'transparent',
-                    color: destacado === i ? '#93c5fd' : '#cbd5e1',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    color: destacado === i ? '#1D4ED8' : isDay ? '#0F172A' : '#cbd5e1',
+                    borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.04)'}`,
                   }}
                   onMouseEnter={() => setDestacado(i)}
                 >
@@ -198,6 +201,8 @@ function diasRestantes(fechaStr) {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function Prestamos() {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
 
   // ── Estado general ──
   const [prestamos, setPrestamos]       = useState([]);
@@ -479,7 +484,7 @@ export default function Prestamos() {
 
         {/* Tabla de préstamos */}
         <div className="rounded-2xl overflow-hidden"
-          style={{ background: 'rgba(30,41,59,0.50)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
+          style={{ background: isDay ? '#FFFFFF' : 'rgba(30,41,59,0.50)', border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.08)'}`, backdropFilter: 'blur(12px)' }}>
 
           {/* ── Loading ── */}
           {loading ? (
@@ -536,7 +541,7 @@ export default function Prestamos() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <tr style={{ background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.05)', borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.08)'}` }}>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Activo</th>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Receptor</th>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Propósito</th>
@@ -557,8 +562,8 @@ export default function Prestamos() {
                       <tr key={p.id}
                         className="transition-colors"
                         style={{
-                          background: idx % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent',
-                          borderBottom: '1px solid rgba(255,255,255,0.05)',
+                          background: idx % 2 === 1 ? (isDay ? '#F8FAFC' : 'rgba(255,255,255,0.02)') : 'transparent',
+                          borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.05)'}`,
                         }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                         onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent'}

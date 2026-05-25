@@ -30,10 +30,10 @@ function rowHeightPx(inicio, fin) {
 }
 
 // Estilos compartidos
-const BG_DARK    = 'rgb(2 6 23)';           // slate-950
-const BORDER_ROW = 'rgba(255,255,255,0.04)';
-const BORDER_COL = 'rgba(255,255,255,0.05)';
-const BORDER_HDR = 'rgba(255,255,255,0.07)';
+const BG_DARK    = 'var(--timegrid-bg, rgb(2 6 23))';
+const BORDER_ROW = 'var(--timegrid-row-border, rgba(255,255,255,0.04))';
+const BORDER_COL = 'var(--timegrid-col-border, rgba(255,255,255,0.05))';
+const BORDER_HDR = 'var(--timegrid-header-border, rgba(255,255,255,0.07))';
 
 export default function TimeGrid({
   dias,
@@ -43,7 +43,7 @@ export default function TimeGrid({
   showBreak = true,
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="time-grid overflow-x-auto">
       {/* border-separate + spacing:0 es necesario para que sticky funcione en Safari/Chrome */}
       <table
         className="w-full text-sm"

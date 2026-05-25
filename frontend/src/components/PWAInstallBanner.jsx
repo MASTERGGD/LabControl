@@ -1,6 +1,6 @@
 /**
  * PWAInstallBanner — banner sutil en la parte inferior de la pantalla
- * que invita al usuario a instalar LabControl como app.
+ * que invita al usuario a instalar SIGA como app.
  *
  * Solo aparece en Chrome/Edge móvil y desktop cuando el navegador
  * dispara el evento beforeinstallprompt.
@@ -38,14 +38,14 @@ export default function PWAInstallBanner() {
       {/* Ícono */}
       <img
         src="/icons/icon-192.png"
-        alt="LabControl"
+        alt="SIGA"
         style={{ width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0 }}
       />
 
       {/* Texto */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: '#f1f5f9', lineHeight: 1.3 }}>
-          Instalar LabControl
+          Instalar SIGA
         </p>
         <p style={{ margin: '2px 0 0', fontSize: '11px', color: '#94a3b8', lineHeight: 1.4 }}>
           Acceso rápido desde tu pantalla de inicio

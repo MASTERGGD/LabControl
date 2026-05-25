@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import TimeGrid from '../../components/TimeGrid';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
@@ -74,6 +75,7 @@ function hm2min(hm) {
 
 // ─── Componente Calendarlo semanal ────────────────────────────────────────────
 function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSeleccionar }) {
+  const { usuario } = useAuth();
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading]         = useState(false);
 
@@ -91,8 +93,9 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const semanaFin = addDays(semanaInicio, 6);
-  const dias = Array.from({ length: 7 }, (_, i) => addDays(semanaInicio, i));
+  const semanaFin = addDays(semanaInicio, 5);
+  const fechas = Array.from({ length: 6 }, (_, i) => addDays(semanaInicio, i));
+  const dias = [0, 1, 2, 3, 4, 5];
 
   // Construir mapa: "YYYY-MM-DD HH" → solicitudes
   const mapa = {};
@@ -100,7 +103,7 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
     const iniH = parseInt(s.hora_inicio.split(':')[0]);
     const finH = parseInt(s.hora_fin.split(':')[0]);
     for (let h = iniH; h < finH; h++) {
-      const key = `${s.fecha}_${String(h).padStart(2,'0')}`;
+      const key = `${s.fecha}_${String(h).padStart(2,'0')}:00`;
       if (!mapa[key]) mapa[key] = [];
       mapa[key].push(s);
     }
@@ -108,7 +111,74 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
 
   const hIni = parseInt(espacio.hora_inicio_permitida?.split(':')[0] || 8);
   const hFin = parseInt(espacio.hora_fin_permitida?.split(':')[0] || 20);
-  const horasPermitidas = HORAS.filter(h => parseInt(h) >= hIni && parseInt(h) < hFin);
+  const horasPermitidas = HORAS
+    .filter(h => parseInt(h) >= hIni && parseInt(h) < hFin)
+    .map(h => `${h}:00`);
+  const horaFinMap = {};
+  horasPermitidas.forEach(hora => {
+    horaFinMap[hora] = `${String(parseInt(hora.split(':')[0]) + 1).padStart(2, '0')}:00`;
+  });
+
+  const esPasado = (fecha, hora) => new Date(`${fmtDate(fecha)}T${hora}:00`) < new Date();
+
+  const renderCell = (dia, hora) => {
+    const fecha = fechas[dia];
+    const fechaKey = fmtDate(fecha);
+    const bloques = mapa[`${fechaKey}_${hora}`] || [];
+    const aprobada = bloques.find(b => b.estado === 'APROBADA');
+    const pendiente = bloques.find(b => b.estado === 'PENDIENTE');
+    const miSolicitud = bloques.find(b => b.solicitante_id === usuario?.id);
+
+    if (aprobada) {
+      const esMia = aprobada.solicitante_id === usuario?.id;
+      return (
+        <div title={`${aprobada.solicitante_nombre}: ${aprobada.motivo}`}
+          className={`h-full min-h-[56px] rounded-lg p-2 overflow-hidden border ${
+            esMia ? 'bg-indigo-600/40 border-indigo-400/60' : 'bg-blue-900/35 border-blue-500/35'
+          }`}>
+          {esMia && <p className="text-[10px] font-bold text-indigo-200/80 uppercase tracking-wide">Mi solicitud</p>}
+          <p className={`text-xs font-bold leading-tight truncate ${esMia ? 'text-indigo-100' : 'text-blue-200'}`}>
+            {aprobada.motivo}
+          </p>
+          <p className={`text-[10px] mt-1 truncate ${esMia ? 'text-indigo-200/70' : 'text-blue-200/70'}`}>
+            {aprobada.solicitante_nombre}
+          </p>
+        </div>
+      );
+    }
+
+    if (pendiente) {
+      const esMia = miSolicitud?.id === pendiente.id;
+      return (
+        <div title={`Pendiente: ${pendiente.solicitante_nombre}`}
+          className={`h-full min-h-[56px] rounded-lg p-2 overflow-hidden border ${
+            esMia ? 'bg-orange-600/30 border-orange-400/50' : 'bg-amber-600/25 border-amber-500/40'
+          }`}>
+          <p className={`text-xs font-bold leading-tight truncate ${esMia ? 'text-orange-200' : 'text-amber-200'}`}>
+            {esMia ? 'Mi solicitud pendiente' : 'Pendiente'}
+          </p>
+          <p className={`text-[10px] mt-1 truncate ${esMia ? 'text-orange-200/70' : 'text-amber-200/70'}`}>
+            {pendiente.motivo}
+          </p>
+        </div>
+      );
+    }
+
+    if (esPasado(fecha, hora)) {
+      return <div className="h-full min-h-[56px] rounded-lg border border-white/[0.04] bg-white/[0.015] opacity-40" />;
+    }
+
+    return (
+      <button type="button" onClick={() => onSeleccionar(fechaKey, hora.slice(0, 2))}
+        className="group h-full min-h-[56px] w-full rounded-lg border border-white/[0.07] bg-white/[0.03] flex items-center justify-center transition-all duration-150 hover:border-blue-400/50 hover:bg-blue-500/10 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)]"
+        title="Solicitar este horario">
+        <svg className="w-4 h-4 text-slate-700 group-hover:text-blue-400 transition-colors"
+          fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-3">
@@ -145,79 +215,14 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
       {loading ? (
         <div className="glass rounded-2xl p-8 text-center text-slate-400 animate-pulse">Cargando disponibilidad…</div>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-white/5">
-                  <th className="w-12 p-2 text-slate-500 font-normal text-right pr-3">Hora</th>
-                  {dias.map((d, i) => {
-                    const hoy = fmtDate(d) === fmtDate(new Date());
-                    return (
-                      <th key={i} className={`p-2 text-center font-normal ${hoy ? 'text-blue-400' : 'text-slate-400'}`}>
-                        <div>{DIAS[i]}</div>
-                        <div className={`text-sm font-semibold ${hoy ? 'text-blue-300' : 'text-slate-200'}`}>
-                          {d.getDate()}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {horasPermitidas.map(h => (
-                  <tr key={h} className="border-b border-white/3 hover:bg-white/2">
-                    <td className="p-1 pr-3 text-right text-slate-500 whitespace-nowrap">{h}:00</td>
-                    {dias.map((d, di) => {
-                      const key     = `${fmtDate(d)}_${h}`;
-                      const bloques = mapa[key] || [];
-                      const pasado  = d < new Date() && fmtDate(d) !== fmtDate(new Date());
-                      const aprobado = bloques.some(b => b.estado === 'APROBADA');
-                      const pendiente = bloques.some(b => b.estado === 'PENDIENTE');
-
-                      if (aprobado) {
-                        const b = bloques.find(b => b.estado === 'APROBADA');
-                        return (
-                          <td key={di} className="p-0.5">
-                            <div title={`${b.solicitante_nombre}: ${b.motivo}`}
-                              className="h-7 rounded bg-green-500/30 border border-green-500/40 flex items-center justify-center cursor-not-allowed overflow-hidden px-1">
-                              <span className="text-green-300 truncate text-[10px]">{b.solicitante_nombre.split(' ')[0]}</span>
-                            </div>
-                          </td>
-                        );
-                      }
-                      if (pendiente) {
-                        const b = bloques.find(b => b.estado === 'PENDIENTE');
-                        return (
-                          <td key={di} className="p-0.5">
-                            <div title={`Pendiente: ${b.solicitante_nombre}`}
-                              className="h-7 rounded bg-amber-500/30 border border-amber-500/40 flex items-center justify-center overflow-hidden px-1">
-                              <span className="text-amber-300 truncate text-[10px]">Pendiente</span>
-                            </div>
-                          </td>
-                        );
-                      }
-                      if (pasado) {
-                        return (
-                          <td key={di} className="p-0.5">
-                            <div className="h-7 rounded bg-slate-800/40 opacity-30" />
-                          </td>
-                        );
-                      }
-                      return (
-                        <td key={di} className="p-0.5">
-                          <div
-                            onClick={() => onSeleccionar(fmtDate(d), h)}
-                            className="h-7 rounded bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/30 hover:border-blue-400/50 cursor-pointer transition-colors"
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="rounded-2xl overflow-hidden border border-white/[0.06] bg-slate-950">
+          <TimeGrid
+            dias={dias}
+            horas={horasPermitidas}
+            horaFinMap={horaFinMap}
+            renderCell={renderCell}
+            showBreak={false}
+          />
         </div>
       )}
     </div>
@@ -472,7 +477,7 @@ export default function ApartarEspacio() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 max-w-5xl mx-auto">
+      <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
 
         {/* Header + Breadcrumb */}
         <div>
@@ -498,7 +503,7 @@ export default function ApartarEspacio() {
         {/* Paso 1 — Selector de espacio */}
         {paso === 1 && (
           loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
               {[1,2,3].map(i => <div key={i} className="glass rounded-2xl h-40 animate-pulse" />)}
             </div>
           ) : espacios.length === 0 ? (
@@ -506,7 +511,7 @@ export default function ApartarEspacio() {
               <p className="text-slate-400">No hay espacios disponibles en este momento.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
               {espacios.map(esp => (
                 <button key={esp.id}
                   onClick={() => seleccionarEspacio(esp)}
@@ -530,12 +535,20 @@ export default function ApartarEspacio() {
         {/* Paso 2 — Calendario */}
         {paso === 2 && espacioSel && (
           <div className="space-y-4">
-            <div className="glass rounded-2xl p-4 flex items-center gap-4">
+          <div className="glass rounded-2xl p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
               <span className="text-3xl">{TIPO_ICON[espacioSel.tipo]}</span>
               <div>
-                <p className="font-semibold text-white">{espacioSel.nombre}</p>
-                <p className="text-sm text-slate-400">{TIPO_DESC[espacioSel.tipo]}</p>
-              </div>
+              <p className="font-semibold text-white">{espacioSel.nombre}</p>
+              <p className="text-sm text-slate-400">{TIPO_DESC[espacioSel.tipo]}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Tiempo operativo entre eventos: {espacioSel.buffer_antes_minutos || 0} min antes / {espacioSel.buffer_despues_minutos || 0} min despues.
+              </p>
+              {espacioSel.estado_operativo && espacioSel.estado_operativo !== 'DISPONIBLE' && (
+                <p className="text-xs text-amber-300 mt-1">
+                  Estado operativo: {espacioSel.estado_operativo}. {espacioSel.aviso_operativo || 'La solicitud queda sujeta a verificacion del responsable.'}
+                </p>
+              )}
+            </div>
               <button onClick={() => setPaso(1)}
                 className="ml-auto text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl px-3 py-1.5 transition-colors">
                 Cambiar espacio

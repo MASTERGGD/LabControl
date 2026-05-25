@@ -15,6 +15,7 @@ const ESTADO_CFG = {
   APROBADA:   { label: 'Aprobada',   color: 'text-green-400',  bg: 'bg-green-500/20 border-green-500/30',  dot: 'bg-green-400'  },
   RECHAZADA:  { label: 'Rechazada',  color: 'text-red-400',    bg: 'bg-red-500/20 border-red-500/30',      dot: 'bg-red-400'    },
   CANCELADA:  { label: 'Cancelada',  color: 'text-slate-400',  bg: 'bg-slate-500/20 border-slate-500/30', dot: 'bg-slate-400'  },
+  LIBERADA:   { label: 'Liberada',   color: 'text-violet-300',  bg: 'bg-violet-500/20 border-violet-500/30', dot: 'bg-violet-400' },
   FINALIZADA: { label: 'Finalizada', color: 'text-blue-400',   bg: 'bg-blue-500/20 border-blue-500/30',   dot: 'bg-blue-400'   },
 };
 
@@ -25,6 +26,91 @@ const REQS_LABEL = {
   ACOMODO_SILLAS:'Acomodo sillas', MANTELES:'Manteles',
   COFFEE_BREAK:'Coffee break', PRESIDIUM:'Presidium', INTERNET:'Internet', OTRO:'Otro',
 };
+
+const solicitudDateTime = (solicitud, hora) => new Date(`${solicitud.fecha}T${hora}:00`);
+
+const estaEnHorario = (solicitud) => {
+  const ahora = new Date();
+  return ahora >= solicitudDateTime(solicitud, solicitud.hora_inicio) &&
+         ahora <= solicitudDateTime(solicitud, solicitud.hora_fin);
+};
+
+function ModalLiberarRango({ espacios, onClose, onLiberado }) {
+  const { toast: showToast } = useToast();
+  const [form, setForm] = useState({
+    espacio_id: espacios?.[0]?.id || '',
+    fecha: new Date().toISOString().slice(0, 10),
+    hora_inicio: '08:00',
+    hora_fin: '11:00',
+    motivo: '',
+    nombre_evento: '',
+    crear_evento_prioritario: true,
+    numero_asistentes: '',
+    observaciones: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { data } = await api.post('/espacios/solicitudes/liberar-rango', {
+        ...form,
+        espacio_id: Number(form.espacio_id),
+        numero_asistentes: form.numero_asistentes ? Number(form.numero_asistentes) : null,
+      });
+      showToast(`Horario liberado. Solicitudes afectadas: ${data.afectadas?.length || 0}`, 'success');
+      onLiberado();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Error al liberar horario', 'error');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <form onSubmit={submit} className="glass w-full max-w-lg shadow-glass animate-fadeUp p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-white">Liberar horario prioritario</h3>
+            <p className="text-xs text-slate-400 mt-1">Busca reservas aprobadas en todo el rango y notifica a los solicitantes.</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+        <select className="input-dark" value={form.espacio_id} onChange={e => set('espacio_id', e.target.value)} required>
+          <option value="">Selecciona sala</option>
+          {espacios.map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+        </select>
+        <div className="grid grid-cols-3 gap-3">
+          <input type="date" className="input-dark" value={form.fecha} onChange={e => set('fecha', e.target.value)} required />
+          <input type="time" className="input-dark" value={form.hora_inicio} onChange={e => set('hora_inicio', e.target.value)} required />
+          <input type="time" className="input-dark" value={form.hora_fin} onChange={e => set('hora_fin', e.target.value)} required />
+        </div>
+        <input className="input-dark" value={form.nombre_evento} onChange={e => set('nombre_evento', e.target.value)}
+          placeholder="Nombre del evento prioritario" />
+        <textarea className="input-dark resize-none" rows={3} value={form.motivo} onChange={e => set('motivo', e.target.value)}
+          placeholder="Motivo institucional obligatorio" required />
+        <div className="grid grid-cols-2 gap-3">
+          <input type="number" min="1" className="input-dark" value={form.numero_asistentes}
+            onChange={e => set('numero_asistentes', e.target.value)} placeholder="Asistentes" />
+          <label className="flex items-center gap-2 text-sm text-slate-300 bg-white/5 rounded-xl px-3">
+            <input type="checkbox" checked={form.crear_evento_prioritario}
+              onChange={e => set('crear_evento_prioritario', e.target.checked)} />
+            Crear evento aprobado
+          </label>
+        </div>
+        <textarea className="input-dark resize-none" rows={2} value={form.observaciones}
+          onChange={e => set('observaciones', e.target.value)} placeholder="Observaciones para infraestructura/apoyo" />
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+          <button type="submit" disabled={saving} className="btn-blue flex-1">
+            {saving ? 'Liberando...' : 'Liberar horario'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 // ─── Modal Rechazo ─────────────────────────────────────────────────────────────
 function ModalRechazo({ solicitud, onClose, onRechazada }) {
@@ -80,11 +166,68 @@ function ModalRechazo({ solicitud, onClose, onRechazada }) {
   );
 }
 
+function ModalCancelarReserva({ solicitud, onClose, onCancelada }) {
+  const { toast: showToast } = useToast();
+  const [motivo, setMotivo] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!motivo.trim()) return;
+    setSaving(true);
+    try {
+      await api.post(`/espacios/solicitudes/${solicitud.id}/cancelar`, {
+        motivo_cancelacion: motivo.trim(),
+      });
+      showToast('Reserva liberada y solicitante notificado', 'success');
+      onCancelada();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Error al liberar reserva', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+      <form onSubmit={submit} className="glass w-full max-w-md shadow-glass animate-fadeUp">
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-white">Liberar reserva</h3>
+            <p className="text-xs text-slate-400 mt-0.5">{solicitud.espacio_nombre} · {solicitud.fecha} {solicitud.hora_inicio}-{solicitud.hora_fin}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-sm text-amber-100">
+            Esta acción notificará al solicitante que su evento ya no podrá realizarse en este horario. El motivo quedará guardado como evidencia.
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Motivo institucional *</label>
+            <textarea className="input-dark resize-none" rows={4} value={motivo}
+              onChange={e => setMotivo(e.target.value)}
+              placeholder="Ej: Evento institucional prioritario de Rectoría, visita externa, ajuste operativo de sala..."
+              required />
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="btn-ghost flex-1">Volver</button>
+            <button type="submit" disabled={saving || !motivo.trim()}
+              className="flex-1 bg-amber-600 hover:bg-amber-500 text-white rounded-xl py-2.5 font-medium text-sm transition-colors disabled:opacity-50">
+              {saving ? 'Liberando...' : 'Liberar y notificar'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── Drawer Detalle ────────────────────────────────────────────────────────────
 function DrawerDetalle({ solicitud, onClose, onActualizada }) {
   const { toast: showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const cfg = ESTADO_CFG[solicitud.estado] || ESTADO_CFG.PENDIENTE;
+  const puedeFinalizar = solicitud.estado === 'APROBADA' && estaEnHorario(solicitud);
 
   const aprobar = async () => {
     setLoading(true);
@@ -97,26 +240,37 @@ function DrawerDetalle({ solicitud, onClose, onActualizada }) {
     } finally { setLoading(false); }
   };
 
-  const cancelar = async () => {
-    if (!window.confirm('¿Cancelar esta reserva?')) return;
+  const finalizar = async () => {
+    if (!puedeFinalizar) {
+      showToast('Solo se puede finalizar dentro del horario reservado. Si aun no inicia, corresponde cancelar/liberar.', 'error');
+      return;
+    }
     setLoading(true);
     try {
-      await api.post(`/espacios/solicitudes/${solicitud.id}/cancelar`, {});
-      showToast('Solicitud cancelada', 'success');
+      await api.post(`/espacios/solicitudes/${solicitud.id}/finalizar`, {
+        climas_apagados: true,
+        luces_apagadas: true,
+        microfonos_apagados: true,
+        equipo_apagado: true,
+        sala_cerrada: true,
+        sin_incidencias: true,
+        observaciones: 'Cierre confirmado por responsable',
+      });
+      showToast('Marcada como finalizada', 'success');
       onActualizada();
     } catch (err) {
       showToast(err.response?.data?.detail || 'Error', 'error');
     } finally { setLoading(false); }
   };
 
-  const finalizar = async () => {
+  const resolverExtension = async (aprobar) => {
     setLoading(true);
     try {
-      await api.post(`/espacios/solicitudes/${solicitud.id}/finalizar`);
-      showToast('Marcada como finalizada', 'success');
+      await api.post(`/espacios/solicitudes/${solicitud.id}/resolver-extension`, { aprobar });
+      showToast(aprobar ? 'Extension aprobada' : 'Extension rechazada', 'success');
       onActualizada();
     } catch (err) {
-      showToast(err.response?.data?.detail || 'Error', 'error');
+      showToast(err.response?.data?.detail || 'Error al resolver extension', 'error');
     } finally { setLoading(false); }
   };
 
@@ -219,6 +373,41 @@ function DrawerDetalle({ solicitud, onClose, onActualizada }) {
             </section>
           )}
 
+          {solicitud.extension?.estado === 'PENDIENTE' && (
+            <section>
+              <h4 className="text-xs font-semibold text-amber-400/80 uppercase tracking-wider mb-2">Extension solicitada</h4>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-2">
+                <p className="text-sm text-amber-100">
+                  Solicita <strong>{solicitud.extension.minutos_solicitados} min</strong> extra.
+                </p>
+                <p className="text-xs text-slate-300">{solicitud.extension.motivo}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => resolverExtension(false)} disabled={loading}
+                    className="bg-red-600/80 hover:bg-red-600 text-white rounded-xl py-2 text-xs font-medium">
+                    Rechazar
+                  </button>
+                  <button onClick={() => resolverExtension(true)} disabled={loading}
+                    className="bg-green-600 hover:bg-green-500 text-white rounded-xl py-2 text-xs font-medium">
+                    Aprobar tiempo
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {solicitud.finalizado_en && (
+            <section>
+              <h4 className="text-xs font-semibold text-blue-400/80 uppercase tracking-wider mb-2">Checklist de cierre</h4>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-sm text-slate-300 space-y-1">
+                <p>Climas: {solicitud.cierre?.climas_apagados ? 'apagados' : 'sin confirmar'}</p>
+                <p>Lamparas: {solicitud.cierre?.luces_apagadas ? 'apagadas' : 'sin confirmar'}</p>
+                <p>Microfonos: {solicitud.cierre?.microfonos_apagados ? 'apagados' : 'sin confirmar'}</p>
+                <p>Sala: {solicitud.cierre?.sala_cerrada ? 'cerrada' : 'sin confirmar'}</p>
+                {solicitud.cierre?.observaciones && <p className="text-slate-400 pt-1">{solicitud.cierre.observaciones}</p>}
+              </div>
+            </section>
+          )}
+
           {/* Motivo rechazo */}
           {solicitud.motivo_rechazo && (
             <section>
@@ -259,12 +448,13 @@ function DrawerDetalle({ solicitud, onClose, onActualizada }) {
         )}
         {solicitud.estado === 'APROBADA' && (
           <div className="p-4 border-t border-white/5 flex gap-3">
-            <button onClick={cancelar} disabled={loading}
+            <button onClick={() => onActualizada('cancelar')} disabled={loading}
               className="flex-1 btn-ghost text-sm">
-              Cancelar reserva
+              Liberar reserva
             </button>
-            <button onClick={finalizar} disabled={loading}
-              className="flex-1 btn-blue text-sm">
+            <button onClick={finalizar} disabled={loading || !puedeFinalizar}
+              title={!puedeFinalizar ? 'Solo dentro del horario reservado' : undefined}
+              className="flex-1 btn-blue text-sm disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? '…' : 'Marcar finalizada'}
             </button>
           </div>
@@ -316,6 +506,8 @@ export default function BandejaEspacios() {
   const [espacios, setEspacios]         = useState([]);
   const [detalle, setDetalle]           = useState(null);
   const [modalRechazo, setModalRechazo] = useState(null);
+  const [modalCancelar, setModalCancelar] = useState(null);
+  const [modalLiberar, setModalLiberar] = useState(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -338,6 +530,8 @@ export default function BandejaEspacios() {
   const handleActualizada = (accion) => {
     if (accion === 'rechazar') {
       setModalRechazo(detalle);
+    } else if (accion === 'cancelar') {
+      setModalCancelar(detalle);
     } else {
       setDetalle(null);
       cargar();
@@ -363,6 +557,9 @@ export default function BandejaEspacios() {
             </div>
             <p className="text-slate-400 text-sm mt-0.5">Solicitudes de espacios institucionales</p>
           </div>
+          <button onClick={() => setModalLiberar(true)} className="btn-blue self-start">
+            Liberar horario prioritario
+          </button>
         </div>
 
         {/* Filtros */}
@@ -374,8 +571,8 @@ export default function BandejaEspacios() {
               { k: 'APROBADA',   l: 'Aprobadas'  },
               { k: 'RECHAZADA',  l: 'Rechazadas' },
               { k: 'CANCELADA',  l: 'Canceladas' },
+              { k: 'LIBERADA',   l: 'Liberadas' },
               { k: 'FINALIZADA', l: 'Finalizadas' },
-              { k: '',           l: 'Todas' },
             ].map(({ k, l }) => (
               <button key={k} onClick={() => setFiltroEstado(k)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -436,6 +633,27 @@ export default function BandejaEspacios() {
           onRechazada={() => {
             setModalRechazo(null);
             setDetalle(null);
+            cargar();
+          }}
+        />
+      )}
+      {modalCancelar && (
+        <ModalCancelarReserva
+          solicitud={modalCancelar}
+          onClose={() => setModalCancelar(null)}
+          onCancelada={() => {
+            setModalCancelar(null);
+            setDetalle(null);
+            cargar();
+          }}
+        />
+      )}
+      {modalLiberar && (
+        <ModalLiberarRango
+          espacios={espacios}
+          onClose={() => setModalLiberar(false)}
+          onLiberado={() => {
+            setModalLiberar(false);
             cargar();
           }}
         />

@@ -6,6 +6,7 @@ import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/Cuat
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -24,6 +25,12 @@ const GRAD_SLOT = {
   OCUPADO:     'linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)',
   EN_DISPUTA:  'linear-gradient(135deg,#78350f 0%,#b45309 100%)',
   YO_SOLICITE: 'linear-gradient(135deg,#7c2d12 0%,#c2410c 100%)',
+};
+const GRAD_SLOT_DAY = {
+  MIO:         '#DBEAFE',
+  OCUPADO:     '#DBEAFE',
+  EN_DISPUTA:  '#FEF3C7',
+  YO_SOLICITE: '#FFEDD5',
 };
 
 // ─── Helpers de Requerimientos ───────────────────────────────────────────────
@@ -93,30 +100,35 @@ const CHECKS_REQ = [
 
 function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
   const { usuario } = useAuth();
-  const [form, setForm]             = useState({ materia: '', grupo: '', cuatrimestre });
+  const [form, setForm] = useState({
+    materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
+  });
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
-  const [checks, setChecks]         = useState({});
-  const [notaReq, setNotaReq]       = useState('');
+  const [checks, setChecks]             = useState({});
+  const [notaReq, setNotaReq]           = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const seleccionarMateria = (m) => {
-    const nombre = m.nombre || '';
-    setMateriaQuery(nombre);
+    setMateriaQuery(m.label || m.nombre || '');
     setMateriaInfo(m);
-    setForm(f => ({ ...f, materia: nombre }));
+    setForm(f => ({
+      ...f,
+      materia:              m.nombre || '',
+      carrera:              m.carrera || '',
+      cuatrimestre_materia: m.cuatrimestre_oficial ? String(m.cuatrimestre_oficial) : '',
+    }));
   };
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
-
   const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
-    setError('');
+    if (!materiaInfo) { setError('Selecciona una materia del catálogo académico.'); return; }
+    setSaving(true); setError('');
     const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
     try {
       await api.post('/horarios/reservaciones', {
@@ -124,14 +136,15 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
         laboratorio_id:       laboratorio_id,
         docente_id:           usuario.id,
         materia:              form.materia,
-        grupo:                form.grupo,
+        carrera:              form.carrera   || undefined,
         cuatrimestre:         form.cuatrimestre,
+        cuatrimestre_materia: form.cuatrimestre_materia || undefined,
+        grupo:                form.grupo,
         req_items:            reqItems.length ? reqItems : undefined,
         req_descripcion:      notaReq.trim() || undefined,
         req_tiene_instalador: checks.software ? tieneInstalador : undefined,
       });
-      onGuardado();
-      onClose();
+      onGuardado(); onClose();
     } catch (err) {
       setError(formatApiError(err, 'Error al reservar'));
     } finally {
@@ -160,23 +173,43 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             </label>
             <AutocompleteInput
               endpoint="/catalogo/materias/buscar"
-              placeholder="Ej. Bases de Datos…"
+              placeholder="Ej. Bases de Datos, Inglés…"
               value={materiaQuery}
               onChange={(txt) => {
                 setMateriaQuery(txt);
-                setForm(f => ({ ...f, materia: txt }));
-                if (!txt) setMateriaInfo(null);
+                setMateriaInfo(null);
+                setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '' }));
               }}
               onSelect={seleccionarMateria}
               renderItem={(m) => (
                 <div>
                   <p className="font-medium leading-tight">{m.nombre}</p>
-                  {m.cuatrimestre_oficial && (
-                    <p className="text-xs text-slate-500 leading-tight">{m.cuatrimestre_oficial}º cuatrimestre</p>
+                  {(m.carrera || m.cuatrimestre_oficial) && (
+                    <p className="text-xs text-slate-500 leading-tight">
+                      {[m.carrera, m.cuatrimestre_oficial ? `${m.cuatrimestre_oficial}° cuat.` : ''].filter(Boolean).join(' · ')}
+                    </p>
                   )}
                 </div>
               )}
             />
+            {/* Contexto académico autocompletado */}
+            {materiaInfo && (materiaInfo.carrera || materiaInfo.cuatrimestre_oficial) && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {materiaInfo.carrera && (
+                  <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
+                    🎓 {materiaInfo.carrera}
+                  </span>
+                )}
+                {materiaInfo.cuatrimestre_oficial && (
+                  <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full font-medium">
+                    {materiaInfo.cuatrimestre_oficial}° cuatrimestre
+                  </span>
+                )}
+              </div>
+            )}
+            {!materiaInfo && form.materia && (
+              <p className="text-xs text-amber-500 mt-1">⚠️ Selecciona una opción del catálogo para registrar la identidad académica.</p>
+            )}
             <input type="text" required className="sr-only" value={form.materia} readOnly tabIndex={-1} />
           </div>
 
@@ -185,7 +218,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             <label className="block text-xs text-slate-400 uppercase tracking-wide font-medium mb-1.5">
               Grupo <span className="text-red-400">*</span>
             </label>
-            <input required type="text" placeholder="Ej. DyGS-8vo. A"
+            <input required type="text" placeholder="Ej. A, B, C…"
               value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
               className="input-dark w-full"
             />
@@ -330,6 +363,20 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
         <div className="p-5 space-y-3">
           <div className="glass-sm rounded-xl p-4 space-y-2 text-sm" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>
             <p><span className="text-slate-400">Materia:</span> <span className="font-semibold text-white ml-2">{r.materia}</span></p>
+            {(r.carrera || r.cuatrimestre_materia) && (
+              <div className="flex flex-wrap gap-1.5 ml-1">
+                {r.carrera && (
+                  <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
+                    🎓 {r.carrera}
+                  </span>
+                )}
+                {r.cuatrimestre_materia && (
+                  <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full font-medium">
+                    {r.cuatrimestre_materia}° cuatrimestre
+                  </span>
+                )}
+              </div>
+            )}
             <p><span className="text-slate-400">Grupo:</span> <span className="text-slate-200 ml-2">{r.grupo}</span></p>
             <p><span className="text-slate-400">Cuatrimestre:</span> <span className="text-slate-200 ml-2">{r.cuatrimestre}</span></p>
           </div>
@@ -700,7 +747,7 @@ function PanelConflictos({ laboratorio_id, onResuelto }) {
 
 // ─── Grid semanal ─────────────────────────────────────────────────────────────
 
-function GridSemanal({ slots, onSlotClick }) {
+function GridSemanal({ slots, onSlotClick, isDay = false }) {
   const horas       = [...new Set(slots.map(s => s.hora_inicio))].sort();
   const dias        = [...new Set(slots.map(s => s.dia_semana))].sort();
   const idx         = {};
@@ -724,7 +771,7 @@ function GridSemanal({ slots, onSlotClick }) {
         if (!slot) {
           return (
             <div className="h-full rounded-lg"
-              style={{ background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.04)', minHeight: '56px' }} />
+              style={{ background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.015)', border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.04)'}`, minHeight: '56px' }} />
           );
         }
 
@@ -735,18 +782,18 @@ function GridSemanal({ slots, onSlotClick }) {
               onClick={() => onSlotClick(slot)}
               className="group h-full flex items-center justify-center cursor-pointer rounded-lg transition-all duration-150"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.07)'}`,
                 minHeight: '56px',
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.background   = 'rgba(59,130,246,0.10)';
+                e.currentTarget.style.background   = isDay ? '#EFF6FF' : 'rgba(59,130,246,0.10)';
                 e.currentTarget.style.border       = '1px solid rgba(59,130,246,0.50)';
-                e.currentTarget.style.boxShadow    = '0 0 12px rgba(59,130,246,0.15)';
+                e.currentTarget.style.boxShadow    = isDay ? '0 1px 4px rgba(15,23,42,0.08)' : '0 0 12px rgba(59,130,246,0.15)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background   = 'rgba(255,255,255,0.03)';
-                e.currentTarget.style.border       = '1px solid rgba(255,255,255,0.07)';
+                e.currentTarget.style.background   = isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)';
+                e.currentTarget.style.border       = `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.07)'}`;
                 e.currentTarget.style.boxShadow    = 'none';
               }}
             >
@@ -759,7 +806,7 @@ function GridSemanal({ slots, onSlotClick }) {
         }
 
         /* Ocupado / mío / disputa / solicitado */
-        const grad     = GRAD_SLOT[slot.estado_vista] || GRAD_SLOT.OCUPADO;
+        const grad     = isDay ? (GRAD_SLOT_DAY[slot.estado_vista] || GRAD_SLOT_DAY.OCUPADO) : (GRAD_SLOT[slot.estado_vista] || GRAD_SLOT.OCUPADO);
         const clickable = ['MIO','OCUPADO','EN_DISPUTA','YO_SOLICITE'].includes(slot.estado_vista);
 
         return (
@@ -770,23 +817,24 @@ function GridSemanal({ slots, onSlotClick }) {
               ${slot.estado_vista === 'EN_DISPUTA' ? 'slot-disputa' : ''}`}
             style={{
               background: grad,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+              border: `1px solid ${slot.estado_vista === 'EN_DISPUTA' ? '#F59E0B' : isDay ? '#93C5FD' : 'transparent'}`,
+              boxShadow: isDay ? '0 1px 4px rgba(15,23,42,0.08)' : '0 2px 8px rgba(0,0,0,0.3)',
               minHeight: '56px',
             }}
             onMouseEnter={e => { if (clickable) e.currentTarget.style.opacity = '0.88'; }}
             onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
           >
-            <p className="text-xs font-medium text-white leading-tight truncate">
+            <p className={`text-xs font-medium leading-tight truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>
               {slot.reservacion?.materia || '—'}
             </p>
             <div>
               {slot.estado_vista !== 'MIO' && slot.reservacion?.docente_nombre && (
-                <p className="text-[10px] text-white/75 truncate font-medium">
+                <p className={`text-[10px] truncate font-medium ${isDay ? 'text-slate-600' : 'text-white/75'}`}>
                   {slot.reservacion.docente_nombre}
                 </p>
               )}
               {slot.reservacion?.grupo && (
-                <p className="text-[10px] text-white/55">{slot.reservacion.grupo}</p>
+                <p className={`text-[10px] ${isDay ? 'text-slate-500' : 'text-white/55'}`}>{slot.reservacion.grupo}</p>
               )}
             </div>
             {slot.estado_vista === 'EN_DISPUTA' && (
@@ -829,6 +877,8 @@ function Leyenda({ esDocente }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function Reservaciones() {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const { usuario } = useAuth();
   const esAdmin     = ['SUPER_ADMIN', 'LAB_ADMIN'].includes(usuario?.rol);
   const esDocente   = usuario?.rol === 'DOCENTE';
@@ -904,12 +954,12 @@ export default function Reservaciones() {
   return (
     <AdminLayout>
       {/* Fondo oscuro slate-950 */}
-      <div className="p-6 space-y-5 min-h-screen" style={{ background: 'rgb(2 6 23)' }}>
+      <div className="p-6 space-y-5 min-h-screen" style={{ background: isDay ? '#F8FAFC' : 'rgb(2 6 23)' }}>
 
         {/* Encabezado */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-white">Horario del Laboratorio</h1>
+            <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Horario del Laboratorio</h1>
             <p className="text-sm text-slate-400 mt-1">
               {esDocente
                 ? 'Selecciona un horario disponible o solicita uno ocupado'
@@ -933,10 +983,10 @@ export default function Reservaciones() {
 
         {/* Filtros — glass card */}
         <div style={{
-          background: 'rgba(255,255,255,0.04)',
+          background: isDay ? '#FFFFFF' : 'rgba(255,255,255,0.04)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.08)'}`,
           borderRadius: '12px',
           padding: '16px',
           position: 'relative',
@@ -944,7 +994,7 @@ export default function Reservaciones() {
         }}>
           <div className="flex flex-wrap gap-3 items-center">
             <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-slate-400">Laboratorio</label>
+              <label className="text-sm font-medium text-slate-500">Laboratorio</label>
               <SelectDark
                 value={labId}
                 onChange={setLabId}
@@ -956,20 +1006,20 @@ export default function Reservaciones() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500">Cuatrimestre</span>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
+                style={{ background: isDay ? '#DBEAFE' : 'rgba(59,130,246,0.15)', color: isDay ? '#1D4ED8' : '#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
                 📅 {cuatrimestre}
               </span>
             </div>
             <button onClick={recargar}
               title="Actualizar"
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
+                background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: '8px',
                 padding: '7px 12px',
                 fontSize: '14px',
                 cursor: 'pointer',
-                color: '#94a3b8',
+                color: isDay ? '#475569' : '#94a3b8',
               }}>
               🔄
             </button>
@@ -1051,7 +1101,7 @@ export default function Reservaciones() {
                   borderRadius: '12px',
                   overflow: 'hidden',
                 }}>
-                  <GridSemanal slots={slots} onSlotClick={handleSlotClick} />
+                  <GridSemanal slots={slots} onSlotClick={handleSlotClick} isDay={isDay} />
                 </div>
                 {/* Resumen de conflictos para docente */}
                 {esDocente && conflictosPendientes > 0 && (

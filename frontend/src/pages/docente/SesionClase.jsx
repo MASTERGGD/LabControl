@@ -108,7 +108,7 @@ function DocenteLayout({ children, onCambiarPwd }) {
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
           </div>
-          <span className="font-bold text-white">LabControl</span>
+          <span className="font-bold text-white">SIGA</span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-400 hidden sm:block">{usuario?.nombre}</span>
@@ -288,28 +288,36 @@ const CHECKS_REQ = [
 
 function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
   const { usuario } = useAuth();
-  const [form, setForm]               = useState({ materia: '', grupo: '', cuatrimestre });
+  const [form, setForm] = useState({
+    materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
+  });
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
-  const [checks, setChecks]           = useState({});
-  const [notaReq, setNotaReq]         = useState('');
+  const [checks, setChecks]             = useState({});
+  const [notaReq, setNotaReq]           = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const seleccionarMateria = (m) => {
-    setMateriaQuery(m.nombre || '');
+    setMateriaQuery(m.label || m.nombre || '');
     setMateriaInfo(m);
-    setForm(f => ({ ...f, materia: m.nombre || '' }));
+    setForm(f => ({
+      ...f,
+      materia:              m.nombre || '',
+      carrera:              m.carrera || '',
+      cuatrimestre_materia: m.cuatrimestre_oficial ? String(m.cuatrimestre_oficial) : '',
+    }));
   };
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
-
   const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.materia.trim()) { setError('Escribe o selecciona una materia.'); return; }
+    if (!materiaInfo) { setError('Selecciona una materia del catálogo académico para registrar su identidad.'); return; }
+    if (!form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
     setSaving(true); setError('');
     const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
     try {
@@ -318,8 +326,10 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
         laboratorio_id:       laboratorio_id,
         docente_id:           usuario.id,
         materia:              form.materia,
-        grupo:                form.grupo,
+        carrera:              form.carrera   || undefined,
         cuatrimestre:         form.cuatrimestre,
+        cuatrimestre_materia: form.cuatrimestre_materia || undefined,
+        grupo:                form.grupo,
         req_items:            reqItems.length ? reqItems : undefined,
         req_descripcion:      notaReq.trim() || undefined,
         req_tiene_instalador: checks.software ? tieneInstalador : undefined,
@@ -345,38 +355,58 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           <div>
             <label className="block text-sm text-slate-400 mb-1">
               Materia *
-              <span className="text-slate-500 font-normal text-xs ml-1">(escribe para buscar)</span>
+              <span className="text-slate-500 font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
             </label>
             <div className="[&_input]:bg-gray-700 [&_input]:text-white [&_input]:border-gray-600
                             [&_input:focus]:ring-green-500 [&_ul]:bg-gray-800 [&_ul]:border-gray-600
                             [&_li]:text-gray-200 [&_li:hover]:bg-gray-700 [&_div]:text-slate-400">
               <AutocompleteInput
                 endpoint="/catalogo/materias/buscar"
-                placeholder="Ej. Bases de Datos…"
+                placeholder="Ej. Bases de Datos, Inglés…"
                 value={materiaQuery}
                 onChange={(txt) => {
                   setMateriaQuery(txt);
                   setMateriaInfo(null);
-                  setForm(f => ({ ...f, materia: txt }));
+                  setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '' }));
                 }}
                 onSelect={seleccionarMateria}
                 renderItem={(m) => (
                   <div>
                     <p className="font-medium leading-tight">{m.nombre}</p>
-                    {m.cuatrimestre_oficial && (
-                      <p className="text-xs text-slate-400 leading-tight">{m.cuatrimestre_oficial}º cuatrimestre</p>
+                    {(m.carrera || m.cuatrimestre_oficial) && (
+                      <p className="text-xs text-slate-400 leading-tight">
+                        {[m.carrera, m.cuatrimestre_oficial ? `${m.cuatrimestre_oficial}° cuat.` : ''].filter(Boolean).join(' · ')}
+                      </p>
                     )}
                   </div>
                 )}
               />
             </div>
+            {/* Contexto académico autocompletado */}
+            {materiaInfo && (materiaInfo.carrera || materiaInfo.cuatrimestre_oficial) && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {materiaInfo.carrera && (
+                  <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
+                    🎓 {materiaInfo.carrera}
+                  </span>
+                )}
+                {materiaInfo.cuatrimestre_oficial && (
+                  <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full font-medium">
+                    {materiaInfo.cuatrimestre_oficial}° cuatrimestre
+                  </span>
+                )}
+              </div>
+            )}
+            {!materiaInfo && form.materia && (
+              <p className="text-xs text-amber-500 mt-1">⚠️ Selecciona una opción del catálogo para registrar carrera y cuatrimestre.</p>
+            )}
             <input type="text" required className="sr-only" value={form.materia} readOnly tabIndex={-1} />
           </div>
 
           {/* Grupo */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Grupo *</label>
-            <input required type="text" placeholder="Ej. DyGS-8vo. A"
+            <input required type="text" placeholder="Ej. A, B, C…"
               value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
               className="w-full input-dark text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
           </div>
@@ -509,6 +539,20 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
           {/* Info de la reservación */}
           <div className="bg-blue-900/30 border border-blue-700/50 rounded-xl p-4 space-y-1.5 text-sm">
             <p><span className="text-slate-400">Materia:</span> <span className="font-semibold text-white">{r.materia}</span></p>
+            {(r.carrera || r.cuatrimestre_materia) && (
+              <div className="flex flex-wrap gap-1.5">
+                {r.carrera && (
+                  <span className="text-xs bg-blue-950/60 text-blue-300 border border-blue-700/40 px-2 py-0.5 rounded-full">
+                    🎓 {r.carrera}
+                  </span>
+                )}
+                {r.cuatrimestre_materia && (
+                  <span className="text-xs bg-purple-950/60 text-purple-300 border border-purple-700/40 px-2 py-0.5 rounded-full">
+                    {r.cuatrimestre_materia}° cuatrimestre
+                  </span>
+                )}
+              </div>
+            )}
             <p><span className="text-slate-400">Grupo:</span> <span className="text-gray-200">{r.grupo}</span></p>
             <p><span className="text-slate-400">Laboratorio:</span> <span className="text-gray-200">{r.laboratorio_nombre}</span></p>
 
@@ -635,14 +679,21 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
 
 function ModalSolicitar({ slot, onClose, onSolicitado }) {
   const r = slot.reservacion;
-  const [form, setForm]               = useState({ materia: '', grupo: '', motivo: '' });
+  const [form, setForm]               = useState({ materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', motivo: '' });
   const [materiaQuery, setMateriaQuery] = useState('');
+  const [materiaInfo, setMateriaInfo]   = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const seleccionarMateria = (m) => {
-    setMateriaQuery(m.nombre || '');
-    setForm(f => ({ ...f, materia: m.nombre || '' }));
+    setMateriaQuery(m.label || m.nombre || '');
+    setMateriaInfo(m);
+    setForm(f => ({
+      ...f,
+      materia:              m.nombre || '',
+      carrera:              m.carrera || '',
+      cuatrimestre_materia: m.cuatrimestre_oficial ? String(m.cuatrimestre_oficial) : '',
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -687,17 +738,37 @@ function ModalSolicitar({ slot, onClose, onSolicitado }) {
                   endpoint="/catalogo/materias/buscar"
                   placeholder="Ej. Minería de Datos…"
                   value={materiaQuery}
-                  onChange={(txt) => { setMateriaQuery(txt); setForm(f => ({ ...f, materia: txt })); }}
+                  onChange={(txt) => {
+                    setMateriaQuery(txt);
+                    setMateriaInfo(null);
+                    setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '' }));
+                  }}
                   onSelect={seleccionarMateria}
                   renderItem={(m) => (
                     <div>
                       <p className="font-medium leading-tight">{m.nombre}</p>
-                      {m.cuatrimestre_oficial && (
-                        <p className="text-xs text-slate-400">{m.cuatrimestre_oficial}º cuatrimestre</p>
+                      {(m.carrera || m.cuatrimestre_oficial) && (
+                        <p className="text-xs text-slate-400">
+                          {[m.carrera, m.cuatrimestre_oficial ? `${m.cuatrimestre_oficial}° cuat.` : ''].filter(Boolean).join(' · ')}
+                        </p>
                       )}
                     </div>
                   )}
                 />
+                {materiaInfo && (materiaInfo.carrera || materiaInfo.cuatrimestre_oficial) && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {materiaInfo.carrera && (
+                      <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
+                        🎓 {materiaInfo.carrera}
+                      </span>
+                    )}
+                    {materiaInfo.cuatrimestre_oficial && (
+                      <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full font-medium">
+                        {materiaInfo.cuatrimestre_oficial}° cuatrimestre
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <input type="text" required className="sr-only" value={form.materia} readOnly tabIndex={-1} />
             </div>

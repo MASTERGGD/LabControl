@@ -23,6 +23,8 @@ class TestSesiones:
             json={
                 "laboratorio_id": lab_id,
                 "materia": materia,
+                "carrera": "IDGS",
+                "cuatrimestre": "3",
                 "grupo": grupo,
                 "fin_estimado_min": 100,
             },
@@ -103,6 +105,12 @@ class TestSesiones:
         """Sin token no se puede abrir sesión."""
         resp = client.post(
             "/sesiones",
-            json={"laboratorio_id": lab.id, "materia": "Mat", "grupo": "A"},
+            json={
+                "laboratorio_id": lab.id,
+                "materia": "Mat",
+                "carrera": "IDGS",
+                "cuatrimestre": "1",
+                "grupo": "A",
+            },
         )
         assert resp.status_code == 401

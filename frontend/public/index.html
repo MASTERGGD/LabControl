@@ -1,27 +1,27 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>LabControl — UTECAN</title>
+    <title>S I G A - UTECAN</title>
 
-    <!-- ── PWA: manifest + theme ──────────────────────────────────────────── -->
+    <!-- â”€â”€ PWA: manifest + theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="LabControl" />
-    <meta name="application-name" content="LabControl" />
+    <meta name="apple-mobile-web-app-title" content="S I G A - UTECAN" />
+    <meta name="application-name" content="S I G A - UTECAN" />
     <meta name="msapplication-TileColor" content="#0f172a" />
 
-    <!-- ── Íconos ─────────────────────────────────────────────────────────── -->
+    <!-- â”€â”€ Ãconos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <link rel="icon" type="image/png" sizes="32x32"  href="/icons/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16"  href="/icons/favicon-16.png" />
     <link rel="apple-touch-icon"      sizes="180x180" href="/icons/apple-touch-icon.png" />
 
-    <!-- ── SEO / descripción ──────────────────────────────────────────────── -->
-    <meta name="description" content="Sistema de control y reservación de laboratorios — UTECAN" />
+    <!-- â”€â”€ SEO / descripciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
+    <meta name="description" content="Sistema Integral de Gestion Academica - UTECAN" />
 
     <!-- Plus Jakarta Sans -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -29,10 +29,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
     <style>
-      /* ── Base ─────────────────────────────────────────────────────────── */
+      /* â”€â”€ Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       *, *::before, *::after { box-sizing: border-box; }
       :root {
-        /* ── Paleta base (Modo Noche) ────────────────────────────────────── */
+        /* â”€â”€ Paleta base (Modo Noche) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --bg:           #0f172a;
         --surface:      #1e293b;
         --surface-2:    #0d1b2e;
@@ -49,12 +49,12 @@
         --accent-primary:      #3b82f6;
         --accent-primary-dark: #2563eb;
         --accent-primary-glow: rgba(59,130,246,0.38);
-        --accent-secondary:    #DDC9A3;
+        --accent-secondary:    #0EA5E9;
         --accent-success:      #10b981;
         --accent-success-dark: #059669;
         --accent-success-glow: rgba(16,185,129,0.38);
 
-        /* ── Variables de estructura de layout ──────────────────────────── */
+        /* â”€â”€ Variables de estructura de layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --layout-bg:         #0f172a;
         --sidebar-from:      #0d1b2e;
         --sidebar-to:        #0a1628;
@@ -65,7 +65,7 @@
         --breadcrumb-border: rgba(255,255,255,0.04);
         --logo-bg:           linear-gradient(135deg,#3b82f6,#6366f1);
 
-        /* ── Variables de navegación ─────────────────────────────────────── */
+        /* â”€â”€ Variables de navegaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --nav-text:              #94a3b8;
         --nav-hover-bg:          rgba(255,255,255,0.05);
         --nav-toggle-bg:         rgba(255,255,255,0.04);
@@ -77,20 +77,20 @@
         --main-text:             #f1f5f9;
         --sidebar-subtitle:      #475569;
 
-        /* ── Tooltip ────────────────────────────────────────────────────── */
+        /* â”€â”€ Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --tooltip-bg:     rgba(30,41,59,0.97);
         --tooltip-border: rgba(255,255,255,0.1);
         --tooltip-text:   #e2e8f0;
         --tooltip-arrow:  rgba(30,41,59,0.97);
 
-        /* ── Inputs ──────────────────────────────────────────────────────── */
+        /* â”€â”€ Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --input-bg:               rgba(15,23,42,0.7);
         --input-bg-open:          rgba(15,23,42,0.85);
         --input-border-color:     #334155;
         --input-color:            #f1f5f9;
         --input-placeholder-color:#475569;
 
-        /* ── Dropdowns / Select ──────────────────────────────────────────── */
+        /* â”€â”€ Dropdowns / Select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --dropdown-bg:            rgba(15,23,42,0.97);
         --dropdown-border:        rgba(255,255,255,0.10);
         --dropdown-row-border:    rgba(255,255,255,0.04);
@@ -102,184 +102,454 @@
         --dropdown-text-selected: #93c5fd;
         --dropdown-text-empty:    #64748b;
         --dropdown-chevron:       #64748b;
+
+        --timegrid-bg:            rgb(2 6 23);
+        --timegrid-row-border:    rgba(255,255,255,0.04);
+        --timegrid-col-border:    rgba(255,255,255,0.05);
+        --timegrid-header-border: rgba(255,255,255,0.07);
       }
 
-      /* ══════════════════════════════════════════════════════════════════════
-         Tema GobMX-Día — paleta Pantone oficial Gobierno de México
-         Modo claro con sidebar guinda institucional.
-         Clase .theme-gobmx aplicada al <body>
-      ══════════════════════════════════════════════════════════════════════ */
-      body.theme-gobmx {
-        /* ── Pantone oficiales ───────────────────────────────────────────── */
-        --blue:    #9F2241;   /* Pantone 7420C — Guinda */
-        --emerald: #235B4E;   /* Pantone 626C  — Verde  */
+      /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+         Tema Dia limpio
+         Modo claro con sidebar blanco y acento azul.
+         Clase .theme-day aplicada al <body>
+      â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+      body.theme-day {
+        --blue:    #2563EB;
+        --emerald: #059669;
 
-        --accent-primary:      #9F2241;
-        --accent-primary-dark: #7a1932;
-        --accent-primary-glow: rgba(159,34,65,0.22);
-        --accent-secondary:    #DDC9A3;   /* Pantone 468C — Dorado */
-        --accent-success:      #235B4E;   /* Pantone 626C — Verde  */
-        --accent-success-dark: #1a4439;
-        --accent-success-glow: rgba(35,91,78,0.28);
+        --accent-primary:      #2563EB;
+        --accent-primary-dark: #1D4ED8;
+        --accent-primary-glow: rgba(37,99,235,0.18);
+        --accent-secondary:    #0EA5E9;
+        --accent-success:      #059669;
+        --accent-success-dark: #047857;
+        --accent-success-glow: rgba(5,150,105,0.20);
 
-        /* ── Colores base (modo claro) ────────────────────────────────────── */
-        --bg:           #F5F0E8;
+        /* â”€â”€ Colores base (modo claro) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+        --bg:           #F8FAFC;
         --surface:      #ffffff;
-        --surface-2:    #F0EAE0;
-        --border:       #DDD5C4;
-        --border-light: rgba(221,201,163,0.25);
-        --text:         #1C1917;
-        --text-muted:   #98989A;   /* Pantone CG7 — Gris */
+        --surface-2:    #F1F5F9;
+        --border:       #E2E8F0;
+        --border-light: rgba(15,23,42,0.08);
+        --text:         #0F172A;
+        --text-muted:   #64748B;
         --glass-bg:     rgba(255,255,255,0.88);
-        --glass-border: rgba(159,34,65,0.1);
+        --glass-border: rgba(15,23,42,0.08);
 
-        /* ── Layout estructura ───────────────────────────────────────────── */
-        --layout-bg:         #F5F0E8;
-        --sidebar-from:      #9F2241;
-        --sidebar-to:        #7a1932;
-        --sidebar-border:    rgba(159,34,65,0.25);
+        /* â”€â”€ Layout estructura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+        --layout-bg:         #F8FAFC;
+        --sidebar-from:      #FFFFFF;
+        --sidebar-to:        #F8FAFC;
+        --sidebar-border:    rgba(15,23,42,0.08);
         --topbar-bg:         rgba(255,255,255,0.97);
-        --topbar-border:     rgba(221,201,163,0.35);
-        --breadcrumb-bg:     #F0EAE0;
-        --breadcrumb-border: rgba(221,201,163,0.3);
-        --logo-bg:           linear-gradient(135deg,#9F2241,#c94067);
+        --topbar-border:     rgba(15,23,42,0.08);
+        --breadcrumb-bg:     #F1F5F9;
+        --breadcrumb-border: rgba(15,23,42,0.08);
+        --logo-bg:           linear-gradient(135deg,#2563EB,#0EA5E9);
 
-        /* ── Navegación ─────────────────────────────────────────────────── */
-        --nav-text:              rgba(255,255,255,0.72);
-        --nav-hover-bg:          rgba(255,255,255,0.12);
-        --nav-toggle-bg:         rgba(255,255,255,0.15);
-        --nav-toggle-color:      rgba(255,255,255,0.75);
-        --user-name-color:       #1C1917;
-        --user-sep:              rgba(221,201,163,0.4);
+        /* â”€â”€ NavegaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+        --nav-text:              #64748B;
+        --nav-hover-bg:          #EFF6FF;
+        --nav-toggle-bg:         #F1F5F9;
+        --nav-toggle-color:      #64748B;
+        --user-name-color:       #0F172A;
+        --user-sep:              rgba(15,23,42,0.10);
         --topbar-icon-color:     #6b7280;
-        --topbar-hover-bg:       rgba(159,34,65,0.06);
-        --main-text:             #1C1917;
-        --sidebar-subtitle:      rgba(255,255,255,0.45);
+        --topbar-hover-bg:       #EFF6FF;
+        --main-text:             #0F172A;
+        --sidebar-subtitle:      #94A3B8;
 
-        /* ── Tooltip ────────────────────────────────────────────────────── */
+        /* â”€â”€ Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --tooltip-bg:     #ffffff;
-        --tooltip-border: rgba(159,34,65,0.18);
-        --tooltip-text:   #1C1917;
+        --tooltip-border: rgba(15,23,42,0.10);
+        --tooltip-text:   #0F172A;
         --tooltip-arrow:  #ffffff;
 
-        /* ── Inputs ──────────────────────────────────────────────────────── */
+        /* â”€â”€ Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --input-bg:               #ffffff;
         --input-bg-open:          #ffffff;
-        --input-border-color:     #DDD5C4;
-        --input-color:            #1C1917;
-        --input-placeholder-color:#98989A;
+        --input-border-color:     #E2E8F0;
+        --input-color:            #0F172A;
+        --input-placeholder-color:#64748B;
 
-        /* ── Dropdowns / Select ──────────────────────────────────────────── */
+        /* â”€â”€ Dropdowns / Select â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --dropdown-bg:            #ffffff;
-        --dropdown-border:        rgba(159,34,65,0.15);
-        --dropdown-row-border:    rgba(221,201,163,0.2);
-        --dropdown-accent:        #9F2241;
-        --dropdown-active-bg:     rgba(159,34,65,0.08);
-        --dropdown-selected-bg:   rgba(159,34,65,0.05);
+        --dropdown-border:        rgba(15,23,42,0.10);
+        --dropdown-row-border:    rgba(15,23,42,0.06);
+        --dropdown-accent:        #2563EB;
+        --dropdown-active-bg:     #EFF6FF;
+        --dropdown-selected-bg:   #DBEAFE;
         --dropdown-text:          #374151;
-        --dropdown-text-active:   #9F2241;
-        --dropdown-text-selected: #9F2241;
-        --dropdown-text-empty:    #98989A;
-        --dropdown-chevron:       #9F2241;
+        --dropdown-text-active:   #2563EB;
+        --dropdown-text-selected: #2563EB;
+        --dropdown-text-empty:    #64748B;
+        --dropdown-chevron:       #2563EB;
+
+        --timegrid-bg:            #ffffff;
+        --timegrid-row-border:    #EFF6FF;
+        --timegrid-col-border:    #EFF6FF;
+        --timegrid-header-border: rgba(15,23,42,0.12);
       }
 
       html, body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
       body { margin: 0; background: var(--bg); color: var(--text); }
 
-      /* ══════════════════════════════════════════════════════════════════════
-         GobMX-Día: overrides de clases estructurales
-      ══════════════════════════════════════════════════════════════════════ */
+      /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+         Dia limpio: overrides de clases estructurales
+      â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-      /* Glass cards → fondo blanco/crema */
-      body.theme-gobmx .glass {
-        background: rgba(255,255,255,0.90) !important;
-        border-color: rgba(159,34,65,0.1) !important;
+      /* Glass cards â†’ fondo blanco/crema */
+      body.theme-day .glass {
+        background: #FFFFFF !important;
+        border-color: #CBD5E1 !important;
+        box-shadow: 0 20px 60px rgba(15,23,42,0.14) !important;
       }
-      body.theme-gobmx .glass-sm {
-        background: rgba(255,255,255,0.82) !important;
-        border-color: rgba(159,34,65,0.1) !important;
+      body.theme-day .glass-sm {
+        background: #F8FAFC !important;
+        border-color: #E2E8F0 !important;
       }
-      body.theme-gobmx .glass-dark {
-        background: rgba(240,234,224,0.94) !important;
-        border-color: rgba(159,34,65,0.1) !important;
+      body.theme-day .glass-dark {
+        background: #FFFFFF !important;
+        border-color: #CBD5E1 !important;
+        box-shadow: 0 20px 60px rgba(15,23,42,0.14) !important;
       }
 
       /* Inputs */
-      body.theme-gobmx .input-dark {
+      body.theme-day .input-dark {
         background: var(--input-bg) !important;
         border-color: var(--input-border-color) !important;
         color: var(--input-color) !important;
       }
-      body.theme-gobmx .input-dark::placeholder {
+      body.theme-day .input-dark::placeholder {
         color: var(--input-placeholder-color) !important;
       }
-      body.theme-gobmx .input-dark:focus {
+      body.theme-day .input-dark:focus {
         border-color: var(--accent-primary) !important;
         box-shadow: 0 0 0 3px var(--accent-primary-glow) !important;
       }
 
-      /* Nav items — texto blanco sobre sidebar guinda */
-      body.theme-gobmx .nav-item {
-        color: rgba(255,255,255,0.72) !important;
+      /* Nav items â€” texto blanco sobre sidebar guinda */
+      body.theme-day .btn-ghost {
+        background: rgba(37,99,235,0.04) !important;
+        border-color: rgba(15,23,42,0.12) !important;
+        color: #6b7280 !important;
+      }
+      body.theme-day .btn-ghost:hover {
+        background: rgba(37,99,235,0.09) !important;
+        color: #0F172A !important;
+      }
+      body.theme-day .nav-item {
+        color: #64748B !important;
         border-left-color: transparent !important;
       }
-      body.theme-gobmx .nav-item:hover {
-        background: rgba(255,255,255,0.13) !important;
-        color: #ffffff !important;
+      body.theme-day .nav-item:hover {
+        background: #EFF6FF !important;
+        color: #1D4ED8 !important;
       }
-      body.theme-gobmx .nav-active {
-        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
-        border-left-color: #DDC9A3 !important;
-        color: #ffffff !important;
+      body.theme-day .nav-active {
+        background: linear-gradient(90deg,#EFF6FF 0%,rgba(239,246,255,0.45) 100%) !important;
+        border-left-color: #2563EB !important;
+        color: #1D4ED8 !important;
       }
 
-      /* Topbar — texto oscuro sobre fondo blanco */
-      body.theme-gobmx header button,
-      body.theme-gobmx header a { color: var(--topbar-icon-color); }
-      body.theme-gobmx header button:hover,
-      body.theme-gobmx header a:hover { color: var(--main-text) !important; }
-      body.theme-gobmx header .text-slate-300,
-      body.theme-gobmx header .text-slate-400 { color: var(--topbar-icon-color) !important; }
-      body.theme-gobmx header .border-white\/10 { border-color: var(--user-sep) !important; }
+      /* Topbar â€” texto oscuro sobre fondo blanco */
+      body.theme-day header button,
+      body.theme-day header a { color: var(--topbar-icon-color); }
+      body.theme-day header button:hover,
+      body.theme-day header a:hover { color: var(--main-text) !important; }
+      body.theme-day header .text-slate-300,
+      body.theme-day header .text-slate-400 { color: var(--topbar-icon-color) !important; }
+      body.theme-day header .border-white\/10 { border-color: var(--user-sep) !important; }
 
-      /* Sidebar — textos sobre fondo guinda */
-      body.theme-gobmx aside .text-slate-400,
-      body.theme-gobmx aside .text-slate-500 { color: rgba(255,255,255,0.55) !important; }
-      body.theme-gobmx aside .text-white { color: #ffffff !important; }
+      /* Sidebar â€” textos sobre fondo guinda */
+      body.theme-day aside .text-slate-400,
+      body.theme-day aside .text-slate-500 { color: #64748B !important; }
+      body.theme-day aside .text-white { color: #0F172A !important; }
 
-      /* Main content — texto oscuro */
-      body.theme-gobmx main { color: var(--main-text); }
-      body.theme-gobmx main .text-white { color: var(--main-text) !important; }
-      body.theme-gobmx main .text-slate-300 { color: #374151 !important; }
-      body.theme-gobmx main .text-slate-400 { color: #6b7280 !important; }
-      body.theme-gobmx main .text-slate-500 { color: #9ca3af !important; }
+      /* Main content â€” texto oscuro */
+      body.theme-day main { color: var(--main-text); }
+      body.theme-day main .text-white { color: var(--main-text) !important; }
+      body.theme-day main .text-slate-100,
+      body.theme-day main .text-slate-200 { color: #0F172A !important; }
+      body.theme-day main .text-slate-300 { color: #374151 !important; }
+      body.theme-day main .text-slate-400 { color: #475569 !important; }
+      body.theme-day main .text-slate-500 { color: #64748B !important; }
+      body.theme-day main [class*="bg-slate-950"],
+      body.theme-day main [class*="bg-slate-900"],
+      body.theme-day main [class*="bg-slate-800"] {
+        background-color: #ffffff !important;
+      }
+      body.theme-day main [class*="bg-slate-700"],
+      body.theme-day main [class*="bg-slate-600"],
+      body.theme-day main [class*="bg-gray-800"],
+      body.theme-day main [class*="bg-gray-700"],
+      body.theme-day main [class*="bg-gray-600"] {
+        background-color: #F1F5F9 !important;
+      }
+      body.theme-day main [class*="bg-white/5"],
+      body.theme-day main [class*="bg-white/10"] {
+        background-color: rgba(37,99,235,0.04) !important;
+      }
+      body.theme-day main [class*="border-white/"] {
+        border-color: rgba(15,23,42,0.10) !important;
+      }
+      body.theme-day main [class*="border-slate-700"],
+      body.theme-day main [class*="border-slate-600"],
+      body.theme-day main [class*="border-gray-700"],
+      body.theme-day main [class*="border-gray-600"] {
+        border-color: rgba(15,23,42,0.12) !important;
+      }
+      body.theme-day main .text-slate-200,
+      body.theme-day main .text-gray-200 { color: #334155 !important; }
+      body.theme-day main .text-slate-600,
+      body.theme-day main .text-slate-700,
+      body.theme-day main .text-gray-600,
+      body.theme-day main .text-gray-700 { color: #475569 !important; }
+      body.theme-day main .text-blue-300,
+      body.theme-day main .text-blue-400 { color: #2563EB !important; }
+      body.theme-day main .text-emerald-300,
+      body.theme-day main .text-emerald-400 { color: #047857 !important; }
+      body.theme-day main .text-amber-300,
+      body.theme-day main .text-amber-400 { color: #B45309 !important; }
+      body.theme-day main .text-red-300,
+      body.theme-day main .text-red-400 { color: #DC2626 !important; }
+      body.theme-day main .text-purple-300,
+      body.theme-day main .text-purple-400 { color: #7C3AED !important; }
+      body.theme-day main .text-white\/75 { color: #475569 !important; }
+      body.theme-day main .text-white\/55 { color: #64748B !important; }
+
+      body.theme-day .fixed.inset-0 .glass,
+      body.theme-day .fixed.inset-0 .glass-dark,
+      body.theme-day .fixed.inset-0 [class*="shadow-2xl"],
+      body.theme-day .fixed.inset-0 [class*="shadow-glass"] {
+        background: #FFFFFF !important;
+        border-color: #CBD5E1 !important;
+        box-shadow: 0 24px 70px rgba(15,23,42,0.20) !important;
+      }
+
+      body.theme-day .fixed.inset-0 h1,
+      body.theme-day .fixed.inset-0 h2,
+      body.theme-day .fixed.inset-0 h3,
+      body.theme-day .fixed.inset-0 h4,
+      body.theme-day .fixed.inset-0 .text-white {
+        color: #0F172A !important;
+      }
+
+      body.theme-day .fixed.inset-0 label,
+      body.theme-day .fixed.inset-0 .text-slate-300,
+      body.theme-day .fixed.inset-0 .text-slate-400 {
+        color: #475569 !important;
+      }
+
+      body.theme-day .fixed.inset-0 .text-slate-500,
+      body.theme-day .fixed.inset-0 .text-slate-600 {
+        color: #64748B !important;
+      }
+
+      body.theme-day .fixed.inset-0 .border-white\/5,
+      body.theme-day .fixed.inset-0 .border-white\/10 {
+        border-color: #E2E8F0 !important;
+      }
+
+      body.theme-day .fixed.inset-0 .bg-white\/5,
+      body.theme-day .fixed.inset-0 .bg-white\/10 {
+        background-color: #F8FAFC !important;
+      }
+
+      body.theme-day .fixed.inset-0 .btn-ghost,
+      body.theme-day .fixed.inset-0 button.btn-ghost {
+        background: #F8FAFC !important;
+        border-color: #CBD5E1 !important;
+        color: #334155 !important;
+      }
+
+      body.theme-day main button.bg-blue-600,
+      body.theme-day main button.bg-blue-700,
+      body.theme-day main button.bg-emerald-600,
+      body.theme-day main button.bg-emerald-700,
+      body.theme-day main button.bg-green-600,
+      body.theme-day main button.bg-green-700,
+      body.theme-day main .btn-blue {
+        color: #FFFFFF !important;
+      }
+
+      body.theme-day main button.bg-blue-600 *,
+      body.theme-day main button.bg-blue-700 *,
+      body.theme-day main button.bg-emerald-600 *,
+      body.theme-day main button.bg-emerald-700 *,
+      body.theme-day main button.bg-green-600 *,
+      body.theme-day main button.bg-green-700 *,
+      body.theme-day main .btn-blue * {
+        color: #FFFFFF !important;
+      }
+
+      /* Compatibilidad con pantallas que todavia traen colores oscuros inline */
+      body.theme-day main [style*="rgb(2 6 23)"],
+      body.theme-day main [style*="rgb(2, 6, 23)"],
+      body.theme-day main [style*="rgba(8,14,30"],
+      body.theme-day main [style*="rgba(8, 14, 30"],
+      body.theme-day main [style*="rgba(15,23,42"],
+      body.theme-day main [style*="rgba(15, 23, 42"],
+      body.theme-day main [style*="rgba(30,41,59"],
+      body.theme-day main [style*="rgba(30, 41, 59"],
+      body.theme-day main [style*="rgba(51,65,85"] {
+        background: #FFFFFF !important;
+        border-color: rgba(15,23,42,0.10) !important;
+        box-shadow: none !important;
+        color: #0F172A !important;
+      }
+      body.theme-day main [style*="rgba(51, 65, 85"] {
+        background: #FFFFFF !important;
+        border-color: rgba(15,23,42,0.10) !important;
+        box-shadow: none !important;
+        color: #0F172A !important;
+      }
+      body.theme-day main [style*="rgba(255,255,255,0.01"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.01"],
+      body.theme-day main [style*="rgba(255,255,255,0.02"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.02"],
+      body.theme-day main [style*="rgba(255,255,255,0.03"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.03"],
+      body.theme-day main [style*="rgba(255,255,255,0.04"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.04"],
+      body.theme-day main [style*="rgba(255,255,255,0.05"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.05"],
+      body.theme-day main [style*="rgba(255,255,255,0.06"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.06"],
+      body.theme-day main [style*="rgba(255,255,255,0.07"],
+      body.theme-day main [style*="rgba(255, 255, 255, 0.07"],
+      body.theme-day main [style*="rgba(255,255,255,0.08"] {
+        background: #F8FAFC !important;
+        border-color: rgba(15,23,42,0.10) !important;
+        color: #0F172A !important;
+      }
+      body.theme-day main [style*="rgba(255, 255, 255, 0.08"] {
+        background: #F8FAFC !important;
+        border-color: rgba(15,23,42,0.10) !important;
+        color: #0F172A !important;
+      }
+      body.theme-day main [style*="rgba(217,119,6,0.15"],
+      body.theme-day main [style*="rgba(217, 119, 6, 0.15"],
+      body.theme-day main [style*="rgba(234,179,8,0.12"] {
+        background: #FEF3C7 !important;
+        border-color: #F59E0B !important;
+        color: #92400E !important;
+      }
+      body.theme-day main [style*="rgba(234, 179, 8, 0.12"] {
+        background: #FEF3C7 !important;
+        border-color: #F59E0B !important;
+        color: #92400E !important;
+      }
+
+      body.theme-day main [style*="rgba(239,68,68,0.055"],
+      body.theme-day main [style*="rgba(239, 68, 68, 0.055"],
+      body.theme-day main [style*="rgba(239,68,68,0.08"],
+      body.theme-day main [style*="rgba(239, 68, 68, 0.08"],
+      body.theme-day main [style*="rgba(239,68,68,0.09"],
+      body.theme-day main [style*="rgba(239, 68, 68, 0.09"] {
+        background: #FEF2F2 !important;
+        border-color: #FCA5A5 !important;
+        color: #991B1B !important;
+      }
+
+      body.theme-day main [style*="rgba(245,158,11"],
+      body.theme-day main [style*="rgba(245, 158, 11"],
+      body.theme-day main [style*="rgba(249,115,22"],
+      body.theme-day main [style*="rgba(249, 115, 22"] {
+        background: #FFF7ED !important;
+        border-color: #FDBA74 !important;
+        color: #9A3412 !important;
+      }
+
+      body.theme-day main [style*="color: rgb(254, 202, 202"],
+      body.theme-day main [style*="color:#fecaca"],
+      body.theme-day main [style*="color: #fecaca"] {
+        color: #991B1B !important;
+      }
+
+      body.theme-day main [style*="color: rgb(253, 186, 116"],
+      body.theme-day main [style*="color:#fdba74"],
+      body.theme-day main [style*="color: #fdba74"] {
+        color: #C2410C !important;
+      }
+
+      body.theme-day main [style*="color: rgb(148, 163, 184"],
+      body.theme-day main [style*="color:#94a3b8"],
+      body.theme-day main [style*="color: #94a3b8"] {
+        color: #475569 !important;
+      }
+
+      /* Horarios: tarjetas legibles dentro del grid compartido */
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#4f46e5"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg, rgb(79, 70, 229"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#1e3a5f"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg, rgb(30, 58, 95"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#78350f"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg, rgb(120, 53, 15"],
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#7c2d12"] {
+        background: #DBEAFE !important;
+        border: 1px solid #93C5FD !important;
+        box-shadow: 0 1px 4px rgba(15,23,42,0.08) !important;
+      }
+      body.theme-day .time-grid [style*="linear-gradient(135deg, rgb(124, 45, 18"] {
+        background: #DBEAFE !important;
+        border: 1px solid #93C5FD !important;
+        box-shadow: 0 1px 4px rgba(15,23,42,0.08) !important;
+      }
+      body.theme-day .time-grid [style*="linear-gradient(135deg"] p,
+      body.theme-day .time-grid [style*="linear-gradient(135deg"] span {
+        color: #0F172A !important;
+      }
+      body.theme-day .time-grid .slot-disputa {
+        background: #FEF3C7 !important;
+        border-color: #F59E0B !important;
+      }
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#4f46e5"] .text-white,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#1e3a5f"] .text-white,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#78350f"] .text-white,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#7c2d12"] .text-white {
+        color: #0F172A !important;
+      }
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#4f46e5"] .text-white\/75,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#1e3a5f"] .text-white\/75,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#78350f"] .text-white\/75,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#7c2d12"] .text-white\/75 {
+        color: #334155 !important;
+      }
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#4f46e5"] .text-white\/55,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#1e3a5f"] .text-white\/55,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#78350f"] .text-white\/55,
+      body.theme-day .time-grid [style*="linear-gradient(135deg,#7c2d12"] .text-white\/55 {
+        color: #64748B !important;
+      }
 
       /* Tables */
-      body.theme-gobmx table thead th,
-      body.theme-gobmx table thead td { color: #6b7280 !important; }
-      body.theme-gobmx table tbody tr { border-color: rgba(221,201,163,0.2) !important; }
-      body.theme-gobmx table tbody td { color: #1C1917; }
+      body.theme-day table thead th,
+      body.theme-day table thead td { color: #6b7280 !important; }
+      body.theme-day table tbody tr { border-color: rgba(15,23,42,0.06) !important; }
+      body.theme-day table tbody td { color: #0F172A; }
 
       /* Modales */
-      body.theme-gobmx .fixed.inset-0 .glass,
-      body.theme-gobmx .fixed.inset-0 .glass-sm { box-shadow: 0 20px 60px rgba(159,34,65,0.12); }
+      body.theme-day .fixed.inset-0 .glass,
+      body.theme-day .fixed.inset-0 .glass-sm { box-shadow: 0 20px 60px rgba(15,23,42,0.12); }
 
       /* Breadcrumb */
-      body.theme-gobmx nav .text-slate-500,
-      body.theme-gobmx nav .text-slate-600 { color: #9ca3af !important; }
-      body.theme-gobmx nav .text-slate-300 { color: #374151 !important; }
-      body.theme-gobmx nav .text-slate-400 { color: var(--accent-primary) !important; }
+      body.theme-day nav .text-slate-500,
+      body.theme-day nav .text-slate-600 { color: #9ca3af !important; }
+      body.theme-day nav .text-slate-300 { color: #374151 !important; }
+      body.theme-day nav .text-slate-400 { color: #64748B !important; }
 
       /* Scrollbar claro */
-      body.theme-gobmx ::-webkit-scrollbar-thumb { background: #c8b5a0; }
-      body.theme-gobmx ::-webkit-scrollbar-thumb:hover { background: #a89070; }
+      body.theme-day ::-webkit-scrollbar-thumb { background: #CBD5E1; }
+      body.theme-day ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
-      /* nav-active override específico para gobmx */
-      body.theme-gobmx .nav-active {
-        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
+      /* nav-active override especÃ­fico para day */
+      body.theme-day .nav-active {
+        background: linear-gradient(90deg,#EFF6FF 0%,rgba(239,246,255,0.45) 100%) !important;
       }
 
-      /* ── Glassmorphism card ───────────────────────────────────────────── */
+      /* â”€â”€ Glassmorphism card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .glass {
         background: var(--glass-bg);
         backdrop-filter: blur(12px);
@@ -302,13 +572,13 @@
         border-radius: 1rem;
       }
 
-      /* ── Sidebar gradient ─────────────────────────────────────────────── */
+      /* â”€â”€ Sidebar gradient â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .sidebar-bg {
         background: linear-gradient(180deg, #0d1b2e 0%, #0f172a 100%);
         border-right: 1px solid var(--border-light);
       }
 
-      /* ── Inputs ──────────────────────────────────────────────────────── */
+      /* â”€â”€ Inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .input-dark {
         background: rgba(15,23,42,0.7);
         border: 1px solid var(--border);
@@ -326,9 +596,9 @@
       }
       .input-dark::placeholder { color: #475569; }
 
-      /* select.input-dark option — eliminado: todos los selects usan SelectDark */
+      /* select.input-dark option â€” eliminado: todos los selects usan SelectDark */
 
-      /* ── Botones primarios ──────────────────────────────────────────── */
+      /* â”€â”€ Botones primarios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .btn-blue {
         background: var(--accent-primary);
         color: #fff;
@@ -372,13 +642,13 @@
       }
       .btn-ghost:hover { background: rgba(255,255,255,0.1); color: var(--text); }
 
-      /* ── Scrollbar ───────────────────────────────────────────────────── */
+      /* â”€â”€ Scrollbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       ::-webkit-scrollbar             { width: 5px; height: 5px; }
       ::-webkit-scrollbar-track       { background: transparent; }
       ::-webkit-scrollbar-thumb       { background: #334155; border-radius: 6px; }
       ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-      /* ── Animaciones ─────────────────────────────────────────────────── */
+      /* â”€â”€ Animaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       @keyframes spin {
         from { transform: rotate(0deg); }
         to   { transform: rotate(360deg); }
@@ -403,20 +673,21 @@
       }
       .slot-disputa { animation: disputaPulse 1.8s ease-in-out infinite; }
 
-      /* ── Nav active glow ─────────────────────────────────────────────── */
+      /* â”€â”€ Nav active glow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .nav-active {
         background: linear-gradient(90deg, rgba(var(--accent-primary-rgb, 59,130,246),.25) 0%, rgba(var(--accent-primary-rgb, 59,130,246),.08) 100%);
         border-left: 2px solid var(--accent-primary);
         color: #fff;
       }
-      /* Hack para que el gradiente funcione con la variable — dos reglas específicas */
-      body:not(.theme-gobmx) .nav-active {
+      /* Hack para que el gradiente funcione con la variable â€” dos reglas especÃ­ficas */
+      body:not(.theme-day) .nav-active {
         background: linear-gradient(90deg, rgba(59,130,246,.25) 0%, rgba(59,130,246,.08) 100%);
       }
-      /* GobMX nav-active: borde dorado + fondo blanco translúcido sobre guinda */
-      body.theme-gobmx .nav-active {
-        background: linear-gradient(90deg,rgba(255,255,255,0.2) 0%,rgba(255,255,255,0.06) 100%) !important;
-        border-left-color: #DDC9A3 !important;
+      /* day nav-active */
+      body.theme-day .nav-active {
+        background: linear-gradient(90deg,#EFF6FF 0%,rgba(239,246,255,0.45) 100%) !important;
+        border-left-color: #2563EB !important;
+        color: #1D4ED8 !important;
       }
       .nav-item {
         border-left: 2px solid transparent;
@@ -425,7 +696,7 @@
       }
       .nav-item:hover { background: rgba(255,255,255,.05); color: #fff; }
 
-      /* ── Tooltip ─────────────────────────────────────────────────────── */
+      /* â”€â”€ Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       [data-tip] { position: relative; }
       [data-tip]:hover::after {
         content: attr(data-tip);
@@ -444,7 +715,7 @@
         z-index: 100;
       }
 
-      /* ── Horarios: rayas diagonales para EN_DISPUTA (accesibilidad daltonismo) ── */
+      /* â”€â”€ Horarios: rayas diagonales para EN_DISPUTA (accesibilidad daltonismo) â”€â”€ */
       .slot-disputa {
         background: repeating-linear-gradient(
           -45deg,
@@ -453,7 +724,7 @@
         );
         border: 1px solid rgba(245,158,11,0.5) !important;
       }
-      /* ── Drag-select highlight ─────────────────────────────────────────────── */
+      /* â”€â”€ Drag-select highlight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .slot-selecting {
         background: color-mix(in srgb, var(--accent-primary) 30%, transparent) !important;
         border: 1px solid color-mix(in srgb, var(--accent-primary) 70%, transparent) !important;
@@ -485,7 +756,7 @@
         to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
       }
 
-      /* ── Safe area insets (notch / home indicator en móvil) ────────────── */
+      /* â”€â”€ Safe area insets (notch / home indicator en mÃ³vil) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       body {
         padding-bottom: env(safe-area-inset-bottom);
         padding-left:   env(safe-area-inset-left);
@@ -496,28 +767,26 @@
   <body>
     <div id="root"></div>
 
-    <!-- ── Service Worker registration ───────────────────────────────────── -->
+    <!-- Limpieza de Service Workers/caches viejos en desarrollo. No registra nada nuevo. -->
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-              console.log('[PWA] SW registrado:', reg.scope);
-
-              // Notificar al usuario cuando hay una nueva versión disponible
-              reg.addEventListener('updatefound', () => {
-                const newWorker = reg.installing;
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // Hay actualización disponible — el toast de React lo maneja si quieres
-                    window.dispatchEvent(new CustomEvent('pwa-update-available'));
-                  }
-                });
-              });
-            })
-            .catch(err => console.warn('[PWA] SW error:', err));
-        });
-      }
+      (function cleanupDevPwaCache() {
+        var isDevHost = ['localhost', '127.0.0.1'].indexOf(window.location.hostname) >= 0
+          || window.location.hostname.indexOf('192.168.') === 0;
+        if (!isDevHost) return;
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+          navigator.serviceWorker.getRegistrations()
+            .then(function(regs) { regs.forEach(function(reg) { reg.unregister(); }); })
+            .catch(function() {});
+        }
+        if (window.caches && window.caches.keys) {
+          window.caches.keys()
+            .then(function(keys) { return Promise.all(keys.map(function(key) { return caches.delete(key); })); })
+            .catch(function() {});
+        }
+      })();
     </script>
   </body>
 </html>
+
+
+

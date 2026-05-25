@@ -1,402 +1,301 @@
-<div align="center">
+# S I G A - UTECAN
 
-# LabControl - UTECAN
+Sistema Integral de Gestion Academica para la Universidad Tecnologica de Candelaria.
 
-**Plataforma institucional para laboratorios, espacios, comunicados y operación académica**  
-Universidad Tecnológica de Candelaria, Campeche, México
+SIGA-UTECAN centraliza procesos academicos, administrativos y de seguimiento institucional: laboratorios, espacios, comunicados, tutorias, estudios socioeconomicos, consultorio medico, catalogos y reportes.
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+## Estado Actual
 
-</div>
+El proyecto esta en desarrollo activo. La aplicacion funciona con:
 
----
+- Backend FastAPI con SQLAlchemy, Alembic, JWT y PostgreSQL.
+- Frontend React 18 con React Router, Tailwind CSS y experiencia PWA.
+- Docker Compose para levantar base de datos, backend y frontend.
+- Roles diferenciados para administracion, docentes, servicios escolares, tutorias, medico, administrativos y alumnos.
 
-## Descripción
+## Cambios Recientes Importantes
 
-LabControl inició como un sistema para administrar laboratorios de cómputo, pero ha evolucionado hacia una plataforma institucional para coordinar laboratorios, salas, espacios, usuarios, sesiones de clase, inventario, reportes y comunicados oficiales. El objetivo es reducir procesos dispersos en grupos de WhatsApp, hojas sueltas o controles manuales, centralizando la operación en un sistema con roles, trazabilidad y paneles adaptados a cada tipo de usuario.
+### Identidad institucional
 
-El sistema trabaja con FastAPI, React, SQLAlchemy, PostgreSQL, JWT, WebSockets y una interfaz dark consistente con modales, animaciones, sidebar agrupado y experiencia PWA.
+- Renombrado visual de `LabControl - UTECAN` a `S I G A - UTECAN`.
+- Actualizacion de `title`, manifest PWA y metadatos del navegador.
+- Favicon e iconos PWA reemplazados por el logo institucional.
+- Logo del sidebar y encabezado movil actualizado con la identidad UTECAN.
 
----
+### Comunicados
 
-## Módulos Implementados
+- Comunicados con destinatarios por todos, rol, departamento o usuarios especificos.
+- Categorias controladas por contexto institucional para evitar usos fuera de procedimiento.
+- Retroalimentacion opcional para comunicados.
+- Adjuntos para comunicados.
+- Lecturas, confirmaciones y seguimiento de pendientes.
+- Panel de respaldos para generar paquetes ZIP con historial.
+- Soporte para importar respaldos y consultar comunicados archivados.
 
-### Autenticación y Roles
-- Login con JWT.
-- Rutas protegidas en frontend y backend.
-- Roles actuales: `SUPER_ADMIN`, `LAB_ADMIN`, `ADMINISTRATIVO`, `DOCENTE`, `ALUMNO`.
-- Cambio de contraseña desde la cuenta del usuario.
-- Seed automático del primer `SUPER_ADMIN`.
+### Servicios Escolares y alumnos
 
-### Laboratorios
-- CRUD de laboratorios.
-- Gestión de equipos/PC por laboratorio.
-- Estados operativos de equipos.
-- Vista detalle con mapa de asientos.
-- Sesiones de uso libre para administradores.
+- Rol `SERVICIOS_ESCOLARES`.
+- Panel especifico para Servicios Escolares.
+- Registro y administracion de alumnos.
+- Activacion del estudio socioeconomico para alumnos.
+- Acceso de alumno al tablero para responder su estudio.
+- Catalogo de carreras con nombre y clave.
+- Integracion de carrera del alumno desde su ficha academica.
 
-### Usuarios y Departamentos
-- CRUD de usuarios.
-- Importación masiva desde Excel.
-- Importación de docentes desde plantilla institucional.
-- Asignación de usuario a laboratorio cuando aplica.
-- Asignación de usuario a departamento.
-- Nuevo módulo de departamentos con alta, edición, desactivación e importación por Excel.
-- Rol `ADMINISTRATIVO` para usuarios de áreas institucionales.
+### Estudio socioeconomico
 
-### Horarios y Reservaciones de Laboratorio
-- Creación de horarios por laboratorio y cuatrimestre.
-- Vista semanal para docentes.
-- Solicitud de turnos por docente.
-- Sesiones de clase desde reservaciones confirmadas.
-- Resolución de conflictos de reservación.
-- Historial de sesiones del docente.
+- Flujo para que Servicios Escolares active el estudio.
+- Vista de alumno para capturar informacion socioeconomica.
+- Correcciones de validacion en campos numericos.
+- Manejo de errores de API para evitar renderizar objetos crudos en React.
+- Campos ampliados de ficha socioeconomica.
 
-### Salas y Espacios Institucionales
-- Registro y administración de espacios fuera del laboratorio.
-- Solicitudes de sala o espacio.
-- Bandeja de aprobación para administradores.
-- Historial de solicitudes por usuario.
-- Requerimientos y metadatos por solicitud.
+### Tutoria
 
-### Comunicados Institucionales
-- Gestión de comunicados oficiales separados del sistema de notificaciones.
-- Estados: borrador, publicado y archivado.
-- Categorías y prioridades.
-- Destinatarios por todos los usuarios, rol, usuario específico o departamento.
-- Buscador de usuarios al seleccionar destinatarios específicos.
-- Departamento emisor del comunicado.
-- Confirmación de lectura opcional.
-- Bandeja "Mis comunicados" para usuarios.
-- Contador de comunicados pendientes en el sidebar.
-- Reporte de lecturas por comunicado.
-- Los usuarios administrativos pueden gestionar comunicados de su departamento.
+- Rol `TUTORIA_ADMIN`.
+- Panel de tutoria.
+- Mis tutorados para docentes.
+- Historial y seguimiento de estados de tutoria.
+- Documentos y programacion de tutorias.
+- Formato con logo institucional para documentos relacionados.
 
-### Panel Docente
-- Dashboard docente como pantalla de inicio.
-- Saludo contextual.
-- Sesión activa destacada.
-- Próxima clase calculada con cuenta regresiva.
-- Stat cards con comunicados pendientes, solicitudes de espacios y clases semanales.
-- Accesos a solicitar laboratorio, solicitar sala o espacio y revisar solicitudes.
-- Sidebar docente reorganizado para que las acciones sean más comprensibles.
+### Consultorio medico
 
-### Sesiones de Clase
-- Inicio y cierre de sesión.
-- Asignación de alumnos a PCs.
-- Registro de observaciones e incidencias.
-- Mapa en tiempo real por WebSocket.
-- Asistencia por sesión.
+- Rol `MEDICO`.
+- Modulo de consultorio medico.
+- Registro de consultas para alumnos y personal.
+- Peso y talla en consulta.
+- Incapacidad con fecha de inicio y calculo de fecha final segun dias indicados.
+- Historial medico basado en snapshots de consulta para que los datos historicos no cambien aunque cambie la ficha del paciente.
+- Estadisticas por mes, cuatrimestre y anio.
+- Impresion/PDF de consulta con logo institucional.
+- Busqueda mejorada de pacientes ya atendidos usando historial de consultas y datos snapshot.
 
-### Inventario, Préstamos y Mantenimiento
-- Catálogo de activos tecnológicos.
-- Importación masiva desde Excel.
-- Préstamos de equipos con control de devolución.
-- Mantenimiento preventivo.
-- Historial de intervenciones.
-- Tableros tipo kanban para seguimiento.
+### Espacios institucionales
 
-### Catálogo Académico y Seguimiento
-- Catálogo de alumnos y materias.
+- Gestion de salas y espacios.
+- Solicitud de espacios por usuarios autorizados.
+- Bandeja de aprobacion.
+- Liberacion de espacios.
+- Responsables y permisos por operacion.
+
+### Catalogos y operacion academica
+
+- Catalogo de alumnos.
+- Catalogo de materias.
+- Catalogo de carreras.
 - Consulta de persona.
 - Historial de alumno.
 - Adeudos.
-- Reportes mensuales.
-- Bitácora/auditoría del sistema.
+- Identidad academica en reservaciones y sesiones.
 
-### UI/UX
-- Tema oscuro consistente.
-- Sidebar agrupado y colapsable por secciones.
-- Modales reutilizables.
-- Toasts de éxito/error.
-- Selects personalizados.
-- Badges y contadores.
-- Diseño responsive.
-- PWA instalable.
+## Modulos Principales
 
----
+- Autenticacion y roles.
+- Usuarios y departamentos.
+- Laboratorios.
+- Horarios y reservaciones.
+- Sesiones de clase.
+- Inventario, prestamos y mantenimiento.
+- Espacios institucionales.
+- Comunicados institucionales.
+- Servicios Escolares.
+- Estudio socioeconomico.
+- Tutoria.
+- Consultorio medico.
+- Catalogos academicos.
+- Reportes y auditoria.
+- Notificaciones.
+
+## Roles
+
+| Rol | Uso principal |
+|---|---|
+| `SUPER_ADMIN` | Administracion global del sistema |
+| `LAB_ADMIN` | Gestion de laboratorios, sesiones, espacios y operacion |
+| `ADMINISTRATIVO` | Operacion de area/departamento y comunicados |
+| `DOCENTE` | Panel docente, sesiones, tutorados, espacios y comunicados |
+| `SERVICIOS_ESCOLARES` | Alumnos, carreras y estudios socioeconomicos |
+| `TUTORIA_ADMIN` | Gestion y seguimiento de tutoria |
+| `MEDICO` | Consultorio medico |
+| `ALUMNO` | Tablero del alumno y estudio socioeconomico |
 
 ## Arquitectura
 
 ```txt
 labcontrol/
-├── backend/
-│   ├── main.py
-│   ├── database.py
-│   ├── dependencies.py
-│   ├── permissions.py
-│   ├── seed.py
-│   ├── alembic/
-│   │   └── versions/
-│   ├── models/
-│   │   ├── usuario.py
-│   │   ├── departamento.py
-│   │   ├── laboratorio.py
-│   │   ├── horario.py
-│   │   ├── sesion.py
-│   │   ├── espacio.py
-│   │   ├── comunicado.py
-│   │   ├── inventario.py
-│   │   ├── catalogo.py
-│   │   ├── adeudo.py
-│   │   ├── auditoria.py
-│   │   └── notificacion.py
-│   ├── routers/
-│   │   ├── auth.py
-│   │   ├── usuarios.py
-│   │   ├── departamentos.py
-│   │   ├── laboratorios.py
-│   │   ├── horarios.py
-│   │   ├── sesiones.py
-│   │   ├── espacios.py
-│   │   ├── comunicados.py
-│   │   ├── inventario.py
-│   │   ├── catalogo.py
-│   │   ├── reportes.py
-│   │   ├── auditoria.py
-│   │   ├── adeudos.py
-│   │   └── notificaciones.py
-│   └── ws/
-│       └── mapa.py
-│
-├── frontend/
-│   ├── public/
-│   └── src/
-│       ├── App.jsx
-│       ├── context/
-│       ├── hooks/
-│       ├── components/
-│       │   ├── AdminLayout.jsx
-│       │   ├── SelectDark.jsx
-│       │   └── NotificacionesBell.jsx
-│       └── pages/
-│           ├── DashboardAdmin.jsx
-│           ├── DashboardDocente.jsx
-│           ├── admin/
-│           │   ├── Usuarios.jsx
-│           │   ├── Departamentos.jsx
-│           │   ├── ComunicadosAdmin.jsx
-│           │   ├── EspaciosAdmin.jsx
-│           │   └── ...
-│           ├── comunicados/
-│           │   └── MisComunicados.jsx
-│           ├── espacios/
-│           │   ├── ApartarEspacio.jsx
-│           │   ├── BandejaEspacios.jsx
-│           │   └── MisSolicitudes.jsx
-│           └── docente/
-│               ├── SesionClase.jsx
-│               └── SesionActiva.jsx
-│
-├── docker-compose.yml
-├── .env.example
-└── INICIAR_LABCONTROL.bat
+  backend/
+    main.py
+    database.py
+    dependencies.py
+    permissions.py
+    alembic/
+      versions/
+    assets/
+      tutoria/
+    models/
+      usuario.py
+      catalogo.py
+      comunicado.py
+      consultorio.py
+      ficha_socioeconomica.py
+      tutoria.py
+      espacio.py
+      horario.py
+      sesion.py
+      adeudo.py
+    routers/
+      auth.py
+      usuarios.py
+      catalogo.py
+      comunicados.py
+      consultorio.py
+      servicios_escolares.py
+      tutoria.py
+      espacios.py
+      horarios.py
+      sesiones.py
+      inventario.py
+      adeudos.py
+
+  frontend/
+    public/
+      icons/
+      index.html
+      manifest.json
+    src/
+      App.jsx
+      components/
+      context/
+      hooks/
+      pages/
+        admin/
+        alumno/
+        comunicados/
+        docente/
+        espacios/
+        medico/
+        servicios_escolares/
+
+  docker-compose.yml
+  README.md
 ```
 
----
+## Inicio Rapido con Docker
 
-## Inicio Rápido
+Requisitos:
 
-### Requisitos
 - Docker Desktop instalado y corriendo.
-- Puertos `3000` y `8000` disponibles.
+- Puertos `3000`, `8000` y `5432` disponibles.
 
-### Con Docker
+Levantar el sistema:
 
-```bash
-git clone https://github.com/MASTERGGD/LabControl.git
-cd LabControl
-cp .env.example .env
-docker-compose up --build
+```powershell
+docker compose up -d --build
+```
+
+Ver logs del backend:
+
+```powershell
+docker compose logs -f backend
 ```
 
 URLs:
+
 - Frontend: `http://localhost:3000`
 - API: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
 
-### En Windows
+## Desarrollo Local sin Docker
 
-También puedes ejecutar:
+Backend:
 
-```bat
-INICIAR_LABCONTROL.bat
+```powershell
+cd backend
+$env:DATABASE_URL="sqlite:///../data/labcontrol.db"
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
----
+Frontend:
 
-## Credenciales Iniciales
+```powershell
+cd frontend
+npm install
+npm start
+```
 
-| Campo | Valor |
-|---|---|
-| Email | `admin@labcontrol.mx` |
-| Contraseña | `admin123` |
+Nota: para desarrollo completo se recomienda Docker, porque PostgreSQL y migraciones quedan alineadas con el entorno real del proyecto.
 
-Cambia la contraseña después del primer inicio de sesión.
+## Migraciones
 
----
+Con Docker, el backend ejecuta Alembic al iniciar.
+
+Manual:
+
+```powershell
+cd backend
+alembic upgrade head
+```
+
+Si una base SQLite local ya tenia tablas creadas antes de usar Alembic, puede requerir marcar la version actual o usar Docker/PostgreSQL para evitar conflictos de esquema.
 
 ## Variables de Entorno
 
-Copia `.env.example` a `.env` y ajusta los valores:
+Ejemplo:
 
 ```env
-DATABASE_URL=postgresql://usuario:password@localhost:5432/labcontrol
+DATABASE_URL=postgresql://labcontrol:labcontrol@db:5432/labcontrol
 SECRET_KEY=cambia-esta-clave-en-produccion-minimo-32-caracteres
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
-APP_NAME=LabControl UTECAN
+APP_NAME=S I G A - UTECAN
 FRONTEND_URL=http://localhost:3000
-
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=tu@gmail.com
-SMTP_PASSWORD=tu-app-password
 ```
 
----
+## Verificacion
 
-## Roles
+Comandos usados durante los ultimos cambios:
 
-| Rol | Descripción | Acceso principal |
-|---|---|---|
-| `SUPER_ADMIN` | Administrador global | Todo el sistema |
-| `LAB_ADMIN` | Administrador de laboratorio | Laboratorios, sesiones, espacios y comunicados |
-| `ADMINISTRATIVO` | Usuario de departamento | Gestión de comunicados de su departamento |
-| `DOCENTE` | Profesor | Panel docente, laboratorios, espacios y comunicados propios |
-| `ALUMNO` | Alumno | Reservado para crecimiento futuro |
-
----
-
-## Endpoints Principales
-
-| Método | Endpoint | Descripción |
-|---|---|---|
-| `POST` | `/auth/login` | Login |
-| `GET` | `/auth/me` | Perfil autenticado |
-| `GET/POST/PUT/DELETE` | `/usuarios` | Gestión de usuarios |
-| `POST` | `/usuarios/bulk-excel` | Carga masiva de usuarios |
-| `POST` | `/usuarios/importar-docentes` | Importar docentes |
-| `GET/POST/PUT/DELETE` | `/departamentos` | Gestión de departamentos |
-| `POST` | `/departamentos/importar` | Importar departamentos desde Excel |
-| `GET/POST/PUT/DELETE` | `/laboratorios` | Laboratorios |
-| `GET/POST/PUT/DELETE` | `/horarios` | Horarios y reservaciones |
-| `GET/POST` | `/sesiones` | Sesiones de clase |
-| `GET/POST/PUT/DELETE` | `/espacios` | Espacios institucionales |
-| `GET/POST/PUT/DELETE` | `/comunicados` | Comunicados institucionales |
-| `GET` | `/comunicados/mis-comunicados` | Comunicados del usuario |
-| `GET` | `/comunicados/pendientes-count` | Contador de pendientes |
-| `POST` | `/comunicados/{id}/leer` | Marcar como leído |
-| `POST` | `/comunicados/{id}/confirmar` | Confirmar lectura |
-| `GET` | `/comunicados/{id}/lecturas` | Reporte de lecturas |
-| `GET/POST/PUT/DELETE` | `/inventario` | Activos, préstamos y mantenimiento |
-| `GET/POST/PUT/DELETE` | `/catalogo` | Alumnos y materias |
-| `GET` | `/reportes/mensual` | Reportes mensuales |
-| `GET` | `/notificaciones` | Notificaciones |
-| `WS` | `/ws/mapa/{lab_id}` | Mapa en tiempo real |
-
-La documentación completa está disponible en Swagger: `http://localhost:8000/docs`.
-
----
-
-## Modelo de Datos Resumido
-
-```txt
-Departamento ──< Usuario
-Departamento ──< Comunicado
-Comunicado ──< ComunicadoDestinatario
-Comunicado ──< ComunicadoLectura
-
-Laboratorio ──< Computadora
-Laboratorio ──< HorarioDisponible
-HorarioDisponible ──< Reservacion
-Reservacion ──< SesionClase
-SesionClase ──< AsignacionPC
-SesionClase ──< ObservacionPC
-
-EspacioInstitucional ──< SolicitudEspacio
-SolicitudEspacio ──< RequerimientoSolicitud
-
-Activo ──< Prestamo
-Activo ──< Incidente
-Activo ──< MantenimientoPreventivo
-
-Usuario ──< Notificacion
-Usuario ──< AuditLog
-CatalogoAlumno
-CatalogoMateria
-Adeudo
+```powershell
+cd frontend
+npm run build
 ```
 
----
+Tambien se han validado archivos Python puntuales con:
 
-## Stack Tecnológico
-
-### Backend
-
-| Tecnología | Uso |
-|---|---|
-| Python 3.11 | Lenguaje base |
-| FastAPI | API REST y WebSockets |
-| SQLAlchemy | ORM |
-| Alembic | Migraciones |
-| PostgreSQL | Base de datos principal |
-| JWT | Autenticación |
-| pandas/openpyxl | Importaciones Excel |
-
-### Frontend
-
-| Tecnología | Uso |
-|---|---|
-| React 18 | Interfaz |
-| React Router v6 | Rutas |
-| Tailwind CSS | Estilos |
-| Axios | Cliente HTTP |
-| date-fns | Fechas |
-
-### Infraestructura
-
-| Tecnología | Uso |
-|---|---|
-| Docker Compose | Backend + frontend |
-| Service Worker | PWA |
-
----
-
-## Despliegue
-
-```bash
-git clone https://github.com/MASTERGGD/LabControl.git
-cd LabControl
-cp .env.example .env
-docker-compose up -d --build
+```powershell
+python -m compileall backend\routers\consultorio.py
 ```
 
-Para producción, configura `DATABASE_URL`, `SECRET_KEY`, `FRONTEND_URL` y credenciales SMTP reales.
+## Notas de Git
 
----
+Antes de guardar cambios:
 
-## Convención de Commits
+```powershell
+git status --short
+git diff --stat
+```
+
+Commit sugerido para este bloque de trabajo:
+
+```powershell
+git add README.md backend frontend docker-compose.yml
+git commit -m "feat: consolidate SIGA institutional modules"
+```
+
+No se recomienda agregar carpetas temporales como `.codex_tmp/`.
+
+## Convencion de Commits
 
 ```txt
 feat:     nueva funcionalidad
-fix:      corrección de bug
+fix:      correccion de bug
 style:    cambios visuales
 refactor: refactor sin cambio funcional
-docs:     documentación
+docs:     documentacion
 chore:    mantenimiento
 ```
 
----
-
 ## Licencia
 
-MIT © Universidad Tecnológica de Candelaria
-
-<div align="center">
-  Desarrollado para la operación académica e institucional de UTECAN.
-</div>
+Uso institucional para la Universidad Tecnologica de Candelaria.

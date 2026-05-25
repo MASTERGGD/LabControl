@@ -27,11 +27,15 @@ router = APIRouter(prefix="/sesiones", tags=["Sesiones de Clase"])
 
 class SesionCreate(BaseModel):
     laboratorio_id: int
-    materia: Optional[str]  = Field(None, max_length=100)
-    grupo:   Optional[str]  = Field(None, max_length=20)
-    observacion: Optional[str] = Field(None, max_length=200)   # para sesión libre
-    reservacion_id: Optional[int] = None
-    fin_estimado_min: Optional[int] = Field(None, ge=15, le=300, description="Duración estimada en minutos")
+    materia:             Optional[str]  = Field(None, max_length=200)
+    carrera:             Optional[str]  = Field(None, max_length=120)
+    cuatrimestre:        Optional[str]  = Field(None, max_length=20,
+        description="Cuatrimestre de la materia (1–12)")
+    grupo:               Optional[str]  = Field(None, max_length=20)
+    observacion:         Optional[str]  = Field(None, max_length=200)
+    reservacion_id:      Optional[int]  = None
+    fin_estimado_min:    Optional[int]  = Field(None, ge=15, le=300,
+        description="Duración estimada en minutos")
 
 class SesionCerrar(BaseModel):
     observacion_general: Optional[str] = None
@@ -54,6 +58,18 @@ class ReportePCCreate(BaseModel):
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
+
+def _identidad_sesion(materia, carrera, cuatrimestre, grupo) -> str:
+    """Etiqueta legible de identidad académica de una sesión."""
+    partes = [materia or "—"]
+    if carrera:
+        partes.append(carrera)
+    if cuatrimestre:
+        partes.append(f"{cuatrimestre}° cuatrimestre")
+    if grupo:
+        partes.append(f"Grupo {grupo}")
+    return " · ".join(partes)
+
 
 def _serializar_sesion(s: SesionClase, db: Session) -> dict:
     lab  = db.query(Laboratorio).filter(Laboratorio.id == s.laboratorio_id).first()
@@ -82,9 +98,12 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         "laboratorio_nombre": lab.nombre if lab else None,
         "docente_id": s.docente_id,
         "docente_nombre": doc.nombre if doc else None,
-        "tipo_sesion": s.tipo_sesion or "CLASE",
-        "materia": s.materia,
-        "grupo": s.grupo,
+        "tipo_sesion":        s.tipo_sesion or "CLASE",
+        "materia":            s.materia,
+        "carrera":            s.carrera,
+        "cuatrimestre":       s.cuatrimestre,
+        "grupo":              s.grupo,
+        "identidad_academica": _identidad_sesion(s.materia, s.carrera, s.cuatrimestre, s.grupo),
         "inicio": s.inicio.isoformat() if s.inicio else None,
         "fin_estimado": s.fin_estimado.isoformat() if s.fin_estimado else None,
         "fin_real": s.fin_real.isoformat() if s.fin_real else None,
@@ -254,6 +273,23 @@ async def abrir_sesion(
                     detail="Esta reservación no te pertenece. Solo puedes iniciar tus propias clases."
                 )
 
+            # ── Verificar que la reservación tenga identidad académica completa ─
+            faltan_res = [f for f, v in [
+                ("materia",              res.materia),
+                ("carrera",              res.carrera),
+                ("cuatrimestre_materia", res.cuatrimestre_materia),
+                ("grupo",                res.grupo),
+            ] if not v or not str(v).strip()]
+            if faltan_res:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"La reservación no tiene identidad académica completa. "
+                        f"Faltan: {', '.join(faltan_res)}. "
+                        f"Pide al administrador que edite la reservación antes de iniciar la sesión."
+                    )
+                )
+
             # Verificar ventana horaria ±15 min en horario México
             horario = db.query(HorarioDisponible).filter(
                 HorarioDisponible.id == res.horario_id
@@ -290,7 +326,24 @@ async def abrir_sesion(
                     )
 
         else:
-            # ── Sesión libre: verificar que no haya reservación vigente de otro ──
+            # ── Sesión libre: identidad académica obligatoria ─────────────────
+            faltan = [f for f, v in [
+                ("materia",       data.materia),
+                ("carrera",       data.carrera),
+                ("cuatrimestre",  data.cuatrimestre),
+                ("grupo",         data.grupo),
+            ] if not v or not str(v).strip()]
+            if faltan:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Sesión libre requiere identidad académica completa. "
+                        f"Faltan: {', '.join(faltan)}. "
+                        f"Selecciona la materia desde el catálogo para autocompletar carrera y cuatrimestre."
+                    )
+                )
+
+            # ── Verificar que no haya reservación vigente de otro ──
             # Buscar si hay alguna reservación activa de OTRO docente en este lab en este slot horario
             reservaciones_lab = (
                 db.query(Reservacion)
@@ -338,9 +391,55 @@ async def abrir_sesion(
     # Determinar tipo: CLASE si tiene materia+grupo o viene de reservación, LIBRE si no
     es_libre = not data.reservacion_id and not (data.materia and data.grupo)
     tipo_sesion = "LIBRE" if es_libre else "CLASE"
-    # Para sesión libre, usar observacion como etiqueta si se proporcionó
-    materia_final = data.materia or (data.observacion if data.observacion else "Sesión Libre")
-    grupo_final   = data.grupo or ""
+
+    # Identidad académica: heredar de la reservación si viene de una; si no, usar lo enviado
+    if data.reservacion_id:
+        res_ref = db.query(Reservacion).filter(Reservacion.id == data.reservacion_id).first()
+        materia_final     = res_ref.materia if res_ref else data.materia
+        carrera_final     = res_ref.carrera if res_ref else data.carrera
+        cuatrimestre_final = res_ref.cuatrimestre_materia if res_ref else data.cuatrimestre
+        grupo_final       = res_ref.grupo if res_ref else (data.grupo or "")
+    else:
+        materia_final     = data.materia or (data.observacion if data.observacion else "Sesión Libre")
+        carrera_final     = data.carrera
+        cuatrimestre_final = data.cuatrimestre
+        grupo_final       = data.grupo or ""
+
+    if data.reservacion_id:
+        if not res_ref:
+            raise HTTPException(status_code=404, detail="Reservación no encontrada")
+
+        faltan_res = [f for f, v in [
+            ("materia",              res_ref.materia),
+            ("carrera",              res_ref.carrera),
+            ("cuatrimestre_materia", res_ref.cuatrimestre_materia),
+            ("grupo",                res_ref.grupo),
+        ] if not v or not str(v).strip()]
+        if faltan_res:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"La reservación no tiene identidad académica completa. "
+                    f"Faltan: {', '.join(faltan_res)}. "
+                    f"Edita la reservación antes de iniciar la sesión."
+                )
+            )
+    else:
+        faltan = [f for f, v in [
+            ("materia",      materia_final),
+            ("carrera",      carrera_final),
+            ("cuatrimestre", cuatrimestre_final),
+            ("grupo",        grupo_final),
+        ] if not v or not str(v).strip()]
+        if faltan:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"La sesión requiere identidad académica completa. "
+                    f"Faltan: {', '.join(faltan)}. "
+                    f"Selecciona la materia desde el catálogo para autocompletar carrera y cuatrimestre."
+                )
+            )
 
     sesion = SesionClase(
         reservacion_id=data.reservacion_id,
@@ -348,6 +447,8 @@ async def abrir_sesion(
         docente_id=current_user.id,
         tipo_sesion=tipo_sesion,
         materia=materia_final,
+        carrera=carrera_final,
+        cuatrimestre=cuatrimestre_final,
         grupo=grupo_final,
         codigo_sesion=codigo,
         inicio=ahora,

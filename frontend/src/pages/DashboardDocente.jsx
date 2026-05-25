@@ -280,7 +280,7 @@ export default function DashboardDocente() {
 
   return (
     <AdminLayout>
-      <div className="space-y-5 max-w-4xl">
+      <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {/* ── Saludo ──────────────────────────────────────────────────── */}
         <div>
@@ -311,7 +311,7 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Stats en tiempo real ───────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 2xl:grid-cols-3 gap-3 2xl:gap-4">
           <StatCard
             icon="📢"
             label="Comunicados"

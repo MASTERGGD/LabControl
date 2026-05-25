@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
+import { useTheme } from '../../context/ThemeContext';
 
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
                "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -16,13 +17,15 @@ function pct(actual, anterior) {
 
 // ─── Componentes compartidos ──────────────────────────────────────────────────
 function StatCard({ emoji, label, value, sub, color = "blue" }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const palette = {
-    blue:   { accent: '#3b82f6', bg: 'rgba(59,130,246,0.07)',  border: 'rgba(59,130,246,0.2)',  text: '#93c5fd' },
-    green:  { accent: '#10b981', bg: 'rgba(16,185,129,0.07)',  border: 'rgba(16,185,129,0.2)',  text: '#6ee7b7' },
-    yellow: { accent: '#f59e0b', bg: 'rgba(245,158,11,0.07)',  border: 'rgba(245,158,11,0.2)',  text: '#fcd34d' },
-    red:    { accent: '#ef4444', bg: 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',   text: '#fca5a5' },
-    purple: { accent: '#8b5cf6', bg: 'rgba(139,92,246,0.07)',  border: 'rgba(139,92,246,0.2)',  text: '#c4b5fd' },
-    gray:   { accent: '#475569', bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.08)', text: '#94a3b8' },
+    blue:   { accent: '#3b82f6', bg: isDay ? '#EFF6FF' : 'rgba(59,130,246,0.07)',  border: 'rgba(59,130,246,0.2)',  text: isDay ? '#2563EB' : '#93c5fd' },
+    green:  { accent: '#10b981', bg: isDay ? '#ECFDF5' : 'rgba(16,185,129,0.07)',  border: 'rgba(16,185,129,0.2)',  text: isDay ? '#059669' : '#6ee7b7' },
+    yellow: { accent: '#f59e0b', bg: isDay ? '#FFFBEB' : 'rgba(245,158,11,0.07)',  border: 'rgba(245,158,11,0.2)',  text: isDay ? '#D97706' : '#fcd34d' },
+    red:    { accent: '#ef4444', bg: isDay ? '#FEF2F2' : 'rgba(239,68,68,0.07)',   border: 'rgba(239,68,68,0.2)',   text: isDay ? '#DC2626' : '#fca5a5' },
+    purple: { accent: '#8b5cf6', bg: isDay ? '#F5F3FF' : 'rgba(139,92,246,0.07)',  border: 'rgba(139,92,246,0.2)',  text: isDay ? '#7C3AED' : '#c4b5fd' },
+    gray:   { accent: '#475569', bg: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)', border: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.08)', text: isDay ? '#64748B' : '#94a3b8' },
   };
   const p = palette[color] || palette.gray;
   return (
@@ -460,15 +463,18 @@ function ComputadorasCriticas({ pcs }) {
 
 // ─── Tarjeta de resumen visual (hero KPI) ────────────────────────────────────
 function SummaryCard({ label, value, color = '#3b82f6', sub }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   return (
     <div style={{
-      background: 'rgba(8,14,30,0.72)',
+      background: isDay ? '#FFFFFF' : 'rgba(8,14,30,0.72)',
       border: `1px solid ${color}28`,
       borderRadius: '1rem',
       padding: '1.1rem 1.25rem',
       position: 'relative',
       overflow: 'hidden',
       backdropFilter: 'blur(12px)',
+      boxShadow: isDay ? '0 1px 3px rgba(15,23,42,0.06)' : undefined,
     }}>
       {/* barra de acento superior */}
       <div style={{
@@ -481,7 +487,7 @@ function SummaryCard({ label, value, color = '#3b82f6', sub }) {
         background: `radial-gradient(ellipse, ${color}0d 0%, transparent 70%)`,
         filter: 'blur(20px)', pointerEvents: 'none',
       }}/>
-      <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', margin: '0 0 10px', position: 'relative' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: isDay ? '#64748B' : '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', margin: '0 0 10px', position: 'relative' }}>
         {label}
       </p>
       <p style={{ fontSize: 28, fontWeight: 800, color, margin: 0, lineHeight: 1, fontVariantNumeric: 'tabular-nums', position: 'relative' }}>

@@ -53,6 +53,7 @@ def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
         "departamento_nombre": dep.nombre if dep else None,
         "departamento_clave": dep.clave if dep else None,
         "activo": usuario.activo,
+        "acceso_consultorio": bool(usuario.acceso_consultorio),
     }
 
 

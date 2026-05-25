@@ -51,8 +51,13 @@ class ReservacionCreate(BaseModel):
     laboratorio_id: int
     docente_id: int
     materia: str  = Field(..., min_length=2, max_length=100)
+    carrera: Optional[str] = Field(None, max_length=120,
+        description="Carrera a la que pertenece la materia")
+    cuatrimestre: str = Field(..., min_length=2, max_length=20,
+        description="Período escolar, ej. ENE-ABR-2025")
+    cuatrimestre_materia: Optional[str] = Field(None, max_length=20,
+        description="Cuatrimestre de la materia (1–12)")
     grupo: str    = Field(..., min_length=1, max_length=20)
-    cuatrimestre: str = Field(..., min_length=2, max_length=20)
     observaciones: Optional[str] = None
     # Requerimientos embebidos (se crean automáticamente si existen)
     req_items:           Optional[List[str]] = None
@@ -62,6 +67,8 @@ class ReservacionCreate(BaseModel):
 class ReservacionUpdate(BaseModel):
     docente_id: Optional[int]       = None
     materia: Optional[str]          = Field(None, min_length=2, max_length=100)
+    carrera: Optional[str]          = Field(None, max_length=120)
+    cuatrimestre_materia: Optional[str] = Field(None, max_length=20)
     grupo: Optional[str]            = Field(None, min_length=1, max_length=20)
     estado: Optional[str]           = None
     observaciones: Optional[str]    = None
@@ -184,6 +191,19 @@ def _calcular_urgencia(horario: HorarioDisponible) -> tuple[bool, int]:
     )
     return dias_habiles < 3, dias_habiles
 
+def _identidad_label(materia: str, carrera: str, cuat_mat: str, grupo: str) -> str:
+    """Construye la etiqueta de identidad académica de una sesión/reservación."""
+    partes = [materia or "—"]
+    if carrera:
+        partes.append(carrera)
+    if cuat_mat:
+        partes.append(f"{cuat_mat}er cuatrimestre" if cuat_mat == "3"
+                      else f"{cuat_mat}° cuatrimestre")
+    if grupo:
+        partes.append(f"Grupo {grupo}")
+    return " · ".join(partes)
+
+
 def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
     suplente = db.query(Usuario).filter(Usuario.id == r.docente_suplente_id).first() if r.docente_suplente_id else None
@@ -202,12 +222,15 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
         "docente_nombre": docente.nombre if docente else None,
         "docente_suplente_id": r.docente_suplente_id,
         "docente_suplente_nombre": suplente.nombre if suplente else None,
-        "materia": r.materia,
-        "grupo": r.grupo,
-        "cuatrimestre": r.cuatrimestre,
-        "estado": r.estado,
-        "observaciones": r.observaciones,
-        "requerimiento": _serializar_requerimiento(r.requerimiento) if r.requerimiento else None,
+        "materia":              r.materia,
+        "carrera":              r.carrera,
+        "cuatrimestre":         r.cuatrimestre,
+        "cuatrimestre_materia": r.cuatrimestre_materia,
+        "grupo":                r.grupo,
+        "identidad_academica":  _identidad_label(r.materia, r.carrera, r.cuatrimestre_materia, r.grupo),
+        "estado":               r.estado,
+        "observaciones":        r.observaciones,
+        "requerimiento":        _serializar_requerimiento(r.requerimiento) if r.requerimiento else None,
     }
 
 def _verificar_conflicto(
@@ -635,6 +658,21 @@ def crear_reservacion(
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
+    # ── Identidad académica obligatoria ──────────────────────────────────────
+    faltan = [f for f, v in [
+        ("carrera",              data.carrera),
+        ("cuatrimestre_materia", data.cuatrimestre_materia),
+    ] if not v or not str(v).strip()]
+    if faltan:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"La reservación requiere identidad académica completa. "
+                f"Faltan: {', '.join(faltan)}. "
+                f"Selecciona la materia desde el catálogo para autocompletar estos campos."
+            )
+        )
+
     horario = db.query(HorarioDisponible).filter(
         HorarioDisponible.id == data.horario_id,
         HorarioDisponible.activo == True
@@ -654,8 +692,10 @@ def crear_reservacion(
         laboratorio_id=data.laboratorio_id,
         docente_id=data.docente_id,
         materia=data.materia,
-        grupo=data.grupo,
+        carrera=data.carrera,
         cuatrimestre=data.cuatrimestre,
+        cuatrimestre_materia=data.cuatrimestre_materia,
+        grupo=data.grupo,
         observaciones=data.observaciones,
         estado="PROGRAMADA",
         creado_por=current_user.id,
@@ -732,6 +772,23 @@ def editar_reservacion(
 
     for campo, valor in data.model_dump(exclude_none=True).items():
         setattr(r, campo, valor)
+
+    # ── Guardar identidad académica: no permitir borrar campos clave ──────────
+    faltan = [f for f, v in [
+        ("carrera",              r.carrera),
+        ("cuatrimestre_materia", r.cuatrimestre_materia),
+    ] if not v or not str(v).strip()]
+    if faltan:
+        db.rollback()
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"No puedes dejar la reservación sin identidad académica completa. "
+                f"Faltan: {', '.join(faltan)}. "
+                f"Selecciona la materia desde el catálogo para autocompletar estos campos."
+            )
+        )
+
     db.commit()
     db.refresh(r)
     return _serializar_reservacion(r, db)

@@ -80,7 +80,11 @@ def _serializar_materia(m: CatalogoMateria) -> dict:
         "activo":               m.activo,
     }
 
-_admin_roles = require_roles(RolUsuario.LAB_ADMIN, RolUsuario.SUPER_ADMIN)
+_admin_roles = require_roles(
+    RolUsuario.LAB_ADMIN,
+    RolUsuario.SUPER_ADMIN,
+    RolUsuario.SERVICIOS_ESCOLARES,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -151,6 +155,70 @@ def buscar_alumnos(
     ]
 
 
+@router.get("/buscar-personas", summary="Búsqueda combinada: alumnos + personal")
+def buscar_personas(
+    q:  str = "",
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Autocomplete unificado para Consulta de Persona.
+    Devuelve alumnos del catálogo Y usuarios del sistema (docentes, administrativos, etc.).
+    """
+    if len(q.strip()) < 2:
+        return []
+    term = f"%{q.strip()}%"
+
+    # ── Alumnos ──────────────────────────────────────────────────────────────
+    alumnos = db.query(CatalogoAlumno).filter(
+        CatalogoAlumno.activo.isnot(False),
+        (CatalogoAlumno.nombres.ilike(term) |
+         CatalogoAlumno.apellido_paterno.ilike(term) |
+         CatalogoAlumno.apellido_materno.ilike(term) |
+         CatalogoAlumno.matricula.ilike(term))
+    ).order_by(CatalogoAlumno.apellido_paterno).limit(10).all()
+
+    # ── Personal (usuarios que no son ALUMNO) ─────────────────────────────
+    personal = db.query(Usuario).filter(
+        Usuario.activo == True,
+        Usuario.rol != RolUsuario.ALUMNO,
+        (Usuario.nombre.ilike(term) |
+         Usuario.numero_empleado.ilike(term))
+    ).order_by(Usuario.nombre).limit(10).all()
+
+    results = []
+
+    for a in alumnos:
+        nombre = f"{a.apellido_paterno} {a.apellido_materno or ''} {a.nombres}".strip()
+        results.append({
+            "tipo":           "ALUMNO",
+            "identificador":  a.matricula,
+            "nombre":         nombre,
+            "subtitulo":      f"Matrícula: {a.matricula}",
+            "extra":          a.carrera,
+            # campos para compatibilidad con AutocompleteInput legacy
+            "id":               a.id,
+            "nombres":          a.nombres,
+            "apellido_paterno": a.apellido_paterno,
+            "apellido_materno": a.apellido_materno,
+            "matricula":        a.matricula,
+            "grupo":            a.grupo,
+            "carrera":          a.carrera,
+        })
+
+    for u in personal:
+        results.append({
+            "tipo":          "PERSONAL",
+            "identificador": u.numero_empleado or f"USR{u.id}",
+            "nombre":        u.nombre,
+            "subtitulo":     f"No. Emp: {u.numero_empleado or 'N/A'} · {u.rol.value}",
+            "extra":         None,
+            "id":            u.id,
+        })
+
+    return results
+
+
 @router.post("/alumnos", status_code=status.HTTP_201_CREATED, summary="Crear alumno manualmente")
 def crear_alumno(
     data: AlumnoCreate,
@@ -219,9 +287,16 @@ def eliminar_alumno(
 @router.post("/alumnos/importar", summary="Importar alumnos desde Excel (Plantilla_Alumnos_UTECAN.xlsx)")
 async def importar_alumnos(
     file: UploadFile = File(...),
+    preview: bool = False,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_admin_roles),
 ):
+    """
+    Importa (o previsualiza) alumnos desde un Excel con la Plantilla_Alumnos_UTECAN.
+
+    - **preview=false** (por defecto): aplica los cambios en la base de datos.
+    - **preview=true**: analiza el archivo y devuelve el desglose sin guardar nada.
+    """
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
 
@@ -233,9 +308,14 @@ async def importar_alumnos(
 
     ws = wb["Alumnos"] if "Alumnos" in wb.sheetnames else wb.active
 
-    creados     = 0
-    actualizados = 0
-    errores     = []
+    creados           = 0
+    actualizados      = 0
+    sin_cambios       = 0
+    errores           = []
+    cambios_sensibles = []   # [{matricula, nombre, campo, antes, despues}]
+
+    # Campos considerados sensibles: cambios que el admin debe revisar antes de confirmar
+    CAMPOS_SENSIBLES = ("cuatrimestre", "carrera", "grupo")
 
     # Plantilla: fila 1=título, 2=leyenda, 3=cabeceras, 4=ejemplo → datos desde fila 5
     for row_idx, row in enumerate(ws.iter_rows(min_row=5, values_only=True), start=5):
@@ -281,34 +361,72 @@ async def importar_alumnos(
             CatalogoAlumno.matricula == matricula,
         ).first()
 
-        if existente:
-            existente.apellido_paterno = apellido_paterno
-            existente.apellido_materno = apellido_materno
-            existente.nombres          = nombres
-            existente.carrera          = carrera
-            existente.cuatrimestre     = cuatrimestre
-            existente.grupo            = grupo
-            existente.activo           = True
-            actualizados += 1
-        else:
-            db.add(CatalogoAlumno(
-                matricula        = matricula,
-                apellido_paterno = apellido_paterno,
-                apellido_materno = apellido_materno,
-                nombres          = nombres,
-                carrera          = carrera,
-                cuatrimestre     = cuatrimestre,
-                grupo            = grupo,
-                periodo          = periodo,
-            ))
-            creados += 1
+        nombre_completo = f"{apellido_paterno} {apellido_materno} {nombres}".strip()
 
-    db.commit()
+        if existente:
+            incoming = {
+                "apellido_paterno": apellido_paterno,
+                "apellido_materno": apellido_materno,
+                "nombres":          nombres,
+                "carrera":          carrera,
+                "cuatrimestre":     cuatrimestre,
+                "grupo":            grupo,
+            }
+            hay_cambio = False
+            for campo, nuevo_val in incoming.items():
+                actual_val = getattr(existente, campo)
+                if str(actual_val).strip() != str(nuevo_val).strip():
+                    hay_cambio = True
+                    if campo in CAMPOS_SENSIBLES:
+                        cambios_sensibles.append({
+                            "matricula": matricula,
+                            "nombre":    nombre_completo,
+                            "campo":     campo,
+                            "antes":     actual_val,
+                            "despues":   nuevo_val,
+                        })
+
+            if hay_cambio:
+                actualizados += 1
+                if not preview:
+                    existente.apellido_paterno = apellido_paterno
+                    existente.apellido_materno = apellido_materno
+                    existente.nombres          = nombres
+                    existente.carrera          = carrera
+                    existente.cuatrimestre     = cuatrimestre
+                    existente.grupo            = grupo
+                    existente.activo           = True
+            else:
+                sin_cambios += 1
+                if not preview:
+                    # Reactivar si estaba inactivo (sin contar como actualización)
+                    if not existente.activo:
+                        existente.activo = True
+        else:
+            creados += 1
+            if not preview:
+                db.add(CatalogoAlumno(
+                    matricula        = matricula,
+                    apellido_paterno = apellido_paterno,
+                    apellido_materno = apellido_materno,
+                    nombres          = nombres,
+                    carrera          = carrera,
+                    cuatrimestre     = cuatrimestre,
+                    grupo            = grupo,
+                    periodo          = periodo,
+                ))
+
+    if not preview:
+        db.commit()
+
     return {
-        "creados":       creados,
-        "actualizados":  actualizados,
-        "total_errores": len(errores),
-        "errores":       errores,
+        "preview":           preview,
+        "creados":           creados,
+        "actualizados":      actualizados,
+        "sin_cambios":       sin_cambios,
+        "total_errores":     len(errores),
+        "errores":           errores,
+        "cambios_sensibles": cambios_sensibles,
     }
 
 
@@ -340,21 +458,51 @@ def buscar_materias(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Devuelve todas las combinaciones materia+carrera+cuatrimestre que coinciden con la búsqueda.
+    NO deduplica por nombre: si "Inglés" existe en 3 carreras, devuelve 3 opciones distintas.
+    Incluye un campo `label` listo para mostrar en el selector del frontend.
+    """
     if len(q.strip()) < 2:
         return []
-    all_results = db.query(CatalogoMateria).filter(
+
+    resultados = db.query(CatalogoMateria).filter(
         CatalogoMateria.activo == True,
         CatalogoMateria.nombre.ilike(f"%{q.strip()}%")
-    ).order_by(CatalogoMateria.nombre).all()
-    # Deduplicar por nombre — retornar un único resultado por materia
-    seen, unique = set(), []
-    for m in all_results:
-        if m.nombre not in seen:
-            seen.add(m.nombre)
-            unique.append(m)
-        if len(unique) >= 10:
-            break
-    return [{"id": m.id, "nombre": m.nombre, "cuatrimestre_oficial": m.cuatrimestre_oficial, "periodo": m.periodo} for m in unique]
+    ).order_by(CatalogoMateria.nombre, CatalogoMateria.carrera).limit(20).all()
+
+    def _ordinal(n) -> str:
+        if n is None:
+            return "?"
+        sufijos = {1:"er", 2:"do", 3:"er", 4:"to", 5:"to", 6:"to",
+                   7:"mo", 8:"vo", 9:"no", 10:"mo", 11:"vo", 12:"vo"}
+        return f"{n}{sufijos.get(int(n), 'o')}"
+
+    items = []
+    for m in resultados:
+        tiene_carrera = bool(m.carrera and m.carrera.strip())
+        tiene_cuat    = m.cuatrimestre_oficial is not None
+
+        if tiene_carrera and tiene_cuat:
+            label = f"{m.nombre} · {m.carrera} · {_ordinal(m.cuatrimestre_oficial)} cuatrimestre"
+        elif tiene_carrera:
+            label = f"{m.nombre} · {m.carrera}"
+        elif tiene_cuat:
+            label = f"{m.nombre} · {_ordinal(m.cuatrimestre_oficial)} cuatrimestre"
+        else:
+            label = m.nombre   # materia sin contexto académico registrado
+
+        items.append({
+            "id":                   m.id,
+            "nombre":               m.nombre,
+            "carrera":              m.carrera,
+            "cuatrimestre_oficial": m.cuatrimestre_oficial,
+            "periodo":              m.periodo,
+            "label":                label,
+            "tiene_contexto":       tiene_carrera or tiene_cuat,
+        })
+
+    return items
 
 
 @router.post("/materias", status_code=status.HTTP_201_CREATED, summary="Crear materia manualmente")

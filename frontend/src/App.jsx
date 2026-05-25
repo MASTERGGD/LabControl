@@ -9,8 +9,10 @@ import { ROUTE_PERMISSIONS } from './config/permissions';
 // Páginas
 import Login from './pages/Login';
 import DashboardAdmin from './pages/DashboardAdmin';
+import DashboardSuperAdmin from './pages/DashboardSuperAdmin';
 import DashboardDocente from './pages/DashboardDocente';
 import DashboardAdministrativo from './pages/DashboardAdministrativo';
+import DashboardServiciosEscolares from './pages/DashboardServiciosEscolares';
 import Laboratorios from './pages/admin/Laboratorios';
 import LaboratorioDetalle from './pages/admin/LaboratorioDetalle';
 import Usuarios from './pages/admin/Usuarios';
@@ -36,6 +38,13 @@ import BandejaEspacios from './pages/espacios/BandejaEspacios';
 import MisSolicitudes from './pages/espacios/MisSolicitudes';
 import ComunicadosAdmin from './pages/admin/ComunicadosAdmin';
 import MisComunicados from './pages/comunicados/MisComunicados';
+import TutoriaAdmin from './pages/admin/TutoriaAdmin';
+import EstudioSocioeconomico from './pages/admin/EstudioSocioeconomico';
+import MisTutorados from './pages/docente/MisTutorados';
+import ConsultorioMedico from './pages/medico/ConsultorioMedico';
+import AlumnoEstudioSocioeconomico from './pages/alumno/AlumnoEstudioSocioeconomico';
+import SEAlumnos from './pages/servicios_escolares/SEAlumnos';
+import SEFichas from './pages/servicios_escolares/SEFichas';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -52,6 +61,10 @@ function RutaProtegida({ children, rolesPermitidos, path }) {
   const allowed = rolesPermitidos ?? (path ? ROUTE_PERMISSIONS[path] : null);
 
   if (allowed && !allowed.includes(usuario.rol)) {
+    // Excepción: usuarios con acceso_consultorio pueden entrar al consultorio
+    if (usuario.acceso_consultorio && allowed.includes('MEDICO')) {
+      return children;
+    }
     // Redirigir a su propio dashboard si intenta acceder a un área no permitida
     return <Navigate to={RUTAS_POR_ROL[usuario.rol] || '/login'} replace />;
   }
@@ -65,8 +78,11 @@ const RUTAS_POR_ROL = {
   SUPER_ADMIN: '/admin',
   LAB_ADMIN:   '/lab',
   ADMINISTRATIVO: '/administrativo',
+  SERVICIOS_ESCOLARES: '/servicios-escolares',
+  TUTORIA_ADMIN: '/admin/tutoria',
+  MEDICO:      '/medico/consultorio',
   DOCENTE:     '/docente',
-  ALUMNO:      '/alumno',
+  ALUMNO:      '/alumno/estudio-socioeconomico',
 };
 
 // ─── Redireccionador automático post-login ────────────────────────────────────
@@ -85,12 +101,12 @@ function AppRoutes() {
       {/* Pública */}
       <Route path="/login" element={<Login />} />
 
-      {/* SUPER_ADMIN y LAB_ADMIN comparten dashboard de admin */}
+      {/* SUPER_ADMIN: dashboard general de plataforma */}
       <Route
         path="/admin"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
-            <DashboardAdmin />
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+            <DashboardSuperAdmin />
           </RutaProtegida>
         }
       />
@@ -110,6 +126,24 @@ function AppRoutes() {
           </RutaProtegida>
         }
       />
+      <Route
+        path="/servicios-escolares"
+        element={
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'SERVICIOS_ESCOLARES']}>
+            <DashboardServiciosEscolares />
+          </RutaProtegida>
+        }
+      />
+      <Route path="/servicios-escolares/alumnos" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+          <SEAlumnos />
+        </RutaProtegida>
+      }/>
+      <Route path="/servicios-escolares/estudios-socioeconomicos" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+          <SEFichas />
+        </RutaProtegida>
+      }/>
 
       {/* Admin: Laboratorios */}
       <Route
@@ -213,29 +247,29 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/espacios/apartar" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE']}>
           <ApartarEspacio />
         </RutaProtegida>
       }/>
       <Route path="/espacios/bandeja" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE']}>
           <BandejaEspacios />
         </RutaProtegida>
       }/>
       <Route path="/espacios/mis-solicitudes" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE']}>
           <MisSolicitudes />
         </RutaProtegida>
       }/>
 
       {/* Comunicados Institucionales */}
       <Route path="/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE']}>
           <MisComunicados />
         </RutaProtegida>
       }/>
       <Route path="/admin/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN']}>
           <ComunicadosAdmin />
         </RutaProtegida>
       }/>
@@ -289,6 +323,44 @@ function AppRoutes() {
       <Route path="/docente/historial" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <MiHistorial />
+        </RutaProtegida>
+      }/>
+
+      {/* Tutoría — panel docente */}
+      <Route path="/docente/mis-tutorados" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <MisTutorados />
+        </RutaProtegida>
+      }/>
+
+      {/* Tutoría — panel responsable */}
+      <Route path="/admin/tutoria" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN']}>
+          <TutoriaAdmin />
+        </RutaProtegida>
+      }/>
+      <Route path="/admin/tutoria/estudio-socioeconomico" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN']}>
+          <EstudioSocioeconomico />
+        </RutaProtegida>
+      }/>
+
+      {/* Alumno — estudio socioeconomico */}
+      <Route path="/alumno" element={
+        <RutaProtegida rolesPermitidos={['ALUMNO']}>
+          <AlumnoEstudioSocioeconomico />
+        </RutaProtegida>
+      }/>
+      <Route path="/alumno/estudio-socioeconomico" element={
+        <RutaProtegida rolesPermitidos={['ALUMNO']}>
+          <AlumnoEstudioSocioeconomico />
+        </RutaProtegida>
+      }/>
+
+      {/* Consultorio Médico */}
+      <Route path="/medico/consultorio" element={
+        <RutaProtegida rolesPermitidos={['MEDICO','SUPER_ADMIN','LAB_ADMIN']}>
+          <ConsultorioMedico />
         </RutaProtegida>
       }/>
 

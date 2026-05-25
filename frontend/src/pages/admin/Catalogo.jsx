@@ -45,11 +45,26 @@ const PERIODOS_DEFAULT = [
 const GRUPOS = ['A','B','C','D'];
 
 
+// ─── Labels legibles para campos sensibles ────────────────────────────────────
+
+const LABEL_CAMPO = {
+  cuatrimestre: 'Cuatrimestre',
+  carrera:      'Carrera',
+  grupo:        'Grupo',
+};
+
 // ─── Componente: Reporte de importación ───────────────────────────────────────
 
 function ModalReporte({ reporte, titulo, onClose }) {
-  const { creados = 0, actualizados = 0, total_errores = 0, errores = [] } = reporte;
-  const total = creados + actualizados + total_errores;
+  const {
+    creados          = 0,
+    actualizados     = 0,
+    sin_cambios      = 0,
+    total_errores    = 0,
+    errores          = [],
+    cambios_sensibles = [],
+  } = reporte;
+  const total = creados + actualizados + sin_cambios + total_errores;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -64,17 +79,21 @@ function ModalReporte({ reporte, titulo, onClose }) {
         </div>
 
         <div className="p-6 overflow-y-auto space-y-4">
-          {/* Resumen */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-green-900/40 border border-green-700/50 rounded-xl p-4 text-center">
+          {/* Resumen en 4 tarjetas */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-green-900/40 border border-green-700/50 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-green-400">{creados}</p>
-              <p className="text-xs text-green-300 mt-1">Creados</p>
+              <p className="text-xs text-green-300 mt-1">Nuevos</p>
             </div>
-            <div className="bg-blue-900/40 border border-blue-700/50 rounded-xl p-4 text-center">
+            <div className="bg-blue-900/40 border border-blue-700/50 rounded-xl p-3 text-center">
               <p className="text-2xl font-bold text-blue-400">{actualizados}</p>
               <p className="text-xs text-blue-300 mt-1">Actualizados</p>
             </div>
-            <div className={`rounded-xl p-4 text-center border ${
+            <div className="bg-white/4 border border-gray-600/50 rounded-xl p-3 text-center">
+              <p className="text-2xl font-bold text-slate-300">{sin_cambios}</p>
+              <p className="text-xs text-slate-400 mt-1">Sin cambios</p>
+            </div>
+            <div className={`rounded-xl p-3 text-center border ${
               total_errores > 0
                 ? 'bg-red-900/40 border-red-700/50'
                 : 'bg-white/4 border-gray-600/50'}`}>
@@ -87,12 +106,36 @@ function ModalReporte({ reporte, titulo, onClose }) {
             </div>
           </div>
 
-          {total_errores === 0 && (
+          {total_errores === 0 && cambios_sensibles.length === 0 && (
             <div className="flex items-center gap-3 bg-green-900/20 border border-green-700/40 rounded-xl px-4 py-3">
               <span className="text-xl">✅</span>
               <p className="text-green-300 text-sm">
                 Importación completada sin errores. {total} registros procesados.
               </p>
+            </div>
+          )}
+
+          {/* Cambios sensibles aplicados */}
+          {cambios_sensibles.length > 0 && (
+            <div>
+              <p className="text-xs text-amber-400 font-semibold mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                <span>⚠️</span> Cambios aplicados en campos importantes ({cambios_sensibles.length})
+              </p>
+              <div className="bg-slate-950/60 rounded-xl border border-amber-800/40 divide-y divide-gray-700/50 max-h-48 overflow-y-auto">
+                {cambios_sensibles.map((c, i) => (
+                  <div key={i} className="px-3 py-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-white font-medium truncate">{c.nombre}</p>
+                      <p className="text-xs text-slate-500 font-mono">{c.matricula}</p>
+                    </div>
+                    <div className="shrink-0 text-right text-xs">
+                      <p className="text-slate-400">{LABEL_CAMPO[c.campo] ?? c.campo}</p>
+                      <p className="text-red-400 line-through">{c.antes}</p>
+                      <p className="text-green-400">{c.despues}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -135,31 +178,157 @@ function ModalReporte({ reporte, titulo, onClose }) {
 }
 
 
-// ─── Componente: Modal importar archivo ───────────────────────────────────────
+// ─── Componente: Modal importar archivo (flujo 2 pasos: preview → confirmar) ──
 
-function ModalImportar({ titulo, descripcion, endpoint, onClose, onImportado }) {
-  const [archivo, setArchivo]   = useState(null);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
+function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, onClose, onImportado }) {
+  const [archivo, setArchivo]     = useState(null);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [preview, setPreview]     = useState(null);  // resultado de preview
   const inputRef = useRef();
 
-  const handleImportar = async () => {
+  const enviarArchivo = async (modoPreview) => {
     if (!archivo) { setError('Selecciona un archivo Excel primero'); return; }
     setLoading(true);
     setError('');
     const form = new FormData();
     form.append('file', archivo);
     try {
-      const { data } = await api.post(endpoint, form, {
+      const url = supportsPreview
+        ? `${endpoint}?preview=${modoPreview ? 'true' : 'false'}`
+        : endpoint;
+      const { data } = await api.post(url, form, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      onImportado(data);
+      if (modoPreview) {
+        setPreview(data);
+      } else {
+        onImportado(data);
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al procesar el archivo');
+    } finally {
       setLoading(false);
     }
   };
 
+  // ── Vista previa disponible ───────────────────────────────────────────────────
+  if (preview) {
+    const {
+      creados          = 0,
+      actualizados     = 0,
+      sin_cambios      = 0,
+      total_errores    = 0,
+      cambios_sensibles = [],
+    } = preview;
+    const total = creados + actualizados + sin_cambios + total_errores;
+    const hayCambiosSensibles = cambios_sensibles.length > 0;
+
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div className="glass w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between shrink-0">
+            <div>
+              <h3 className="font-semibold text-white">Vista previa — ¿aplicar cambios?</h3>
+              <p className="text-xs text-slate-400 mt-0.5">{archivo?.name}</p>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="p-6 overflow-y-auto space-y-4">
+            {/* Resumen */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="bg-green-900/40 border border-green-700/50 rounded-xl p-3 text-center">
+                <p className="text-xl font-bold text-green-400">{creados}</p>
+                <p className="text-xs text-green-300 mt-1">Nuevos</p>
+              </div>
+              <div className="bg-blue-900/40 border border-blue-700/50 rounded-xl p-3 text-center">
+                <p className="text-xl font-bold text-blue-400">{actualizados}</p>
+                <p className="text-xs text-blue-300 mt-1">Se actualizan</p>
+              </div>
+              <div className="bg-white/4 border border-gray-600/50 rounded-xl p-3 text-center">
+                <p className="text-xl font-bold text-slate-300">{sin_cambios}</p>
+                <p className="text-xs text-slate-400 mt-1">Sin cambios</p>
+              </div>
+              <div className={`rounded-xl p-3 text-center border ${
+                total_errores > 0
+                  ? 'bg-red-900/40 border-red-700/50'
+                  : 'bg-white/4 border-gray-600/50'}`}>
+                <p className={`text-xl font-bold ${total_errores > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                  {total_errores}
+                </p>
+                <p className={`text-xs mt-1 ${total_errores > 0 ? 'text-red-300' : 'text-slate-400'}`}>
+                  Con error
+                </p>
+              </div>
+            </div>
+
+            {/* Advertencia si no hay nada que hacer */}
+            {creados === 0 && actualizados === 0 && total_errores === 0 && (
+              <div className="flex items-center gap-3 bg-blue-900/20 border border-blue-700/40 rounded-xl px-4 py-3">
+                <span className="text-lg">ℹ️</span>
+                <p className="text-blue-300 text-sm">
+                  El archivo no tiene cambios respecto al catálogo actual. {sin_cambios} registros idénticos.
+                </p>
+              </div>
+            )}
+
+            {/* Cambios sensibles */}
+            {hayCambiosSensibles && (
+              <div>
+                <p className="text-xs text-amber-400 font-semibold mb-2 uppercase tracking-wide flex items-center gap-1.5">
+                  <span>⚠️</span> Cambios en campos importantes ({cambios_sensibles.length} alumnos)
+                </p>
+                <div className="bg-slate-950/60 rounded-xl border border-amber-800/40 divide-y divide-gray-700/50 max-h-40 overflow-y-auto">
+                  {cambios_sensibles.map((c, i) => (
+                    <div key={i} className="px-3 py-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs text-white font-medium truncate">{c.nombre}</p>
+                        <p className="text-xs text-slate-500 font-mono">{c.matricula}</p>
+                      </div>
+                      <div className="shrink-0 text-right text-xs">
+                        <p className="text-slate-400">{LABEL_CAMPO[c.campo] ?? c.campo}</p>
+                        <p className="text-red-400 line-through">{c.antes}</p>
+                        <p className="text-green-400">{c.despues}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-amber-500 mt-2">
+                  Revisa los cambios anteriores antes de confirmar. Puedes cancelar y corregir el Excel si algo no es correcto.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t border-white/5 shrink-0 flex gap-3">
+            <button onClick={() => setPreview(null)}
+              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              ← Volver
+            </button>
+            <button
+              onClick={() => enviarArchivo(false)}
+              disabled={loading || (creados === 0 && actualizados === 0)}
+              className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:text-slate-400 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+              {loading ? 'Aplicando...' : `✅ Confirmar importación (${total - total_errores} registros)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Paso 1: seleccionar archivo ───────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-md shadow-2xl">
@@ -182,7 +351,7 @@ function ModalImportar({ titulo, descripcion, endpoint, onClose, onImportado }) 
             className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
               ${archivo ? 'border-green-600 bg-green-900/20' : 'border-gray-600 hover:border-gray-500 bg-gray-900/40'}`}>
             <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={e => { setArchivo(e.target.files[0]); setError(''); }}/>
+              onChange={e => { setArchivo(e.target.files[0]); setError(''); setPreview(null); }}/>
             {archivo ? (
               <>
                 <p className="text-2xl mb-2">📊</p>
@@ -200,6 +369,13 @@ function ModalImportar({ titulo, descripcion, endpoint, onClose, onImportado }) 
             )}
           </div>
 
+          {supportsPreview && archivo && (
+            <p className="text-xs text-slate-500 flex items-center gap-1.5">
+              <span>💡</span>
+              Se mostrará una vista previa antes de aplicar los cambios.
+            </p>
+          )}
+
           {error && (
             <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">
               {error}
@@ -211,9 +387,13 @@ function ModalImportar({ titulo, descripcion, endpoint, onClose, onImportado }) 
               className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
               Cancelar
             </button>
-            <button onClick={handleImportar} disabled={loading || !archivo}
+            <button
+              onClick={() => supportsPreview ? enviarArchivo(true) : enviarArchivo(false)}
+              disabled={loading || !archivo}
               className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-gray-600 disabled:text-slate-400 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-              {loading ? 'Importando...' : '⬆ Importar'}
+              {loading
+                ? (supportsPreview ? 'Analizando...' : 'Importando...')
+                : (supportsPreview ? '🔍 Analizar archivo' : '⬆ Importar')}
             </button>
           </div>
         </div>
@@ -906,6 +1086,7 @@ export default function Catalogo() {
             ? 'Usa la Plantilla_Alumnos_UTECAN.xlsx'
             : 'Usa el archivo de materias UTECAN (hoja «concentrado»)'}
           endpoint={modalImportar === 'alumnos' ? '/catalogo/alumnos/importar' : '/catalogo/materias/importar'}
+          supportsPreview={modalImportar === 'alumnos'}
           onClose={() => setModalImportar(null)}
           onImportado={(data) => handleReporte(data,
             modalImportar === 'alumnos' ? 'Resultado — Importar alumnos' : 'Resultado — Importar materias'

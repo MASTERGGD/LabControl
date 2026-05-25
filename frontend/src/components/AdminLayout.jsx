@@ -4,7 +4,25 @@ import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
-// import ThemeSwitcher from './ThemeSwitcher'; // desactivado temporalmente
+import ThemeSwitcher from './ThemeSwitcher';
+import { useTheme } from '../context/ThemeContext';
+
+function BrandMark({ size = 'w-8 h-8', imageSize = 'w-[78%] h-[78%]' }) {
+  return (
+    <div
+      className={`${size} rounded-xl shrink-0 flex items-center justify-center overflow-hidden group-hover:opacity-80 transition-opacity`}
+      style={{ background: 'var(--logo-bg)' }}
+    >
+      <img
+        src="/icons/icon-192.png"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        className={`${imageSize} object-contain`}
+      />
+    </div>
+  );
+}
 
 // ─── Modal: Cambiar contraseña ────────────────────────────────────────────────
 function ModalCambiarPassword({ onClose }) {
@@ -78,6 +96,8 @@ function ModalCambiarPassword({ onClose }) {
 
 // ─── Modal: Sesión de uso libre ───────────────────────────────────────────────
 function ModalSesionLibre({ usuario, onClose }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const navigate = useNavigate();
   const [labs, setLabs]         = useState([]);
   const [labId, setLabId]       = useState('');
@@ -126,9 +146,19 @@ function ModalSesionLibre({ usuario, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-glass animate-fadeUp">
+      <div
+        className="w-full max-w-md animate-fadeUp"
+        style={{
+          background: isDay ? '#FFFFFF' : 'var(--glass-bg)',
+          border: `1px solid ${isDay ? '#CBD5E1' : 'var(--glass-border)'}`,
+          borderRadius: '1rem',
+          boxShadow: isDay ? '0 24px 70px rgba(15,23,42,0.20)' : '0 20px 60px rgba(0,0,0,0.30)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.05)'}` }}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center"
                  style={{background:'linear-gradient(135deg,#10b981,#059669)'}}>
@@ -138,11 +168,11 @@ function ModalSesionLibre({ usuario, onClose }) {
               </svg>
             </div>
             <div>
-              <h3 className="font-semibold text-white">Sesión de uso libre</h3>
-              <p className="text-xs text-slate-400">Para alumnos sin clase programada</p>
+              <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Sesión de uso libre</h3>
+              <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Para alumnos sin clase programada</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className={`${isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'} transition-colors`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -163,7 +193,7 @@ function ModalSesionLibre({ usuario, onClose }) {
 
           {usuario?.rol === 'SUPER_ADMIN' ? (
             <div>
-              <label className="block text-sm text-slate-400 mb-1.5">Laboratorio</label>
+              <label className={`block text-sm mb-1.5 ${isDay ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>Laboratorio</label>
               <SelectDark
                 value={labId}
                 onChange={setLabId}
@@ -171,7 +201,7 @@ function ModalSesionLibre({ usuario, onClose }) {
               />
             </div>
           ) : (
-            <div className="glass-sm px-4 py-3 flex items-center gap-3">
+            <div className="px-4 py-3 flex items-center gap-3" style={{ background: isDay ? '#F8FAFC' : 'rgba(30,41,59,0.5)', border: `1px solid ${isDay ? '#E2E8F0' : 'var(--glass-border)'}`, borderRadius: '0.75rem' }}>
               <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -179,15 +209,15 @@ function ModalSesionLibre({ usuario, onClose }) {
                 </svg>
               </div>
               <div>
-                <p className="text-xs text-slate-400">Laboratorio</p>
-                <p className="text-white text-sm font-medium">{labNombre}</p>
+                <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Laboratorio</p>
+                <p className={`text-sm font-medium ${isDay ? 'text-slate-950' : 'text-white'}`}>{labNombre}</p>
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm text-slate-400 mb-1.5">
-              Motivo <span className="text-slate-600">(opcional)</span>
+            <label className={`block text-sm mb-1.5 ${isDay ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>
+              Motivo <span className={isDay ? 'text-slate-500' : 'text-slate-600'}>(opcional)</span>
             </label>
             <input type="text" value={nota} onChange={e => setNota(e.target.value)}
               placeholder="Ej: Tareas, Exámenes, Acceso abierto…"
@@ -195,21 +225,23 @@ function ModalSesionLibre({ usuario, onClose }) {
           </div>
 
           <div>
-            <label className="block text-sm text-slate-400 mb-2">Duración estimada</label>
+            <label className={`block text-sm mb-2 ${isDay ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>Duración estimada</label>
             <div className="grid grid-cols-4 gap-2">
               {[30, 45, 60, 90].map(m => (
                 <button key={m} type="button" onClick={() => setDuracion(m)}
                   className={`py-2.5 rounded-xl border text-sm font-medium transition-all
                     ${duracion === m
                       ? 'bg-emerald-600 border-emerald-500 text-white shadow-glow-em'
-                      : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20 hover:text-white'}`}>
+                      : isDay
+                        ? 'bg-slate-50 border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700'
+                        : 'bg-white/5 border-white/10 text-slate-400 hover:border-white/20 hover:text-white'}`}>
                   {m} min
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="glass-sm p-3 text-xs text-slate-400 space-y-1">
+          <div className={`p-3 text-xs space-y-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`} style={{ background: isDay ? '#F8FAFC' : 'rgba(30,41,59,0.5)', border: `1px solid ${isDay ? '#E2E8F0' : 'var(--glass-border)'}`, borderRadius: '0.75rem' }}>
             <p>• Los alumnos quedan registrados al asignarles una PC en el mapa</p>
             <p>• Al cerrar la sesión se libera el registro de todos los equipos</p>
             <p>• La sesión aparece en el historial del laboratorio</p>
@@ -236,10 +268,7 @@ function ModalSesionLibre({ usuario, onClose }) {
 // divider: true  →  encabezado de sección (no es un NavLink)
 // inGroup: true  →  ítem dentro de una sección (indentación extra en sidebar abierto)
 const NAV_ITEMS = [
-  {
-    label: 'Dashboard', path: '/admin', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
-  },
+  // ─── Inicio por rol (sin grupo, siempre visible arriba) ───────────────────
   {
     label: 'Inicio docente', path: '/docente', exact: true, roles: ['DOCENTE'],
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
@@ -249,28 +278,51 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
   },
   {
-    label: 'Laboratorios', path: '/admin/laboratorios', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Inicio tutoría', path: '/admin/tutoria', exact: true, roles: ['TUTORIA_ADMIN'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+  },
+  {
+    label: 'Inicio escolares', path: '/servicios-escolares', exact: true, roles: ['SERVICIOS_ESCOLARES'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422A12.083 12.083 0 0118.5 14c0 3.314-2.91 6-6.5 6s-6.5-2.686-6.5-6c0-1.193.257-2.353.34-3.422L12 14z"/></svg>,
+  },
+
+  // ─── Grupo: Laboratorios ──────────────────────────────────────────────────
+  {
+    label: 'Inicio plataforma', path: '/admin', exact: true, roles: ['SUPER_ADMIN'],
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h3m-3 4h3m3-4h2m-2 4h2"/></svg>,
+  },
+  { divider: true, label: 'Laboratorios', roles: ['SUPER_ADMIN','LAB_ADMIN'] },
+  {
+    label: 'Dashboard laboratorio', path: '/lab', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+  },
+  {
+    label: 'Laboratorios', path: '/admin/laboratorios', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>,
   },
   {
-    label: 'Horarios', path: '/admin/horarios', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Horarios', path: '/admin/horarios', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
-    label: 'Reservaciones', path: '/admin/reservaciones', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Reservaciones', path: '/admin/reservaciones', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
   },
   {
-    label: 'Inventario', path: '/admin/inventario', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Inventario', path: '/admin/inventario', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>,
   },
   {
-    label: 'Préstamos', path: '/admin/prestamos', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Préstamos', path: '/admin/prestamos', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>,
   },
   {
-    label: 'Mantenimiento', path: '/admin/mantenimiento', roles: ['SUPER_ADMIN','LAB_ADMIN'],
+    label: 'Mantenimiento', path: '/admin/mantenimiento', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
+  },
+  {
+    label: 'Reportes', path: '/admin/reportes', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
   },
 
   // ─── Grupo: Docencia ───────────────────────────────────────────────────────
@@ -282,6 +334,13 @@ const NAV_ITEMS = [
   {
     label: 'Historial de sesiones', path: '/docente/historial', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
+  },
+
+  // ─── Grupo: Tutoría (docente) ──────────────────────────────────────────────
+  { divider: true, label: 'Tutoría', roles: ['DOCENTE'] },
+  {
+    label: 'Mis Tutorados', path: '/docente/mis-tutorados', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>,
   },
 
   // ─── Grupo: Personas ──────────────────────────────────────────────────────────
@@ -312,17 +371,31 @@ const NAV_ITEMS = [
   },
 
   // ─── Grupo: Espacios ──────────────────────────────────────────────────────────
-  { divider: true, label: 'Salas y espacios', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'] },
+  { divider: true, label: 'Servicios Escolares', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'] },
   {
-    label: 'Solicitar sala o espacio', path: '/espacios/apartar', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'], inGroup: true,
+    label: 'Panel escolares', path: '/servicios-escolares', exact: true, roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h8M8 15h5"/></svg>,
+  },
+  {
+    label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
+  },
+  {
+    label: 'Estudios socioeconomicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
+  },
+
+  { divider: true, label: 'Salas y espacios', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE'] },
+  {
+    label: 'Solicitar sala o espacio', path: '/espacios/apartar', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
-    label: 'Mis solicitudes de espacios', path: '/espacios/mis-solicitudes', roles: ['SUPER_ADMIN','LAB_ADMIN','DOCENTE'], inGroup: true,
+    label: 'Mis solicitudes de espacios', path: '/espacios/mis-solicitudes', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>,
   },
   {
-    label: 'Bandeja aprobación', path: '/espacios/bandeja', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    label: 'Bandeja aprobación', path: '/espacios/bandeja', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO'], inGroup: true, requiereResponsableEspacios: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
   },
   {
@@ -331,24 +404,38 @@ const NAV_ITEMS = [
   },
 
   // ─── Grupo: Comunicados ───────────────────────────────────────────────────────
-  { divider: true, label: 'Comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE'] },
+  { divider: true, label: 'Comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE'] },
   {
-    label: 'Mis comunicados', path: '/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','DOCENTE'], inGroup: true, badge: true,
+    label: 'Mis comunicados', path: '/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE'], inGroup: true, badge: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>,
   },
   {
-    label: 'Gestión comunicados', path: '/admin/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO'], inGroup: true,
+    label: 'Gestión comunicados', path: '/admin/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>,
   },
 
-  // ─── Grupo: Seguimiento ─────────────────────────────────────────────────────
-  { divider: true, label: 'Seguimiento', roles: ['SUPER_ADMIN','LAB_ADMIN'] },
+  // ─── Grupo: Tutoría (responsable) ─────────────────────────────────────────
+  { divider: true, label: 'Tutoría', roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'] },
   {
-    label: 'Reportes', path: '/admin/reportes', roles: ['SUPER_ADMIN','LAB_ADMIN'],
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
+    label: 'Panel de Tutoría', path: '/admin/tutoria', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>,
   },
   {
-    label: 'Bitácora', path: '/admin/auditoria', roles: ['SUPER_ADMIN'],
+    label: 'Estudio socioeconomico', path: '/admin/tutoria/estudio-socioeconomico', roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
+  },
+
+  // ─── Grupo: Consultorio Médico ────────────────────────────────────────────────
+  { divider: true, label: 'Consultorio Médico', roles: ['MEDICO','SUPER_ADMIN','LAB_ADMIN'] },
+  {
+    label: 'Consultorio', path: '/medico/consultorio', roles: ['MEDICO','SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>,
+  },
+
+  // ─── Grupo: Auditoría ────────────────────────────────────────────────────────
+  { divider: true, label: 'Auditoría', roles: ['SUPER_ADMIN'] },
+  {
+    label: 'Bitácora', path: '/admin/auditoria', roles: ['SUPER_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>,
   },
 ];
@@ -357,14 +444,21 @@ const ROL_BADGE = {
   SUPER_ADMIN: 'bg-blue-500/15 text-blue-400 border border-blue-500/30',
   LAB_ADMIN:   'bg-violet-500/15 text-violet-400 border border-violet-500/30',
   ADMINISTRATIVO: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+  TUTORIA_ADMIN: 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30',
+  SERVICIOS_ESCOLARES: 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30',
+  MEDICO:      'bg-rose-500/15 text-rose-300 border border-rose-500/30',
   DOCENTE:     'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
 };
 
 
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
 const BREADCRUMB_MAP = {
-  '/admin':                   [{ label: 'Dashboard' }],
+  '/admin':                   [{ label: 'Inicio Plataforma' }],
+  '/lab':                     [{ label: 'Dashboard Laboratorio' }],
   '/administrativo':          [{ label: 'Inicio Administrativo' }],
+  '/servicios-escolares':     [{ label: 'Servicios Escolares' }],
+  '/servicios-escolares/alumnos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Alumnos' }],
+  '/servicios-escolares/estudios-socioeconomicos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Estudios socioeconomicos' }],
   '/docente':                 [{ label: 'Inicio Docente' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
@@ -388,6 +482,10 @@ const BREADCRUMB_MAP = {
   '/comunicados':             [{ label: 'Mis Comunicados' }],
   '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
+  '/admin/tutoria':           [{ label: 'Panel de Tutoría' }],
+  '/admin/tutoria/estudio-socioeconomico': [{ label: 'Tutoría', to: '/admin/tutoria' }, { label: 'Estudio socioeconomico' }],
+  '/docente/mis-tutorados':   [{ label: 'Mis Tutorados' }],
+  '/medico/consultorio':      [{ label: 'Consultorio Médico' }],
 };
 
 function Breadcrumb({ pathname }) {
@@ -426,7 +524,11 @@ function Breadcrumb({ pathname }) {
 function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
   const homePath = usuario?.rol === 'ADMINISTRATIVO'
     ? '/administrativo'
-    : usuario?.rol === 'DOCENTE' ? '/docente' : '/admin';
+    : usuario?.rol === 'SERVICIOS_ESCOLARES' ? '/servicios-escolares'
+    : usuario?.rol === 'TUTORIA_ADMIN' ? '/admin/tutoria'
+    : usuario?.rol === 'MEDICO' ? '/medico/consultorio'
+    : usuario?.rol === 'DOCENTE' ? '/docente'
+    : usuario?.rol === 'LAB_ADMIN' ? '/lab' : '/admin';
   const storageKey = `labcontrol-sidebar-groups-${usuario?.rol || 'anon'}`;
   const [openGroups, setOpenGroups] = useState(() => {
     try {
@@ -540,16 +642,10 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
            style={{borderBottom:'1px solid var(--sidebar-border)'}}>
         <NavLink to={homePath} onClick={() => mobile && setMenuMovil(false)}
                  className={`flex items-center group ${(!sidebarOpen && !mobile) ? 'justify-center w-10 h-10 flex-none' : 'gap-3 flex-1 min-w-0'}`}>
-          <div className="w-8 h-8 rounded-xl shrink-0 flex items-center justify-center group-hover:opacity-80 transition-opacity"
-               style={{background:'var(--logo-bg)'}}>
-            <svg className="w-[18px] h-[18px] text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
-          </div>
+          <BrandMark />
           {(sidebarOpen || mobile) && (
           <div className="min-w-0 overflow-hidden">
-            <p className="text-white font-bold text-sm leading-none">LabControl</p>
+            <p className="text-white font-bold text-sm leading-none">SIGA</p>
             <p className="text-[10px] mt-0.5" style={{color:'var(--sidebar-subtitle)'}}>UTECAN</p>
           </div>
           )}
@@ -739,12 +835,17 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const homePath = usuario?.rol === 'ADMINISTRATIVO'
     ? '/administrativo'
-    : usuario?.rol === 'DOCENTE' ? '/docente' : '/admin';
+    : usuario?.rol === 'SERVICIOS_ESCOLARES' ? '/servicios-escolares'
+    : usuario?.rol === 'TUTORIA_ADMIN' ? '/admin/tutoria'
+    : usuario?.rol === 'MEDICO' ? '/medico/consultorio'
+    : usuario?.rol === 'DOCENTE' ? '/docente'
+    : usuario?.rol === 'LAB_ADMIN' ? '/lab' : '/admin';
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [menuMovil,    setMenuMovil]    = useState(false);
   const [modalPwd,     setModalPwd]     = useState(false);
   const [modalLibre,   setModalLibre]   = useState(false);
   const [pendientesComunicados, setPendientesComunicados] = useState(0);
+  const [espaciosResponsable, setEspaciosResponsable] = useState([]);
 
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
@@ -761,8 +862,39 @@ export default function AdminLayout({ children }) {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!usuario || !['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO'].includes(usuario.rol)) {
+      setEspaciosResponsable([]);
+      return;
+    }
+    api.get('/espacios/mis-espacios')
+      .then(res => setEspaciosResponsable(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setEspaciosResponsable([]));
+  }, [usuario?.id, usuario?.rol]);
+
+  useEffect(() => {
+    const abrirUsoLibre = () => {
+      if (['SUPER_ADMIN', 'LAB_ADMIN'].includes(usuario?.rol)) setModalLibre(true);
+    };
+    window.addEventListener('labcontrol:abrir-uso-libre', abrirUsoLibre);
+    return () => window.removeEventListener('labcontrol:abrir-uso-libre', abrirUsoLibre);
+  }, [usuario?.rol]);
+
   const handleLogout = useCallback(() => { logout(); navigate('/login'); }, [logout, navigate]);
-  const itemsVisibles = NAV_ITEMS.filter(item => item.roles.includes(usuario?.rol));
+  const puedeGestionarEspacios = usuario?.rol === 'SUPER_ADMIN'
+    || usuario?.rol === 'LAB_ADMIN'
+    || espaciosResponsable.length > 0;
+  const itemsVisibles = NAV_ITEMS.filter(item => {
+    // Permiso base por rol
+    const porRol = item.roles.includes(usuario?.rol);
+    // Permiso extra: acceso_consultorio permite ver el módulo sin importar el rol
+    const porConsultorio = usuario?.acceso_consultorio && (
+      item.path === '/medico/consultorio' ||
+      (item.divider && item.label === 'Consultorio Médico')
+    );
+    const visible = porRol || porConsultorio;
+    return visible && (!item.requiereResponsableEspacios || puedeGestionarEspacios);
+  });
 
   return (
     <div className="h-screen overflow-hidden flex" style={{background:'var(--layout-bg)'}}>
@@ -830,14 +962,8 @@ export default function AdminLayout({ children }) {
 
           {/* Logo centrado en móvil */}
           <NavLink to={homePath} className="md:hidden flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                 style={{background:'var(--logo-bg)'}}>
-              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-              </svg>
-            </div>
-            <span className="text-white font-bold text-sm">LabControl</span>
+            <BrandMark size="w-6 h-6" imageSize="w-[76%] h-[76%]" />
+            <span className="text-white font-bold text-sm">SIGA</span>
           </NavLink>
 
           {/* Espacio vacío desktop izquierda */}
@@ -846,23 +972,9 @@ export default function AdminLayout({ children }) {
           {/* Derecha: acciones */}
           <div className="flex items-center gap-2">
 
-            {/* Uso libre — oculto en móvil */}
-            {['SUPER_ADMIN','LAB_ADMIN'].includes(usuario?.rol) && (
-            <button
-              onClick={() => setModalLibre(true)}
-              className="hidden sm:flex btn-emerald items-center gap-2 px-3 py-1.5 text-sm"
-              title="Abrir sesión de uso libre"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-              </svg>
-              <span className="hidden md:inline">Uso libre</span>
-            </button>
-            )}
-
             {/* Campana */}
             <NotificacionesBell />
+            <ThemeSwitcher />
 
             {/* Nombre + rol — solo desktop */}
             <div className="hidden md:flex items-center gap-2 pl-1 ml-1" style={{borderLeft:'1px solid var(--user-sep)'}}>

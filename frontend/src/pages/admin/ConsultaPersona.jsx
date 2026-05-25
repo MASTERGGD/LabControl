@@ -47,13 +47,14 @@ export default function ConsultaPersona() {
     } finally { setLoading(false); }
   };
 
-  const handleSeleccionar = (alumno) => {
-    // alumno viene del catálogo: { matricula, nombres, apellido_paterno, apellido_materno, ... }
-    const nombreCompleto = [alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres]
-      .filter(Boolean).join(' ');
-    setBusqueda(`${alumno.matricula} — ${nombreCompleto}`);
-    setSeleccionado(alumno);
-    cargarPerfil(alumno.matricula);
+  const handleSeleccionar = (persona) => {
+    // Soporta tanto alumnos (tienen matricula) como personal (tienen numero_empleado)
+    const identificador = persona.identificador || persona.matricula;
+    const nombre = persona.nombre ||
+      [persona.apellido_paterno, persona.apellido_materno, persona.nombres].filter(Boolean).join(' ');
+    setBusqueda(`${identificador} — ${nombre}`);
+    setSeleccionado({ ...persona, identificador, nombre });
+    cargarPerfil(identificador);
   };
 
   const limpiar = () => {
@@ -78,7 +79,7 @@ export default function ConsultaPersona() {
         <div>
           <h1 className="text-2xl font-bold text-white">Consulta de Persona</h1>
           <p className="text-slate-400 text-sm">
-            Busca por nombre o matrícula para ver adeudos, préstamos e historial completo de un alumno
+            Busca alumnos o personal por nombre, matrícula o número de empleado
           </p>
         </div>
       </div>
@@ -86,43 +87,45 @@ export default function ConsultaPersona() {
       {/* Buscador */}
       <div className="glass rounded-2xl p-6">
         <label className="block text-sm text-slate-400 mb-1 font-medium">
-          🔍 Buscar alumno por nombre o matrícula
+          🔍 Buscar persona por nombre, matrícula o número de empleado
         </label>
         <p className="text-xs text-slate-500 mb-3">
-          Escribe el nombre del alumno o su número de matrícula
+          Busca alumnos por nombre o matrícula, o personal administrativo/docente por nombre o número de empleado
         </p>
 
         {!seleccionado ? (
           <AutocompleteInput
-            endpoint="/catalogo/alumnos/buscar"
-            placeholder="🔍 Escribe nombre o matrícula…"
+            endpoint="/catalogo/buscar-personas"
+            placeholder="🔍 Escribe nombre, matrícula o no. empleado…"
             value={busqueda}
             onChange={setBusqueda}
             onSelect={handleSeleccionar}
             minChars={2}
             className="input-dark w-full text-base"
-            renderItem={a => {
-              const nombre = [a.apellido_paterno, a.apellido_materno, a.nombres].filter(Boolean).join(' ');
-              return (
-                <div className="flex items-center justify-between gap-3">
+            renderItem={p => (
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className="text-base shrink-0">
+                    {p.tipo === 'ALUMNO' ? '🎓' : '👤'}
+                  </span>
                   <div className="min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{nombre}</p>
-                    <p className="text-xs text-slate-400 font-mono">{a.matricula}</p>
+                    <p className="text-sm text-white font-medium truncate">{p.nombre}</p>
+                    <p className="text-xs text-slate-400 font-mono">{p.subtitulo}</p>
                   </div>
-                  {a.grupo && (
-                    <span className="text-xs text-slate-500 shrink-0">{a.grupo}</span>
-                  )}
                 </div>
-              );
-            }}
+                {p.extra && (
+                  <span className="text-xs text-slate-500 shrink-0 truncate max-w-[120px]">{p.extra}</span>
+                )}
+              </div>
+            )}
           />
         ) : (
           /* Chip del alumno seleccionado */
           <div className="flex items-center gap-3 p-3 bg-slate-800/60 border border-slate-700 rounded-xl">
-            <span className="text-2xl">🎓</span>
+            <span className="text-2xl">{seleccionado?.tipo === 'PERSONAL' ? '👤' : '🎓'}</span>
             <div className="flex-1 min-w-0">
               <p className="text-white font-semibold text-sm">{resultado?.nombre || busqueda}</p>
-              <p className="text-slate-400 text-xs font-mono">{seleccionado.matricula}</p>
+              <p className="text-slate-400 text-xs font-mono">{seleccionado.identificador}</p>
             </div>
             <button onClick={limpiar}
               className="text-xs text-slate-400 hover:text-white border border-slate-600 hover:border-slate-400 px-3 py-1.5 rounded-lg transition-colors shrink-0">

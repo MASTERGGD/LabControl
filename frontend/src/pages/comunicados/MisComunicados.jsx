@@ -12,13 +12,21 @@ import { useToast } from '../../context/ToastContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = {
-  ACADEMICO:      { l: 'Académico',       color: 'bg-blue-500/20 text-blue-300 border-blue-500/30'        },
-  ADMINISTRATIVO: { l: 'Administrativo',  color: 'bg-slate-500/20 text-slate-300 border-slate-500/30'     },
-  EVENTOS:        { l: 'Eventos',         color: 'bg-purple-500/20 text-purple-300 border-purple-500/30'  },
-  MANTENIMIENTO:  { l: 'Mantenimiento',   color: 'bg-orange-500/20 text-orange-300 border-orange-500/30'  },
-  RRHH:           { l: 'Recursos Humanos',color: 'bg-pink-500/20 text-pink-300 border-pink-500/30'        },
   GENERAL:        { l: 'General',         color: 'bg-teal-500/20 text-teal-300 border-teal-500/30'        },
   URGENTE:        { l: 'Urgente',         color: 'bg-red-500/20 text-red-300 border-red-500/30'           },
+  EVENTOS:        { l: 'Eventos institucionales', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+  ACADEMICO:      { l: 'Académico',       color: 'bg-blue-500/20 text-blue-300 border-blue-500/30'        },
+  SERVICIOS_ESCOLARES: { l: 'Servicios Escolares', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
+  TUTORIA:        { l: 'Tutoría',         color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'  },
+  LABORATORIOS:   { l: 'Laboratorios / TI', color: 'bg-sky-500/20 text-sky-300 border-sky-500/30' },
+  ADMINISTRATIVO: { l: 'Administrativo',  color: 'bg-slate-500/20 text-slate-300 border-slate-500/30'     },
+  MANTENIMIENTO:  { l: 'Mantenimiento',   color: 'bg-orange-500/20 text-orange-300 border-orange-500/30'  },
+  RRHH:           { l: 'Recursos Humanos',color: 'bg-pink-500/20 text-pink-300 border-pink-500/30'        },
+  CONVOCATORIAS:  { l: 'Convocatorias',   color: 'bg-violet-500/20 text-violet-300 border-violet-500/30'  },
+  BECAS:          { l: 'Becas y apoyos',  color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+  CALENDARIO_ACADEMICO: { l: 'Calendario académico', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
+  SEGURIDAD:      { l: 'Seguridad / Protección Civil', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
+  VINCULACION:    { l: 'Vinculación',     color: 'bg-lime-500/20 text-lime-300 border-lime-500/30'        },
 };
 const PRIORIDAD_CFG = {
   INFORMATIVO: { dot: 'bg-slate-400', ring: 'border-slate-500/30' },
@@ -30,6 +38,9 @@ const PRIORIDAD_CFG = {
 function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
   const { toast: showToast } = useToast();
   const [acting, setActing] = useState(false);
+  const [respuesta, setRespuesta] = useState(c.respuesta?.comentario || '');
+  const [respuestaLocal, setRespuestaLocal] = useState(c.respuesta || null);
+  const [archivoRespuesta, setArchivoRespuesta] = useState(null);
   const cat  = CATEGORIAS[c.categoria]    || { l: c.categoria, color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
   const prio = PRIORIDAD_CFG[c.prioridad] || PRIORIDAD_CFG.INFORMATIVO;
 
@@ -52,6 +63,61 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
       onActualizado();
     } catch (err) { showToast(err.response?.data?.detail || 'Error', 'error'); }
     finally { setActing(false); }
+  };
+
+  const descargarAdjunto = async adjunto => {
+    try {
+      const res = await api.get(`/comunicados/${c.id}/adjuntos/${adjunto.id}/descargar`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = adjunto.nombre_original;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast('No se pudo descargar el archivo', 'error');
+    }
+  };
+
+  const descargarAdjuntoRespuesta = async adjunto => {
+    if (!respuestaLocal) return;
+    try {
+      const res = await api.get(
+        `/comunicados/${c.id}/respuestas/${respuestaLocal.id}/adjuntos/${adjunto.id}/descargar`,
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = adjunto.nombre_original;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast('No se pudo descargar el archivo', 'error');
+    }
+  };
+
+  const enviarRespuesta = async e => {
+    e.preventDefault();
+    if (!respuesta.trim()) {
+      showToast('Escribe una respuesta', 'error');
+      return;
+    }
+    setActing(true);
+    try {
+      const fd = new FormData();
+      fd.append('comentario', respuesta.trim());
+      if (archivoRespuesta) fd.append('archivo', archivoRespuesta);
+      const { data } = await api.post(`/comunicados/${c.id}/responder`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setRespuestaLocal(data);
+      setArchivoRespuesta(null);
+      showToast('Respuesta enviada', 'success');
+      onActualizado();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No se pudo enviar la respuesta', 'error');
+    } finally { setActing(false); }
   };
 
   const isUrgente = c.prioridad === 'URGENTE';
@@ -117,6 +183,21 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
             </p>
           </section>
 
+          {c.adjuntos?.length > 0 && (
+            <section>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Adjuntos</h4>
+              <div className="space-y-2">
+                {c.adjuntos.map(a => (
+                  <button key={a.id} onClick={() => descargarAdjunto(a)}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl bg-white/5 hover:bg-white/10 px-4 py-3 text-left transition-colors">
+                    <span className="text-sm text-slate-200 truncate">{a.nombre_original}</span>
+                    <span className="text-xs text-slate-500">{a.tamano_mb} MB</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Meta info */}
           <section className="space-y-2">
             {c.area_emisora && (
@@ -141,7 +222,53 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
                 <span className="text-slate-300">{c.fecha_expiracion?.slice(0,16).replace('T',' ')}</span>
               </div>
             )}
+            {c.fecha_limite_respuesta && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-slate-500 w-28 flex-shrink-0">Límite respuesta</span>
+                <span className="text-slate-300">{c.fecha_limite_respuesta?.slice(0,16).replace('T',' ')}</span>
+              </div>
+            )}
           </section>
+
+          {c.requiere_retroalimentacion && (
+            <section className="border-t border-white/5 pt-4">
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Retroalimentación</h4>
+              {respuestaLocal?.estado === 'REVISADO' && (
+                <p className="mb-3 text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-3 py-2 rounded-lg">
+                  Tu respuesta ya fue revisada.
+                </p>
+              )}
+              <form onSubmit={enviarRespuesta} className="space-y-3">
+                <textarea className="input-dark resize-none" rows={4}
+                  value={respuesta}
+                  onChange={e => setRespuesta(e.target.value)}
+                  placeholder="Escribe tu respuesta..." />
+                {respuestaLocal?.adjuntos?.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {respuestaLocal.adjuntos.map(a => (
+                      <button key={a.id} type="button" onClick={() => descargarAdjuntoRespuesta(a)}
+                        className="text-xs text-blue-300 hover:text-blue-200">
+                        {a.nombre_original}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!respuestaLocal?.adjuntos?.length && (
+                  <label className="block rounded-xl border border-dashed border-white/15 bg-black/20 px-4 py-3 text-center cursor-pointer hover:border-blue-500/40 transition-colors">
+                    <span className="text-sm text-slate-300">
+                      {archivoRespuesta ? archivoRespuesta.name : 'Adjuntar evidencia opcional'}
+                    </span>
+                    <input type="file" className="hidden" accept=".pdf,image/jpeg,image/png,image/webp"
+                      onChange={e => setArchivoRespuesta(e.target.files?.[0] || null)} />
+                  </label>
+                )}
+                <button type="submit" disabled={acting}
+                  className="w-full bg-cyan-600/70 hover:bg-cyan-600 text-white rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50">
+                  {acting ? 'Enviando...' : respuestaLocal ? 'Actualizar respuesta' : 'Enviar respuesta'}
+                </button>
+              </form>
+            </section>
+          )}
 
           {/* Estado lectura */}
           {(c.leido || c.confirmado) && (
@@ -224,7 +351,7 @@ export default function MisComunicados() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="w-full max-w-[1440px] 2xl:max-w-[1600px] 2xl:mx-auto space-y-6">
 
         {/* Header */}
         <div>
@@ -259,7 +386,7 @@ export default function MisComunicados() {
             {[1,2,3].map(i => <div key={i} className="glass rounded-2xl h-24 animate-pulse" />)}
           </div>
         ) : filtrados.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center space-y-3">
+          <div className="glass rounded-2xl p-12 2xl:p-16 text-center space-y-3">
             <div className="text-5xl">📭</div>
             <p className="text-white font-semibold">
               {filtro === 'pendientes' ? 'Sin comunicados pendientes' : 'Sin comunicados'}
@@ -338,6 +465,21 @@ function TarjetaComunicado({ c, onClick }) {
             {c.requiere_confirmacion && !c.confirmado && c.leido && (
               <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
                 Pendiente confirmar
+              </span>
+            )}
+            {c.requiere_retroalimentacion && !c.respuesta && (
+              <span className="text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+                Requiere respuesta
+              </span>
+            )}
+            {c.respuesta && (
+              <span className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-0.5 rounded-full">
+                Respondido
+              </span>
+            )}
+            {c.adjuntos?.length > 0 && (
+              <span className="text-xs bg-white/5 text-slate-400 border border-white/10 px-2 py-0.5 rounded-full">
+                Adjuntos
               </span>
             )}
           </div>

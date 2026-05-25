@@ -1,7 +1,7 @@
 {
-  "name": "LabControl UTECAN",
-  "short_name": "LabControl",
-  "description": "Sistema de control y reservación de laboratorios — UTECAN",
+  "name": "S I G A - UTECAN",
+  "short_name": "S I G A",
+  "description": "Sistema Integral de Gestion Academica - UTECAN",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

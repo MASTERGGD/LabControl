@@ -21,7 +21,8 @@ const TIPO_COLOR = {
 const EMPTY_FORM = {
   nombre: '', tipo: 'AUDIOVISUAL', ubicacion: '', capacidad: '',
   descripcion: '', hora_inicio_permitida: '08:00', hora_fin_permitida: '20:00',
-  requiere_aprobacion: true,
+  requiere_aprobacion: true, buffer_antes_minutos: 0, buffer_despues_minutos: 30,
+  estado_operativo: 'DISPONIBLE', aviso_operativo: '',
 };
 
 // ─── Modal Espacio ─────────────────────────────────────────────────────────────
@@ -44,6 +45,9 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
         ubicacion:   form.ubicacion?.trim()   || null,
         descripcion: form.descripcion?.trim() || null,
         capacidad:   form.capacidad ? Number(form.capacidad) : null,
+        buffer_antes_minutos: Number(form.buffer_antes_minutos || 0),
+        buffer_despues_minutos: Number(form.buffer_despues_minutos || 0),
+        aviso_operativo: form.aviso_operativo?.trim() || null,
       };
       if (espacio) {
         await api.put(`/espacios/institucionales/${espacio.id}`, payload);
@@ -112,12 +116,41 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
                 onChange={e => set('hora_fin_permitida', e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Buffer antes (min)</label>
+              <input type="number" min="0" max="120" className="input-dark" value={form.buffer_antes_minutos ?? 0}
+                onChange={e => set('buffer_antes_minutos', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Buffer despues (min)</label>
+              <input type="number" min="0" max="180" className="input-dark" value={form.buffer_despues_minutos ?? 30}
+                onChange={e => set('buffer_despues_minutos', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Estado operativo</label>
+            <select className="input-dark" value={form.estado_operativo || 'DISPONIBLE'}
+              onChange={e => set('estado_operativo', e.target.value)}>
+              <option value="DISPONIBLE">Disponible</option>
+              <option value="REQUIERE_LIMPIEZA">Requiere limpieza</option>
+              <option value="REQUIERE_ACOMODO">Requiere acomodo</option>
+              <option value="REVISION_TECNICA">Revision tecnica</option>
+              <option value="FUERA_SERVICIO">Fuera de servicio</option>
+            </select>
+          </div>
           {/* Descripción */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Descripción</label>
             <textarea className="input-dark resize-none" rows={2} value={form.descripcion}
               onChange={e => set('descripcion', e.target.value)}
               placeholder="Descripción breve del espacio y sus características…" />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Aviso operativo visible</label>
+            <textarea className="input-dark resize-none" rows={2} value={form.aviso_operativo || ''}
+              onChange={e => set('aviso_operativo', e.target.value)}
+              placeholder="Ej: requiere acomodo, limpieza o revision tecnica antes del evento..." />
           </div>
           {/* Requiere aprobación */}
           <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -145,8 +178,10 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
 function PanelResponsables({ espacio, onClose }) {
   const { toast: showToast } = useToast();
   const [responsables, setResponsables] = useState(espacio.responsables || []);
+  const [apoyos, setApoyos]             = useState(espacio.apoyos || []);
   const [usuarios, setUsuarios]         = useState([]);
   const [selUsuario, setSelUsuario]     = useState('');
+  const [selApoyo, setSelApoyo]         = useState('');
   const [loading, setLoading]           = useState(false);
 
   useEffect(() => {
@@ -178,8 +213,36 @@ function PanelResponsables({ espacio, onClose }) {
     }
   };
 
+  const asignarApoyo = async () => {
+    if (!selApoyo) return;
+    setLoading(true);
+    try {
+      const { data } = await api.post(`/espacios/institucionales/${espacio.id}/apoyos`, {
+        usuario_id: Number(selApoyo),
+        rol_apoyo: 'Apoyo operativo',
+      });
+      setApoyos(p => [...p, data]);
+      setSelApoyo('');
+      showToast('Area de apoyo asignada', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Error', 'error');
+    } finally { setLoading(false); }
+  };
+
+  const quitarApoyo = async (apoyoId) => {
+    try {
+      await api.delete(`/espacios/institucionales/${espacio.id}/apoyos/${apoyoId}`);
+      setApoyos(p => p.filter(r => r.id !== apoyoId));
+      showToast('Apoyo removido', 'success');
+    } catch {
+      showToast('Error al remover apoyo', 'error');
+    }
+  };
+
   const asignadosIds = new Set(responsables.map(r => r.usuario_id));
   const disponibles  = usuarios.filter(u => !asignadosIds.has(u.id));
+  const apoyosIds = new Set(apoyos.map(r => r.usuario_id));
+  const disponiblesApoyo = usuarios.filter(u => !apoyosIds.has(u.id));
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -225,6 +288,34 @@ function PanelResponsables({ espacio, onClose }) {
               </select>
               <button onClick={asignar} disabled={!selUsuario || loading} className="btn-blue px-4">
                 {loading ? '…' : 'Asignar'}
+              </button>
+            </div>
+          </div>
+          <div className="border-t border-white/5 pt-4 space-y-2">
+            <label className="block text-sm text-slate-400">Areas de apoyo notificadas</label>
+            {apoyos.length === 0 ? (
+              <p className="text-sm text-slate-500 text-center py-2">Sin apoyos asignados</p>
+            ) : apoyos.map(r => (
+              <div key={r.id} className="flex items-center justify-between bg-emerald-500/10 rounded-xl px-3 py-2">
+                <div>
+                  <p className="text-sm text-white font-medium">{r.nombre}</p>
+                  <p className="text-xs text-slate-400">{r.email}</p>
+                </div>
+                <button onClick={() => quitarApoyo(r.id)}
+                  className="text-red-400 hover:text-red-300 transition-colors text-xs px-2 py-1 rounded-lg hover:bg-red-500/10">
+                  Quitar
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <select className="input-dark flex-1" value={selApoyo} onChange={e => setSelApoyo(e.target.value)}>
+                <option value="">— Usuario de apoyo —</option>
+                {disponiblesApoyo.map(u => (
+                  <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                ))}
+              </select>
+              <button onClick={asignarApoyo} disabled={!selApoyo || loading} className="btn-blue px-4">
+                Asignar
               </button>
             </div>
           </div>
@@ -344,8 +435,14 @@ export default function EspaciosAdmin() {
                   </div>
                   <div className="bg-white/5 rounded-xl px-3 py-2">
                     <p className="text-slate-500">Responsables</p>
-                    <p className="text-slate-300 font-medium">{esp.responsables?.length || 0}</p>
+                    <p className="text-slate-300 font-medium">{esp.responsables?.length || 0} / apoyo {esp.apoyos?.length || 0}</p>
                   </div>
+                </div>
+                <div className="bg-white/5 rounded-xl px-3 py-2 text-xs">
+                  <p className="text-slate-500">Operacion</p>
+                  <p className="text-slate-300 font-medium">
+                    Buffer {esp.buffer_antes_minutos || 0}/{esp.buffer_despues_minutos || 0} min · {esp.estado_operativo || 'DISPONIBLE'}
+                  </p>
                 </div>
 
                 {/* Responsables pills */}
@@ -372,7 +469,7 @@ export default function EspaciosAdmin() {
                   </button>
                   <button onClick={() => setPanelResp(esp)}
                     className="flex-1 text-xs text-blue-300 hover:text-blue-200 bg-blue-500/10 hover:bg-blue-500/20 rounded-xl py-1.5 transition-colors">
-                    Responsables
+                    Responsables/apoyo
                   </button>
                   {esp.activo && (
                     <button onClick={() => desactivar(esp)}

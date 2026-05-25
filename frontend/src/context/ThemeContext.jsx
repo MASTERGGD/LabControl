@@ -8,11 +8,11 @@ const THEMES = {
     dotSecondary: '#10b981',
     isLight: false,
   },
-  gobmx: {
-    key: 'gobmx',
-    label: 'GobMX Día',
-    dot: '#9F2241',          // Pantone 7420C — Guinda
-    dotSecondary: '#DDC9A3', // Pantone 468C  — Dorado
+  day: {
+    key: 'day',
+    label: 'Dia',
+    dot: '#2563eb',
+    dotSecondary: '#0ea5e9',
     isLight: true,
   },
 };
@@ -27,9 +27,9 @@ const ThemeContext = createContext({
 
 export function ThemeProvider({ children }) {
   const [themeKey, setThemeKey] = useState(() => {
-    // Forzar tema noche mientras el switcher está desactivado
-    localStorage.setItem(STORAGE_KEY, 'default');
-    return 'default';
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === 'gobmx') return 'day';
+    return THEMES[saved] ? saved : 'default';
   });
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export function ThemeProvider({ children }) {
   }, [themeKey]);
 
   const toggle = () => {
-    setThemeKey(prev => prev === 'default' ? 'gobmx' : 'default');
+    setThemeKey(prev => prev === 'default' ? 'day' : 'default');
   };
 
   const setTheme = (key) => {

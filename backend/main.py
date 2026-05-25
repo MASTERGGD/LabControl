@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from database import engine, Base, SessionLocal
+from database import engine, Base, SessionLocal, DATABASE_URL
+from sqlalchemy import inspect, text
 import models
 from models import cumplimiento  # noqa: F401  — registra EventoCumplimiento en Base.metadata
 import os
@@ -32,6 +33,9 @@ from routers import adeudos as adeudos_router
 from routers import espacios as espacios_router
 from routers import comunicados as comunicados_router
 from routers import departamentos as departamentos_router
+from routers import tutoria as tutoria_router
+from routers import consultorio as consultorio_router
+from routers import servicios_escolares as servicios_escolares_router
 
 from ws.mapa import websocket_mapa
 
@@ -42,7 +46,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "i4j5k6l7m8n9"
+_ALEMBIC_HEAD = "b5c6d7e8f9g0"
 
 
 def _current_db_version() -> str | None:
@@ -79,6 +83,7 @@ def _run_migrations():
     _base = pathlib.Path(__file__).parent.resolve()
     alembic_cfg = AlembicConfig(str(_base / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(_base / "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
     try:
         alembic_command.upgrade(alembic_cfg, "head")
         print("Alembic: migraciones aplicadas correctamente")
@@ -87,9 +92,38 @@ def _run_migrations():
         raise
 
 
+def _ensure_dev_sqlite_schema():
+    """
+    Reparacion ligera para bases SQLite locales creadas antes de Alembic.
+    Crea tablas y columnas faltantes; no elimina ni sobrescribe datos existentes.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            table.create(bind=engine)
+
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = {col["name"] for col in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing:
+                    continue
+                col_type = column.type.compile(dialect=engine.dialect)
+                conn.execute(text(
+                    f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {col_type}'
+                ))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _run_migrations()
+    if DATABASE_URL.startswith("sqlite"):
+        _ensure_dev_sqlite_schema()
+    else:
+        _run_migrations()
     db = SessionLocal()
     try:
         run_seed(db)
@@ -101,7 +135,7 @@ async def lifespan(app: FastAPI):
 # --- App ---------------------------------------------------------------------
 
 app = FastAPI(
-    title="LabControl UTECAN",
+    title="SIGA UTECAN",
     description="Sistema de gestion multi-laboratorio",
     version="1.0.0",
     lifespan=lifespan,
@@ -148,6 +182,9 @@ app.include_router(adeudos_router.router)
 app.include_router(espacios_router.router)
 app.include_router(comunicados_router.router)
 app.include_router(departamentos_router.router)
+app.include_router(tutoria_router.router)
+app.include_router(consultorio_router.router)
+app.include_router(servicios_escolares_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 
@@ -155,7 +192,7 @@ app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 
 @app.get("/", tags=["Sistema"])
 def root():
-    return {"sistema": "LabControl UTECAN", "version": "1.0.0", "estado": "ok"}
+    return {"sistema": "SIGA UTECAN", "version": "1.0.0", "estado": "ok"}
 
 @app.get("/health", tags=["Sistema"])
 def health():

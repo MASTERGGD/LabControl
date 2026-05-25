@@ -35,6 +35,7 @@ class UsuarioUpdate(BaseModel):
     laboratorio_id: Optional[int] = None
     departamento_id: Optional[int] = None
     activo: Optional[bool] = None
+    acceso_consultorio: Optional[bool] = None
 
 class UsuarioResponse(BaseModel):
     id: int
@@ -48,6 +49,7 @@ class UsuarioResponse(BaseModel):
     departamento_nombre: Optional[str] = None
     departamento_clave: Optional[str] = None
     activo: bool
+    acceso_consultorio: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -82,6 +84,7 @@ def _serializar(u: Usuario, db: Session) -> dict:
         "departamento_nombre": dep.nombre if dep else None,
         "departamento_clave": dep.clave if dep else None,
         "activo": u.activo,
+        "acceso_consultorio": bool(u.acceso_consultorio),
     }
 
 def _generar_password(longitud: int = 10) -> str:
@@ -115,9 +118,19 @@ def listar_usuarios(
     laboratorio_id: Optional[int] = None,
     departamento_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.LAB_ADMIN,
+        RolUsuario.TUTORIA_ADMIN,
+    ))
 ):
     query = db.query(Usuario)
+
+    if current_user.rol == RolUsuario.TUTORIA_ADMIN and rol != RolUsuario.DOCENTE.value:
+        raise HTTPException(
+            status_code=403,
+            detail="El Responsable de Tutoría solo puede consultar docentes para asignación de grupos"
+        )
 
     # RLS: LAB_ADMIN solo ve usuarios de su lab (+ todos los docentes)
     query = usuario_lab_filter(query, Usuario, current_user)
@@ -370,7 +383,7 @@ async def bulk_excel(
     nombre | email | numero_empleado (opcional) | rol | laboratorio_id (opcional) | departamento_id/departamento_clave (opcional)
 
     La contraseña inicial se genera automáticamente y se devuelve en la respuesta.
-    Rol aceptado: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO
+    Rol aceptado: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO, TUTORIA_ADMIN
     """
     try:
         import pandas as pd
@@ -419,7 +432,7 @@ async def bulk_excel(
         try:
             rol = RolUsuario(rol_str)
         except ValueError:
-            errores.append({"fila": fila, "email": email, "error": f"Rol inválido: '{rol_str}'. Use: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO"})
+            errores.append({"fila": fila, "email": email, "error": f"Rol invalido: '{rol_str}'. Use: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO, TUTORIA_ADMIN"})
             continue
 
         # Verificar duplicados

@@ -1270,6 +1270,7 @@ function TabHistorial({ laboratorios }) {
   const eventos = (historial?.eventos || []).filter(e =>
     !filtroTipo || e.tipo_evento === filtroTipo
   );
+  const activoHistorial = historial?.activo || activos.find(a => String(a.id) === String(activoSel)) || {};
 
   const formatFechaLarga = (iso) => {
     if (!iso) return '—';
@@ -1328,15 +1329,15 @@ function TabHistorial({ laboratorios }) {
           <div className="glass-sm rounded-2xl p-5 mb-6 flex flex-wrap gap-5 items-start">
             <div className="flex-1 min-w-48">
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Equipo</p>
-              <p className="text-xl font-bold text-white">{historial.activo.nombre}</p>
-              <p className="text-sm text-slate-400">{historial.activo.codigo} · {historial.activo.categoria}</p>
-              {historial.activo.marca && <p className="text-xs text-slate-500 mt-0.5">{historial.activo.marca} {historial.activo.modelo}</p>}
+              <p className="text-xl font-bold text-white">{activoHistorial.nombre || 'Equipo seleccionado'}</p>
+              <p className="text-sm text-slate-400">{activoHistorial.codigo || activoHistorial.codigo_inventario || 'Sin codigo'} · {activoHistorial.categoria || 'Sin categoria'}</p>
+              {activoHistorial.marca && <p className="text-xs text-slate-500 mt-0.5">{activoHistorial.marca} {activoHistorial.modelo}</p>}
             </div>
             <div className="flex flex-wrap gap-3">
               {[
-                { label:'Estado', value: historial.activo.estado, color: historial.activo.estado==='OPERATIVO' ? 'text-emerald-400' : historial.activo.estado==='MANTENIMIENTO' ? 'text-amber-400' : 'text-red-400' },
-                { label:'Resguardante', value: historial.activo.resguardo_nombre || '—', color:'text-slate-300' },
-                { label:'Total eventos', value: historial.total_eventos, color:'text-blue-400' },
+                { label:'Estado', value: activoHistorial.estado || '—', color: activoHistorial.estado==='OPERATIVO' ? 'text-emerald-400' : activoHistorial.estado==='MANTENIMIENTO' ? 'text-amber-400' : 'text-red-400' },
+                { label:'Resguardante', value: activoHistorial.resguardo_nombre || 'Sin resguardante', color:'text-slate-300' },
+                { label:'Total eventos', value: historial.total_eventos ?? eventos.length, color:'text-blue-400' },
               ].map(s => (
                 <div key={s.label} className="glass rounded-xl px-4 py-3 text-center min-w-24">
                   <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
@@ -1381,6 +1382,10 @@ function TabHistorial({ laboratorios }) {
                         <p className="text-sm text-slate-300 mt-2">{ev.descripcion}</p>
                       )}
 
+                      {ev.proposito && (
+                        <p className="text-sm text-slate-300 mt-2">Propósito: {ev.proposito}</p>
+                      )}
+
                       <div className="flex flex-wrap gap-2 mt-3">
                         {ev.estado && (
                           <span className="text-xs px-2.5 py-0.5 rounded-full"
@@ -1396,6 +1401,11 @@ function TabHistorial({ laboratorios }) {
                         {ev.condicion_salida && (
                           <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                             Salida: {ev.condicion_salida}
+                          </span>
+                        )}
+                        {ev.receptor_tipo && (
+                          <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                            {ev.receptor_tipo}
                           </span>
                         )}
                         {ev.condicion_retorno && (

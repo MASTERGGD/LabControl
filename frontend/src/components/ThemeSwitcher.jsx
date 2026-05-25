@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 
 /**
- * ThemeSwitcher — botón icono sol/luna
- * Sol  = GobMX-Día   (tema claro, paleta Pantone oficial)
- * Luna = LabControl   (tema noche, Dark Glassmorphism)
+ * ThemeSwitcher - boton icono sol/luna
+ * Sol  = Dia
+ * Luna = Noche
  */
 export default function ThemeSwitcher() {
   const { themeKey, toggle } = useTheme();
   const [hovered, setHovered] = useState(false);
 
-  const isDay = themeKey === 'gobmx';
+  const isDay = themeKey === 'day';
 
-  const title  = isDay ? 'Cambiar a tema noche' : 'Cambiar a tema día GobMX';
-  const border = isDay ? 'rgba(221,201,163,0.35)' : 'rgba(255,255,255,0.10)';
+  const title  = isDay ? 'Cambiar a tema noche' : 'Cambiar a tema dÃ­a';
+  const border = isDay ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.10)';
   const bg     = hovered
-    ? isDay ? 'rgba(159,34,65,0.08)' : 'rgba(255,255,255,0.07)'
+    ? isDay ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.07)'
     : 'transparent';
-  const iconColor = isDay ? '#9F2241' : '#94a3b8';
+  const iconColor = isDay ? '#2563eb' : '#94a3b8';
 
   return (
     <button
@@ -42,14 +42,14 @@ export default function ThemeSwitcher() {
       }}
     >
       {isDay ? (
-        /* Luna — clic para ir a modo noche */
+        /* Luna â€” clic para ir a modo noche */
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke={iconColor} strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
         </svg>
       ) : (
-        /* Sol — clic para ir a modo día */
+        /* Sol â€” clic para ir a modo dÃ­a */
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke={iconColor} strokeWidth="2"
           strokeLinecap="round" strokeLinejoin="round">
@@ -67,3 +67,5 @@ export default function ThemeSwitcher() {
     </button>
   );
 }
+
+

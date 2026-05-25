@@ -97,20 +97,25 @@ export default function DashboardAdministrativo() {
   const navigate = useNavigate();
   const [comunicados, setComunicados] = useState([]);
   const [pendientes, setPendientes] = useState(null);
+  const [misEspacios, setMisEspacios] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const [resComunicados, resPendientes] = await Promise.allSettled([
+      const [resComunicados, resPendientes, resEspacios] = await Promise.allSettled([
         api.get('/comunicados'),
         api.get('/comunicados/pendientes-count'),
+        api.get('/espacios/mis-espacios'),
       ]);
       if (resComunicados.status === 'fulfilled') {
         setComunicados(Array.isArray(resComunicados.value.data) ? resComunicados.value.data : []);
       }
       if (resPendientes.status === 'fulfilled') {
         setPendientes(resPendientes.value.data?.pendientes ?? 0);
+      }
+      if (resEspacios.status === 'fulfilled') {
+        setMisEspacios(Array.isArray(resEspacios.value.data) ? resEspacios.value.data : []);
       }
     } finally {
       setLoading(false);
@@ -174,7 +179,7 @@ export default function DashboardAdministrativo() {
 
   return (
     <AdminLayout>
-      <div className="w-full max-w-[1440px] space-y-6">
+      <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
         <div className="rounded-2xl border border-white/10 bg-white/4 p-5">
           <div className="flex flex-col xl:flex-row xl:items-center gap-4">
             <div className="flex-1">
@@ -279,7 +284,7 @@ export default function DashboardAdministrativo() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_460px] gap-4 2xl:gap-6">
           <div className="space-y-4 min-w-0">
             <div className="rounded-2xl border border-white/10 bg-white/4 overflow-hidden">
               <div className="px-5 py-4 border-b border-white/8 flex items-center justify-between gap-3">
@@ -400,6 +405,21 @@ export default function DashboardAdministrativo() {
               description="Leer avisos institucionales dirigidos a tu cuenta."
               to="/comunicados"
             />
+            {misEspacios.length > 0 && (
+              <>
+                <QuickAction
+                  title="Bandeja de espacios"
+                  description={`Gestionar solicitudes de ${misEspacios.length} sala${misEspacios.length !== 1 ? 's' : ''} asignada${misEspacios.length !== 1 ? 's' : ''}.`}
+                  to="/espacios/bandeja"
+                  primary
+                />
+                <QuickAction
+                  title="Solicitar sala o espacio"
+                  description="Apartar un espacio institucional para una actividad."
+                  to="/espacios/apartar"
+                />
+              </>
+            )}
 
             <div className="rounded-2xl border border-white/10 bg-white/4 p-5">
               <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Categorías emitidas</p>
@@ -430,6 +450,21 @@ export default function DashboardAdministrativo() {
                 Los comunicados se emiten automáticamente desde este departamento. Usa el campo de subárea solo si necesitas firmar como una coordinación específica.
               </p>
             </div>
+
+            {misEspacios.length > 0 && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/8 p-5">
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">Salas asignadas</p>
+                <div className="mt-4 space-y-2">
+                  {misEspacios.slice(0, 4).map(esp => (
+                    <button key={esp.id} onClick={() => navigate(`/espacios/bandeja?espacio_id=${esp.id}`)}
+                      className="w-full text-left rounded-xl border border-white/8 bg-black/10 px-4 py-3 hover:bg-white/5">
+                      <p className="text-sm font-semibold text-white">{esp.nombre}</p>
+                      <p className="text-xs text-slate-500 mt-1">{esp.ubicacion || esp.tipo || 'Espacio institucional'}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

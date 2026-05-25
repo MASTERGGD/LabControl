@@ -241,6 +241,28 @@ def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
     }
 
 
+def _meta_prestamo(p: Prestamo) -> dict:
+    """Extrae metadatos legibles guardados en observaciones_salida."""
+    if not p.observaciones_salida:
+        return {"receptor_tipo": "ALUMNO", "proposito": None, "descripcion": None}
+    if not p.observaciones_salida.startswith("__meta__"):
+        return {
+            "receptor_tipo": "ALUMNO",
+            "proposito": None,
+            "descripcion": p.observaciones_salida,
+        }
+    try:
+        import json
+        meta = json.loads(p.observaciones_salida[8:])
+        return {
+            "receptor_tipo": meta.get("receptor_tipo", "ALUMNO"),
+            "proposito": meta.get("proposito"),
+            "descripcion": None,
+        }
+    except Exception:
+        return {"receptor_tipo": "ALUMNO", "proposito": None, "descripcion": None}
+
+
 def _serializar_incidente(i: Incidente, db: Session) -> dict:
     from models.laboratorio import Computadora
     from models.sesion import AsignacionPC
@@ -1309,12 +1331,15 @@ def historial_activo(
 
     # ── Préstamos ──────────────────────────────────────────────────────────
     for p in db.query(Prestamo).filter(Prestamo.activo_id == activo_id).all():
+        meta_prestamo = _meta_prestamo(p)
         eventos.append({
             "tipo_evento":  "PRESTAMO",
             "fecha":        p.fecha_salida.isoformat() if p.fecha_salida else None,
             "fecha_fin":    p.fecha_retorno_real.isoformat() if p.fecha_retorno_real else None,
             "titulo":       f"Prestamo - {p.solicitante_nombre}",
-            "descripcion":  p.observaciones_salida,
+            "descripcion":  meta_prestamo["descripcion"],
+            "receptor_tipo": meta_prestamo["receptor_tipo"],
+            "proposito":    meta_prestamo["proposito"],
             "estado":       p.estado,
             "condicion_salida":  p.condicion_salida,
             "condicion_retorno": p.condicion_retorno,
@@ -1344,4 +1369,20 @@ def historial_activo(
         })
 
     eventos.sort(key=lambda e: e["fecha"] or "", reverse=True)
-    return {"activo_id": activo_id, "eventos": eventos}
+    return {
+        "activo_id": activo_id,
+        "activo": {
+            "id": activo.id,
+            "nombre": activo.nombre,
+            "codigo": activo.codigo_inventario,
+            "codigo_inventario": activo.codigo_inventario,
+            "categoria": activo.categoria,
+            "marca": activo.marca,
+            "modelo": activo.modelo,
+            "estado": activo.estado,
+            "resguardo_nombre": activo.resguardo_nombre,
+            "laboratorio_id": activo.laboratorio_id,
+        },
+        "total_eventos": len(eventos),
+        "eventos": eventos,
+    }

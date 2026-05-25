@@ -15,9 +15,11 @@ class SesionClase(Base):
     reservacion_id = Column(Integer, ForeignKey("reservaciones.id"), nullable=True)
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=False)
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    tipo_sesion = Column(String, default="CLASE")   # CLASE | LIBRE
-    materia = Column(String, nullable=True)
-    grupo = Column(String, nullable=True)
+    tipo_sesion  = Column(String, default="CLASE")   # CLASE | LIBRE
+    materia      = Column(String, nullable=True)
+    carrera      = Column(String, nullable=True)
+    cuatrimestre = Column(String, nullable=True)   # "1", "2" … "12"
+    grupo        = Column(String, nullable=True)
     codigo_sesion = Column(String, unique=True, nullable=False)
     inicio = Column(DateTime, default=_utcnow)
     fin_estimado = Column(DateTime, nullable=True)

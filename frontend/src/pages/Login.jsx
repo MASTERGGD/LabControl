@@ -6,8 +6,10 @@ import api from '../hooks/useApi';
 const ROLES_REDIRECT = {
   SUPER_ADMIN: '/admin',
   LAB_ADMIN:   '/lab',
+  TUTORIA_ADMIN: '/admin/tutoria',
+  SERVICIOS_ESCOLARES: '/servicios-escolares',
   DOCENTE:     '/docente',
-  ALUMNO:      '/alumno',
+  ALUMNO:      '/alumno/estudio-socioeconomico',
 };
 
 export default function Login() {
@@ -72,8 +74,11 @@ export default function Login() {
                 d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">LabControl</h1>
-          <p className="text-slate-400 text-sm mt-1.5">Universidad Tecnológica de Candelaria</p>
+          <p className="text-xs font-semibold text-blue-300 tracking-[0.2em] uppercase mb-1">
+            Sistema Integral de Gestión Académica
+          </p>
+          <h1 className="text-5xl font-black text-white tracking-[0.25em]">SIGA</h1>
+          <p className="text-slate-400 text-sm mt-2 tracking-wide">Universidad Tecnológica de Candelaria</p>
         </div>
 
         {/* Tarjeta glass */}
@@ -142,7 +147,7 @@ export default function Login() {
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-600 mt-6">
-          LabControl v2.0 · UTECAN {new Date().getFullYear()}
+          SIGA v2.0 · UTECAN {new Date().getFullYear()}
         </p>
       </div>
     </div>

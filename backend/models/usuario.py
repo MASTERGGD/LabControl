@@ -8,6 +8,9 @@ class RolUsuario(str, enum.Enum):
     LAB_ADMIN = "LAB_ADMIN"
     DOCENTE = "DOCENTE"
     ADMINISTRATIVO = "ADMINISTRATIVO"
+    TUTORIA_ADMIN = "TUTORIA_ADMIN"
+    SERVICIOS_ESCOLARES = "SERVICIOS_ESCOLARES"
+    MEDICO = "MEDICO"
     ALUMNO = "ALUMNO"
 
 class Usuario(Base):
@@ -21,7 +24,8 @@ class Usuario(Base):
     rol = Column(Enum(RolUsuario), nullable=False, default=RolUsuario.DOCENTE)
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=True)
     departamento_id = Column(Integer, ForeignKey("departamentos.id"), nullable=True)
-    activo = Column(Boolean, default=True)
+    activo               = Column(Boolean, default=True)
+    acceso_consultorio   = Column(Boolean, default=False)
 
     laboratorio = relationship("Laboratorio", back_populates="admin")
     departamento = relationship("Departamento", back_populates="usuarios")

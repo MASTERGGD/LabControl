@@ -263,20 +263,36 @@ def resumen_persona(
     elif prestamos:
         nombre = prestamos[0].solicitante_nombre
 
+    # Enriquecer con datos del catálogo (alumno) o del usuario (personal)
     cat = db.query(CatalogoAlumno).filter(
         CatalogoAlumno.matricula == identificador
     ).first()
 
+    usuario_personal = None
+    if not cat:
+        usuario_personal = db.query(Usuario).filter(
+            (Usuario.numero_empleado == identificador) |
+            (Usuario.id == int(identificador.replace("USR","")) if identificador.startswith("USR") else False)
+        ).first()
+        if usuario_personal and not nombre:
+            nombre = usuario_personal.nombre
+
+    persona_tipo = "ALUMNO" if cat else ("PERSONAL" if usuario_personal else (adeudos[0].persona_tipo if adeudos else "ALUMNO"))
+
     return {
         "identificador": identificador,
-        "nombre":        nombre or "—",
-        "persona_tipo":  adeudos[0].persona_tipo if adeudos else "ALUMNO",
+        "nombre":        nombre or (usuario_personal.nombre if usuario_personal else "—"),
+        "persona_tipo":  persona_tipo,
         "catalogo": {
             "carrera":      cat.carrera      if cat else None,
             "cuatrimestre": cat.cuatrimestre if cat else None,
             "grupo":        cat.grupo        if cat else None,
             "periodo":      cat.periodo      if cat else None,
         } if cat else None,
+        "personal": {
+            "rol":              usuario_personal.rol.value if usuario_personal else None,
+            "numero_empleado":  usuario_personal.numero_empleado if usuario_personal else None,
+        } if usuario_personal else None,
         "resumen": {
             "adeudos_pendientes":  sum(1 for a in adeudos if a.estado == "PENDIENTE"),
             "adeudos_revision":    sum(1 for a in adeudos if a.estado == "EN_REVISION"),

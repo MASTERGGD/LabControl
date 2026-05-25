@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
+import { useTheme } from '../../context/ThemeContext';
 
 const CATEGORIA_ICONO = {
   COMPUTADORA:    { emoji: '🖥️', color: 'bg-blue-900/50 border-blue-700' },
@@ -421,6 +422,8 @@ function ModalActivo({ activo, labs, onClose, onSave }) {
 // ─── Página principal ──────────────────────────────────────────────────────────
 
 export default function Inventario() {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const navigate = useNavigate();
   const [activos, setActivos]   = useState([]);
   const [labs, setLabs]         = useState([]);
@@ -615,16 +618,16 @@ export default function Inventario() {
               <div key={a.id}
                 className={`rounded-xl p-4 flex flex-col gap-2 transition-all ${!a.activo ? 'opacity-50' : ''}`}
                 style={{
-                  background: 'rgba(30,41,59,0.55)',
+                  background: isDay ? '#FFFFFF' : 'rgba(30,41,59,0.55)',
                   backdropFilter: 'blur(10px)',
                   WebkitBackdropFilter: 'blur(10px)',
-                  border: `1px solid ${vencido ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                  border: `1px solid ${vencido ? 'rgba(239,68,68,0.35)' : isDay ? 'rgba(15,23,42,0.10)' : 'rgba(255,255,255,0.07)'}`,
                   boxShadow: vencido
-                    ? 'inset 0 1px 0 rgba(255,255,255,0.05), 0 0 12px rgba(239,68,68,0.15)'
-                    : 'inset 0 1px 0 rgba(255,255,255,0.05)',
+                    ? '0 8px 20px rgba(239,68,68,0.10)'
+                    : isDay ? '0 1px 3px rgba(15,23,42,0.06)' : 'inset 0 1px 0 rgba(255,255,255,0.05)',
                 }}
-                onMouseEnter={e => e.currentTarget.style.border = `1px solid ${vencido ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.14)'}`}
-                onMouseLeave={e => e.currentTarget.style.border = `1px solid ${vencido ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.07)'}`}>
+                onMouseEnter={e => e.currentTarget.style.border = `1px solid ${vencido ? 'rgba(239,68,68,0.5)' : isDay ? 'rgba(37,99,235,0.28)' : 'rgba(255,255,255,0.14)'}`}
+                onMouseLeave={e => e.currentTarget.style.border = `1px solid ${vencido ? 'rgba(239,68,68,0.35)' : isDay ? 'rgba(15,23,42,0.10)' : 'rgba(255,255,255,0.07)'}`}>
                 {/* Header */}
                 <div className="flex items-start justify-between">
                   <div className={`w-10 h-10 rounded-xl ${herramientaColor} border flex items-center justify-center text-xl shrink-0`}>
@@ -644,7 +647,7 @@ export default function Inventario() {
                 </div>
                 {/* Info */}
                 <div className="flex-1">
-                  <p className="font-semibold text-white text-sm leading-tight">{a.nombre}</p>
+                  <p className={`font-semibold text-sm leading-tight ${isDay ? 'text-slate-950' : 'text-white'}`}>{a.nombre}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{a.codigo_inventario}</p>
                   {(a.marca || a.modelo) && (
                     <p className="text-xs text-slate-500 mt-0.5">{[a.marca, a.modelo].filter(Boolean).join(' · ')}</p>
