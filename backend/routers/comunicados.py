@@ -311,6 +311,17 @@ def _get_respuesta(db: Session, comunicado_id: int, usuario_id: int) -> Comunica
     ).first()
 
 
+def _validar_firma_archivo(tipo: str, chunk: bytes) -> None:
+    if tipo == "application/pdf" and not chunk.startswith(b"%PDF-"):
+        raise HTTPException(400, "El archivo no parece ser un PDF valido")
+    if tipo == "image/jpeg" and not chunk.startswith(b"\xff\xd8\xff"):
+        raise HTTPException(400, "El archivo no parece ser una imagen JPG valida")
+    if tipo == "image/png" and not chunk.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(400, "El archivo no parece ser una imagen PNG valida")
+    if tipo == "image/webp" and not (chunk.startswith(b"RIFF") and chunk[8:12] == b"WEBP"):
+        raise HTTPException(400, "El archivo no parece ser una imagen WEBP valida")
+
+
 async def _guardar_upload(
     archivo: UploadFile,
     destino_dir: Path,
@@ -330,11 +341,15 @@ async def _guardar_upload(
     h = hashlib.sha256()
     total = 0
     try:
+        primer_chunk = True
         with path.open("wb") as fh:
             while True:
                 chunk = await archivo.read(1024 * 1024)
                 if not chunk:
                     break
+                if primer_chunk:
+                    _validar_firma_archivo(tipo, chunk)
+                    primer_chunk = False
                 total += len(chunk)
                 if total > max_bytes:
                     raise HTTPException(400, f"El archivo supera el limite de {max_bytes // (1024 * 1024)} MB")

@@ -987,7 +987,7 @@ export default function AdminLayout({ children }) {
             {/* Cambiar contraseña — solo desktop */}
             <button
               onClick={() => setModalPwd(true)}
-              className="hidden md:block p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
+              className="hidden md:block p-1.5 text-slate-400 hover:text-[var(--main-text)] rounded-xl hover:bg-white/5 transition-colors"
               title="Cambiar contraseña"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -999,7 +999,7 @@ export default function AdminLayout({ children }) {
             {/* Salir — solo desktop */}
             <button
               onClick={handleLogout}
-              className="hidden md:flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors p-1.5 rounded-xl hover:bg-white/5"
+              className="hidden md:flex items-center gap-1.5 text-sm text-slate-400 hover:text-[var(--main-text)] transition-colors p-1.5 rounded-xl hover:bg-white/5"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

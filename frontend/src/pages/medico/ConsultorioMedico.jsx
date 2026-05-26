@@ -21,18 +21,122 @@ const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov"
 const SEXO_LABEL = { M: "Masculino", F: "Femenino", OTRO: "Otro" };
 const ORIGEN_LABEL = { ESPONTANEA: "Espontánea", CANALIZADA_TUTORIA: "Tutoría", CANALIZADA_INTERNA: "Interna" };
 const DESTINO_OPTS = ["PSICOLOGIA","TUTORIA","NUTRICION","HOSPITAL","OTRO"];
+const ALERTA_CLASES = {
+  danger: "border-red-400/50 bg-red-50 text-red-700",
+  warning: "border-yellow-400/50 bg-yellow-50 text-yellow-700",
+  info: "border-blue-400/50 bg-blue-50 text-blue-700",
+};
+
+const calcIMC = (peso, talla) => {
+  const p = parseFloat(peso);
+  const t = parseFloat(talla);
+  if (!p || !t) return null;
+  const altura = t / 100;
+  if (altura <= 0) return null;
+  return Math.round((p / (altura * altura)) * 10) / 10;
+};
+
+const clasificarIMC = (imc) => {
+  if (imc == null) return "";
+  if (imc < 18.5) return "Bajo peso";
+  if (imc < 25) return "Normal";
+  if (imc < 30) return "Sobrepeso";
+  if (imc < 35) return "Obesidad I";
+  if (imc < 40) return "Obesidad II";
+  return "Obesidad III";
+};
+
+const orientarIMC = (imc) => {
+  const clasificacion = clasificarIMC(imc);
+  if (!clasificacion) return "";
+  if (clasificacion === "Normal") return "Referencia corporal en rango normal.";
+  if (clasificacion === "Bajo peso") return "Dato de apoyo para orientar hidratacion, nutricion o seguimiento.";
+  return "Dato de apoyo para seguimiento nutricional y canalizacion si aplica.";
+};
+
+const descargarPDFConsulta = async (consultaId, pacienteNombre = "Paciente") => {
+  const resp = await api.get(`/consultorio/consultas/${consultaId}/pdf`, { responseType: "blob" });
+  const url = URL.createObjectURL(new Blob([resp.data], { type: "application/pdf" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Consulta_${pacienteNombre.replace(/\s+/g, "_")}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const PLANTILLAS_CONSULTA = [
+  {
+    nombre: "Cefalea",
+    motivo_consulta: "Cefalea durante jornada escolar.",
+    diagnostico: "Cefalea probable tensional. Sin datos de alarma al momento.",
+    indicaciones: "Reposo relativo, hidratacion, evitar exposicion prolongada a pantallas. Acudir a urgencias si presenta vomito persistente, fiebre, perdida de fuerza o alteracion visual.",
+  },
+  {
+    nombre: "Fiebre",
+    motivo_consulta: "Fiebre o malestar general.",
+    diagnostico: "Sindrome febril en vigilancia.",
+    indicaciones: "Hidratacion, control de temperatura y vigilancia de signos de alarma. Revaloracion si persiste fiebre o hay dificultad respiratoria.",
+  },
+  {
+    nombre: "Dolor abdominal",
+    motivo_consulta: "Dolor abdominal referido por el paciente.",
+    diagnostico: "Dolor abdominal en estudio, sin datos de abdomen agudo al momento.",
+    indicaciones: "Dieta blanda, hidratacion y vigilancia. Acudir a urgencias si aumenta el dolor, hay fiebre, vomito persistente o evacuaciones con sangre.",
+  },
+  {
+    nombre: "Lesion leve",
+    motivo_consulta: "Lesion leve durante actividades escolares.",
+    diagnostico: "Contusion o lesion menor sin datos de complicacion al momento.",
+    indicaciones: "Reposo relativo, hielo local si aplica y vigilancia de dolor, inflamacion o limitacion funcional.",
+  },
+  {
+    nombre: "Ansiedad",
+    motivo_consulta: "Ansiedad o crisis emocional durante actividad academica.",
+    diagnostico: "Cuadro ansioso en contencion inicial.",
+    indicaciones: "Contencion, respiracion guiada y canalizacion a tutoria/psicologia si persisten sintomas o existe riesgo emocional.",
+  },
+  {
+    nombre: "Malestar general",
+    motivo_consulta: "Malestar general durante la jornada escolar.",
+    diagnostico: "Malestar general en vigilancia clinica.",
+    indicaciones: "Reposo relativo, hidratacion y vigilancia de signos de alarma. Revaloracion si persisten sintomas.",
+  },
+  {
+    nombre: "Presion alta/baja",
+    motivo_consulta: "Alteracion de presion arterial referida o detectada.",
+    diagnostico: "Alteracion tensional en vigilancia.",
+    indicaciones: "Reposo, nueva toma de presion y vigilancia. Canalizar si hay cefalea intensa, dolor toracico, mareo persistente o dificultad respiratoria.",
+  },
+  {
+    nombre: "Curacion/herida",
+    motivo_consulta: "Herida o lesion que requiere curacion.",
+    diagnostico: "Herida superficial en manejo local.",
+    indicaciones: "Aseo local, curacion, mantener zona limpia y seca. Vigilar enrojecimiento, secrecion, fiebre o aumento de dolor.",
+  },
+];
 
 // ─── sub-componentes de tarjeta ───────────────────────────────────────────────
 function Chip({ color = "slate", text }) {
   const cls = {
-    emerald: "bg-emerald-900/40 text-emerald-300 border border-emerald-700/40",
-    red:     "bg-red-900/40 text-red-300 border border-red-700/40",
-    yellow:  "bg-yellow-900/40 text-yellow-300 border border-yellow-700/40",
-    blue:    "bg-blue-900/40 text-blue-300 border border-blue-700/40",
-    slate:   "bg-slate-700/40 text-slate-300 border border-slate-600/40",
-    cyan:    "bg-cyan-900/40 text-cyan-300 border border-cyan-700/40",
-  }[color] || "bg-slate-700/40 text-slate-300";
+    emerald: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+    red:     "bg-red-100 text-red-700 border border-red-200",
+    yellow:  "bg-yellow-100 text-yellow-700 border border-yellow-200",
+    amber:   "bg-amber-100 text-amber-700 border border-amber-200",
+    blue:    "bg-blue-100 text-blue-700 border border-blue-200",
+    slate:   "bg-slate-100 text-slate-600 border border-slate-200",
+    cyan:    "bg-cyan-100 text-cyan-700 border border-cyan-200",
+  }[color] || "bg-slate-100 text-slate-600 border border-slate-200";
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cls}`}>{text}</span>;
+}
+
+function ChipSeguimiento({ fecha, estado }) {
+  const hoy = new Date();
+  const f   = fecha ? new Date(fecha) : null;
+  const vencido = f && f < hoy && estado !== "ATENDIDO" && estado !== "CERRADO";
+  const atendido = estado === "ATENDIDO" || estado === "CERRADO";
+  const color = atendido ? "emerald" : vencido ? "red" : "amber";
+  const label = atendido ? "Seg. atendido" : `Seg. ${fmt(fecha)} · ${estado || "PENDIENTE"}`;
+  return <Chip color={color} text={label} />;
 }
 
 function Campo({ label, value }) {
@@ -47,7 +151,7 @@ function Campo({ label, value }) {
 // ─── Modal: Nueva / Ver Consulta ──────────────────────────────────────────────
 // canalizacionTutoria: objeto con {canalizacion_id, alumno_nombre, motivo, tutor_nombre}
 // si se pasa, la consulta se registra como atención a ese referido de tutoría
-function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGuardado }) {
+function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
@@ -56,8 +160,9 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
     peso: consulta?.peso || "",
     talla: consulta?.talla || "",
     frecuencia_cardiaca: consulta?.frecuencia_cardiaca || "",
+    frecuencia_respiratoria: consulta?.frecuencia_respiratoria || "",
     saturacion_oxigeno: consulta?.saturacion_oxigeno || "",
-    motivo_consulta: consulta?.motivo_consulta || (canalizacionTutoria ? canalizacionTutoria.motivo : ""),
+    motivo_consulta: consulta?.motivo_consulta || (seguimientoDe ? `Seguimiento de consulta: ${seguimientoDe.motivo_consulta || seguimientoDe.diagnostico || ""}` : (canalizacionTutoria ? canalizacionTutoria.motivo : "")),
     diagnostico: consulta?.diagnostico || "",
     medicamentos: consulta?.medicamentos || "",
     indicaciones: consulta?.indicaciones || "",
@@ -67,6 +172,7 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
     requiere_seguimiento: consulta?.requiere_seguimiento || false,
     fecha_seguimiento: consulta?.fecha_seguimiento || "",
     seguimiento_notas: consulta?.seguimiento_notas || "",
+    seguimiento_estado: consulta?.seguimiento_estado || "PENDIENTE",
   });
   const [cans, setCans] = useState([]);
   const [exportando, setExportando] = useState(false);
@@ -74,8 +180,20 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
   const finIncapacidad = form.genera_incapacidad
     ? (consulta?.fecha_fin_incapacidad || addDaysISO(form.fecha_inicio_incapacidad, form.dias_incapacidad))
     : "";
+  const imcCalculado = consulta?.imc ?? calcIMC(form.peso, form.talla);
+  const imcTexto = imcCalculado != null ? `${imcCalculado} (${consulta?.imc_clasificacion || clasificarIMC(imcCalculado)})` : "";
+  const imcOrientacion = orientarIMC(imcCalculado);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const aplicarPlantilla = (tpl) => {
+    if (soloLectura) return;
+    setForm(f => ({
+      ...f,
+      motivo_consulta: f.motivo_consulta || tpl.motivo_consulta,
+      diagnostico: f.diagnostico || tpl.diagnostico,
+      indicaciones: f.indicaciones || tpl.indicaciones,
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -93,6 +211,7 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
         peso: form.peso ? parseFloat(form.peso) : null,
         talla: form.talla ? parseFloat(form.talla) : null,
         frecuencia_cardiaca: form.frecuencia_cardiaca ? parseInt(form.frecuencia_cardiaca) : null,
+        frecuencia_respiratoria: form.frecuencia_respiratoria ? parseInt(form.frecuencia_respiratoria) : null,
         saturacion_oxigeno: form.saturacion_oxigeno ? parseFloat(form.saturacion_oxigeno) : null,
         dias_incapacidad: form.dias_incapacidad ? parseInt(form.dias_incapacidad) : null,
         fecha_inicio_incapacidad: form.genera_incapacidad ? (form.fecha_inicio_incapacidad || todayISO()) : null,
@@ -100,16 +219,20 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
         canalizaciones: cans.filter(c => c.destino),
         origen: canalizacionTutoria ? "CANALIZADA_TUTORIA" : "ESPONTANEA",
       };
+      let guardada;
       if (consulta) {
-        await api.put(`/consultorio/consultas/${consulta.id}`, payload);
+        const { data } = await api.put(`/consultorio/consultas/${consulta.id}`, payload);
+        guardada = data;
       } else if (canalizacionTutoria) {
         // Endpoint especial que también cierra la canalización de tutoría
-        await api.post(`/consultorio/canalizaciones-tutoria/${canalizacionTutoria.canalizacion_id}/atender`, payload);
+        const { data } = await api.post(`/consultorio/canalizaciones-tutoria/${canalizacionTutoria.canalizacion_id}/atender`, payload);
+        guardada = data;
       } else {
-        await api.post("/consultorio/consultas", payload);
+        const { data } = await api.post("/consultorio/consultas", payload);
+        guardada = data;
       }
       showToast(consulta ? "Consulta actualizada" : "Consulta registrada", "success");
-      onGuardado();
+      onGuardado(guardada);
     } catch (err) {
       showToast(err.response?.data?.detail || "Error al guardar", "error");
     } finally {
@@ -121,13 +244,7 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
     if (!consulta) return;
     setExportando(true);
     try {
-      const resp = await api.get(`/consultorio/consultas/${consulta.id}/pdf`, { responseType: "blob" });
-      const url = URL.createObjectURL(new Blob([resp.data], { type: "application/pdf" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Consulta_${paciente.nombre.replace(/\s+/g, "_")}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      await descargarPDFConsulta(consulta.id, paciente.nombre);
     } catch { showToast("Error al generar la impresión", "error"); }
     finally { setExportando(false); }
   };
@@ -137,10 +254,11 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
   const delCan = (i) => setCans(c => c.filter((_, j) => j !== i));
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="glass w-full max-w-3xl shadow-glass animate-fadeUp my-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center p-4">
+      <div className="glass w-full max-w-3xl shadow-glass animate-fadeUp flex flex-col max-h-[90vh]">
         {/* header */}
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="font-semibold text-white">
               {consulta ? "✏️ Editar Consulta" : "🩺 Nueva Consulta"}
@@ -162,15 +280,27 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Banner cuando viene de tutoría */}
           {canalizacionTutoria && (
-            <div className="bg-rose-900/20 border border-rose-700/30 rounded-xl px-4 py-3 flex items-start gap-3">
+            <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 flex items-start gap-3">
               <span className="text-lg">🏥</span>
               <div>
-                <p className="text-sm text-rose-200 font-medium">Referido desde Tutoría</p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-sm text-rose-700 font-medium">Referido desde Tutoría</p>
+                <p className="text-xs text-rose-600 mt-0.5">
                   Tutor: {canalizacionTutoria.tutor_nombre} · Motivo: {canalizacionTutoria.motivo}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {seguimientoDe && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
+              <span className="text-lg">↻</span>
+              <div>
+                <p className="text-sm text-blue-700 font-medium">Consulta de seguimiento</p>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  Derivada de la consulta del {fmtDT(seguimientoDe.fecha_consulta)} · {seguimientoDe.diagnostico}
                 </p>
               </div>
             </div>
@@ -179,13 +309,14 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
           {/* Signos vitales */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Signos Vitales</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { key: "temperatura", label: "Temperatura (°C)", placeholder: "36.6" },
                 { key: "presion_arterial", label: "Presión Arterial", placeholder: "120/80" },
                 { key: "peso", label: "Peso (kg)", placeholder: "65.0" },
                 { key: "talla", label: "Talla (cm)", placeholder: "170" },
                 { key: "frecuencia_cardiaca", label: "Frec. Cardíaca (lpm)", placeholder: "72" },
+                { key: "frecuencia_respiratoria", label: "Frec. respiratoria (rpm)", placeholder: "16" },
                 { key: "saturacion_oxigeno", label: "Saturación O₂ (%)", placeholder: "98" },
               ].map(({ key, label, placeholder }) => (
                 <div key={key}>
@@ -198,6 +329,35 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
           </div>
 
           {/* Motivo y diagnóstico */}
+          {imcTexto && (
+            <div className="rounded-xl border border-emerald-600/30 bg-emerald-50 px-4 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide dark:text-emerald-200">IMC calculado</span>
+                <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{imcTexto}</span>
+              </div>
+              {imcOrientacion && (
+                <p className="text-xs text-emerald-800/80 dark:text-emerald-100/75 mt-1">{imcOrientacion}</p>
+              )}
+            </div>
+          )}
+
+          {!soloLectura && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Plantillas rapidas</p>
+              <div className="flex flex-wrap gap-2">
+                {PLANTILLAS_CONSULTA.map(tpl => (
+                  <button
+                    key={tpl.nombre}
+                    type="button"
+                    onClick={() => aplicarPlantilla(tpl)}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-emerald-700/30 border border-white/10 text-xs text-slate-200 transition-colors">
+                    {tpl.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Motivo de consulta *</label>
@@ -280,6 +440,12 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
                     className="input-dark w-full" />
                 </div>
                 <div>
+                  <label className="block text-xs text-slate-400 mb-1">Estado</label>
+                  <div className="input-dark w-full flex items-center text-sm text-slate-300">
+                    {form.seguimiento_estado === "PENDIENTE" ? "Pendiente automatico" : form.seguimiento_estado}
+                  </div>
+                </div>
+                <div>
                   <label className="block text-xs text-slate-400 mb-1">Notas de seguimiento</label>
                   <input type="text" value={form.seguimiento_notas}
                     onChange={e => set("seguimiento_notas", e.target.value)}
@@ -328,6 +494,7 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, onClose, onGua
           </div>
         </form>
       </div>
+      </div>
     </div>
   );
 }
@@ -346,6 +513,9 @@ function ModalPaciente({ onSelect, onClose }) {
   const [buscando, setBuscando]       = useState(false);
   // Paso 2: confirmar datos del personal seleccionado del sistema
   const [personalSel, setPersonalSel] = useState(null);
+  const [alumnoSel, setAlumnoSel] = useState(null);
+  const [sexoAlumno, setSexoAlumno] = useState("");
+  const [fnAlumno, setFnAlumno] = useState("");
   const [sexoPersonal, setSexoPersonal]   = useState("");
   const [fnPersonal, setFnPersonal]       = useState("");
   // Formulario manual (persona externa)
@@ -395,17 +565,19 @@ function ModalPaciente({ onSelect, onClose }) {
   };
 
   // ── Registrar alumno como paciente ────────────────────────────────────────
-  const registrarAlumno = async (alumno) => {
+  const registrarAlumno = async (e) => {
+    e.preventDefault();
+    if (!alumnoSel) return;
     try {
       const { data } = await api.post("/consultorio/pacientes", {
         tipo: "ALUMNO",
-        alumno_id: alumno.id,
-        nombre: alumno.nombre,
-        matricula_o_emp: alumno.matricula,
-        carrera: alumno.carrera,
-        cuatrimestre: alumno.cuatrimestre,
-        sexo: null,
-        fecha_nacimiento: null,
+        alumno_id: alumnoSel.id,
+        nombre: alumnoSel.nombre,
+        matricula_o_emp: alumnoSel.matricula,
+        carrera: alumnoSel.carrera,
+        cuatrimestre: alumnoSel.cuatrimestre,
+        sexo: sexoAlumno || null,
+        fecha_nacimiento: fnAlumno || null,
       });
       onSelect(data);
     } catch { showToast("Error al registrar paciente", "error"); }
@@ -454,7 +626,7 @@ function ModalPaciente({ onSelect, onClose }) {
           {/* Tabs */}
           <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 text-xs">
             {[["buscar","🔍 Ya atendido"],["alumno","🎓 Alumno"],["personal","🏢 Personal"]].map(([k,l]) => (
-              <button key={k} onClick={() => { setTab(k); setPersonalSel(null); }}
+              <button key={k} onClick={() => { setTab(k); setPersonalSel(null); setAlumnoSel(null); }}
                 className={`flex-1 py-1.5 rounded-lg font-medium transition-colors ${tab === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>
                 {l}
               </button>
@@ -493,7 +665,7 @@ function ModalPaciente({ onSelect, onClose }) {
           )}
 
           {/* Tab: Alumno del catálogo */}
-          {tab === "alumno" && (
+          {tab === "alumno" && !alumnoSel && (
             <div className="space-y-3">
               <p className="text-xs text-slate-500">Busca por nombre, apellido o matrícula</p>
               <div className="flex gap-2">
@@ -505,7 +677,7 @@ function ModalPaciente({ onSelect, onClose }) {
               {buscando && <p className="text-slate-400 text-sm text-center animate-pulse">Buscando…</p>}
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {alumnosBS.map(a => (
-                  <button key={a.id} onClick={() => registrarAlumno(a)}
+                  <button key={a.id} onClick={() => { setAlumnoSel(a); setSexoAlumno(""); setFnAlumno(""); }}
                     className="w-full text-left p-3 rounded-xl bg-slate-700/40 hover:bg-slate-700/70 transition-colors">
                     <div className="flex items-start justify-between">
                       <div>
@@ -523,6 +695,44 @@ function ModalPaciente({ onSelect, onClose }) {
                 )}
               </div>
             </div>
+          )}
+
+          {tab === "alumno" && alumnoSel && (
+            <form onSubmit={registrarAlumno} className="space-y-4">
+              <div className="rounded-xl bg-slate-800/50 border border-white/10 p-4">
+                <p className="text-sm text-white font-medium">{alumnoSel.nombre}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {alumnoSel.matricula} · {alumnoSel.carrera || "Sin carrera"} · {alumnoSel.grupo || "Sin grupo"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
+                <p className="text-xs text-yellow-100">
+                  Estos datos alimentan la receta medica. Si se dejan vacios, Sexo y Edad apareceran como no disponibles.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Sexo</label>
+                  <select value={sexoAlumno} onChange={e => setSexoAlumno(e.target.value)}
+                    className="input-dark w-full">
+                    <option value="">Seleccionar</option>
+                    <option value="F">Femenino</option>
+                    <option value="M">Masculino</option>
+                    <option value="OTRO">Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Fecha de nacimiento</label>
+                  <input type="date" value={fnAlumno}
+                    onChange={e => setFnAlumno(e.target.value)}
+                    className="input-dark w-full" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setAlumnoSel(null)} className="btn-ghost flex-1 text-sm">Volver</button>
+                <button type="submit" className="btn-blue flex-1 text-sm">Confirmar y continuar</button>
+              </div>
+            </form>
           )}
 
           {/* Tab: Personal del sistema (docentes / administrativos) */}
@@ -633,18 +843,62 @@ function ModalPaciente({ onSelect, onClose }) {
 function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
   const [expediente, setExpediente] = useState(null);
   const [consultaSel, setConsultaSel] = useState(null);
+  const [seguimientoSel, setSeguimientoSel] = useState(null);
+  const [editandoClinico, setEditandoClinico] = useState(false);
+  const [guardandoClinico, setGuardandoClinico] = useState(false);
+  const [clinico, setClinico] = useState({
+    sexo: "",
+    fecha_nacimiento: "",
+    alergias: "",
+    antecedentes_medicos: "",
+    medicamentos_actuales: "",
+  });
   const { toast: showToast } = useToast();
 
-  useEffect(() => {
+  const cargarExpediente = useCallback(() => {
     api.get(`/consultorio/pacientes/${paciente.id}`)
       .then(r => setExpediente(r.data))
       .catch(() => showToast("Error al cargar expediente", "error"));
   }, [paciente.id]);
 
+  useEffect(() => {
+    cargarExpediente();
+  }, [cargarExpediente]);
+
+  useEffect(() => {
+    if (!expediente) return;
+    setClinico({
+      sexo: expediente.sexo || "",
+      fecha_nacimiento: expediente.fecha_nacimiento || "",
+      alergias: expediente.alergias || "",
+      antecedentes_medicos: expediente.antecedentes_medicos || "",
+      medicamentos_actuales: expediente.medicamentos_actuales || "",
+    });
+  }, [expediente]);
+
+  const guardarClinico = async () => {
+    setGuardandoClinico(true);
+    try {
+      const { data } = await api.patch(`/consultorio/pacientes/${paciente.id}/datos-clinicos`, clinico);
+      setExpediente(prev => ({ ...prev, ...data }));
+      setEditandoClinico(false);
+      showToast("Datos clinicos actualizados", "success");
+      cargarExpediente();
+    } catch {
+      showToast("Error al actualizar datos clinicos", "error");
+    } finally {
+      setGuardandoClinico(false);
+    }
+  };
+
   if (!expediente) return (
     <div className="flex items-center justify-center h-40">
       <span className="text-slate-400 animate-pulse">Cargando expediente…</span>
     </div>
+  );
+
+  const seguimientosPendientes = expediente.consultas.filter(
+    c => c.requiere_seguimiento && c.seguimiento_estado === "PENDIENTE"
   );
 
   return (
@@ -673,6 +927,147 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
         </div>
       </div>
 
+      {expediente.alertas?.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {expediente.alertas.map((alerta, i) => (
+            <div
+              key={`${alerta.titulo}-${i}`}
+              className={`rounded-xl border px-4 py-3 ${ALERTA_CLASES[alerta.tipo] || ALERTA_CLASES.info}`}>
+              <p className="text-sm font-semibold">{alerta.titulo}</p>
+              <p className="text-xs opacity-80 mt-0.5">{alerta.detalle}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="glass p-4 rounded-2xl">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Datos del paciente</p>
+          <div className="space-y-3">
+            <Campo label="Sexo" value={SEXO_LABEL[expediente.sexo] || expediente.sexo} />
+            <Campo label="Fecha de nacimiento" value={fmt(expediente.fecha_nacimiento)} />
+            <Campo label={expediente.tipo === "ALUMNO" ? "Carrera" : "Departamento"} value={expediente.carrera || expediente.departamento} />
+          </div>
+        </div>
+
+        <div className="glass p-4 rounded-2xl lg:col-span-2">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Antecedentes y seguridad clinica</p>
+            <button
+              onClick={() => setEditandoClinico(v => !v)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-white/10">
+              {editandoClinico ? "Cancelar" : "Editar"}
+            </button>
+          </div>
+          {!editandoClinico ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Campo label="Alergias" value={expediente.alergias || "Sin alergias registradas"} />
+              <Campo label="Antecedentes medicos" value={expediente.antecedentes_medicos || "Sin antecedentes registrados"} />
+              <Campo label="Medicamentos actuales" value={expediente.medicamentos_actuales || "Sin medicamentos registrados"} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <select value={clinico.sexo} onChange={e => setClinico(f => ({ ...f, sexo: e.target.value }))}
+                  className="input-dark w-full">
+                  <option value="">Sexo</option>
+                  <option value="F">Femenino</option>
+                  <option value="M">Masculino</option>
+                  <option value="OTRO">Otro</option>
+                </select>
+                <input type="date" value={clinico.fecha_nacimiento}
+                  onChange={e => setClinico(f => ({ ...f, fecha_nacimiento: e.target.value }))}
+                  className="input-dark w-full" />
+              </div>
+              {[
+                ["alergias", "Alergias"],
+                ["antecedentes_medicos", "Antecedentes medicos"],
+                ["medicamentos_actuales", "Medicamentos actuales"],
+              ].map(([key, label]) => (
+                <textarea key={key} value={clinico[key]}
+                  onChange={e => setClinico(f => ({ ...f, [key]: e.target.value }))}
+                  className="input-dark w-full resize-none" rows={2} placeholder={label} />
+              ))}
+              <button onClick={guardarClinico} disabled={guardandoClinico} className="btn-blue w-full text-sm">
+                {guardandoClinico ? "Guardando..." : "Guardar datos clinicos"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {seguimientosPendientes.length > 0 && (
+        <div className="glass p-4 rounded-2xl border border-blue-500/30 bg-blue-500/5">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Seguimientos pendientes</p>
+              <p className="text-xs text-slate-400 mt-0.5">Atenciones que deben regresar al consultorio medico.</p>
+            </div>
+            <Chip color="blue" text={`${seguimientosPendientes.length} pendiente(s)`} />
+          </div>
+          <div className="space-y-3">
+            {seguimientosPendientes.map(c => (
+              <div key={`seg-${c.id}`} className="rounded-xl bg-white border border-slate-200 p-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-slate-800 font-semibold">{c.diagnostico}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{c.motivo_consulta}</p>
+                  <p className="text-xs text-blue-600 mt-2">
+                    Programado: {fmt(c.fecha_seguimiento)}
+                    {c.seguimiento_notas ? ` · ${c.seguimiento_notas}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSeguimientoSel(c)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">
+                    Atender seguimiento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await api.put(`/consultorio/consultas/${c.id}`, { seguimiento_estado: "CERRADO" });
+                        showToast("Seguimiento cerrado", "success");
+                        cargarExpediente();
+                      } catch {
+                        showToast("Error al cerrar seguimiento", "error");
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-white/10">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {expediente.consultas.some(c => c.genera_incapacidad) && (
+        <div className="glass p-4 rounded-2xl">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Incapacidades</p>
+          <div className="space-y-2">
+            {expediente.consultas.filter(c => c.genera_incapacidad).map(c => {
+              const activa = c.fecha_inicio_incapacidad && c.fecha_fin_incapacidad
+                && new Date(`${c.fecha_inicio_incapacidad}T00:00:00`) <= new Date()
+                && new Date(`${c.fecha_fin_incapacidad}T23:59:59`) >= new Date();
+              return (
+                <div key={`inc-${c.id}`} className="flex items-center justify-between rounded-xl bg-slate-800/40 border border-white/10 px-3 py-2">
+                  <div>
+                    <p className="text-sm text-white">{c.diagnostico}</p>
+                    <p className="text-xs text-slate-400">
+                      {fmt(c.fecha_inicio_incapacidad)} al {fmt(c.fecha_fin_incapacidad)} · {c.dias_incapacidad} dia(s)
+                    </p>
+                  </div>
+                  <Chip color={activa ? "red" : "slate"} text={activa ? "Activa" : "Vencida"} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Historial */}
       <div>
         <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
@@ -683,23 +1078,25 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
         )}
         <div className="space-y-3">
           {expediente.consultas.map(c => (
-            <div key={c.id} className="glass p-4 rounded-xl cursor-pointer hover:bg-white/5 transition-colors"
+            <div key={c.id} className="bg-white border border-slate-200 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
               onClick={() => setConsultaSel(c)}>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <p className="text-sm text-white font-medium">{c.diagnostico}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{c.motivo_consulta}</p>
-                  <div className="flex gap-2 mt-2 flex-wrap">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-800 font-semibold">{c.diagnostico}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">{c.motivo_consulta}</p>
+                  <div className="flex gap-1.5 mt-2 flex-wrap">
                     <Chip color="slate" text={fmtDT(c.fecha_consulta)} />
                     <Chip color={c.origen === "ESPONTANEA" ? "emerald" : "yellow"} text={ORIGEN_LABEL[c.origen] || c.origen} />
                     {c.genera_incapacidad && <Chip color="red" text={`Incapacidad ${c.dias_incapacidad}d`} />}
+                    {c.imc && <Chip color="blue" text={`IMC ${c.imc} ${c.imc_clasificacion || ""}`} />}
+                    {c.frecuencia_respiratoria && <Chip color="cyan" text={`FR ${c.frecuencia_respiratoria} rpm`} />}
                     {c.requiere_seguimiento && c.fecha_seguimiento && (
-                      <Chip color="blue" text={`Seguimiento ${fmt(c.fecha_seguimiento)}`} />
+                      <ChipSeguimiento fecha={c.fecha_seguimiento} estado={c.seguimiento_estado} />
                     )}
                   </div>
                 </div>
                 {c.temperatura && (
-                  <span className="text-xs text-slate-500 ml-3">🌡 {c.temperatura}°C</span>
+                  <span className="text-xs text-slate-400 flex-shrink-0">🌡 {c.temperatura}°C</span>
                 )}
               </div>
             </div>
@@ -716,6 +1113,26 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
           onGuardado={() => {
             setConsultaSel(null);
             api.get(`/consultorio/pacientes/${paciente.id}`).then(r => setExpediente(r.data));
+          }}
+        />
+      )}
+
+      {seguimientoSel && (
+        <ModalConsulta
+          paciente={expediente}
+          consulta={null}
+          seguimientoDe={seguimientoSel}
+          onClose={() => setSeguimientoSel(null)}
+          onGuardado={async () => {
+            try {
+              await api.put(`/consultorio/consultas/${seguimientoSel.id}`, { seguimiento_estado: "ATENDIDO" });
+              showToast("Seguimiento atendido y nueva consulta registrada", "success");
+            } catch {
+              showToast("Consulta registrada, pero no se pudo marcar el seguimiento anterior", "warning");
+            } finally {
+              setSeguimientoSel(null);
+              cargarExpediente();
+            }
           }}
         />
       )}
@@ -762,7 +1179,7 @@ function Estadisticas() {
           {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
         <select value={modo} onChange={e => setModo(e.target.value)} className="input-dark w-44">
-          <option value="anio">Todo el anio</option>
+          <option value="anio">Todo el año</option>
           <option value="mes">Mes</option>
           <option value="cuatrimestre">Cuatrimestre</option>
         </select>
@@ -781,62 +1198,62 @@ function Estadisticas() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
         {[
           { label: "Consultas periodo", value: stats.total_periodo ?? stats.total_anio, color: "blue", icon: "🩺" },
-          { label: "Consultas año", value: stats.total_anio, color: "blue", icon: "🩺" },
-          { label: "Este mes", value: stats.consultas_mes_actual, color: "emerald", icon: "📅" },
-          { label: "Incapacidades", value: stats.incapacidades_anio, color: "red", icon: "📋" },
-          { label: "Seguimientos pend.", value: stats.seguimientos_pendientes, color: "yellow", icon: "🔔" },
+          { label: "Consultas año",     value: stats.total_anio,              color: "blue",    icon: "🩺" },
+          { label: "Este mes",          value: stats.consultas_mes_actual,     color: "emerald", icon: "📅" },
+          { label: "Incapacidades",     value: stats.incapacidades_anio,       color: "red",     icon: "📋" },
+          { label: "Seguimientos pend.",value: stats.seguimientos_pendientes,  color: "yellow",  icon: "🔔" },
           { label: "Canalizaciones pend.", value: stats.canalizaciones_pendientes, color: "cyan", icon: "➡️" },
         ].map(({ label, value, color, icon }) => {
           const cls = {
-            blue: "border-blue-500/30 bg-blue-500/10",
-            emerald: "border-emerald-500/30 bg-emerald-500/10",
-            red: "border-red-500/30 bg-red-500/10",
-            yellow: "border-yellow-500/30 bg-yellow-500/10",
-            cyan: "border-cyan-500/30 bg-cyan-500/10",
+            blue:    "border-blue-200    bg-blue-50",
+            emerald: "border-emerald-200 bg-emerald-50",
+            red:     "border-red-200     bg-red-50",
+            yellow:  "border-yellow-200  bg-yellow-50",
+            cyan:    "border-cyan-200    bg-cyan-50",
           }[color];
           const tcls = {
-            blue: "text-blue-300", emerald: "text-emerald-300",
-            red: "text-red-300", yellow: "text-yellow-300", cyan: "text-cyan-300",
+            blue: "text-blue-700", emerald: "text-emerald-700",
+            red: "text-red-700",   yellow: "text-yellow-700", cyan: "text-cyan-700",
           }[color];
           return (
-            <div key={label} className={`glass border ${cls} p-4 rounded-2xl text-center`}>
-              <div className="text-2xl mb-1">{icon}</div>
-              <div className={`text-2xl font-bold ${tcls}`}>{value}</div>
-              <div className="text-xs text-slate-400 mt-1">{label}</div>
+            <div key={label} className={`border ${cls} p-3 rounded-xl text-center bg-white`}>
+              <div className="text-xl mb-0.5">{icon}</div>
+              <div className={`text-xl font-bold ${tcls}`}>{value}</div>
+              <div className="text-xs text-slate-500 mt-0.5 leading-tight">{label}</div>
             </div>
           );
         })}
       </div>
 
       {/* Gráfica por mes */}
-      <div className="glass p-5 rounded-2xl">
-        <p className="text-sm font-semibold text-slate-300 mb-4">Consultas por mes — {anio}</p>
+      <div className="bg-white border border-slate-200 p-5 rounded-2xl">
+        <p className="text-sm font-semibold text-slate-600 mb-4">Consultas por mes — {anio}</p>
         <div className="flex items-end gap-1 h-32">
           {stats.por_mes.map(({ mes, total }) => (
             <div key={mes} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-xs text-slate-400">{total || ""}</span>
+              <span className="text-xs text-slate-500">{total || ""}</span>
               <div
-                className="w-full bg-blue-500/70 rounded-t-sm transition-all"
+                className="w-full bg-blue-500 rounded-t-sm transition-all"
                 style={{ height: `${(total / maxMes) * 100}%`, minHeight: total > 0 ? 4 : 0 }}
                 title={`${MESES[mes - 1]}: ${total}`}
               />
-              <span className="text-xs text-slate-500">{MESES[mes - 1]}</span>
+              <span className="text-xs text-slate-400">{MESES[mes - 1]}</span>
             </div>
           ))}
         </div>
       </div>
 
       {stats.por_cuatrimestre && (
-        <div className="glass p-5 rounded-2xl">
-          <p className="text-sm font-semibold text-slate-300 mb-4">Consultas por cuatrimestre</p>
+        <div className="bg-white border border-slate-200 p-5 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-4">Consultas por cuatrimestre</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {stats.por_cuatrimestre.map(c => (
-              <div key={c.cuatrimestre} className="rounded-xl bg-slate-800/50 border border-white/10 p-4">
-                <p className="text-xs text-slate-400">{c.label}</p>
-                <p className="text-2xl font-bold text-white mt-1">{c.total}</p>
+              <div key={c.cuatrimestre} className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                <p className="text-xs text-slate-500">{c.label}</p>
+                <p className="text-2xl font-bold text-slate-800 mt-1">{c.total}</p>
               </div>
             ))}
           </div>
@@ -846,68 +1263,137 @@ function Estadisticas() {
       {/* Por sexo y tipo */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Sexo */}
-        <div className="glass p-4 rounded-2xl">
-          <p className="text-sm font-semibold text-slate-300 mb-3">Por Sexo</p>
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Por Sexo</p>
           <div className="space-y-2">
             {Object.entries(stats.por_sexo).map(([sexo, cnt]) => (
               <div key={sexo} className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">{SEXO_LABEL[sexo] || sexo}</span>
-                <span className="text-sm font-bold text-white">{cnt}</span>
+                <span className="text-sm text-slate-600">{SEXO_LABEL[sexo] || sexo}</span>
+                <span className="text-sm font-bold text-slate-800">{cnt}</span>
               </div>
             ))}
             {Object.keys(stats.por_sexo).length === 0 && (
-              <p className="text-slate-500 text-sm">Sin datos</p>
+              <p className="text-slate-400 text-sm">Sin datos</p>
             )}
           </div>
         </div>
 
         {/* Tipo de paciente */}
-        <div className="glass p-4 rounded-2xl">
-          <p className="text-sm font-semibold text-slate-300 mb-3">Por Tipo</p>
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Por Tipo</p>
           <div className="space-y-2">
             {Object.entries(stats.por_tipo).map(([tipo, cnt]) => (
               <div key={tipo} className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">{tipo}</span>
-                <span className="text-sm font-bold text-white">{cnt}</span>
+                <span className="text-sm text-slate-600">{tipo}</span>
+                <span className="text-sm font-bold text-slate-800">{cnt}</span>
               </div>
             ))}
             {Object.keys(stats.por_tipo).length === 0 && (
-              <p className="text-slate-500 text-sm">Sin datos</p>
+              <p className="text-slate-400 text-sm">Sin datos</p>
             )}
           </div>
         </div>
 
         {/* Origen */}
-        <div className="glass p-4 rounded-2xl">
-          <p className="text-sm font-semibold text-slate-300 mb-3">Por Origen</p>
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Por Origen</p>
           <div className="space-y-2">
             {Object.entries(stats.por_origen).map(([origen, cnt]) => (
               <div key={origen} className="flex items-center justify-between">
-                <span className="text-sm text-slate-300">{ORIGEN_LABEL[origen] || origen}</span>
-                <span className="text-sm font-bold text-white">{cnt}</span>
+                <span className="text-sm text-slate-600">{ORIGEN_LABEL[origen] || origen}</span>
+                <span className="text-sm font-bold text-slate-800">{cnt}</span>
               </div>
             ))}
             {Object.keys(stats.por_origen).length === 0 && (
-              <p className="text-slate-500 text-sm">Sin datos</p>
+              <p className="text-slate-400 text-sm">Sin datos</p>
             )}
           </div>
         </div>
       </div>
 
       {/* Diagnósticos frecuentes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Por carrera/departamento</p>
+          <div className="space-y-2">
+            {Object.entries(stats.por_area || {}).slice(0, 8).map(([area, cnt]) => (
+              <div key={area} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-600 truncate">{area}</span>
+                <span className="text-sm font-bold text-slate-800">{cnt}</span>
+              </div>
+            ))}
+            {Object.keys(stats.por_area || {}).length === 0 && (
+              <p className="text-slate-400 text-sm">Sin datos</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Motivos frecuentes</p>
+          <div className="space-y-2">
+            {(stats.top_motivos || []).slice(0, 6).map(({ motivo, total }, i) => (
+              <div key={`${motivo}-${i}`} className="flex items-center gap-3">
+                <span className="text-xs text-slate-400 w-5 text-right">{i + 1}.</span>
+                <span className="text-sm text-slate-600 flex-1 truncate">{motivo}</span>
+                <span className="text-sm font-bold text-slate-800">{total}</span>
+              </div>
+            ))}
+            {(stats.top_motivos || []).length === 0 && (
+              <p className="text-slate-400 text-sm">Sin datos</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+        <p className="text-sm font-semibold text-slate-600 mb-3">Alertas operativas</p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+            <p className="text-xs text-red-600">Incapacidades activas</p>
+            <p className="text-2xl font-bold text-red-700">{stats.incapacidades_activas || 0}</p>
+          </div>
+          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-3">
+            <p className="text-xs text-yellow-600">Seguimientos vencidos</p>
+            <p className="text-2xl font-bold text-yellow-700">{stats.seguimientos_vencidos || 0}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3">
+            <p className="text-xs text-cyan-600">Canalizaciones pendientes</p>
+            <p className="text-2xl font-bold text-cyan-700">{stats.canalizaciones_pendientes || 0}</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+            <p className="text-xs text-blue-600">Pacientes recurrentes</p>
+            <p className="text-2xl font-bold text-blue-700">{stats.pacientes_recurrentes || 0}</p>
+          </div>
+        </div>
+      </div>
+
+      {(stats.por_hora || []).length > 0 && (
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Horarios con mayor demanda</p>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+            {stats.por_hora.map(({ hora, total }) => (
+              <div key={hora} className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                <p className="text-xs text-slate-500">{String(hora).padStart(2, "0")}:00</p>
+                <p className="text-lg font-bold text-slate-800">{total}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {stats.top_diagnosticos.length > 0 && (
-        <div className="glass p-4 rounded-2xl">
-          <p className="text-sm font-semibold text-slate-300 mb-3">Diagnósticos más frecuentes</p>
+        <div className="bg-white border border-slate-200 p-4 rounded-2xl">
+          <p className="text-sm font-semibold text-slate-600 mb-3">Diagnósticos más frecuentes</p>
           <div className="space-y-2">
             {stats.top_diagnosticos.map(({ diagnostico, total }, i) => (
               <div key={i} className="flex items-center gap-3">
-                <span className="text-xs text-slate-500 w-5 text-right">{i + 1}.</span>
-                <div className="flex-1 bg-slate-700/50 rounded-full h-2">
+                <span className="text-xs text-slate-400 w-5 text-right">{i + 1}.</span>
+                <div className="flex-1 bg-slate-200 rounded-full h-2">
                   <div className="bg-blue-500 h-2 rounded-full"
                     style={{ width: `${(total / stats.top_diagnosticos[0].total) * 100}%` }} />
                 </div>
-                <span className="text-sm text-slate-300 flex-[2]">{diagnostico}</span>
-                <span className="text-sm font-bold text-white w-6 text-right">{total}</span>
+                <span className="text-sm text-slate-600 flex-[2]">{diagnostico}</span>
+                <span className="text-sm font-bold text-slate-800 w-6 text-right">{total}</span>
               </div>
             ))}
           </div>
@@ -924,6 +1410,7 @@ function Canalizaciones({ onAtenderTutoria }) {
   const [cansInternas, setCansInternas] = useState([]);
   const [filtroInterno, setFiltroInterno] = useState("PENDIENTE");
   const [seccion, setSeccion] = useState("tutoria"); // tutoria | internas
+  const [notasCanalizacion, setNotasCanalizacion] = useState({});
   const { toast: showToast } = useToast();
 
   const cargarTutoria = useCallback(() => {
@@ -943,9 +1430,12 @@ function Canalizaciones({ onAtenderTutoria }) {
   const marcarAtendidaInterna = async (can) => {
     try {
       await api.put(`/consultorio/canalizaciones/${can.id}`, {
-        estado: "ATENDIDA", fecha_atencion: new Date().toISOString(),
+        estado: "ATENDIDA",
+        fecha_atencion: new Date().toISOString(),
+        notas_seguimiento: notasCanalizacion[can.id] || "",
       });
       showToast("Marcada como atendida", "success");
+      setNotasCanalizacion(n => ({ ...n, [can.id]: "" }));
       cargarInternas();
     } catch { showToast("Error al actualizar", "error"); }
   };
@@ -1061,12 +1551,42 @@ function Canalizaciones({ onAtenderTutoria }) {
                     {fmtDT(can.fecha_canaliza)}
                     {can.fecha_atencion && ` · Atendido: ${fmtDT(can.fecha_atencion)}`}
                   </p>
+                  {can.notas_seguimiento && (
+                    <p className="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-700/30 rounded-lg px-2 py-1 mt-2">
+                      Seguimiento: {can.notas_seguimiento}
+                    </p>
+                  )}
+                  {can.estado === "PENDIENTE" && (
+                    <textarea
+                      value={notasCanalizacion[can.id] || ""}
+                      onChange={e => setNotasCanalizacion(n => ({ ...n, [can.id]: e.target.value }))}
+                      className="input-dark w-full resize-none mt-3 text-xs"
+                      rows={2}
+                      placeholder="Nota de seguimiento de la canalizacion..." />
+                  )}
                 </div>
                 {can.estado === "PENDIENTE" && (
-                  <button onClick={() => marcarAtendidaInterna(can)}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/70 text-emerald-300 text-xs font-medium ml-3">
+                  <div className="flex flex-col gap-2 ml-3 flex-shrink-0">
+                    <button onClick={() => marcarAtendidaInterna(can)}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/70 text-emerald-300 text-xs font-medium">
                     ✓ Atendida
-                  </button>
+                    </button>
+                    <button onClick={async () => {
+                      try {
+                        await api.put(`/consultorio/canalizaciones/${can.id}`, {
+                          estado: "CANCELADA",
+                          notas_seguimiento: notasCanalizacion[can.id] || "Canalizacion cerrada sin atencion.",
+                        });
+                        showToast("Canalizacion cerrada", "success");
+                        cargarInternas();
+                      } catch {
+                        showToast("Error al actualizar", "error");
+                      }
+                    }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-white/10">
+                      Cerrar
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1078,50 +1598,81 @@ function Canalizaciones({ onAtenderTutoria }) {
 }
 
 // ─── Vista: Consultas recientes ───────────────────────────────────────────────
-function ConsultasRecientes({ onVerPaciente }) {
+function ConsultasRecientes({ onVerPaciente, refreshKey = 0 }) {
   const [data, setData] = useState({ total: 0, consultas: [] });
+  const [busqueda, setBusqueda] = useState("");
+  const [busquedaDebounced, setBusquedaDebounced] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const { toast: showToast } = useToast();
 
+  // Debounce búsqueda 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setBusquedaDebounced(busqueda), 400);
+    return () => clearTimeout(t);
+  }, [busqueda]);
+
   const cargar = useCallback(() => {
     api.get("/consultorio/consultas", {
       params: {
+        q: busquedaDebounced || undefined,
         tipo_paciente: filtroTipo || undefined,
         fecha_desde: fechaDesde || undefined,
         fecha_hasta: fechaHasta || undefined,
-        limit: 30,
+        limit: 50,
       },
     })
       .then(r => setData(r.data))
       .catch(() => showToast("Error al cargar consultas", "error"));
-  }, [filtroTipo, fechaDesde, fechaHasta]);
+  }, [busquedaDebounced, filtroTipo, fechaDesde, fechaHasta]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => { cargar(); }, [cargar, refreshKey]);
 
   return (
     <div className="space-y-4">
+      {/* Barra de búsqueda */}
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none"
+          viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round"
+            d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          type="text"
+          placeholder="Buscar por nombre o matrícula…"
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-300"
+        />
+        {busqueda && (
+          <button onClick={() => setBusqueda("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none">
+            ×
+          </button>
+        )}
+      </div>
+
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Tipo paciente</label>
+          <label className="block text-xs text-slate-500 mb-1">Tipo paciente</label>
           <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
-            className="input-dark">
+            className="text-sm rounded-lg border border-slate-200 bg-white text-slate-700 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="">Todos</option>
             <option value="ALUMNO">Alumnos</option>
             <option value="ADMINISTRATIVO">Administrativos</option>
           </select>
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Desde</label>
+          <label className="block text-xs text-slate-500 mb-1">Desde</label>
           <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-            className="input-dark" />
+            className="text-sm rounded-lg border border-slate-200 bg-white text-slate-700 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300" />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Hasta</label>
+          <label className="block text-xs text-slate-500 mb-1">Hasta</label>
           <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-            className="input-dark" />
+            className="text-sm rounded-lg border border-slate-200 bg-white text-slate-700 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300" />
         </div>
         <button onClick={cargar} className="btn-blue text-sm px-4">Filtrar</button>
       </div>
@@ -1130,33 +1681,71 @@ function ConsultasRecientes({ onVerPaciente }) {
 
       <div className="space-y-2">
         {data.consultas.map(c => (
-          <div key={c.id} className="glass p-3 rounded-xl flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-white font-medium">{c.paciente_nombre}</span>
+          <div key={c.id} className="bg-white border border-slate-200 p-3 rounded-xl flex items-start justify-between hover:bg-slate-50 transition-colors">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-slate-800 font-semibold">{c.paciente_nombre}</span>
+                {c.paciente_tipo && (
+                  <Chip color={c.paciente_tipo === "ALUMNO" ? "blue" : "cyan"}
+                    text={c.paciente_tipo === "ALUMNO" ? "Alumno" : "Admin"} />
+                )}
                 {c.paciente_sexo && <Chip text={SEXO_LABEL[c.paciente_sexo] || c.paciente_sexo} />}
+                {c.paciente_matricula && (
+                  <span className="text-xs text-slate-400 font-mono">{c.paciente_matricula}</span>
+                )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">{c.diagnostico}</p>
-              <p className="text-xs text-slate-500 mt-1">{fmtDT(c.fecha_consulta)}</p>
+              <p className="text-xs text-slate-600 mt-0.5 truncate">{c.diagnostico}</p>
+              <p className="text-xs text-slate-400 mt-1">{fmtDT(c.fecha_consulta)}</p>
             </div>
             <button onClick={() => onVerPaciente(c.paciente_id)}
-              className="text-xs text-blue-400 hover:text-blue-300 ml-3 flex-shrink-0">
+              className="text-xs text-blue-600 hover:text-blue-800 ml-3 flex-shrink-0 font-medium">
               Ver expediente →
             </button>
           </div>
         ))}
+        {data.consultas.length === 0 && (
+          <p className="text-sm text-slate-400 text-center py-8">No se encontraron consultas</p>
+        )}
       </div>
     </div>
   );
 }
 
 // ─── Página principal ─────────────────────────────────────────────────
+function PostConsultaModal({ consulta, paciente, onImprimir, onVerExpediente, onCerrar }) {
+  if (!consulta) return null;
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="glass w-full max-w-md shadow-glass animate-fadeUp p-6 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-emerald-300 uppercase tracking-wide">Consulta registrada</p>
+          <h3 className="text-white font-bold text-xl mt-1">{consulta.paciente_nombre || paciente?.nombre}</h3>
+          <p className="text-sm text-slate-400 mt-1">{consulta.diagnostico}</p>
+        </div>
+        <div className="rounded-xl bg-slate-800/50 border border-white/10 p-3 space-y-1">
+          <p className="text-xs text-slate-400">Siguiente paso sugerido</p>
+          <p className="text-sm text-slate-200">
+            Si el paciente necesita comprobante, imprime la nota. Si no, revisa el expediente actualizado.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          <button onClick={onImprimir} className="btn-blue w-full">Imprimir nota de consulta</button>
+          <button onClick={onVerExpediente} className="btn-ghost w-full">Ver expediente actualizado</button>
+          <button onClick={onCerrar} className="text-sm text-slate-400 hover:text-white py-2">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ConsultorioMedico() {
   const [tab, setTab] = useState("inicio");
   const [pacienteSel, setPacienteSel] = useState(null);
   const [showModalPaciente, setShowModalPaciente] = useState(false);
   const [showModalConsulta, setShowModalConsulta] = useState(false);
   const [canalizacionTutoriaSel, setCanalizacionTutoriaSel] = useState(null);
+  const [consultasRefreshKey, setConsultasRefreshKey] = useState(0);
+  const [consultaGuardada, setConsultaGuardada] = useState(null);
   const { toast: showToast } = useToast();
 
   const seleccionarPaciente = (pac) => {
@@ -1171,6 +1760,17 @@ export default function ConsultorioMedico() {
       setPacienteSel(data);
       setTab("expediente");
     } catch { showToast("Error al cargar paciente", "error"); }
+  };
+
+  const cargarExpedientePaciente = async (pacienteId, nextTab = "expediente") => {
+    if (!pacienteId) return;
+    try {
+      const { data } = await api.get(`/consultorio/pacientes/${pacienteId}`);
+      setPacienteSel(data);
+      setTab(nextTab);
+    } catch {
+      showToast("Consulta guardada, pero no se pudo actualizar el expediente", "warning");
+    }
   };
 
   // Abre ModalConsulta desde un referido de Tutoría
@@ -1283,7 +1883,7 @@ export default function ConsultorioMedico() {
           )}
 
           {tab === "consultas" && (
-            <ConsultasRecientes onVerPaciente={verPacientePorId} />
+            <ConsultasRecientes onVerPaciente={verPacientePorId} refreshKey={consultasRefreshKey} />
           )}
 
           {tab === "estadisticas" && <Estadisticas />}
@@ -1320,17 +1920,36 @@ export default function ConsultorioMedico() {
             setShowModalConsulta(false);
             setCanalizacionTutoriaSel(null);
           }}
-          onGuardado={() => {
+          onGuardado={(guardada) => {
             setShowModalConsulta(false);
             setCanalizacionTutoriaSel(null);
-            if (!pacienteSel.id) {
-              setTab("canalizaciones");
-              setPacienteSel(null);
+            setConsultasRefreshKey(k => k + 1);
+            setConsultaGuardada(guardada || null);
+            const pacienteId = guardada?.paciente_id || pacienteSel.id;
+            if (pacienteId) {
+              cargarExpedientePaciente(pacienteId);
             } else {
-              api.get(`/consultorio/pacientes/${pacienteSel.id}`)
-                .then(r => { setPacienteSel(r.data); setTab("expediente"); });
+              setTab("canalizaciones");
             }
           }}
+        />
+      )}
+      {consultaGuardada && (
+        <PostConsultaModal
+          consulta={consultaGuardada}
+          paciente={pacienteSel}
+          onImprimir={async () => {
+            try {
+              await descargarPDFConsulta(consultaGuardada.id, consultaGuardada.paciente_nombre || pacienteSel?.nombre || "Paciente");
+            } catch {
+              showToast("Error al generar la impresiÃ³n", "error");
+            }
+          }}
+          onVerExpediente={() => {
+            setConsultaGuardada(null);
+            cargarExpedientePaciente(consultaGuardada.paciente_id);
+          }}
+          onCerrar={() => setConsultaGuardada(null)}
         />
       )}
     </AdminLayout>

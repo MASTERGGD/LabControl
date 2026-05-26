@@ -249,7 +249,42 @@ SECRET_KEY=cambia-esta-clave-en-produccion-minimo-32-caracteres
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 APP_NAME=S I G A - UTECAN
+APP_ENV=development
 FRONTEND_URL=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000
+COMUNICADOS_MAX_ADJUNTO_MB=5
+COMUNICADOS_MAX_TOTAL_ADJUNTOS_MB=15
+COMUNICADOS_MAX_ADJUNTOS=5
+```
+
+## Seguridad y Produccion
+
+Controles iniciales ya integrados:
+
+- `SECRET_KEY` es obligatoria cuando `APP_ENV=production`.
+- CORS en produccion usa `CORS_ORIGINS` o `FRONTEND_URL`; no agrega `localhost` automaticamente.
+- `/health` verifica disponibilidad del backend.
+- `/health/db` verifica conexion a base de datos.
+- Docker Compose incluye healthcheck del backend.
+- Adjuntos de comunicados limitados por cantidad, peso, MIME y firma real del archivo.
+- Adjuntos permitidos: PDF, JPG, PNG y WEBP.
+- Cabeceras de seguridad HTTP mediante middleware.
+
+Checklist antes de subir a servidor:
+
+```txt
+[ ] APP_ENV=production
+[ ] SECRET_KEY fuerte, unica y fuera de Git
+[ ] FRONTEND_URL con dominio real HTTPS
+[ ] CORS_ORIGINS solo con dominios autorizados
+[ ] DATABASE_URL apuntando a PostgreSQL de produccion
+[ ] Backup de base de datos probado
+[ ] Backup de adjuntos y respaldos probado
+[ ] HTTPS activo
+[ ] Migraciones Alembic probadas en staging
+[ ] Usuario admin con password cambiada
+[ ] Permisos por rol revisados en backend
+[ ] Logs sin tokens, passwords ni datos sensibles
 ```
 
 ## Verificacion
@@ -261,10 +296,13 @@ cd frontend
 npm run build
 ```
 
-Tambien se han validado archivos Python puntuales con:
+Tambien se recomienda validar backend y migraciones:
 
 ```powershell
-python -m compileall backend\routers\consultorio.py
+python -m compileall backend
+docker compose up -d --build
+docker compose ps
+docker compose logs -f backend
 ```
 
 ## Notas de Git

@@ -46,7 +46,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "b5c6d7e8f9g0"
+_ALEMBIC_HEAD = "aa1b2c3d4e5f"
 
 
 def _current_db_version() -> str | None:
@@ -141,11 +141,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-_APP_ENV      = os.getenv("APP_ENV", "development")
+_APP_ENV      = os.getenv("APP_ENV", "development").lower()
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+_CORS_ENV     = os.getenv("CORS_ORIGINS", "")
 
-if _APP_ENV == "production":
-    _CORS_ORIGINS = list({o for o in ["http://localhost:3000", _FRONTEND_URL] if o})
+if _APP_ENV in ("production", "prod"):
+    _CORS_ORIGINS = [o.strip() for o in _CORS_ENV.split(",") if o.strip()]
+    if not _CORS_ORIGINS and _FRONTEND_URL:
+        _CORS_ORIGINS = [_FRONTEND_URL]
+    if not _CORS_ORIGINS:
+        raise RuntimeError("CORS_ORIGINS o FRONTEND_URL debe configurarse en produccion.")
     _CORS_ALL     = False
 else:
     _CORS_ORIGINS = ["*"]
@@ -197,3 +202,12 @@ def root():
 @app.get("/health", tags=["Sistema"])
 def health():
     return {"status": "healthy"}
+
+@app.get("/health/db", tags=["Sistema"])
+def health_db():
+    db = SessionLocal()
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "ok"}
+    finally:
+        db.close()

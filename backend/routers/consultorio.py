@@ -9,11 +9,11 @@ import datetime
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, extract
-from sqlalchemy.orm import Session
+from sqlalchemy import func, extract, or_
+from sqlalchemy.orm import Session, aliased
 
 from database import get_db
 from dependencies import get_current_user
@@ -21,6 +21,7 @@ from models.usuario import Usuario, RolUsuario
 from models.consultorio import Paciente, ConsultaMedica, CanalizacionMedica
 from models.catalogo import CatalogoAlumno
 from models.tutoria import Canalizacion as CanalizacionTutoria
+from services.auditoria import registrar
 
 # reportlab
 from reportlab.lib.pagesizes import letter
@@ -29,19 +30,20 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
 
 router = APIRouter(prefix="/consultorio", tags=["Consultorio"])
 
 # ─── Helpers de permisos ──────────────────────────────────────────────────────
 
 ROLES_MEDICO   = {RolUsuario.MEDICO}
-ROLES_CONSULTA = {RolUsuario.MEDICO, RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN,
-                  RolUsuario.TUTORIA_ADMIN, RolUsuario.DOCENTE}
+ROLES_CONSULTA = {RolUsuario.MEDICO, RolUsuario.SUPER_ADMIN}
 
 
 def _require_medico(user: Usuario):
     tiene_acceso = (
-        user.rol in (RolUsuario.MEDICO, RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
+        user.rol in (RolUsuario.MEDICO, RolUsuario.SUPER_ADMIN)
         or bool(getattr(user, "acceso_consultorio", False))
     )
     if not tiene_acceso:
@@ -66,6 +68,9 @@ class PacienteCreate(BaseModel):
     matricula_o_emp: Optional[str] = None
     fecha_nacimiento: Optional[datetime.date] = None
     sexo: Optional[str] = None
+    alergias: Optional[str] = None
+    antecedentes_medicos: Optional[str] = None
+    medicamentos_actuales: Optional[str] = None
     carrera: Optional[str] = None
     cuatrimestre: Optional[int] = None
     departamento: Optional[str] = None
@@ -79,6 +84,7 @@ class ConsultaCreate(BaseModel):
     peso: Optional[float] = None
     talla: Optional[float] = None
     frecuencia_cardiaca: Optional[int] = None
+    frecuencia_respiratoria: Optional[int] = None
     saturacion_oxigeno: Optional[float] = None
     motivo_consulta: str
     diagnostico: str
@@ -90,6 +96,7 @@ class ConsultaCreate(BaseModel):
     requiere_seguimiento: bool = False
     fecha_seguimiento: Optional[datetime.date] = None
     seguimiento_notas: Optional[str] = None
+    seguimiento_estado: Optional[str] = "PENDIENTE"
     origen: str = "ESPONTANEA"
     canalizacion_tutoria_id: Optional[int] = None
     # canalizaciones de salida (opcional, lista)
@@ -102,6 +109,7 @@ class ConsultaUpdate(BaseModel):
     peso: Optional[float] = None
     talla: Optional[float] = None
     frecuencia_cardiaca: Optional[int] = None
+    frecuencia_respiratoria: Optional[int] = None
     saturacion_oxigeno: Optional[float] = None
     motivo_consulta: Optional[str] = None
     diagnostico: Optional[str] = None
@@ -113,6 +121,15 @@ class ConsultaUpdate(BaseModel):
     requiere_seguimiento: Optional[bool] = None
     fecha_seguimiento: Optional[datetime.date] = None
     seguimiento_notas: Optional[str] = None
+    seguimiento_estado: Optional[str] = None
+
+
+class PacienteClinicoUpdate(BaseModel):
+    sexo: Optional[str] = None
+    fecha_nacimiento: Optional[datetime.date] = None
+    alergias: Optional[str] = None
+    antecedentes_medicos: Optional[str] = None
+    medicamentos_actuales: Optional[str] = None
 
 
 class CanalizacionUpdate(BaseModel):
@@ -132,6 +149,9 @@ def _paciente_dict(p: Paciente) -> dict:
         "matricula_o_emp": p.matricula_o_emp,
         "fecha_nacimiento": p.fecha_nacimiento.isoformat() if p.fecha_nacimiento else None,
         "sexo": p.sexo,
+        "alergias": p.alergias,
+        "antecedentes_medicos": p.antecedentes_medicos,
+        "medicamentos_actuales": p.medicamentos_actuales,
         "carrera": p.carrera,
         "cuatrimestre": p.cuatrimestre,
         "departamento": p.departamento,
@@ -139,11 +159,104 @@ def _paciente_dict(p: Paciente) -> dict:
     }
 
 
+def _calcular_imc(peso: Optional[float], talla: Optional[float]) -> Optional[float]:
+    if not peso or not talla:
+        return None
+    altura_m = talla / 100
+    if altura_m <= 0:
+        return None
+    return round(peso / (altura_m * altura_m), 1)
+
+
+def _clasificar_imc(imc: Optional[float]) -> Optional[str]:
+    if imc is None:
+        return None
+    if imc < 18.5:
+        return "Bajo peso"
+    if imc < 25:
+        return "Normal"
+    if imc < 30:
+        return "Sobrepeso"
+    if imc < 35:
+        return "Obesidad I"
+    if imc < 40:
+        return "Obesidad II"
+    return "Obesidad III"
+
+
+def _alertas_paciente(pac: Paciente, consultas: List[ConsultaMedica]) -> List[dict]:
+    hoy = datetime.date.today()
+    alertas: List[dict] = []
+
+    if pac.alergias and pac.alergias.strip():
+        alertas.append({
+            "tipo": "danger",
+            "titulo": "Alergias registradas",
+            "detalle": pac.alergias.strip()[:160],
+        })
+
+    for c in consultas:
+        if c.genera_incapacidad and c.fecha_inicio_incapacidad and c.fecha_fin_incapacidad:
+            if c.fecha_inicio_incapacidad <= hoy <= c.fecha_fin_incapacidad:
+                alertas.append({
+                    "tipo": "danger",
+                    "titulo": "Incapacidad activa",
+                    "detalle": f"Hasta {c.fecha_fin_incapacidad.strftime('%d/%m/%Y')} por {c.dias_incapacidad or 0} dia(s).",
+                })
+                break
+
+    for c in consultas:
+        if c.requiere_seguimiento and c.fecha_seguimiento:
+            if c.fecha_seguimiento < hoy:
+                alertas.append({
+                    "tipo": "warning",
+                    "titulo": "Seguimiento vencido",
+                    "detalle": f"Programado para {c.fecha_seguimiento.strftime('%d/%m/%Y')}.",
+                })
+                break
+            if c.fecha_seguimiento <= hoy + datetime.timedelta(days=3):
+                alertas.append({
+                    "tipo": "info",
+                    "titulo": "Seguimiento proximo",
+                    "detalle": f"Cita sugerida el {c.fecha_seguimiento.strftime('%d/%m/%Y')}.",
+                })
+                break
+
+    reciente = [c for c in consultas if c.fecha_consulta and c.fecha_consulta.date() >= hoy - datetime.timedelta(days=90)]
+    motivos: dict[str, int] = {}
+    for c in reciente:
+        motivo = (c.motivo_consulta or "").strip().lower()
+        if motivo:
+            motivos[motivo] = motivos.get(motivo, 0) + 1
+    if motivos:
+        motivo, total = max(motivos.items(), key=lambda item: item[1])
+        if total >= 3:
+            alertas.append({
+                "tipo": "warning",
+                "titulo": "Motivo recurrente",
+                "detalle": f"{total} consultas similares en los ultimos 90 dias: {motivo[:80]}.",
+            })
+
+    ultima_con_signos = next((c for c in consultas if c.peso and c.talla), None)
+    if ultima_con_signos:
+        imc = _calcular_imc(ultima_con_signos.peso, ultima_con_signos.talla)
+        clasificacion = _clasificar_imc(imc)
+        if imc is not None and clasificacion and clasificacion != "Normal":
+            alertas.append({
+                "tipo": "info",
+                "titulo": "IMC fuera de rango normal",
+                "detalle": f"Ultimo IMC {imc} ({clasificacion}).",
+            })
+
+    return alertas
+
+
 def _consulta_dict(c: ConsultaMedica, db: Session) -> dict:
     pac = db.get(Paciente, c.paciente_id)
     cans = db.query(CanalizacionMedica).filter(
         CanalizacionMedica.consulta_id == c.id
     ).all()
+    imc = _calcular_imc(c.peso, c.talla)
     return {
         "id": c.id,
         "paciente_id": c.paciente_id,
@@ -159,7 +272,10 @@ def _consulta_dict(c: ConsultaMedica, db: Session) -> dict:
         "presion_arterial": c.presion_arterial,
         "peso": c.peso,
         "talla": c.talla,
+        "imc": imc,
+        "imc_clasificacion": _clasificar_imc(imc),
         "frecuencia_cardiaca": c.frecuencia_cardiaca,
+        "frecuencia_respiratoria": c.frecuencia_respiratoria,
         "saturacion_oxigeno": c.saturacion_oxigeno,
         "motivo_consulta": c.motivo_consulta,
         "diagnostico": c.diagnostico,
@@ -172,6 +288,7 @@ def _consulta_dict(c: ConsultaMedica, db: Session) -> dict:
         "requiere_seguimiento": c.requiere_seguimiento,
         "fecha_seguimiento": c.fecha_seguimiento.isoformat() if c.fecha_seguimiento else None,
         "seguimiento_notas": c.seguimiento_notas,
+        "seguimiento_estado": c.seguimiento_estado,
         "origen": c.origen,
         "canalizacion_tutoria_id": c.canalizacion_tutoria_id,
         "atendido_por": c.atendido_por,
@@ -261,7 +378,24 @@ def buscar_paciente(
             if paciente and paciente.activo:
                 encontrados[paciente.id] = paciente
 
-    return [_paciente_dict(p) for p in encontrados.values()]
+    salida = []
+    for p in encontrados.values():
+        item = _paciente_dict(p)
+        ultima = db.query(ConsultaMedica).filter(
+            ConsultaMedica.paciente_id == p.id
+        ).order_by(ConsultaMedica.fecha_consulta.desc()).first()
+        if ultima:
+            item.update({
+                "estado_busqueda": "YA_ATENDIDO",
+                "ultima_consulta": ultima.fecha_consulta.isoformat() if ultima.fecha_consulta else None,
+                "ultimo_motivo": ultima.motivo_consulta,
+                "ultimo_diagnostico": ultima.diagnostico,
+            })
+        else:
+            item["estado_busqueda"] = "REGISTRADO"
+        salida.append(item)
+
+    return salida
 
 
 @router.get("/pacientes/buscar-alumno", summary="Buscar alumno del catálogo para registrar como paciente")
@@ -345,6 +479,18 @@ def crear_paciente(
             Paciente.alumno_id == data.alumno_id
         ).first()
         if existe:
+            if data.sexo and not existe.sexo:
+                existe.sexo = data.sexo
+            if data.fecha_nacimiento and not existe.fecha_nacimiento:
+                existe.fecha_nacimiento = data.fecha_nacimiento
+            if data.alergias and not existe.alergias:
+                existe.alergias = data.alergias
+            if data.antecedentes_medicos and not existe.antecedentes_medicos:
+                existe.antecedentes_medicos = data.antecedentes_medicos
+            if data.medicamentos_actuales and not existe.medicamentos_actuales:
+                existe.medicamentos_actuales = data.medicamentos_actuales
+            db.commit()
+            db.refresh(existe)
             return _paciente_dict(existe)
 
     pac = Paciente(
@@ -354,6 +500,9 @@ def crear_paciente(
         matricula_o_emp=data.matricula_o_emp,
         fecha_nacimiento=data.fecha_nacimiento,
         sexo=data.sexo,
+        alergias=data.alergias,
+        antecedentes_medicos=data.antecedentes_medicos,
+        medicamentos_actuales=data.medicamentos_actuales,
         carrera=data.carrera,
         cuatrimestre=data.cuatrimestre,
         departamento=data.departamento,
@@ -368,6 +517,7 @@ def crear_paciente(
 @router.get("/pacientes/{paciente_id}", summary="Detalle y expediente de un paciente")
 def get_paciente(
     paciente_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -379,18 +529,59 @@ def get_paciente(
     consultas = db.query(ConsultaMedica).filter(
         ConsultaMedica.paciente_id == paciente_id
     ).order_by(ConsultaMedica.fecha_consulta.desc()).all()
+    registrar(
+        db,
+        accion="CONSULTAR_EXPEDIENTE_MEDICO",
+        recurso="CONSULTORIO_PACIENTE",
+        usuario=current_user,
+        recurso_id=paciente_id,
+        detalle={"total_consultas": len(consultas)},
+        request=request,
+    )
 
     return {
         **_paciente_dict(pac),
         "total_consultas": len(consultas),
+        "alertas": _alertas_paciente(pac, consultas),
         "consultas": [_consulta_dict(c, db) for c in consultas],
     }
+
+
+@router.patch("/pacientes/{paciente_id}/datos-clinicos", summary="Actualizar datos clinicos del paciente")
+def actualizar_datos_clinicos(
+    paciente_id: int,
+    data: PacienteClinicoUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_medico(current_user)
+    pac = db.get(Paciente, paciente_id)
+    if not pac:
+        raise HTTPException(404, "Paciente no encontrado")
+
+    cambios = data.model_dump(exclude_unset=True)
+    for k, v in cambios.items():
+        setattr(pac, k, v)
+    db.commit()
+    db.refresh(pac)
+    registrar(
+        db,
+        accion="ACTUALIZAR_DATOS_CLINICOS",
+        recurso="CONSULTORIO_PACIENTE",
+        usuario=current_user,
+        recurso_id=paciente_id,
+        detalle={"campos": list(cambios.keys())},
+        request=request,
+    )
+    return _paciente_dict(pac)
 
 
 # ─── CONSULTAS ────────────────────────────────────────────────────────────────
 
 @router.get("/consultas", summary="Listar consultas con filtros")
 def listar_consultas(
+    q: str = Query("", description="Buscar por nombre o matrícula"),
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
     tipo_paciente: Optional[str] = None,
@@ -401,20 +592,33 @@ def listar_consultas(
     current_user: Usuario = Depends(get_current_user),
 ):
     _require_medico(current_user)
-    q = db.query(ConsultaMedica)
+    PacJoin = aliased(Paciente)
+    q_obj = db.query(ConsultaMedica).outerjoin(
+        PacJoin, PacJoin.id == ConsultaMedica.paciente_id
+    )
 
+    if q.strip():
+        term = f"%{q.strip()}%"
+        q_obj = q_obj.filter(
+            or_(
+                ConsultaMedica.paciente_nombre_snapshot.ilike(term),
+                ConsultaMedica.paciente_matricula_snapshot.ilike(term),
+                PacJoin.nombre.ilike(term),
+                PacJoin.matricula_o_emp.ilike(term),
+            )
+        )
     if fecha_desde:
-        q = q.filter(ConsultaMedica.fecha_consulta >= fecha_desde)
+        q_obj = q_obj.filter(ConsultaMedica.fecha_consulta >= fecha_desde)
     if fecha_hasta:
-        q = q.filter(ConsultaMedica.fecha_consulta <= fecha_hasta + " 23:59:59")
+        q_obj = q_obj.filter(ConsultaMedica.fecha_consulta <= fecha_hasta + " 23:59:59")
     if tipo_paciente:
         pids = [p.id for p in db.query(Paciente).filter(Paciente.tipo == tipo_paciente).all()]
-        q = q.filter(ConsultaMedica.paciente_id.in_(pids))
+        q_obj = q_obj.filter(ConsultaMedica.paciente_id.in_(pids))
     if origen:
-        q = q.filter(ConsultaMedica.origen == origen)
+        q_obj = q_obj.filter(ConsultaMedica.origen == origen)
 
-    total = q.count()
-    consultas = q.order_by(ConsultaMedica.fecha_consulta.desc()).offset(skip).limit(limit).all()
+    total = q_obj.count()
+    consultas = q_obj.order_by(ConsultaMedica.fecha_consulta.desc()).offset(skip).limit(limit).all()
     return {
         "total": total,
         "consultas": [_consulta_dict(c, db) for c in consultas],
@@ -450,6 +654,7 @@ def crear_consulta(
         peso=data.peso,
         talla=data.talla,
         frecuencia_cardiaca=data.frecuencia_cardiaca,
+        frecuencia_respiratoria=data.frecuencia_respiratoria,
         saturacion_oxigeno=data.saturacion_oxigeno,
         motivo_consulta=data.motivo_consulta,
         diagnostico=data.diagnostico,
@@ -462,6 +667,7 @@ def crear_consulta(
         requiere_seguimiento=data.requiere_seguimiento,
         fecha_seguimiento=data.fecha_seguimiento,
         seguimiento_notas=data.seguimiento_notas,
+        seguimiento_estado=data.seguimiento_estado or "PENDIENTE",
         origen=data.origen,
         canalizacion_tutoria_id=data.canalizacion_tutoria_id,
         atendido_por=current_user.id,
@@ -681,6 +887,7 @@ def atender_canalizacion_tutoria(
         peso=data.peso,
         talla=data.talla,
         frecuencia_cardiaca=data.frecuencia_cardiaca,
+        frecuencia_respiratoria=data.frecuencia_respiratoria,
         saturacion_oxigeno=data.saturacion_oxigeno,
         motivo_consulta=data.motivo_consulta,
         diagnostico=data.diagnostico,
@@ -693,6 +900,7 @@ def atender_canalizacion_tutoria(
         requiere_seguimiento=data.requiere_seguimiento,
         fecha_seguimiento=data.fecha_seguimiento,
         seguimiento_notas=data.seguimiento_notas,
+        seguimiento_estado=data.seguimiento_estado or "PENDIENTE",
         origen="CANALIZADA_TUTORIA",
         canalizacion_tutoria_id=canalizacion_id,
         atendido_por=current_user.id,
@@ -797,16 +1005,47 @@ def estadisticas(
     for c in consultas_anio:
         por_origen[c.origen] = por_origen.get(c.origen, 0) + 1
 
+    por_hora = {}
+    pacientes_counter = {}
+    for c in consultas_anio:
+        if c.fecha_consulta:
+            hora = c.fecha_consulta.hour
+            por_hora[hora] = por_hora.get(hora, 0) + 1
+        pacientes_counter[c.paciente_id] = pacientes_counter.get(c.paciente_id, 0) + 1
+    pacientes_recurrentes = sum(1 for total in pacientes_counter.values() if total >= 3)
+
+    por_area = {}
+    for c in consultas_anio:
+        pac = db.get(Paciente, c.paciente_id)
+        area = (
+            c.paciente_carrera_snapshot
+            or c.paciente_departamento_snapshot
+            or (pac.carrera if pac else None)
+            or (pac.departamento if pac else None)
+            or "Sin area"
+        )
+        por_area[area] = por_area.get(area, 0) + 1
+
     # Incapacidades
     incapacidades = base.filter(ConsultaMedica.genera_incapacidad == True).count()
+    incapacidades_activas = db.query(ConsultaMedica).filter(
+        ConsultaMedica.genera_incapacidad == True,
+        ConsultaMedica.fecha_inicio_incapacidad <= now.date(),
+        ConsultaMedica.fecha_fin_incapacidad >= now.date(),
+    ).count()
 
     # Diagnósticos frecuentes (top 10 palabras significativas en diagnóstico)
     diag_counter: dict = {}
+    motivo_counter: dict = {}
     for c in consultas_anio:
         if c.diagnostico:
             diag = c.diagnostico.strip()
             diag_counter[diag] = diag_counter.get(diag, 0) + 1
+        if c.motivo_consulta:
+            motivo = c.motivo_consulta.strip()
+            motivo_counter[motivo] = motivo_counter.get(motivo, 0) + 1
     top_diagnosticos = sorted(diag_counter.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_motivos = sorted(motivo_counter.items(), key=lambda x: x[1], reverse=True)[:10]
 
     # Cuatrimestre activo (mes actual)
     mes_actual = now.month
@@ -819,6 +1058,11 @@ def estadisticas(
         ConsultaMedica.requiere_seguimiento == True,
         ConsultaMedica.fecha_seguimiento != None,
         ConsultaMedica.fecha_seguimiento >= now.date(),
+    ).count()
+    seguimientos_vencidos = db.query(ConsultaMedica).filter(
+        ConsultaMedica.requiere_seguimiento == True,
+        ConsultaMedica.fecha_seguimiento != None,
+        ConsultaMedica.fecha_seguimiento < now.date(),
     ).count()
 
     # Canalizaciones pendientes
@@ -834,230 +1078,407 @@ def estadisticas(
         "filtro_cuatrimestre": cuatrimestre,
         "consultas_mes_actual": consultas_mes,
         "incapacidades_anio": incapacidades,
+        "incapacidades_activas": incapacidades_activas,
         "seguimientos_pendientes": seguimientos_pendientes,
+        "seguimientos_vencidos": seguimientos_vencidos,
         "canalizaciones_pendientes": cans_pendientes,
         "por_mes": por_mes,
         "por_cuatrimestre": por_cuatrimestre,
         "por_sexo": por_sexo,
         "por_tipo": por_tipo,
         "por_origen": por_origen,
+        "por_hora": [{"hora": h, "total": por_hora[h]} for h in sorted(por_hora)],
+        "pacientes_recurrentes": pacientes_recurrentes,
+        "por_area": por_area,
         "top_diagnosticos": [{"diagnostico": d, "total": t} for d, t in top_diagnosticos],
+        "top_motivos": [{"motivo": d, "total": t} for d, t in top_motivos],
     }
 
 
-# ─── PDF RECETA ───────────────────────────────────────────────────────────────
+# ─── PDF RECETA — diseño editorial profesional ────────────────────────────────
+# Paleta médica institucional
+_C_AZUL    = colors.HexColor("#006699")   # títulos de sección
+_C_TEXTO   = colors.HexColor("#2c3e50")   # cuerpo principal
+_C_SUBT    = colors.HexColor("#4a6274")   # subtítulos / labels secundarios
+_C_FONDO   = colors.HexColor("#f8fafc")   # fondo signos vitales y datos paciente
+_C_LINEA   = colors.HexColor("#e2e8f0")   # divisores tenues
+_C_AZUL_CL = colors.HexColor("#e8f4f8")   # fondo encabezado de tabla
+_C_BLANCO  = colors.white
+
+
+def _estilos_receta():
+    """Devuelve diccionario de ParagraphStyles con jerarquía editorial."""
+    base = getSampleStyleSheet()["Normal"]
+    def ps(name, **kw):
+        return ParagraphStyle(name, parent=base, **kw)
+
+    return {
+        # Encabezado institución
+        "inst_nombre": ps("inst_nombre",
+            fontName="Helvetica-Bold", fontSize=11, leading=14,
+            alignment=TA_CENTER, textColor=_C_AZUL, spaceAfter=1),
+        "inst_dep": ps("inst_dep",
+            fontName="Helvetica", fontSize=8.5, leading=11,
+            alignment=TA_CENTER, textColor=_C_SUBT, spaceAfter=1),
+        "inst_doc": ps("inst_doc",
+            fontName="Helvetica-Bold", fontSize=9, leading=12,
+            alignment=TA_CENTER, textColor=_C_TEXTO, spaceAfter=0),
+        # Folio / fecha
+        "meta": ps("meta",
+            fontName="Helvetica", fontSize=8.5, leading=12,
+            textColor=_C_SUBT),
+        "meta_r": ps("meta_r",
+            fontName="Helvetica", fontSize=8.5, leading=12,
+            alignment=TA_RIGHT, textColor=_C_SUBT),
+        # Label de sección (títulos de bloque)
+        "seccion": ps("seccion",
+            fontName="Helvetica-Bold", fontSize=7.5, leading=10,
+            textColor=_C_AZUL, spaceBefore=6, spaceAfter=3,
+            letterSpacing=0.8),
+        # Texto de datos (label dentro de tabla)
+        "lbl": ps("lbl",
+            fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+            textColor=_C_SUBT),
+        "val": ps("val",
+            fontName="Helvetica", fontSize=8.5, leading=11,
+            textColor=_C_TEXTO),
+        # Cuerpo de texto clínico
+        "cuerpo": ps("cuerpo",
+            fontName="Helvetica", fontSize=9, leading=12,
+            textColor=_C_TEXTO, spaceAfter=2),
+        "item": ps("item",
+            fontName="Helvetica", fontSize=9, leading=12,
+            textColor=_C_TEXTO, leftIndent=10, spaceAfter=2),
+        # Pie y firma
+        "pie": ps("pie",
+            fontName="Helvetica", fontSize=7.5, leading=10,
+            textColor=colors.HexColor("#94a3b8"), alignment=TA_CENTER),
+        "firma_nombre": ps("firma_nombre",
+            fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+            alignment=TA_CENTER, textColor=_C_TEXTO),
+        "firma_cargo": ps("firma_cargo",
+            fontName="Helvetica", fontSize=8, leading=11,
+            alignment=TA_CENTER, textColor=_C_SUBT),
+        "firma_folio": ps("firma_folio",
+            fontName="Helvetica", fontSize=7.5, leading=10,
+            alignment=TA_CENTER, textColor=colors.HexColor("#94a3b8")),
+    }
+
+
+def _divider(spaceAfter=6, spaceBefore=0):
+    return HRFlowable(width="100%", thickness=0.5, color=_C_LINEA,
+                      spaceAfter=spaceAfter, spaceBefore=spaceBefore)
+
 
 def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
     c = db.get(ConsultaMedica, consulta_id)
     if not c:
         raise HTTPException(404, "Consulta no encontrada")
 
-    pac = db.get(Paciente, c.paciente_id)
+    pac    = db.get(Paciente, c.paciente_id)
     medico = db.get(Usuario, c.atendido_por)
+    st     = _estilos_receta()
 
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        leftMargin=2 * cm,
-        rightMargin=2 * cm,
-        topMargin=2 * cm,
-        bottomMargin=2 * cm,
-    )
+    # Datos derivados
+    nombre_pac   = c.paciente_nombre_snapshot or (pac.nombre if pac else "—")
+    tipo_pac     = c.paciente_tipo_snapshot   or (pac.tipo   if pac else "—")
+    sexo_raw     = c.paciente_sexo_snapshot   or (pac.sexo   if pac else "")
+    sexo_pac     = {"M": "Masculino", "F": "Femenino", "OTRO": "Otro"}.get(sexo_raw or "", "—")
+    carrera_pac  = c.paciente_carrera_snapshot      or (pac.carrera      if pac else None)
+    cuatri_pac   = c.paciente_cuatrimestre_snapshot or (pac.cuatrimestre  if pac else None)
+    depto_pac    = c.paciente_departamento_snapshot  or (pac.departamento  if pac else None)
+    matricula_pac = c.paciente_matricula_snapshot   or (pac.matricula_o_emp if pac else None)
 
-    styles = getSampleStyleSheet()
-    titulo  = ParagraphStyle("titulo",  parent=styles["Normal"], fontSize=13,
-                              fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=2)
-    subtit  = ParagraphStyle("subtit",  parent=styles["Normal"], fontSize=10,
-                              fontName="Helvetica-Bold", alignment=TA_CENTER, spaceAfter=4)
-    normal  = ParagraphStyle("normal",  parent=styles["Normal"], fontSize=9,
-                              fontName="Helvetica", spaceAfter=3)
-    label   = ParagraphStyle("label",   parent=styles["Normal"], fontSize=9,
-                              fontName="Helvetica-Bold", spaceAfter=1)
-    small   = ParagraphStyle("small",   parent=styles["Normal"], fontSize=8,
-                              fontName="Helvetica", textColor=colors.gray)
-
-    story = []
-
-    # ── Encabezado institucional ──────────────────────────────────────────────
-    logo_path = Path(__file__).resolve().parents[1] / "assets" / "tutoria" / "utecan_logo.jpg"
-    logo = RLImage(str(logo_path), width=3.8 * cm, height=1.1 * cm) if logo_path.exists() else Paragraph("<b>UTECAN</b>", titulo)
-    header = Table(
-        [[
-            logo,
-            [
-                Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA", titulo),
-                Paragraph("DEPARTAMENTO DE SERVICIOS ESTUDIANTILES", subtit),
-                Paragraph("CONSULTORIO MÉDICO", subtit),
-                Paragraph("NOTA DE CONSULTA", subtit),
-            ],
-        ]],
-        colWidths=[4.2 * cm, 13.8 * cm],
-    )
-    header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (0, 0), "CENTER"),
-    ]))
-    story.append(header)
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.black, spaceAfter=6))
-
-    # ── Fecha y folio ─────────────────────────────────────────────────────────
-    fecha_str = c.fecha_consulta.strftime("%d de %B de %Y") if c.fecha_consulta else "—"
-    folio_str = f"Folio: {c.id:05d}"
-
-    story.append(Table(
-        [[Paragraph(f"Fecha: {fecha_str}", normal),
-          Paragraph(folio_str, ParagraphStyle("r", parent=normal, alignment=TA_RIGHT))]],
-        colWidths=["70%", "30%"],
-        style=TableStyle([("ALIGN", (1, 0), (1, 0), "RIGHT")])
-    ))
-    story.append(Spacer(1, 0.3 * cm))
-
-    # ── Datos del paciente ────────────────────────────────────────────────────
-    nombre_pac = c.paciente_nombre_snapshot or (pac.nombre if pac else "—")
-    tipo_pac   = c.paciente_tipo_snapshot or (pac.tipo if pac else "—")
-    sexo_raw   = c.paciente_sexo_snapshot or (pac.sexo if pac else "")
-    sexo_pac   = {"M": "Masculino", "F": "Femenino", "OTRO": "Otro"}.get(sexo_raw or "", "—")
-    edad_str   = "—"
+    edad_str = "—"
     if pac and pac.fecha_nacimiento:
-        hoy   = datetime.date.today()
-        edad  = hoy.year - pac.fecha_nacimiento.year - (
+        hoy  = datetime.date.today()
+        edad = hoy.year - pac.fecha_nacimiento.year - (
             (hoy.month, hoy.day) < (pac.fecha_nacimiento.month, pac.fecha_nacimiento.day)
         )
         edad_str = f"{edad} años"
 
-    story.append(Paragraph("DATOS DEL PACIENTE", label))
-    datos_pac = [
-        ["Nombre:", nombre_pac, "Tipo:", tipo_pac],
-        ["Sexo:", sexo_pac, "Edad:", edad_str],
+    fecha_str = c.fecha_consulta.strftime("%d de %B de %Y") if c.fecha_consulta else "—"
+    folio_str = f"Folio #{c.id:05d}"
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter,
+        leftMargin=1.8 * cm, rightMargin=1.8 * cm,
+        topMargin=1.4 * cm, bottomMargin=1.4 * cm,
+    )
+
+    story = []
+    page_w = letter[0] - 3.6 * cm   # ancho útil
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 1. ENCABEZADO INSTITUCIONAL
+    # ═══════════════════════════════════════════════════════════════════════════
+    logo_path = Path(__file__).resolve().parents[1] / "assets" / "tutoria" / "utecan_logo.jpg"
+    logo_cell = RLImage(str(logo_path), width=3.6 * cm, height=1.05 * cm) \
+                if logo_path.exists() \
+                else Paragraph("<b>UTECAN</b>", st["inst_nombre"])
+
+    texto_inst = [
+        Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA", st["inst_nombre"]),
+        Paragraph("NOTA DE CONSULTA MÉDICA", st["inst_doc"]),
     ]
-    carrera_pac = c.paciente_carrera_snapshot or (pac.carrera if pac else None)
-    cuatri_pac = c.paciente_cuatrimestre_snapshot or (pac.cuatrimestre if pac else None)
-    depto_pac = c.paciente_departamento_snapshot or (pac.departamento if pac else None)
-    matricula_pac = c.paciente_matricula_snapshot or (pac.matricula_o_emp if pac else None)
-    if carrera_pac:
-        datos_pac.append(["Carrera:", carrera_pac, "Cuatrimestre:", str(cuatri_pac or "—")])
-    if depto_pac:
-        datos_pac.append(["Departamento:", depto_pac, "", ""])
-    if matricula_pac:
-        datos_pac.append(["Matrícula/Empleado:", matricula_pac, "", ""])
-
-    t_datos = Table(datos_pac, colWidths=[3.5 * cm, 7 * cm, 3.5 * cm, 4 * cm])
-    t_datos.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    header_tbl = Table(
+        [[logo_cell, texto_inst]],
+        colWidths=[4 * cm, page_w - 4 * cm],
+    )
+    header_tbl.setStyle(TableStyle([
+        ("VALIGN",  (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN",   (0, 0), (0, 0),   "CENTER"),
+        ("LEFTPADDING",  (1, 0), (1, 0), 12),
     ]))
-    story.append(t_datos)
-    story.append(Spacer(1, 0.3 * cm))
+    story.append(header_tbl)
+    story.append(HRFlowable(width="100%", thickness=1.5, color=_C_AZUL,
+                             spaceBefore=5, spaceAfter=3))
 
-    # ── Signos vitales ────────────────────────────────────────────────────────
-    sv_items = []
-    if c.temperatura:
-        sv_items.append(f"Temperatura: {c.temperatura} °C")
-    if c.presion_arterial:
-        sv_items.append(f"Presión Arterial: {c.presion_arterial} mmHg")
-    if c.peso:
-        sv_items.append(f"Peso: {c.peso} kg")
-    if c.talla:
-        sv_items.append(f"Talla: {c.talla} cm")
-    if c.frecuencia_cardiaca:
-        sv_items.append(f"Frec. Cardíaca: {c.frecuencia_cardiaca} lpm")
-    if c.saturacion_oxigeno:
-        sv_items.append(f"Saturación O₂: {c.saturacion_oxigeno}%")
-
-    if sv_items:
-        story.append(Paragraph("SIGNOS VITALES", label))
-        # 3 columnas
-        rows = []
-        for i in range(0, len(sv_items), 3):
-            row = sv_items[i:i+3]
-            while len(row) < 3:
-                row.append("")
-            rows.append(row)
-        t_sv = Table(rows, colWidths=[6 * cm, 6 * cm, 6 * cm])
-        t_sv.setStyle(TableStyle([
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("BACKGROUND", (0, 0), (-1, -1), colors.Color(0.95, 0.97, 1)),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ]))
-        story.append(t_sv)
-        story.append(Spacer(1, 0.3 * cm))
-
-    # ── Motivo de consulta
-    story.append(Paragraph("MOTIVO DE CONSULTA", label))
-    story.append(Paragraph(c.motivo_consulta or "—", normal))
+    # Fecha + Folio
+    story.append(Table(
+        [[Paragraph(f"Fecha: {fecha_str}", st["meta"]),
+          Paragraph(folio_str, st["meta_r"])]],
+        colWidths=["65%", "35%"],
+        style=TableStyle([("TOPPADDING", (0,0), (-1,-1), 0),
+                          ("BOTTOMPADDING", (0,0), (-1,-1), 0)]),
+    ))
     story.append(Spacer(1, 0.2 * cm))
 
-    # ── Diagnóstico
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=4))
-    story.append(Paragraph("DIAGNÓSTICO", label))
-    story.append(Paragraph(c.diagnostico or "—", normal))
-    story.append(Spacer(1, 0.3 * cm))
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 2. DATOS DEL PACIENTE — bloque encapsulado con fondo suave
+    # ═══════════════════════════════════════════════════════════════════════════
+    story.append(Paragraph("DATOS DEL PACIENTE", st["seccion"]))
 
-    # ── Receta
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=4))
-    story.append(Paragraph("℞  RECETA MÉDICA", label))
+    filas_pac = [
+        [Paragraph("Nombre", st["lbl"]),    Paragraph(nombre_pac, st["val"]),
+         Paragraph("Tipo",   st["lbl"]),    Paragraph(tipo_pac,   st["val"])],
+        [Paragraph("Sexo",   st["lbl"]),    Paragraph(sexo_pac,   st["val"]),
+         Paragraph("Edad",   st["lbl"]),    Paragraph(edad_str,   st["val"])],
+    ]
+    if carrera_pac:
+        filas_pac.append([
+            Paragraph("Carrera",       st["lbl"]), Paragraph(str(carrera_pac), st["val"]),
+            Paragraph("Cuatrimestre",  st["lbl"]), Paragraph(str(cuatri_pac or "—"), st["val"]),
+        ])
+    if depto_pac:
+        filas_pac.append([
+            Paragraph("Departamento", st["lbl"]), Paragraph(str(depto_pac), st["val"]),
+            Paragraph("", st["lbl"]), Paragraph("", st["val"]),
+        ])
+    if matricula_pac:
+        filas_pac.append([
+            Paragraph("Matrícula / Empleado", st["lbl"]), Paragraph(str(matricula_pac), st["val"]),
+            Paragraph("", st["lbl"]), Paragraph("", st["val"]),
+        ])
+    if pac and pac.alergias:
+        filas_pac.append([
+            Paragraph("Alergias conocidas", st["lbl"]),
+            Paragraph(pac.alergias, st["val"]),
+            Paragraph("", st["lbl"]), Paragraph("", st["val"]),
+        ])
+
+    t_pac = Table(filas_pac, colWidths=[3.0 * cm, 6.6 * cm, 3.0 * cm, 4.8 * cm])
+    t_pac.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), _C_FONDO),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+        ("LINEBELOW",     (0, 0), (-1, -2), 0.4, _C_LINEA),
+        ("BOX",           (0, 0), (-1, -1), 0.5, _C_LINEA),
+        ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(t_pac)
+    story.append(Spacer(1, 0.2 * cm))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 3. SIGNOS VITALES — bloque encapsulado, 3 columnas
+    # ═══════════════════════════════════════════════════════════════════════════
+    sv_raw = [
+        ("Temperatura",        f"{c.temperatura} °C"                         if c.temperatura          else None),
+        ("Presión arterial",   f"{c.presion_arterial} mmHg"                  if c.presion_arterial      else None),
+        ("Peso",               f"{c.peso} kg"                                if c.peso                  else None),
+        ("Talla",              f"{c.talla} cm"                               if c.talla                 else None),
+        ("IMC",                f"{_calcular_imc(c.peso, c.talla)} ({_clasificar_imc(_calcular_imc(c.peso, c.talla))})"
+                               if _calcular_imc(c.peso, c.talla) is not None else None),
+        ("Frec. cardíaca",     f"{c.frecuencia_cardiaca} lpm"                if c.frecuencia_cardiaca   else None),
+        ("Frec. respiratoria", f"{c.frecuencia_respiratoria} rpm"            if c.frecuencia_respiratoria else None),
+        # Saturación O₂ — carácter Unicode correcto, sin usar entidades HTML que rompen la fuente
+        ("Saturación O₂",  f"{c.saturacion_oxigeno}%"                   if c.saturacion_oxigeno    else None),
+    ]
+    sv_items = [(lbl, val) for lbl, val in sv_raw if val is not None]
+
+    if sv_items:
+        story.append(Paragraph("SIGNOS VITALES", st["seccion"]))
+        # Tabla plana: 4 columnas, etiqueta + valor en la misma celda (una línea)
+        sv_style_lbl = ParagraphStyle("sv_lbl", parent=st["lbl"],
+                                      fontSize=7, leading=9, textColor=_C_SUBT)
+        sv_style_val = ParagraphStyle("sv_val2", parent=st["val"],
+                                      fontSize=9, fontName="Helvetica-Bold",
+                                      textColor=_C_AZUL, leading=11)
+        COLS = 4
+        col_w = page_w / COLS
+        rows_sv = []
+        for i in range(0, len(sv_items), COLS):
+            fila = []
+            for lbl, val in sv_items[i:i+COLS]:
+                fila.append([Paragraph(lbl, sv_style_lbl),
+                              Paragraph(val, sv_style_val)])
+            while len(fila) < COLS:
+                fila.append([Paragraph("", sv_style_lbl), Paragraph("", sv_style_val)])
+            rows_sv.append(fila)
+
+        # Aplanar: cada elemento de fila es [lbl_p, val_p] → una sola celda con dos párrafos
+        flat_rows = []
+        for fila in rows_sv:
+            flat_rows.append([Table([[p1], [p2]],
+                                    colWidths=[col_w - 0.6 * cm],
+                                    style=TableStyle([
+                                        ("TOPPADDING",    (0,0), (-1,-1), 0),
+                                        ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+                                        ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                                        ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+                                    ]))
+                              for p1, p2 in fila])
+
+        t_sv = Table(flat_rows, colWidths=[col_w] * COLS)
+        t_sv.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), _C_FONDO),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+            ("LINEBELOW",     (0, 0), (-1, -2), 0.4, _C_LINEA),
+            ("LINEBEFORE",    (1, 0), (-1, -1), 0.4, _C_LINEA),
+            ("BOX",           (0, 0), (-1, -1), 0.5, _C_LINEA),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(t_sv)
+        story.append(Spacer(1, 0.2 * cm))
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 4. CLÍNICA: motivo, diagnóstico, receta, indicaciones
+    # ═══════════════════════════════════════════════════════════════════════════
+    story.append(Paragraph("MOTIVO DE CONSULTA", st["seccion"]))
+    story.append(Paragraph(c.motivo_consulta or "—", st["cuerpo"]))
+
+    story.append(_divider(spaceBefore=2, spaceAfter=2))
+    story.append(Paragraph("DIAGNÓSTICO", st["seccion"]))
+    story.append(Paragraph(c.diagnostico or "—", st["cuerpo"]))
+
+    story.append(_divider(spaceBefore=2, spaceAfter=2))
+    story.append(Paragraph("℞  TRATAMIENTO / RECETA MÉDICA", st["seccion"]))
     if c.medicamentos:
         for linea in c.medicamentos.split("\n"):
             if linea.strip():
-                story.append(Paragraph(f"• {linea.strip()}", normal))
+                story.append(Paragraph(f"•  {linea.strip()}", st["item"]))
     else:
-        story.append(Paragraph("Sin medicamentos prescritos.", normal))
-    story.append(Spacer(1, 0.3 * cm))
+        story.append(Paragraph("Sin medicamentos prescritos.", st["cuerpo"]))
 
-    # ── Indicaciones
     if c.indicaciones:
-        story.append(Paragraph("INDICACIONES Y CUIDADOS", label))
+        story.append(_divider(spaceBefore=2, spaceAfter=2))
+        story.append(Paragraph("INDICACIONES Y CUIDADOS", st["seccion"]))
         for linea in c.indicaciones.split("\n"):
             if linea.strip():
-                story.append(Paragraph(f"→ {linea.strip()}", normal))
-        story.append(Spacer(1, 0.3 * cm))
+                story.append(Paragraph(f"→  {linea.strip()}", st["item"]))
 
     # ── Incapacidad
     if c.genera_incapacidad:
-        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=4))
-        story.append(Paragraph("INCAPACIDAD MÉDICA", label))
+        story.append(_divider(spaceBefore=2, spaceAfter=2))
+        story.append(Paragraph("INCAPACIDAD MÉDICA", st["seccion"]))
         fi = c.fecha_inicio_incapacidad.strftime("%d/%m/%Y") if c.fecha_inicio_incapacidad else "—"
+        ff = c.fecha_fin_incapacidad.strftime("%d/%m/%Y")    if c.fecha_fin_incapacidad    else fi
         story.append(Paragraph(
             f"Se extiende incapacidad por <b>{c.dias_incapacidad or '—'} día(s)</b> "
-            f"del {fi} al {(c.fecha_fin_incapacidad.strftime('%d/%m/%Y') if c.fecha_fin_incapacidad else fi)}.",
-            normal
+            f"a partir del {fi} al {ff}.",
+            st["cuerpo"]
         ))
-        story.append(Spacer(1, 0.3 * cm))
 
     # ── Seguimiento
     if c.requiere_seguimiento and c.fecha_seguimiento:
-        story.append(Paragraph(
-            f"<b>Cita de seguimiento:</b> {c.fecha_seguimiento.strftime('%d/%m/%Y')}",
-            normal
+        story.append(Spacer(1, 0.1 * cm))
+        story.append(Table(
+            [[Paragraph(
+                f"\U0001F4C5 Cita de seguimiento: "
+                f"<b>{c.fecha_seguimiento.strftime('%d/%m/%Y')}</b> "
+                f"— {c.seguimiento_estado or 'PENDIENTE'}",
+                ParagraphStyle("segt", parent=st["cuerpo"],
+                               textColor=_C_AZUL, fontSize=9)
+            )]],
+            colWidths=[page_w],
+            style=TableStyle([
+                ("BACKGROUND",    (0,0), (-1,-1), _C_AZUL_CL),
+                ("TOPPADDING",    (0,0), (-1,-1), 6),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+                ("LEFTPADDING",   (0,0), (-1,-1), 10),
+                ("BOX",           (0,0), (-1,-1), 0.5, _C_LINEA),
+            ])
         ))
-        story.append(Spacer(1, 0.3 * cm))
 
-    # ── Firma
-    story.append(Spacer(1, 1 * cm))
-    nombre_medico = medico.nombre if medico else "Médico Universitario"
-    story.append(Table(
-        [["", "_______________________________"],
-         ["", nombre_medico],
-         ["", "Médico Universitario"]],
-        colWidths=["50%", "50%"],
-        style=TableStyle([
-            ("ALIGN", (1, 0), (1, -1), "CENTER"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("FONTNAME", (1, 1), (1, 1), "Helvetica-Bold"),
-        ])
-    ))
-
+    # ═══════════════════════════════════════════════════════════════════════════
+    # 5. BLOQUE DE FIRMA — centrado, línea tenue, tipografía institucional
+    # ═══════════════════════════════════════════════════════════════════════════
     story.append(Spacer(1, 0.5 * cm))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.lightgrey, spaceAfter=4))
+
+    # QR de validación interna
+    qr_payload = f"SIGA-UTECAN|CONSULTA|{c.id}|{c.id:05d}"
+    qr_w = QrCodeWidget(qr_payload)
+    qr_sz = 2 * cm
+    qr_w.barWidth = qr_sz;  qr_w.barHeight = qr_sz
+    drawing_qr = Drawing(qr_sz, qr_sz)
+    drawing_qr.add(qr_w)
+
+    nombre_medico = medico.nombre if medico else "Médico Universitario"
+
+    firma_block = Table(
+        [[
+            # Columna QR (izquierda)
+            Table(
+                [[drawing_qr],
+                 [Paragraph(folio_str, st["firma_folio"])],
+                 [Paragraph("Validación interna SIGA", st["firma_folio"])]],
+                colWidths=[3 * cm],
+                style=TableStyle([
+                    ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+                    ("TOPPADDING",    (0,0), (-1,-1), 2),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                ])
+            ),
+            # Columna firma (derecha — centrada)
+            Table(
+                [[Paragraph("", st["val"])],                    # espacio para firma manual
+                 [HRFlowable(width=6 * cm, thickness=0.5,
+                              color=_C_LINEA, spaceAfter=4)],
+                 [Paragraph(nombre_medico, st["firma_nombre"])],
+                 [Paragraph("Médico Universitario", st["firma_cargo"])],
+                 [Paragraph("Universidad Tecnológica de Candelaria", st["firma_cargo"])],
+                ],
+                colWidths=[page_w - 3 * cm - 0.5 * cm],
+                style=TableStyle([
+                    ("ALIGN",         (0,0), (-1,-1), "CENTER"),
+                    ("TOPPADDING",    (0,1), (-1,-1), 3),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+                    ("ROWBACKGROUND", (0,0), (-1,0),  colors.white),
+                    ("TOPPADDING",    (0,0), (0,0),   18),   # espacio para firma manual
+                ])
+            ),
+        ]],
+        colWidths=[3 * cm, page_w - 3 * cm],
+        style=TableStyle([
+            ("VALIGN",  (0,0), (-1,-1), "BOTTOM"),
+            ("LEFTPADDING",  (1,0), (1,0), 20),
+        ])
+    )
+    story.append(firma_block)
+
+    # ── Pie de página
+    story.append(Spacer(1, 0.6 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.4, color=_C_LINEA, spaceAfter=5))
     story.append(Paragraph(
-        "Este documento es de uso exclusivo del paciente. "
-        "Universidad Tecnológica de Candelaria — Servicios Estudiantiles.",
-        small
+        "Documento generado por SIGA · Universidad Tecnológica de Candelaria "
+        "· Uso exclusivo del paciente",
+        st["pie"]
     ))
 
     doc.build(story)
@@ -1082,7 +1503,7 @@ def exportar_pdf_receta(
     pac = db.get(Paciente, c.paciente_id)
     nombre_safe = (pac.nombre or "paciente").replace(" ", "_")[:30]
     fecha_safe  = c.fecha_consulta.strftime("%Y%m%d") if c.fecha_consulta else "sin_fecha"
-    filename = f"Consulta_{nombre_safe}_{fecha_safe}.pdf"
+    filename    = f"Consulta_{nombre_safe}_{fecha_safe}.pdf"
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),

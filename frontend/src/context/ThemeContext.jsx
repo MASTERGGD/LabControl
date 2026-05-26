@@ -10,9 +10,9 @@ const THEMES = {
   },
   day: {
     key: 'day',
-    label: 'Dia',
-    dot: '#2563eb',
-    dotSecondary: '#0ea5e9',
+    label: 'Institucional',
+    dot: '#007A53',
+    dotSecondary: '#00A36C',
     isLight: true,
   },
 };

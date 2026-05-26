@@ -2,22 +2,20 @@
 import { useTheme } from '../context/ThemeContext';
 
 /**
- * ThemeSwitcher - boton icono sol/luna
- * Sol  = Dia
- * Luna = Noche
+ * ThemeSwitcher - boton icono para alternar Noche / Institucional
  */
 export default function ThemeSwitcher() {
   const { themeKey, toggle } = useTheme();
   const [hovered, setHovered] = useState(false);
 
-  const isDay = themeKey === 'day';
+  const isInstitutional = themeKey === 'day';
 
-  const title  = isDay ? 'Cambiar a tema noche' : 'Cambiar a tema dÃ­a';
-  const border = isDay ? 'rgba(37,99,235,0.18)' : 'rgba(255,255,255,0.10)';
+  const title  = isInstitutional ? 'Cambiar a tema noche' : 'Cambiar a tema institucional';
+  const border = isInstitutional ? 'rgba(0,122,83,0.22)' : 'rgba(255,255,255,0.10)';
   const bg     = hovered
-    ? isDay ? 'rgba(37,99,235,0.08)' : 'rgba(255,255,255,0.07)'
+    ? isInstitutional ? 'rgba(0,122,83,0.08)' : 'rgba(255,255,255,0.07)'
     : 'transparent';
-  const iconColor = isDay ? '#2563eb' : '#94a3b8';
+  const iconColor = isInstitutional ? '#007A53' : '#94a3b8';
 
   return (
     <button
@@ -41,7 +39,7 @@ export default function ThemeSwitcher() {
         padding: 0,
       }}
     >
-      {isDay ? (
+      {isInstitutional ? (
         /* Luna â€” clic para ir a modo noche */
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke={iconColor} strokeWidth="2"

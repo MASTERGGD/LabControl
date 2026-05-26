@@ -288,6 +288,24 @@ function HeatmapHorasPico({ datos, cuatrimestre }) {
 
 // ─── Ranking docentes ─────────────────────────────────────────────────────────
 function RankingDocentes({ docentes, cuatrimestre }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const c = {
+    title: isDay ? '#0F172A' : '#f1f5f9',
+    text: isDay ? '#1E293B' : '#e2e8f0',
+    muted: isDay ? '#64748B' : '#64748b',
+    header: isDay ? '#334155' : '#64748b',
+    line: isDay ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
+    rowLine: isDay ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.04)',
+    hover: isDay ? 'rgba(0,122,83,0.045)' : 'rgba(255,255,255,0.025)',
+    track: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)',
+    normalRankBg: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)',
+    normalRankText: isDay ? '#334155' : '#475569',
+    bar: isDay ? 'linear-gradient(90deg, #007A53, #00A36C)' : 'linear-gradient(90deg, #2563eb, #60a5fa)',
+    badgeText: isDay ? '#007A53' : '#93c5fd',
+    badgeBg: isDay ? 'rgba(0,122,83,0.10)' : 'rgba(59,130,246,0.1)',
+    badgeBorder: isDay ? 'rgba(0,122,83,0.20)' : 'rgba(59,130,246,0.18)',
+  };
   if (!docentes?.length) return (
     <div className="glass p-5 flex items-center justify-center">
       <p className="text-slate-500 text-sm">Sin sesiones en {cuatrimestre}</p>
@@ -298,7 +316,7 @@ function RankingDocentes({ docentes, cuatrimestre }) {
     <div className="glass p-5">
       <div className="mb-4 flex items-start justify-between">
         <div>
-          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>Top docentes</h3>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: c.title }}>Top docentes</h3>
           <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>{cuatrimestre} · por sesiones impartidas</p>
         </div>
         <span style={{ fontSize: 18 }}>👩‍🏫</span>
@@ -308,11 +326,11 @@ function RankingDocentes({ docentes, cuatrimestre }) {
       <div style={{
         display: 'grid', gridTemplateColumns: '26px 1fr 48px',
         gap: '0 10px', padding: '0 4px 8px',
-        borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 2,
+        borderBottom: `1px solid ${c.line}`, marginBottom: 2,
       }}>
         <span/>
-        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em' }}>Docente</span>
-        <span style={{ fontSize: 9, fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.13em', textAlign: 'right' }}>Ses.</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: c.header, textTransform: 'uppercase', letterSpacing: '0.13em' }}>Docente</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: c.header, textTransform: 'uppercase', letterSpacing: '0.13em', textAlign: 'right' }}>Ses.</span>
       </div>
 
       {docentes.slice(0, 7).map((d, i) => (
@@ -321,36 +339,36 @@ function RankingDocentes({ docentes, cuatrimestre }) {
             display: 'grid', gridTemplateColumns: '26px 1fr 48px',
             gap: '0 10px', alignItems: 'center',
             padding: '8px 4px',
-            borderBottom: '1px solid rgba(255,255,255,0.04)',
+            borderBottom: `1px solid ${c.rowLine}`,
             borderRadius: 6, transition: 'background 0.15s',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+          onMouseEnter={e => e.currentTarget.style.background = c.hover}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
           {/* Medalla de posición */}
           <span style={{
             width: 22, height: 22, borderRadius: '50%', fontSize: 11, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            background: i === 0 ? '#ca8a04' : i === 1 ? '#64748b' : i === 2 ? '#92400e' : 'rgba(255,255,255,0.06)',
-            color: i < 3 ? '#fff' : '#475569',
+            background: i === 0 ? '#ca8a04' : i === 1 ? '#64748b' : i === 2 ? '#92400e' : c.normalRankBg,
+            color: i < 3 ? '#fff' : c.normalRankText,
           }}>
             {i + 1}
           </span>
 
           {/* Nombre + horas + barra */}
           <div style={{ minWidth: 0 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {d.nombre}
             </p>
-            <p style={{ margin: '2px 0 5px', fontSize: 11, color: '#475569' }}>
+            <p style={{ margin: '2px 0 5px', fontSize: 11, color: c.muted }}>
               {d.horas}h de uso
             </p>
-            <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: 3, background: c.track, borderRadius: 2, overflow: 'hidden' }}>
               <div style={{
                 width: `${(d.sesiones / max) * 100}%`, height: '100%', borderRadius: 2,
                 background: i === 0
                   ? 'linear-gradient(90deg, #ca8a04, #fbbf24)'
-                  : 'linear-gradient(90deg, #2563eb, #60a5fa)',
+                  : c.bar,
                 transition: 'width 0.7s cubic-bezier(.4,0,.2,1)',
               }}/>
             </div>
@@ -358,8 +376,8 @@ function RankingDocentes({ docentes, cuatrimestre }) {
 
           {/* Badge sesiones */}
           <span style={{
-            fontSize: 13, fontWeight: 700, color: '#93c5fd', textAlign: 'right',
-            background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.18)',
+            fontSize: 13, fontWeight: 700, color: c.badgeText, textAlign: 'right',
+            background: c.badgeBg, border: `1px solid ${c.badgeBorder}`,
             padding: '2px 8px', borderRadius: 6, justifySelf: 'end',
           }}>
             {d.sesiones}
@@ -372,6 +390,25 @@ function RankingDocentes({ docentes, cuatrimestre }) {
 
 // ─── Computadoras críticas ────────────────────────────────────────────────────
 function ComputadorasCriticas({ pcs }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const c = {
+    title: isDay ? '#0F172A' : '#f1f5f9',
+    text: isDay ? '#1E293B' : '#e2e8f0',
+    muted: isDay ? '#64748B' : '#64748b',
+    header: isDay ? '#334155' : '#64748b',
+    line: isDay ? 'rgba(15,23,42,0.08)' : 'rgba(255,255,255,0.08)',
+    rowLine: isDay ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.04)',
+    hover: isDay ? 'rgba(220,38,38,0.045)' : 'rgba(255,255,255,0.025)',
+    track: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)',
+    normalRankBg: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)',
+    normalRankText: isDay ? '#334155' : '#475569',
+    topRankBg: isDay ? '#DC2626' : 'rgba(185,28,28,0.7)',
+    topRankText: isDay ? '#FFFFFF' : '#fca5a5',
+    badgeText: isDay ? '#B91C1C' : '#fca5a5',
+    badgeBg: isDay ? '#FEE2E2' : 'rgba(185,28,28,0.15)',
+    badgeBorder: isDay ? '#FCA5A5' : 'rgba(239,68,68,0.2)',
+  };
   if (!pcs?.length) return (
     <div className="glass p-5 flex items-center justify-center">
       <p className="text-slate-500 text-sm">Sin incidentes en los últimos 12 meses</p>
@@ -379,7 +416,7 @@ function ComputadorasCriticas({ pcs }) {
   );
   const max = pcs[0]?.total || 1;
   return (
-    <div className="glass p-5">
+    <div className="glass p-5" style={{ '--report-title-color': c.title }}>
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>PCs con más incidentes</h3>

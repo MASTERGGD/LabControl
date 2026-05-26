@@ -5,20 +5,19 @@ import api from '../hooks/useApi';
 
 const ROLES_REDIRECT = {
   SUPER_ADMIN: '/admin',
-  LAB_ADMIN:   '/lab',
+  LAB_ADMIN: '/lab',
   TUTORIA_ADMIN: '/admin/tutoria',
   SERVICIOS_ESCOLARES: '/servicios-escolares',
-  DOCENTE:     '/docente',
-  ALUMNO:      '/alumno/estudio-socioeconomico',
+  DOCENTE: '/docente',
+  ALUMNO: '/alumno/estudio-socioeconomico',
 };
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, usuario } = useAuth();
 
-  // Si ya hay sesión activa → ir directo al dashboard
-  const [form, setForm]       = useState({ email: '', password: '' });
-  const [error, setError]     = useState('');
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (usuario) return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
@@ -30,7 +29,8 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const params = new URLSearchParams();
       params.append('username', form.email);
@@ -42,112 +42,113 @@ export default function Login() {
       navigate(ROLES_REDIRECT[data.usuario.rol] || '/');
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al conectar con el servidor');
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
       style={{
-        background: 'radial-gradient(ellipse at 20% 30%, rgba(59,130,246,0.12) 0%, transparent 55%), radial-gradient(ellipse at 80% 70%, rgba(16,185,129,0.10) 0%, transparent 50%), #0f172a',
+        background: 'linear-gradient(135deg, #F5F7FA 0%, #EEF6F2 52%, #E6F3EC 100%)',
       }}
     >
-      {/* Rejilla de fondo sutil */}
       <div
         className="fixed inset-0 pointer-events-none"
         style={{
-          backgroundImage: 'linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)',
+          backgroundImage: 'linear-gradient(rgba(0,122,83,0.055) 1px,transparent 1px),linear-gradient(90deg,rgba(0,122,83,0.055) 1px,transparent 1px)',
           backgroundSize: '48px 48px',
         }}
       />
+      <div
+        className="fixed inset-x-0 top-0 h-2 pointer-events-none"
+        style={{ background: 'linear-gradient(90deg,#007A53,#00A36C)' }}
+      />
 
       <div className="w-full max-w-md relative z-10 animate-fadeUp">
-
-        {/* Logo */}
         <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-glow"
-            style={{background:'linear-gradient(135deg,#3b82f6 0%,#6366f1 100%)'}}
-          >
-            <svg className="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-4 shadow-lg bg-white border border-emerald-100">
+            <img src="/icons/icon-192.png" alt="UTECAN" className="w-16 h-16 object-contain" draggable="false" />
           </div>
-          <p className="text-xs font-semibold text-blue-300 tracking-[0.2em] uppercase mb-1">
-            Sistema Integral de Gestión Académica
+          <p className="text-xs font-semibold tracking-[0.2em] uppercase mb-1" style={{ color: '#007A53' }}>
+            Sistema Integral de Gestion Academica
           </p>
-          <h1 className="text-5xl font-black text-white tracking-[0.25em]">SIGA</h1>
-          <p className="text-slate-400 text-sm mt-2 tracking-wide">Universidad Tecnológica de Candelaria</p>
+          <h1 className="text-5xl font-black tracking-[0.25em]" style={{ color: '#0F172A' }}>SIGA</h1>
+          <p className="text-slate-600 text-sm mt-2 tracking-wide">Universidad Tecnologica de Candelaria</p>
         </div>
 
-        {/* Tarjeta glass */}
-        <div className="glass shadow-glass p-8">
-          <h2 className="text-lg font-semibold text-white mb-6">Iniciar sesión</h2>
+        <div className="bg-white/95 border border-slate-200 shadow-xl p-8 rounded-2xl">
+          <h2 className="text-lg font-semibold text-slate-950 mb-6">Iniciar sesion</h2>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1.5" htmlFor="email">
+              <label className="block text-sm font-medium text-slate-600 mb-1.5" htmlFor="email">
                 Correo institucional
               </label>
               <input
-                id="email" name="email" type="email" required
-                value={form.email} onChange={handleChange}
+                id="email"
+                name="email"
+                type="email"
+                required
+                value={form.email}
+                onChange={handleChange}
                 placeholder="usuario@utecan.edu.mx"
-                className="input-dark"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 placeholder:text-slate-400"
                 autoComplete="username"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-400 mb-1.5" htmlFor="password">
-                Contraseña
+              <label className="block text-sm font-medium text-slate-600 mb-1.5" htmlFor="password">
+                Contrasena
               </label>
               <input
-                id="password" name="password" type="password" required
-                value={form.password} onChange={handleChange}
-                placeholder="••••••••"
-                className="input-dark"
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={form.password}
+                onChange={handleChange}
+                placeholder="********"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 placeholder:text-slate-400"
                 autoComplete="current-password"
               />
             </div>
 
             {error && (
-              <div className="flex items-start gap-2.5 bg-red-950/50 border border-red-800/50 rounded-xl px-4 py-3">
-                <svg className="w-4 h-4 text-red-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-sm text-red-700">{error}</p>
               </div>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="btn-blue w-full py-3 text-base mt-2"
+              className="w-full rounded-xl bg-emerald-700 px-4 py-3 text-base font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 mt-2"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
-                  Verificando…
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Verificando...
                 </span>
               ) : 'Acceder al sistema'}
             </button>
           </form>
 
-          {/* Divisor */}
-          <div className="mt-6 pt-5" style={{borderTop:'1px solid rgba(255,255,255,0.07)'}}>
-            <div className="flex items-center justify-center gap-4 text-xs text-slate-600">
-              <span>🔒 Acceso restringido al personal autorizado</span>
+          <div className="mt-6 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
+            <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
+              <span>Acceso restringido al personal autorizado</span>
             </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-600 mt-6">
-          SIGA v2.0 · UTECAN {new Date().getFullYear()}
+        <p className="text-center text-xs text-slate-500 mt-6">
+          SIGA v2.0 - UTECAN {new Date().getFullYear()}
         </p>
       </div>
     </div>

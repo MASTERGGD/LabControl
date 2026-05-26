@@ -42,6 +42,9 @@ class Paciente(Base):
     matricula_o_emp  = Column(String(30), nullable=True)   # matrícula o número de empleado
     fecha_nacimiento = Column(Date, nullable=True)
     sexo             = Column(String(10), nullable=True)   # SexoPaciente
+    alergias         = Column(Text, nullable=True)
+    antecedentes_medicos = Column(Text, nullable=True)
+    medicamentos_actuales = Column(Text, nullable=True)
     carrera          = Column(String(120), nullable=True)  # para alumnos
     cuatrimestre     = Column(Integer, nullable=True)      # para alumnos
     departamento     = Column(String(120), nullable=True)  # para administrativos
@@ -72,6 +75,7 @@ class ConsultaMedica(Base):
     peso            = Column(Float, nullable=True)        # kg
     talla           = Column(Float, nullable=True)        # cm
     frecuencia_cardiaca = Column(Integer, nullable=True)  # lpm
+    frecuencia_respiratoria = Column(Integer, nullable=True)  # rpm
     saturacion_oxigeno  = Column(Float, nullable=True)    # %
 
     # Atención clínica
@@ -90,6 +94,7 @@ class ConsultaMedica(Base):
     requiere_seguimiento = Column(Boolean, default=False)
     fecha_seguimiento    = Column(Date, nullable=True)
     seguimiento_notas    = Column(Text, nullable=True)
+    seguimiento_estado   = Column(String(20), nullable=False, default="PENDIENTE")
 
     # Origen (para integración con Tutoría)
     origen                  = Column(String(30), nullable=False, default="ESPONTANEA")
