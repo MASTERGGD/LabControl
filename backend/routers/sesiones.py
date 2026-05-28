@@ -8,7 +8,9 @@ from models.sesion import SesionClase, AsignacionPC, ObservacionPC
 from models.horario import Reservacion, HorarioDisponible
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
-from dependencies import get_current_user, require_roles
+from models.catalogo import CatalogoAlumno
+from dependencies import get_current_user, require_roles, crear_access_token, decodificar_token
+from jose import JWTError
 from permissions import require_permission
 from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
@@ -27,6 +29,8 @@ router = APIRouter(prefix="/sesiones", tags=["Sesiones de Clase"])
 
 class SesionCreate(BaseModel):
     laboratorio_id: int
+    tipo_sesion:         Optional[str]  = Field(None, max_length=20,
+        description="CLASE | LIBRE")
     materia:             Optional[str]  = Field(None, max_length=200)
     carrera:             Optional[str]  = Field(None, max_length=120)
     cuatrimestre:        Optional[str]  = Field(None, max_length=20,
@@ -44,6 +48,10 @@ class AsignacionCreate(BaseModel):
     computadora_id: int
     alumno_nombre: str   = Field(..., min_length=2, max_length=100)
     alumno_matricula: str = Field(..., min_length=2, max_length=20)
+
+class AutoAsignacionCreate(BaseModel):
+    computadora_id: int
+    matricula: str = Field(..., min_length=2, max_length=20)
 
 class ObservacionCreate(BaseModel):
     computadora_id: Optional[int] = None
@@ -124,6 +132,105 @@ def _get_sesion_activa_docente(docente_id: int, db: Session) -> Optional[SesionC
         SesionClase.docente_id == docente_id,
         SesionClase.estado == "ABIERTA"
     ).first()
+
+
+def _validar_token_autoasignacion(token: str) -> int:
+    try:
+        payload = decodificar_token(token)
+    except JWTError:
+      raise HTTPException(status_code=401, detail="QR inválido o expirado")
+    if payload.get("typ") != "autoasignacion":
+        raise HTTPException(status_code=401, detail="QR inválido")
+    try:
+        return int(payload["sid"])
+    except Exception:
+        raise HTTPException(status_code=401, detail="QR inválido")
+
+
+async def _crear_asignacion_pc(
+    request: Request,
+    sesion_id: int,
+    computadora_id: int,
+    alumno_nombre: str,
+    alumno_matricula: str,
+    db: Session,
+    current_user: Optional[Usuario] = None,
+):
+    s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o no está abierta")
+    if current_user and current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sesión")
+
+    pc = db.query(Computadora).filter(
+        Computadora.id == computadora_id,
+        Computadora.laboratorio_id == s.laboratorio_id,
+        Computadora.activa == True,
+    ).first()
+    if not pc:
+        raise HTTPException(status_code=404, detail="Computadora no encontrada en este laboratorio")
+    if pc.estado not in ("OPERATIVO", "EN_CLASE"):
+        raise HTTPException(status_code=400, detail=f"La PC está en estado {pc.estado}, no se puede asignar")
+
+    ya_asignada = db.query(AsignacionPC).filter(
+        AsignacionPC.sesion_id == sesion_id,
+        AsignacionPC.computadora_id == computadora_id,
+        AsignacionPC.hora_liberacion == None  # noqa: E711
+    ).first()
+    if ya_asignada:
+        raise HTTPException(status_code=409, detail="Esta PC ya está asignada en la sesión")
+
+    matricula_norm = alumno_matricula.strip().upper()
+    alumno_ya_registrado = db.query(AsignacionPC).filter(
+        AsignacionPC.sesion_id == sesion_id,
+        AsignacionPC.alumno_matricula == matricula_norm,
+        AsignacionPC.hora_liberacion == None  # noqa: E711
+    ).first()
+    if alumno_ya_registrado:
+        raise HTTPException(status_code=409, detail="Esta matrícula ya está registrada en la sesión")
+
+    asig = AsignacionPC(
+        sesion_id=sesion_id,
+        computadora_id=computadora_id,
+        alumno_nombre=alumno_nombre.strip(),
+        alumno_matricula=matricula_norm,
+        hora_asignacion=_utcnow(),
+    )
+    db.add(asig)
+    db.commit()
+    db.refresh(asig)
+
+    if current_user:
+        registrar(db, accion=Accion.ASIGNAR_PC, recurso=Recurso.SESION,
+                  usuario=current_user, recurso_id=asig.id,
+                  detalle={"sesion_id": sesion_id, "computadora_id": computadora_id,
+                           "alumno": alumno_nombre, "matricula": matricula_norm},
+                  request=request)
+
+    await manager.broadcast(s.laboratorio_id, {
+        "tipo": "pc_actualizada",
+        "pc": {
+            "pc_id": pc.id,
+            "codigo": pc.codigo,
+            "fila": pc.fila,
+            "estado": "OCUPADA",
+            "alumno": {
+                "nombre": alumno_nombre.strip(),
+                "matricula": matricula_norm,
+                "asignacion_id": asig.id,
+            },
+            "sesion_id": sesion_id,
+        }
+    })
+
+    return {
+        "id": asig.id,
+        "computadora_id": asig.computadora_id,
+        "pc_codigo": pc.codigo,
+        "alumno_nombre": asig.alumno_nombre,
+        "alumno_matricula": asig.alumno_matricula,
+        "hora_asignacion": asig.hora_asignacion.isoformat(),
+    }
 
 
 # ─── Sesiones ──────────────────────────────────────────────────────────────────
@@ -326,23 +433,6 @@ async def abrir_sesion(
                     )
 
         else:
-            # ── Sesión libre: identidad académica obligatoria ─────────────────
-            faltan = [f for f, v in [
-                ("materia",       data.materia),
-                ("carrera",       data.carrera),
-                ("cuatrimestre",  data.cuatrimestre),
-                ("grupo",         data.grupo),
-            ] if not v or not str(v).strip()]
-            if faltan:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"Sesión libre requiere identidad académica completa. "
-                        f"Faltan: {', '.join(faltan)}. "
-                        f"Selecciona la materia desde el catálogo para autocompletar carrera y cuatrimestre."
-                    )
-                )
-
             # ── Verificar que no haya reservación vigente de otro ──
             # Buscar si hay alguna reservación activa de OTRO docente en este lab en este slot horario
             reservaciones_lab = (
@@ -388,8 +478,12 @@ async def abrir_sesion(
     fin_est = ahora + datetime.timedelta(minutes=data.fin_estimado_min) if data.fin_estimado_min else None
     codigo  = f"SES-{ahora.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
-    # Determinar tipo: CLASE si tiene materia+grupo o viene de reservación, LIBRE si no
-    es_libre = not data.reservacion_id and not (data.materia and data.grupo)
+    tipo_solicitado = (data.tipo_sesion or "").strip().upper()
+    if tipo_solicitado and tipo_solicitado not in ("CLASE", "LIBRE"):
+        raise HTTPException(status_code=422, detail="tipo_sesion debe ser CLASE o LIBRE")
+
+    # Determinar tipo: respetar LIBRE explícito; si no, CLASE si tiene materia+grupo o reservación.
+    es_libre = tipo_solicitado == "LIBRE" or (not data.reservacion_id and not (data.materia and data.grupo))
     tipo_sesion = "LIBRE" if es_libre else "CLASE"
 
     # Identidad académica: heredar de la reservación si viene de una; si no, usar lo enviado
@@ -424,7 +518,7 @@ async def abrir_sesion(
                     f"Edita la reservación antes de iniciar la sesión."
                 )
             )
-    else:
+    elif tipo_sesion == "CLASE":
         faltan = [f for f, v in [
             ("materia",      materia_final),
             ("carrera",      carrera_final),
@@ -487,6 +581,97 @@ async def abrir_sesion(
     })
 
     return _serializar_sesion(sesion, db)
+
+
+@router.post("/{sesion_id}/autoasignacion-token", summary="Crear token temporal para autoasignación por QR")
+def crear_token_autoasignacion(
+    sesion_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada o no está abierta")
+    if current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a esta sesión")
+    if current_user.rol == RolUsuario.LAB_ADMIN and current_user.laboratorio_id != s.laboratorio_id:
+        raise HTTPException(status_code=403, detail="No tienes acceso a este laboratorio")
+
+    expira = _utcnow() + datetime.timedelta(hours=4)
+    token = crear_access_token({
+        "typ": "autoasignacion",
+        "sid": str(sesion_id),
+        "lab": str(s.laboratorio_id),
+        "exp": expira,
+    })
+    return {
+        "token": token,
+        "path": f"/autoasignacion/{token}",
+        "expires_at": expira.isoformat(),
+    }
+
+
+@router.get("/autoasignacion/{token}", summary="Datos públicos para autoasignación por QR")
+def datos_autoasignacion(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    sesion_id = _validar_token_autoasignacion(token)
+    s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
+    if not s:
+        raise HTTPException(status_code=404, detail="La sesión ya no está abierta")
+    lab = db.query(Laboratorio).filter(Laboratorio.id == s.laboratorio_id).first()
+    pcs = _snapshot_lab(s.laboratorio_id, db)
+    pcs_disponibles = [
+        {
+            "pc_id": pc["pc_id"],
+            "codigo": pc["codigo"],
+            "fila": pc.get("fila"),
+            "numero": pc.get("numero"),
+            "estado": pc["estado"],
+        }
+        for pc in pcs
+        if pc["estado"] in ("OPERATIVO", "EN_CLASE") and not pc.get("alumno")
+    ]
+    return {
+        "sesion_id": s.id,
+        "laboratorio_nombre": lab.nombre if lab else None,
+        "materia": s.materia,
+        "grupo": s.grupo,
+        "tipo_sesion": s.tipo_sesion or "CLASE",
+        "pcs_disponibles": pcs_disponibles,
+    }
+
+
+@router.post("/autoasignacion/{token}", status_code=status.HTTP_201_CREATED, summary="Autoasignar PC con matrícula")
+async def registrar_autoasignacion(
+    request: Request,
+    token: str,
+    data: AutoAsignacionCreate,
+    db: Session = Depends(get_db),
+):
+    sesion_id = _validar_token_autoasignacion(token)
+    matricula = data.matricula.strip().upper()
+    alumno = db.query(CatalogoAlumno).filter(
+        CatalogoAlumno.matricula == matricula,
+        CatalogoAlumno.activo == True,
+    ).first()
+    if not alumno:
+        raise HTTPException(status_code=404, detail="Matrícula no encontrada en el catálogo de alumnos")
+    nombre = " ".join([
+        alumno.apellido_paterno or "",
+        alumno.apellido_materno or "",
+        alumno.nombres or "",
+    ]).strip()
+    return await _crear_asignacion_pc(
+        request=request,
+        sesion_id=sesion_id,
+        computadora_id=data.computadora_id,
+        alumno_nombre=nombre,
+        alumno_matricula=matricula,
+        db=db,
+        current_user=None,
+    )
 
 
 @router.get("/{sesion_id}", summary="Detalle de sesión")
@@ -638,74 +823,15 @@ async def asignar_pc(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
-    if not s:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada o no está abierta")
-    if current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
-        raise HTTPException(status_code=403, detail="No tienes acceso a esta sesión")
-
-    # Verificar que la PC exista y pertenezca al lab
-    pc = db.query(Computadora).filter(
-        Computadora.id == data.computadora_id,
-        Computadora.laboratorio_id == s.laboratorio_id,
-        Computadora.activa == True,
-    ).first()
-    if not pc:
-        raise HTTPException(status_code=404, detail="Computadora no encontrada en este laboratorio")
-    if pc.estado not in ("OPERATIVO", "EN_CLASE"):
-        raise HTTPException(status_code=400, detail=f"La PC está en estado {pc.estado}, no se puede asignar")
-
-    # Verificar que la PC no esté ya asignada en esta sesión
-    ya_asignada = db.query(AsignacionPC).filter(
-        AsignacionPC.sesion_id == sesion_id,
-        AsignacionPC.computadora_id == data.computadora_id,
-        AsignacionPC.hora_liberacion == None  # noqa: E711
-    ).first()
-    if ya_asignada:
-        raise HTTPException(status_code=409, detail="Esta PC ya está asignada en la sesión")
-
-    asig = AsignacionPC(
+    return await _crear_asignacion_pc(
+        request=request,
         sesion_id=sesion_id,
         computadora_id=data.computadora_id,
         alumno_nombre=data.alumno_nombre,
         alumno_matricula=data.alumno_matricula,
-        hora_asignacion=_utcnow(),
+        db=db,
+        current_user=current_user,
     )
-    db.add(asig)
-    db.commit()
-    db.refresh(asig)
-
-    registrar(db, accion=Accion.ASIGNAR_PC, recurso=Recurso.SESION,
-              usuario=current_user, recurso_id=asig.id,
-              detalle={"sesion_id": sesion_id, "computadora_id": data.computadora_id,
-                       "alumno": data.alumno_nombre, "matricula": data.alumno_matricula},
-              request=request)
-
-    # Broadcast WebSocket: PC ocupada
-    await manager.broadcast(s.laboratorio_id, {
-        "tipo": "pc_actualizada",
-        "pc": {
-            "pc_id": pc.id,
-            "codigo": pc.codigo,
-            "fila": pc.fila,
-            "estado": "OCUPADA",
-            "alumno": {
-                "nombre": data.alumno_nombre,
-                "matricula": data.alumno_matricula,
-                "asignacion_id": asig.id,
-            },
-            "sesion_id": sesion_id,
-        }
-    })
-
-    return {
-        "id": asig.id,
-        "computadora_id": asig.computadora_id,
-        "pc_codigo": pc.codigo,
-        "alumno_nombre": asig.alumno_nombre,
-        "alumno_matricula": asig.alumno_matricula,
-        "hora_asignacion": asig.hora_asignacion.isoformat(),
-    }
 
 
 @router.delete("/{sesion_id}/asignaciones/{asig_id}", summary="Liberar PC")

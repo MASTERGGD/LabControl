@@ -13,6 +13,7 @@ from .espacio import EspacioInstitucional, EspacioResponsable, EspacioApoyo, Sol
 from .comunicado import (
     Comunicado, ComunicadoDestinatario, ComunicadoLectura, ComunicadoRespaldo,
     ComunicadoAdjunto, ComunicadoRespuesta, ComunicadoRespuestaAdjunto,
+    ComunicadoRespuestaMensaje,
 )
 from .tutoria import (
     GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico,

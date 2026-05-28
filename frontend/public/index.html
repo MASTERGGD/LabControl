@@ -611,6 +611,53 @@
         border-radius: 1rem;
       }
 
+      /* Movimiento sutil para tarjetas del contenido principal */
+      .card-lift {
+        transition:
+          transform .18s ease,
+          box-shadow .18s ease,
+          border-color .18s ease,
+          background-color .18s ease;
+        will-change: transform;
+      }
+
+      @media (hover: hover) and (pointer: fine) {
+        main .glass:not(.no-card-lift):not(.animate-pulse),
+        main .glass-sm:not(.no-card-lift):not(.animate-pulse),
+        main .card-lift:not(.no-card-lift):not(.animate-pulse) {
+          transition:
+            transform .18s ease,
+            box-shadow .18s ease,
+            border-color .18s ease,
+            background-color .18s ease;
+          will-change: transform;
+        }
+
+        main .glass:not(.no-card-lift):not(.animate-pulse):hover,
+        main .card-lift:not(.no-card-lift):not(.animate-pulse):hover {
+          transform: translateY(-2px);
+          box-shadow: 0 18px 42px rgba(15,23,42,0.16);
+        }
+
+        main .glass-sm:not(.no-card-lift):not(.animate-pulse):hover {
+          transform: translateY(-1px);
+          box-shadow: 0 12px 28px rgba(15,23,42,0.12);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .card-lift,
+        main .glass,
+        main .glass-sm {
+          transition: none !important;
+        }
+        .card-lift:hover,
+        main .glass:hover,
+        main .glass-sm:hover {
+          transform: none !important;
+        }
+      }
+
       /* â”€â”€ Sidebar gradient â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
       .sidebar-bg {
         background: linear-gradient(180deg, #0d1b2e 0%, #0f172a 100%);

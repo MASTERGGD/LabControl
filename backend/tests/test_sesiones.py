@@ -13,6 +13,8 @@ import pytest
 from tests.conftest import get_token, auth_headers
 from models.usuario import RolUsuario
 from dependencies import hashear_password
+from models.catalogo import CatalogoAlumno
+from models.laboratorio import Computadora
 
 
 class TestSesiones:
@@ -47,6 +49,85 @@ class TestSesiones:
         token = get_token(client, "admin@test.com", "AdminPass123")
         resp = self._abrir_sesion(client, token, lab.id)
         assert resp.status_code == 201
+
+    def test_admin_puede_abrir_sesion_libre_sin_identidad_academica(self, client, admin_user, lab):
+        """Uso libre no requiere carrera ni cuatrimestre académico."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        resp = client.post(
+            "/sesiones",
+            json={
+                "laboratorio_id": lab.id,
+                "tipo_sesion": "LIBRE",
+                "materia": "Uso Libre",
+                "grupo": "Acceso Libre",
+                "fin_estimado_min": 45,
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["tipo_sesion"] == "LIBRE"
+        assert body["carrera"] is None
+        assert body["cuatrimestre"] is None
+
+    def test_qr_autoasignacion_publica_resuelve_y_asigna_pc(self, client, admin_user, db, lab):
+        """El QR publico devuelve PCs disponibles y permite registrar al alumno."""
+        pc = Computadora(
+            laboratorio_id=lab.id,
+            numero=1,
+            codigo="PC--01",
+            fila="A",
+            estado="OPERATIVO",
+            activa=True,
+        )
+        alumno = CatalogoAlumno(
+            matricula="UTC250134",
+            apellido_paterno="Mendoza",
+            apellido_materno="Ontiveros",
+            nombres="Valeria",
+            carrera="IDGS",
+            cuatrimestre=3,
+            grupo="A",
+            periodo="MAY-AGO 2026",
+            activo=True,
+        )
+        db.add_all([pc, alumno])
+        db.commit()
+        db.refresh(pc)
+
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        abrir = client.post(
+            "/sesiones",
+            json={
+                "laboratorio_id": lab.id,
+                "tipo_sesion": "LIBRE",
+                "materia": "Uso Libre",
+                "grupo": "Acceso Libre",
+                "fin_estimado_min": 45,
+            },
+            headers=auth_headers(token),
+        )
+        assert abrir.status_code == 201, abrir.text
+        sesion_id = abrir.json()["id"]
+
+        qr = client.post(
+            f"/sesiones/{sesion_id}/autoasignacion-token",
+            headers=auth_headers(token),
+        )
+        assert qr.status_code == 200, qr.text
+        qr_token = qr.json()["token"]
+
+        datos = client.get(f"/sesiones/autoasignacion/{qr_token}")
+        assert datos.status_code == 200, datos.text
+        assert datos.json()["pcs_disponibles"][0]["codigo"] == "PC--01"
+
+        registro = client.post(
+            f"/sesiones/autoasignacion/{qr_token}",
+            json={"matricula": "utc250134", "computadora_id": pc.id},
+        )
+        assert registro.status_code == 201, registro.text
+        assert registro.json()["alumno_matricula"] == "UTC250134"
+        assert registro.json()["pc_codigo"] == "PC--01"
 
     def test_no_se_puede_abrir_segunda_sesion_mismo_lab(
         self, client, admin_user, docente_user, db, lab

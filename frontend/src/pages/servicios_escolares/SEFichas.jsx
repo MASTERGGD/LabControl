@@ -258,7 +258,7 @@ export default function SEFichas() {
 
   return (
     <AdminLayout>
-      <div className="p-2 space-y-4 max-w-7xl mx-auto">
+      <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3">
           <button onClick={() => window.history.back()} className="text-slate-400 hover:text-white">

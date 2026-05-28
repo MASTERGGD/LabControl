@@ -118,7 +118,6 @@ export const ROUTE_PERMISSIONS = {
   '/alumno':                      [AL],
   '/alumno/estudio-socioeconomico': [AL],
   '/admin/tutoria':               [SA, LA, TA],
-  '/admin/tutoria/estudio-socioeconomico': [SA, LA, TA],
   '/admin/laboratorios':          [SA, LA],
   '/admin/laboratorios/:labId':   [SA, LA],
   '/admin/usuarios':              [SA],

@@ -131,6 +131,7 @@ function ModalSesionLibre({ usuario, onClose }) {
     try {
       const { data } = await api.post('/sesiones', {
         laboratorio_id:   Number(labId),
+        tipo_sesion:      'LIBRE',
         materia:          nota.trim() || 'Uso Libre',
         grupo:            'Acceso Libre',
         fin_estimado_min: duracion,
@@ -181,9 +182,11 @@ function ModalSesionLibre({ usuario, onClose }) {
 
         <div className="p-6 space-y-5">
           {sesionActiva && (
-            <div className="bg-amber-950/40 border border-amber-700/40 rounded-xl p-3 text-sm">
-              <p className="text-amber-400 font-medium">⚠️ Ya hay una sesión abierta en este laboratorio</p>
-              <p className="text-slate-400 text-xs mt-0.5">{sesionActiva.materia} · {sesionActiva.grupo}</p>
+            <div className={`rounded-xl p-3 text-sm border ${
+              isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-950/40 border-amber-700/40'
+            }`}>
+              <p className={`font-semibold ${isDay ? 'text-amber-900' : 'text-amber-400'}`}>⚠️ Ya hay una sesión abierta en este laboratorio</p>
+              <p className={`text-xs mt-0.5 ${isDay ? 'text-amber-800/80' : 'text-slate-400'}`}>{sesionActiva.materia} · {sesionActiva.grupo}</p>
               <button onClick={() => { onClose(); navigate(`/admin/sesion/${sesionActiva.id}`); }}
                 className="mt-2 w-full bg-amber-600 hover:bg-amber-500 text-white py-1.5 rounded-lg text-xs font-semibold transition-colors">
                 Ir a la sesión activa →
@@ -248,7 +251,11 @@ function ModalSesionLibre({ usuario, onClose }) {
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>
+            <div className={`rounded-xl px-3 py-2.5 text-sm border ${
+              isDay ? 'bg-red-50 border-red-300 text-red-800' : 'bg-red-950/50 border-red-800/50 text-red-300'
+            }`}>
+              <p className="font-semibold leading-snug">{error}</p>
+            </div>
           )}
 
           <div className="flex gap-3 pt-1">
@@ -420,10 +427,6 @@ const NAV_ITEMS = [
     label: 'Panel de Tutoría', path: '/admin/tutoria', exact: true, roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>,
   },
-  {
-    label: 'Estudio socioeconomico', path: '/admin/tutoria/estudio-socioeconomico', roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], inGroup: true,
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
-  },
 
   // ─── Grupo: Consultorio Médico ────────────────────────────────────────────────
   { divider: true, label: 'Consultorio Médico', roles: ['MEDICO','SUPER_ADMIN','LAB_ADMIN'] },
@@ -483,7 +486,6 @@ const BREADCRUMB_MAP = {
   '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
   '/admin/tutoria':           [{ label: 'Panel de Tutoría' }],
-  '/admin/tutoria/estudio-socioeconomico': [{ label: 'Tutoría', to: '/admin/tutoria' }, { label: 'Estudio socioeconomico' }],
   '/docente/mis-tutorados':   [{ label: 'Mis Tutorados' }],
   '/medico/consultorio':      [{ label: 'Consultorio Médico' }],
 };
@@ -850,17 +852,28 @@ export default function AdminLayout({ children }) {
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
 
+  const fetchPendientesComunicados = useCallback(() => {
+    if (!sessionStorage.getItem('token')) {
+      setPendientesComunicados(0);
+      return;
+    }
+    api.get('/comunicados/pendientes-count')
+      .then(res => setPendientesComunicados(res.data?.pendientes ?? 0))
+      .catch(() => {});
+  }, []);
+
   // Polling: badge de comunicados pendientes cada 60 s
   useEffect(() => {
-    const fetchPendientes = () => {
-      api.get('/comunicados/pendientes-count')
-        .then(res => setPendientesComunicados(res.data?.pendientes ?? 0))
-        .catch(() => {});
+    fetchPendientesComunicados();
+    const timer = setInterval(fetchPendientesComunicados, 60_000);
+    window.addEventListener('focus', fetchPendientesComunicados);
+    window.addEventListener('labcontrol:comunicados-pendientes-updated', fetchPendientesComunicados);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', fetchPendientesComunicados);
+      window.removeEventListener('labcontrol:comunicados-pendientes-updated', fetchPendientesComunicados);
     };
-    fetchPendientes();
-    const timer = setInterval(fetchPendientes, 60_000);
-    return () => clearInterval(timer);
-  }, []);
+  }, [fetchPendientesComunicados]);
 
   useEffect(() => {
     if (!usuario || !['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO'].includes(usuario.rol)) {
@@ -973,7 +986,7 @@ export default function AdminLayout({ children }) {
           <div className="flex items-center gap-2">
 
             {/* Campana */}
-            <NotificacionesBell />
+            <NotificacionesBell comunicadosPendientes={pendientesComunicados} />
             <ThemeSwitcher />
 
             {/* Nombre + rol — solo desktop */}

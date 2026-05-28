@@ -77,6 +77,10 @@ class Comunicado(Base):
     estado                = Column(String(20), nullable=False, default="BORRADOR")
     requiere_confirmacion = Column(Boolean, nullable=False, default=False)
     requiere_retroalimentacion = Column(Boolean, nullable=False, default=False)
+    notificar_email      = Column(Boolean, nullable=False, default=False)
+    email_enviados       = Column(Integer, nullable=False, default=0)
+    email_fallidos       = Column(Integer, nullable=False, default=0)
+    email_ultimo_envio   = Column(DateTime, nullable=True)
     fecha_limite_respuesta = Column(DateTime, nullable=True)
     fijado                = Column(Boolean, nullable=False, default=False)
     area_emisora          = Column(String(200), nullable=True)
@@ -174,6 +178,21 @@ class ComunicadoRespuesta(Base):
     revisado_por = relationship("Usuario", foreign_keys=[revisado_por_id])
     adjuntos   = relationship("ComunicadoRespuestaAdjunto", back_populates="respuesta",
                               cascade="all, delete-orphan")
+    mensajes   = relationship("ComunicadoRespuestaMensaje", back_populates="respuesta",
+                              cascade="all, delete-orphan", order_by="ComunicadoRespuestaMensaje.creado_en")
+
+
+class ComunicadoRespuestaMensaje(Base):
+    __tablename__ = "comunicado_respuesta_mensajes"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    respuesta_id  = Column(Integer, ForeignKey("comunicado_respuestas.id", ondelete="CASCADE"), nullable=False, index=True)
+    usuario_id    = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    comentario    = Column(Text, nullable=False)
+    creado_en     = Column(DateTime, default=_utcnow, nullable=False)
+
+    respuesta = relationship("ComunicadoRespuesta", back_populates="mensajes")
+    usuario   = relationship("Usuario", foreign_keys=[usuario_id])
 
 
 class ComunicadoRespuestaAdjunto(Base):

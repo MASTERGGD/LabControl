@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { useTheme } from './ThemeContext';
 
 const ToastCtx = createContext(null);
 export const useToast = () => useContext(ToastCtx);
@@ -37,11 +38,13 @@ const STYLES = {
 
 // ─── Componente toast individual ──────────────────────────────────────────────
 function ToastItem({ toast, onRemove }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const s = STYLES[toast.type] || STYLES.info;
   return (
     <div
       className={`relative flex items-start gap-3 px-4 py-3 rounded-xl border shadow-glass
-                  glass ${s.ring} min-w-[280px] max-w-[380px] overflow-hidden
+                  ${isDay ? 'bg-white shadow-xl' : 'glass'} ${s.ring} min-w-[280px] max-w-[380px] overflow-hidden
                   animate-fadeUp cursor-pointer select-none`}
       onClick={() => onRemove(toast.id)}
     >
@@ -51,13 +54,13 @@ function ToastItem({ toast, onRemove }) {
       {/* Texto */}
       <div className="flex-1 min-w-0">
         {toast.title && (
-          <p className="text-white font-semibold text-sm leading-tight mb-0.5">{toast.title}</p>
+          <p className={`${isDay ? 'text-slate-950' : 'text-white'} font-semibold text-sm leading-tight mb-0.5`}>{toast.title}</p>
         )}
-        <p className="text-slate-300 text-sm leading-snug">{toast.msg}</p>
+        <p className={`${isDay ? 'text-slate-700' : 'text-slate-300'} text-sm leading-snug font-medium`}>{toast.msg}</p>
       </div>
 
       {/* Cerrar */}
-      <button className="text-slate-500 hover:text-white shrink-0 mt-0.5 transition-colors">
+      <button className={`${isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-500 hover:text-white'} shrink-0 mt-0.5 transition-colors`}>
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12"/>
         </svg>

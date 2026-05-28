@@ -4,6 +4,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import SelectDark from '../../components/SelectDark';
 
 // ─── Configuración de tipos, prioridades y estados ────────────────────────────
@@ -30,9 +31,21 @@ function iconFromDesc(desc = '') {
 }
 
 const PRIORIDAD_BADGE = {
-  ALTA:  { cls: 'bg-red-500/20 text-red-400 border border-red-500/30',    label: '🔴 Alta' },
-  MEDIA: { cls: 'bg-amber-500/20 text-amber-400 border border-amber-500/30', label: '🟡 Media' },
-  BAJA:  { cls: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',  label: '⚪ Baja' },
+  ALTA: {
+    cls: 'bg-red-500/20 text-red-400 border border-red-500/30',
+    dayCls: 'bg-red-50 text-red-700 border border-red-300',
+    label: '🔴 Alta'
+  },
+  MEDIA: {
+    cls: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    dayCls: 'bg-amber-100 text-amber-800 border border-amber-300',
+    label: '🟡 Media'
+  },
+  BAJA: {
+    cls: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
+    dayCls: 'bg-slate-100 text-slate-700 border border-slate-300',
+    label: '⚪ Baja'
+  },
 };
 
 const COLUMNAS = [
@@ -50,6 +63,8 @@ const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'
 
 // ─── Tarjeta de incidente ─────────────────────────────────────────────────────
 function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const tipo  = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const pri   = PRIORIDAD_BADGE[incidente.prioridad] || PRIORIDAD_BADGE.MEDIA;
   const extra = iconFromDesc(incidente.descripcion);
@@ -66,7 +81,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       onDragStart={adeudoPendiente ? undefined : e => onDragStart(e, incidente)}
       onClick={() => onClick(incidente)}
       className={`glass-sm rounded-xl p-3.5 transition-all duration-150 select-none group
-                  hover:brightness-110
+                  ${isDay ? 'bg-white border border-slate-200 hover:border-slate-300' : 'hover:brightness-110'}
                   ${adeudoPendiente ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}
                   ${isDragOver ? 'ring-2 ring-blue-500/50' : ''}`}
       style={{ borderLeft: `3px solid ${incidente.prioridad === 'ALTA' ? '#ef4444' : incidente.prioridad === 'MEDIA' ? '#f59e0b' : '#475569'}` }}
@@ -75,9 +90,9 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0" title={tipo.label}>{tipo.emoji}</span>
-          <p className="text-sm font-semibold text-white truncate">{nombre}</p>
+          <p className={`text-sm font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
         </div>
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${pri.cls}`}>
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isDay ? pri.dayCls : pri.cls}`}>
           {pri.label}
         </span>
       </div>
@@ -86,7 +101,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       {incidente.descripcion && (
         <div className="flex items-start gap-1.5 mb-2">
           {extra && <span className="mt-0.5 shrink-0">{extra}</span>}
-          <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{incidente.descripcion}</p>
+          <p className={`text-xs line-clamp-2 leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>{incidente.descripcion}</p>
         </div>
       )}
 
@@ -95,8 +110,8 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
         <div className="mt-2 mb-1">
           <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border
             ${incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
-              ? 'bg-emerald-900/30 border-emerald-500/30 text-emerald-400'
-              : 'bg-orange-900/30 border-orange-500/40 text-orange-300'}`}
+              ? isDay ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-emerald-900/30 border-emerald-500/30 text-emerald-400'
+              : isDay ? 'bg-orange-50 border-orange-300 text-orange-800' : 'bg-orange-900/30 border-orange-500/40 text-orange-300'}`}
             title={`Adeudo #${incidente.adeudo_id} — ${incidente.adeudo_persona || ''}`}
           >
             ⚖️ Adeudo #{incidente.adeudo_id}
@@ -108,7 +123,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
 
       {/* Meta info */}
       <div className="flex items-center justify-between gap-2 mt-2">
-        <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+        <div className={`flex items-center gap-1.5 text-[10px] ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
           {incidente.laboratorio_nombre && (
             <span className="flex items-center gap-0.5">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,7 +133,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
             </span>
           )}
         </div>
-        <span className="text-[10px] text-slate-600">{formatFecha(incidente.fecha_reporte)}</span>
+        <span className={`text-[10px] ${isDay ? 'text-slate-500' : 'text-slate-600'}`}>{formatFecha(incidente.fecha_reporte)}</span>
       </div>
 
       {/* Indicador de arrastre — oculto si tiene adeudo pendiente */}
@@ -135,12 +150,14 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
 
 // ─── Columna Kanban ───────────────────────────────────────────────────────────
 function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarget, onCardClick, dragItem }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   return (
     <div
       className="flex flex-col rounded-2xl overflow-hidden transition-all duration-200"
       style={{
-        background: isDragTarget ? col.bg : 'rgba(15,23,42,0.5)',
-        border: `1px solid ${isDragTarget ? col.border : 'rgba(255,255,255,0.06)'}`,
+        background: isDragTarget ? col.bg : isDay ? '#ffffff' : 'rgba(15,23,42,0.5)',
+        border: `1px solid ${isDragTarget ? col.border : isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)'}`,
         boxShadow: isDragTarget ? `0 0 20px ${col.border}` : 'none',
         minHeight: 400,
       }}
@@ -153,7 +170,7 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
            style={{ borderBottom: `1px solid ${col.border}`, background: col.bg }}>
         <div className="flex items-center gap-2">
           <span className="text-base">{col.icon}</span>
-          <span className="font-semibold text-white text-sm">{col.label}</span>
+          <span className={`font-semibold text-sm ${isDay ? 'text-slate-950' : 'text-white'}`}>{col.label}</span>
         </div>
         <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
               style={{ background: col.color + '33', color: col.color, border: `1px solid ${col.color}44` }}>
@@ -164,7 +181,7 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
       {/* Tarjetas */}
       <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
         {cards.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-slate-600 text-xs text-center">
+          <div className={`flex flex-col items-center justify-center py-10 text-xs text-center ${isDay ? 'text-slate-600' : 'text-slate-600'}`}>
             <div className="text-3xl mb-2 opacity-30">{col.icon}</div>
             <p>Sin incidentes aquí</p>
             {isDragTarget && <p className="text-slate-400 mt-1">Suelta aquí para mover</p>}
@@ -194,6 +211,8 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
 // ─── Drawer de detalle ────────────────────────────────────────────────────────
 function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const navigate = useNavigate();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [form, setForm] = useState({
     estado:            incidente.estado,
     prioridad:         incidente.prioridad,
@@ -232,24 +251,28 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       {/* Drawer */}
       <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 overflow-y-auto"
            style={{
-             background: 'linear-gradient(180deg,#0d1b2e,#0f172a)',
-             borderLeft: '1px solid rgba(255,255,255,0.07)',
-             boxShadow: '-20px 0 60px rgba(0,0,0,0.5)',
+             background: isDay ? '#f8fafc' : 'linear-gradient(180deg,#0d1b2e,#0f172a)',
+             borderLeft: isDay ? '1px solid #dbe3ef' : '1px solid rgba(255,255,255,0.07)',
+             boxShadow: isDay ? '-20px 0 60px rgba(15,23,42,0.16)' : '-20px 0 60px rgba(0,0,0,0.5)',
              animation: 'slideInRight .25s ease',
            }}>
         <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
 
         {/* Header drawer */}
         <div className="sticky top-0 z-10 px-5 py-4 flex items-center gap-3"
-             style={{ background:'rgba(13,27,46,0.95)', backdropFilter:'blur(12px)', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
+             style={{
+               background: isDay ? 'rgba(248,250,252,0.96)' : 'rgba(13,27,46,0.95)',
+               backdropFilter:'blur(12px)',
+               borderBottom: isDay ? '1px solid #dbe3ef' : '1px solid rgba(255,255,255,0.06)'
+             }}>
           <span className="text-2xl">{tipo.emoji}</span>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-white truncate">{nombre}</p>
+            <p className={`font-bold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
             {incidente.laboratorio_nombre && (
               <p className="text-xs text-slate-500 truncate">📍 {incidente.laboratorio_nombre}</p>
             )}
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors">
+          <button onClick={onClose} className={`p-1.5 rounded-xl transition-colors ${isDay ? 'text-slate-500 hover:text-slate-950 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -259,23 +282,23 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
         <div className="p-5 space-y-5">
 
           {/* Info */}
-          <div className="glass-sm rounded-xl p-4 space-y-3 text-sm">
+          <div className={`glass-sm rounded-xl p-4 space-y-3 text-sm ${isDay ? 'bg-white border border-slate-200' : ''}`}>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Origen</span>
-              <span className="text-slate-300">{ORIGENES[incidente.origen] || incidente.origen}</span>
+              <span className={isDay ? 'text-slate-800' : 'text-slate-300'}>{ORIGENES[incidente.origen] || incidente.origen}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Reportado por</span>
-              <span className="text-slate-300 font-medium">{incidente.reportado_por || '—'}</span>
+              <span className={`${isDay ? 'text-slate-800' : 'text-slate-300'} font-medium`}>{incidente.reportado_por || '—'}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Fecha</span>
-              <span className="text-slate-300">{new Date(incidente.fecha_reporte).toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric' })}</span>
+              <span className={isDay ? 'text-slate-800' : 'text-slate-300'}>{new Date(incidente.fecha_reporte).toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric' })}</span>
             </div>
             {incidente.descripcion && (
               <div className="pt-2 border-t border-white/5">
                 <p className="text-slate-500 text-xs mb-1">Descripción</p>
-                <p className="text-slate-300 leading-relaxed">{incidente.descripcion}</p>
+                <p className={`${isDay ? 'text-slate-800' : 'text-slate-300'} leading-relaxed`}>{incidente.descripcion}</p>
               </div>
             )}
           </div>
@@ -285,13 +308,13 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Estado</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                ['PENDIENTE',   '⏳', 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
-                ['EN_REVISION', '🔍', 'border-blue-500/50 bg-blue-500/10 text-blue-300'],
-                ['REPARADO',    '✅', 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'],
-                ['DADO_DE_BAJA','📦', 'border-slate-500/50 bg-slate-500/10 text-slate-400'],
+                ['PENDIENTE',   '⏳', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
+                ['EN_REVISION', '🔍', isDay ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-blue-500/50 bg-blue-500/10 text-blue-300'],
+                ['REPARADO',    '✅', isDay ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'],
+                ['DADO_DE_BAJA','📦', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400'],
               ].map(([val, icon, cls]) => (
                 <label key={val} className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer text-sm transition-all
-                  ${form.estado === val ? `${cls} border-opacity-100` : 'border-white/5 hover:border-white/10 text-slate-400'}`}>
+                  ${form.estado === val ? `${cls} border-opacity-100` : isDay ? 'border-slate-200 hover:border-slate-300 text-slate-600 bg-white' : 'border-white/5 hover:border-white/10 text-slate-400'}`}>
                   <input type="radio" name="estado" value={val} className="sr-only"
                     checked={form.estado === val}
                     onChange={() => setForm({...form, estado: val})} />
@@ -308,13 +331,13 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           <div>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Prioridad</p>
             <div className="flex gap-2">
-              {[['ALTA','🔴','border-red-500/50 bg-red-500/10 text-red-300'],
-                ['MEDIA','🟡','border-amber-500/50 bg-amber-500/10 text-amber-300'],
-                ['BAJA','⚪','border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,icon,cls]) => (
+              {[['ALTA','🔴', isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/50 bg-red-500/10 text-red-300'],
+                ['MEDIA','🟡', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
+                ['BAJA','⚪', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,icon,cls]) => (
                 <button key={val} type="button"
                   onClick={() => setForm({...form, prioridad: val})}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex items-center justify-center gap-1.5
-                    ${form.prioridad === val ? `${cls}` : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
+                    ${form.prioridad === val ? `${cls}` : isDay ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white' : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
                   {icon} {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
                 </button>
               ))}
@@ -344,11 +367,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
 
           {/* Adeudo vinculado o botón crear */}
           {incidente.alumno_responsable && (
-            <div className="glass-sm rounded-xl p-4 space-y-2">
+            <div className={`glass-sm rounded-xl p-4 space-y-2 ${isDay ? 'bg-white border border-slate-200' : ''}`}>
               <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Alumno responsable</p>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm text-white font-medium truncate">{incidente.alumno_responsable.nombre}</p>
+                  <p className={`text-sm font-medium truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{incidente.alumno_responsable.nombre}</p>
                   <p className="text-xs text-slate-500">{incidente.alumno_responsable.matricula}</p>
                 </div>
 
@@ -358,8 +381,8 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                     onClick={() => navigate(`/admin/adeudos?id=${incidente.adeudo_id}`)}
                     className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors
                       ${incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
-                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
-                        : 'text-orange-300 border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20'}`}
+                        ? isDay ? 'text-emerald-800 border-emerald-300 bg-emerald-50 hover:bg-emerald-100' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
+                        : isDay ? 'text-orange-800 border-orange-300 bg-orange-50 hover:bg-orange-100' : 'text-orange-300 border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20'}`}
                   >
                     ⚖️ Adeudo #{incidente.adeudo_id}
                     {' · '}{incidente.adeudo_estado === 'RESUELTO' ? 'Resuelto'
@@ -379,7 +402,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                       });
                       navigate(`/admin/adeudos?${params.toString()}`);
                     }}
-                    className="shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                    className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors ${isDay ? 'text-amber-900 border-amber-300 bg-amber-100 hover:bg-amber-200' : 'text-amber-300 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20'}`}
                   >
                     📋 Crear adeudo
                   </button>
@@ -392,7 +415,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           {incidente.adeudo_id &&
            incidente.adeudo_estado !== 'RESUELTO' &&
            incidente.adeudo_estado !== 'CANCELADO' && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-orange-900/20 border border-orange-500/30 text-orange-300 text-xs">
+            <div className={`flex items-start gap-2 px-3 py-2.5 rounded-xl border text-xs ${isDay ? 'bg-orange-50 border-orange-300 text-orange-900' : 'bg-orange-900/20 border-orange-500/30 text-orange-300'}`}>
               <span className="mt-0.5 shrink-0">⚠️</span>
               <span>
                 Este incidente tiene un <strong>adeudo pendiente</strong> vinculado.
@@ -546,6 +569,8 @@ function ComboboxActivo({ activos, value, onChange, placeholder = 'Buscar por no
 
 // ─── Modal nuevo incidente ────────────────────────────────────────────────────
 function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const { usuario } = useAuth();
   const esLabAdmin = usuario?.rol === 'LAB_ADMIN';
   const labIdFijo  = esLabAdmin ? String(usuario.laboratorio_id) : '';
@@ -641,10 +666,10 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 <button key={val} type="button" onClick={() => setForm({...form, prioridad: val})}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex items-center justify-center gap-1.5
                     ${form.prioridad === val
-                      ? val === 'ALTA'  ? 'border-red-500/60 bg-red-500/10 text-red-300'
-                      : val === 'MEDIA' ? 'border-amber-500/60 bg-amber-500/10 text-amber-300'
-                      :                  'border-slate-500/60 bg-slate-500/10 text-slate-400'
-                      : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
+                      ? val === 'ALTA'  ? isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/60 bg-red-500/10 text-red-300'
+                      : val === 'MEDIA' ? isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/60 bg-amber-500/10 text-amber-300'
+                      :                  isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/60 bg-slate-500/10 text-slate-400'
+                      : isDay ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white' : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
                   {icon} {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
                 </button>
               ))}
@@ -1462,6 +1487,8 @@ export default function Mantenimiento() {
   const [dragTarget,   setDragTarget]   = useState(null);
   const dragItem = useRef(null);
   const { toast } = useToast();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
 
   const cargarTodo = useCallback(async () => {
     setLoading(true); setError('');
@@ -1567,8 +1594,8 @@ export default function Mantenimiento() {
       {/* Header principal */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-white">Mantenimiento</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Incidentes · Preventivo · Historial de equipos</p>
+          <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Mantenimiento</h1>
+          <p className={`${isDay ? 'text-slate-600' : 'text-slate-400'} text-sm mt-0.5`}>Incidentes · Preventivo · Historial de equipos</p>
         </div>
         {tab === 'kanban' && (
           <button onClick={abrirModalNuevo}
@@ -1582,15 +1609,18 @@ export default function Mantenimiento() {
       </div>
 
       {/* Pestañas */}
-      <div className="flex gap-1 mb-6 p-1 rounded-2xl" style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.07)' }}>
+      <div className="flex gap-1 mb-6 p-1 rounded-2xl" style={{
+        background: isDay ? '#ffffff' : 'rgba(255,255,255,0.04)',
+        border: isDay ? '1px solid #dbe3ef' : '1px solid rgba(255,255,255,0.07)'
+      }}>
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium transition-all duration-200
               ${tab === t.key
-                ? 'bg-slate-700/80 text-white shadow-lg'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                ? isDay ? 'bg-emerald-50 text-slate-950 shadow border border-emerald-100' : 'bg-slate-700/80 text-white shadow-lg'
+                : isDay ? 'text-slate-600 hover:text-slate-950 hover:bg-slate-50' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
           >
             {t.icon}
             <span>{t.label}</span>
@@ -1629,14 +1659,14 @@ export default function Mantenimiento() {
           {/* Stats + filtros */}
           <div className="flex flex-wrap items-center gap-3 mb-5">
             {[
-              { label:'Pendientes',  value: stats.pendientes  ?? '—', color:'text-amber-400' },
+              { label:'Pendientes',  value: stats.pendientes  ?? '—', color: isDay ? 'text-amber-800' : 'text-amber-400' },
               { label:'En revisión', value: stats.en_revision ?? '—', color:'text-blue-400'  },
               { label:'Reparados',   value: stats.reparados   ?? '—', color:'text-emerald-400' },
               { label:'Alta prioridad', value: stats.alta_prioridad ?? '—', color:'text-red-400' },
             ].map(s => (
-              <div key={s.label} className="glass-sm rounded-xl px-4 py-2.5 flex items-center gap-2.5">
+              <div key={s.label} className={`glass-sm rounded-xl px-4 py-2.5 flex items-center gap-2.5 ${isDay ? 'bg-white border border-slate-200' : ''}`}>
                 <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-                <p className="text-slate-500 text-xs">{s.label}</p>
+                <p className={`${isDay ? 'text-slate-600' : 'text-slate-500'} text-xs`}>{s.label}</p>
               </div>
             ))}
 

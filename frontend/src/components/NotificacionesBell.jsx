@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 
@@ -32,8 +33,9 @@ const TIPO_CONFIG = {
 };
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export default function NotificacionesBell() {
+export default function NotificacionesBell({ comunicadosPendientes = 0 }) {
   const { usuario }             = useAuth();
+  const navigate                = useNavigate();
   const [open, setOpen]         = useState(false);
   const [notifs, setNotifs]     = useState([]);
   const [noLeidas, setNoLeidas] = useState(0);
@@ -126,6 +128,13 @@ export default function NotificacionesBell() {
 
   if (!usuario) return null;
 
+  const pendientesComunicados = Number(comunicadosPendientes) || 0;
+  const totalBadge = noLeidas + pendientesComunicados;
+  const irAComunicados = () => {
+    setOpen(false);
+    navigate('/comunicados?abrir=pendiente');
+  };
+
   // ── Panel de notificaciones (portaleado a document.body) ──────────────────
   const panel = open ? createPortal(
     <div
@@ -153,10 +162,10 @@ export default function NotificacionesBell() {
                     padding:'12px 16px', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
         <h3 style={{ color:'#f1f5f9', fontWeight:600, fontSize:14, margin:0 }}>
           Notificaciones
-          {noLeidas > 0 && (
+          {totalBadge > 0 && (
             <span style={{ marginLeft:8, padding:'1px 7px', background:'#ef4444',
                            color:'#fff', fontSize:10, borderRadius:999, fontWeight:700 }}>
-              {noLeidas} nuevas
+              {totalBadge} nuevas
             </span>
           )}
         </h3>
@@ -177,14 +186,43 @@ export default function NotificacionesBell() {
                           borderTopColor:'transparent', borderRadius:'50%',
                           animation:'spin 0.7s linear infinite' }} />
           </div>
-        ) : notifs.length === 0 ? (
+        ) : notifs.length === 0 && pendientesComunicados === 0 ? (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
                         justifyContent:'center', padding:'48px 0', color:'#64748b' }}>
             <span style={{ fontSize:36, marginBottom:8 }}>🔕</span>
             <p style={{ fontSize:14, margin:0 }}>Sin notificaciones</p>
           </div>
         ) : (
-          notifs.map(n => {
+          <>
+          {pendientesComunicados > 0 && (
+            <button
+              type="button"
+              onClick={irAComunicados}
+              style={{
+                width:'100%', display:'flex', gap:12, padding:'14px 16px',
+                border:'none', borderBottom:'1px solid rgba(255,255,255,0.06)',
+                cursor:'pointer', textAlign:'left', background:'rgba(37,99,235,0.14)',
+                color:'#dbeafe',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(37,99,235,0.20)'}
+              onMouseLeave={e => e.currentTarget.style.background='rgba(37,99,235,0.14)'}
+            >
+              <div style={{ flexShrink:0, width:34, height:34, borderRadius:'50%',
+                            display:'flex', alignItems:'center', justifyContent:'center',
+                            background:'rgba(37,99,235,0.22)', fontSize:16 }}>
+                {'📢'}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <p style={{ fontSize:13, fontWeight:700, color:'#eff6ff', margin:0 }}>
+                  {pendientesComunicados === 1 ? '1 comunicado pendiente' : `${pendientesComunicados} comunicados pendientes`}
+                </p>
+                <p style={{ fontSize:12, color:'#bfdbfe', margin:'4px 0 0', lineHeight:1.35 }}>
+                  Revisar avisos institucionales dirigidos a ti.
+                </p>
+              </div>
+            </button>
+          )}
+          {notifs.map(n => {
             const c = cfg(n.tipo);
             return (
               <div key={n.id}
@@ -239,7 +277,8 @@ export default function NotificacionesBell() {
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
 
@@ -262,11 +301,11 @@ export default function NotificacionesBell() {
         title="Notificaciones"
       >
         <IconBell className="w-5 h-5" />
-        {noLeidas > 0 && (
+        {totalBadge > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1
                            bg-red-500 text-white text-[10px] font-bold rounded-full
                            flex items-center justify-center leading-none">
-            {noLeidas > 99 ? '99+' : noLeidas}
+            {totalBadge > 99 ? '99+' : totalBadge}
           </span>
         )}
       </button>

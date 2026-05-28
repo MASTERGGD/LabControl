@@ -7,12 +7,15 @@ from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, crear_access_token, verificar_password
 from services.auditoria import registrar, Accion, Recurso
+from services.rate_limit import clear_login_failures, ensure_login_not_locked, register_login_failure
 import datetime
 import os
 
-# Duracion del token leida desde la variable de entorno ACCESS_TOKEN_EXPIRE_HOURS.
-# Si no esta definida se usa 8 horas como valor por defecto.
-_TOKEN_EXPIRE_HOURS = int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "8"))
+def _token_expire_minutes() -> int:
+    """Duracion del access token. ACCESS_TOKEN_EXPIRE_MINUTES tiene prioridad."""
+    if os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"):
+        return int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480"))
+    return int(os.getenv("ACCESS_TOKEN_EXPIRE_HOURS", "8")) * 60
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 
@@ -67,13 +70,16 @@ def login(
 ):
     """
     Autentica al usuario con email y contrasena.
-    Vigencia configurada con ACCESS_TOKEN_EXPIRE_HOURS (por defecto 8 horas).
+    Vigencia configurada con ACCESS_TOKEN_EXPIRE_MINUTES (por defecto 480).
     """
+    ensure_login_not_locked(request, form_data.username)
+
     usuario = db.query(Usuario).filter(
         Usuario.email == form_data.username
     ).first()
 
     if not usuario or not verificar_password(form_data.password, usuario.password_hash):
+        register_login_failure(request, form_data.username)
         registrar(
             db, accion=Accion.LOGIN_FALLIDO, recurso=Recurso.SISTEMA,
             detalle={"email_intentado": form_data.username},
@@ -86,6 +92,7 @@ def login(
         )
 
     if not usuario.activo:
+        register_login_failure(request, form_data.username)
         registrar(
             db, accion=Accion.LOGIN_FALLIDO, recurso=Recurso.SISTEMA,
             usuario=usuario, detalle={"razon": "cuenta_desactivada"},
@@ -101,9 +108,10 @@ def login(
         "email": usuario.email,
         "rol": usuario.rol.value,
         "lab_id": usuario.laboratorio_id,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=_TOKEN_EXPIRE_HOURS),
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
     }
     token = crear_access_token(token_data)
+    clear_login_failures(request, form_data.username)
 
     registrar(db, accion=Accion.LOGIN_OK, recurso=Recurso.SISTEMA,
               usuario=usuario, request=request)

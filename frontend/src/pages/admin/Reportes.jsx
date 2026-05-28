@@ -503,7 +503,7 @@ function SummaryCard({ label, value, color = '#3b82f6', sub }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   return (
-    <div style={{
+    <div className="card-lift" style={{
       background: isDay ? '#FFFFFF' : 'rgba(8,14,30,0.72)',
       border: `1px solid ${color}28`,
       borderRadius: '1rem',
@@ -531,6 +531,26 @@ function SummaryCard({ label, value, color = '#3b82f6', sub }) {
         {value}
       </p>
       {sub && <p style={{ fontSize: 11, color: '#64748b', marginTop: 8, position: 'relative' }}>{sub}</p>}
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, sub, tone = 'blue' }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const tones = {
+    blue:   isDay ? ['#EFF6FF', '#BFDBFE', '#1D4ED8'] : ['rgba(59,130,246,0.08)', 'rgba(59,130,246,0.22)', '#93c5fd'],
+    green:  isDay ? ['#ECFDF5', '#A7F3D0', '#047857'] : ['rgba(16,185,129,0.08)', 'rgba(16,185,129,0.22)', '#6ee7b7'],
+    amber:  isDay ? ['#FFFBEB', '#FCD34D', '#B45309'] : ['rgba(245,158,11,0.10)', 'rgba(245,158,11,0.26)', '#fcd34d'],
+    red:    isDay ? ['#FEF2F2', '#FCA5A5', '#B91C1C'] : ['rgba(239,68,68,0.10)', 'rgba(239,68,68,0.26)', '#fca5a5'],
+    slate:  isDay ? ['#F8FAFC', '#CBD5E1', '#334155'] : ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.10)', '#cbd5e1'],
+  };
+  const [bg, border, text] = tones[tone] || tones.blue;
+  return (
+    <div className="card-lift rounded-xl border px-4 py-3" style={{ background: bg, borderColor: border }}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: isDay ? '#64748B' : '#64748B' }}>{label}</p>
+      <p className="mt-1 text-2xl font-extrabold tabular-nums" style={{ color: text }}>{value}</p>
+      {sub && <p className="mt-1 text-xs" style={{ color: isDay ? '#475569' : '#94a3b8' }}>{sub}</p>}
     </div>
   );
 }
@@ -563,6 +583,8 @@ function KpiComparativo({ emoji, label, actual, anterior, labelAnt, unidad = '',
 // ─── Tab: Reporte Mensual ─────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════════
 function TabMensual() {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const hoy   = new Date();
   const [labs, setLabs]         = useState([]);
   const [labId, setLabId]       = useState('');
@@ -693,7 +715,59 @@ function TabMensual() {
             />
           </div>
 
-          <div>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
+            <section className="glass p-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <p className={`text-sm font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>Métricas operativas</p>
+                  <p className="text-xs text-slate-500">Lectura compacta del mes seleccionado.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <MiniMetric label="Docentes activos" value={datos.docentes.total} tone="blue" />
+                <MiniMetric label="PCs operativas" value={`${datos.pcs.operativas}/${datos.pcs.total}`} tone="green" />
+                <MiniMetric label="PCs en mant." value={datos.pcs.mantenimiento} tone={datos.pcs.mantenimiento > 0 ? 'amber' : 'slate'} />
+                <MiniMetric label="Activos op." value={`${datos.activos.operativos}/${datos.activos.total}`} tone="green" />
+                <MiniMetric label="Préstamos" value={datos.prestamos.total} sub={`${datos.prestamos.devueltos} devueltos`} tone="blue" />
+                <MiniMetric label="Vencidos" value={datos.prestamos.vencidos} tone={datos.prestamos.vencidos > 0 ? 'red' : 'slate'} />
+                <MiniMetric label="Incidentes" value={datos.incidentes.total} sub={`${datos.incidentes.reparados} reparados`} tone={datos.incidentes.total > 0 ? 'amber' : 'slate'} />
+                <MiniMetric label="Bajas" value={datos.incidentes.baja} tone={datos.incidentes.baja > 0 ? 'red' : 'slate'} />
+              </div>
+            </section>
+
+            <section className={`card-lift rounded-2xl border p-4 ${
+              isDay ? 'bg-white border-slate-200' : 'bg-slate-900/70 border-slate-800'
+            }`}>
+              <p className={`text-sm font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>Atención requerida</p>
+              <div className="mt-3 space-y-2">
+                {[
+                  datos.prestamos.vencidos > 0 && ['Préstamos vencidos', `${datos.prestamos.vencidos} requieren seguimiento`, 'red'],
+                  datos.pcs.mantenimiento > 0 && ['Equipos en mantenimiento', `${datos.pcs.mantenimiento} PC pendiente(s)`, 'amber'],
+                  datos.incidentes.pendientes > 0 && ['Incidentes pendientes', `${datos.incidentes.pendientes} sin resolver`, 'amber'],
+                  (datos.activos.mantenimiento + datos.activos.danados) > 0 && ['Activos dañados/mant.', `${datos.activos.mantenimiento + datos.activos.danados} activo(s)`, 'amber'],
+                ].filter(Boolean).map(([title, detail, tone]) => (
+                  <div key={title} className={`rounded-xl border px-3 py-2 ${
+                    tone === 'red'
+                      ? isDay ? 'bg-red-50 border-red-200 text-red-800' : 'bg-red-950/25 border-red-700/40 text-red-200'
+                      : isDay ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-950/25 border-amber-700/40 text-amber-200'
+                  }`}>
+                    <p className="text-sm font-semibold">{title}</p>
+                    <p className="text-xs opacity-80">{detail}</p>
+                  </div>
+                ))}
+                {datos.prestamos.vencidos === 0 && datos.pcs.mantenimiento === 0 && datos.incidentes.pendientes === 0 && (datos.activos.mantenimiento + datos.activos.danados) === 0 && (
+                  <div className={`rounded-xl border px-3 py-3 ${
+                    isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-950/25 border-emerald-700/40 text-emerald-200'
+                  }`}>
+                    <p className="text-sm font-semibold">Sin alertas críticas</p>
+                    <p className="text-xs opacity-80">No hay vencidos, incidentes pendientes ni equipos en mantenimiento.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className="hidden">
             <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Actividad del mes</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="🗓️" label="Sesiones realizadas"  value={datos.sesiones.total}      color="blue"/>
@@ -703,7 +777,7 @@ function TabMensual() {
             </div>
           </div>
 
-          <div>
+          <div className="hidden">
             <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Estado del equipo</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="💻" label={`PCs operativas / ${datos.pcs.total}`}   value={datos.pcs.operativas}   color="green"/>
@@ -715,7 +789,7 @@ function TabMensual() {
             </div>
           </div>
 
-          <div>
+          <div className="hidden">
             <p style={{ fontSize: 10, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>Préstamos e incidentes</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard emoji="📤" label="Préstamos del mes"     value={datos.prestamos.total}    color="blue"/>
@@ -725,13 +799,13 @@ function TabMensual() {
             </div>
           </div>
 
-          {datos.incidentes.total > 0 && (
+          {false && datos.incidentes.total > 0 && (
             <div className="glass p-4">
-              <p className="text-sm font-semibold text-gray-300 mb-3">Seguimiento de incidentes</p>
+              <p className={`text-sm font-semibold mb-3 ${isDay ? 'text-slate-800' : 'text-gray-300'}`}>Seguimiento de incidentes</p>
               <div className="flex gap-3 flex-wrap">
-                {[["Pendientes", datos.incidentes.pendientes, "bg-yellow-900/40 text-yellow-300 border-yellow-700"],
-                  ["Reparados",  datos.incidentes.reparados,  "bg-green-900/40 text-green-300 border-green-700"],
-                  ["Baja",       datos.incidentes.baja,       "bg-gray-700 text-gray-300 border-gray-600"],
+                {[["Pendientes", datos.incidentes.pendientes, isDay ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-yellow-900/40 text-yellow-300 border-yellow-700"],
+                  ["Reparados",  datos.incidentes.reparados,  isDay ? "bg-emerald-50 text-emerald-800 border-emerald-300" : "bg-green-900/40 text-green-300 border-green-700"],
+                  ["Baja",       datos.incidentes.baja,       isDay ? "bg-slate-100 text-slate-700 border-slate-300" : "bg-gray-700 text-gray-300 border-gray-600"],
                 ].map(([lbl, val, cls]) => (
                   <div key={lbl} className={`border rounded-lg px-4 py-2 text-center ${cls}`}>
                     <p className="text-xl font-bold">{val}</p>
@@ -742,17 +816,15 @@ function TabMensual() {
             </div>
           )}
 
-          <div className="bg-blue-900/20 border border-blue-800 rounded-xl px-5 py-4 flex items-start gap-3">
+          <div className={`card-lift rounded-xl px-5 py-4 flex items-start gap-3 border ${
+            isDay ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-900/20 border-blue-800'
+          }`}>
             <span className="text-2xl">📊</span>
             <div>
-              <p className="text-sm font-semibold text-blue-200">El reporte Excel incluye 7 hojas detalladas:</p>
-              <p className="text-xs text-blue-300 mt-1">
+              <p className={`text-sm font-semibold ${isDay ? 'text-emerald-900' : 'text-blue-200'}`}>El reporte Excel incluye 7 hojas detalladas:</p>
+              <p className={`text-xs mt-1 ${isDay ? 'text-emerald-800' : 'text-blue-300'}`}>
                 Resumen ejecutivo · Sesiones por docente · Alumnos atendidos · Horas pico (mapa de calor) · Estado del inventario · Préstamos del periodo · Incidentes y mantenimiento
               </p>
-              <button onClick={descargar} disabled={descargando}
-                className="mt-3 flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-600 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors">
-                {descargando ? 'Generando...' : '⬇️  Descargar Excel ahora'}
-              </button>
             </div>
           </div>
         </div>

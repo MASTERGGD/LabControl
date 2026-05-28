@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const ESTADO_CFG = {
@@ -18,6 +19,15 @@ const ESTADO_CFG = {
   CANCELADA:  { label: 'Cancelada',   dot: 'bg-slate-400',  bg: 'bg-slate-500/20 border-slate-500/30', text: 'text-slate-400'  },
   LIBERADA:   { label: 'Liberada',    dot: 'bg-violet-400', bg: 'bg-violet-500/20 border-violet-500/30', text: 'text-violet-300' },
   FINALIZADA: { label: 'Finalizada',  dot: 'bg-blue-400',   bg: 'bg-blue-500/20 border-blue-500/30',   text: 'text-blue-300'   },
+};
+
+const ESTADO_CFG_DAY = {
+  PENDIENTE:  { label: 'Pendiente',   dot: 'bg-amber-500',  bg: 'bg-amber-50 border-amber-300',   text: 'text-amber-800'  },
+  APROBADA:   { label: 'Aprobada',    dot: 'bg-emerald-600', bg: 'bg-emerald-50 border-emerald-300', text: 'text-emerald-800' },
+  RECHAZADA:  { label: 'Rechazada',   dot: 'bg-red-600',    bg: 'bg-red-50 border-red-300',       text: 'text-red-800'    },
+  CANCELADA:  { label: 'Cancelada',   dot: 'bg-slate-500',  bg: 'bg-slate-100 border-slate-300',  text: 'text-slate-700'  },
+  LIBERADA:   { label: 'Liberada',    dot: 'bg-violet-600', bg: 'bg-violet-50 border-violet-300', text: 'text-violet-800' },
+  FINALIZADA: { label: 'Finalizada',  dot: 'bg-blue-600',   bg: 'bg-blue-50 border-blue-300',     text: 'text-blue-800'   },
 };
 const TIPO_ICON = { AUDIOVISUAL: '🎥', RECTORIA: '🏛️', OTRO: '🏢' };
 const REQS_LABEL = {
@@ -326,6 +336,8 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
 export default function MisSolicitudes() {
   const navigate = useNavigate();
   const { toast: showToast } = useToast();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [filtro, setFiltro]           = useState('');
@@ -363,8 +375,8 @@ export default function MisSolicitudes() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-white">Mis solicitudes</h1>
-            <p className="text-slate-400 text-sm mt-0.5">Historial de tus solicitudes de espacios institucionales</p>
+            <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Mis solicitudes</h1>
+            <p className={`text-sm mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Historial de tus solicitudes de espacios institucionales</p>
           </div>
           <button onClick={() => navigate('/espacios/apartar')} className="btn-blue flex items-center gap-2 self-start">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -375,7 +387,9 @@ export default function MisSolicitudes() {
         </div>
 
         {/* Filtros de estado */}
-        <div className="flex gap-1 glass rounded-xl p-1 self-start w-fit max-w-full overflow-x-auto">
+        <div className={`flex gap-1 rounded-xl p-1 self-start w-fit max-w-full overflow-x-auto ${
+          isDay ? 'bg-white border border-slate-200 shadow-sm' : 'glass'
+        }`}>
           {[
             { k: '',           l: 'Todas' },
             { k: 'PENDIENTE',  l: 'Pendientes' },
@@ -386,7 +400,9 @@ export default function MisSolicitudes() {
           ].map(({ k, l }) => (
             <button key={k} onClick={() => setFiltro(k)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                filtro === k ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                filtro === k
+                  ? 'bg-blue-600 text-white'
+                  : isDay ? 'text-slate-600 hover:text-slate-950 hover:bg-slate-100' : 'text-slate-400 hover:text-white'
               }`}>
               {l}
             </button>
@@ -396,13 +412,15 @@ export default function MisSolicitudes() {
         {/* Lista */}
         {loading ? (
           <div className="space-y-3">
-            {[1,2,3].map(i => <div key={i} className="glass rounded-2xl h-24 animate-pulse" />)}
+            {[1,2,3].map(i => (
+              <div key={i} className={`${isDay ? 'bg-white border border-slate-200' : 'glass'} rounded-2xl h-24 animate-pulse`} />
+            ))}
           </div>
         ) : solicitudes.length === 0 ? (
-          <div className="glass rounded-2xl p-12 2xl:p-16 text-center space-y-3">
+          <div className={`${isDay ? 'bg-white border border-slate-200 shadow-sm' : 'glass'} rounded-2xl p-12 2xl:p-16 text-center space-y-3`}>
             <div className="text-5xl">📋</div>
-            <p className="text-white font-semibold">Sin solicitudes {filtro ? ESTADO_CFG[filtro]?.label?.toLowerCase() : ''}</p>
-            <p className="text-slate-400 text-sm">
+            <p className={`${isDay ? 'text-slate-950' : 'text-white'} font-semibold`}>Sin solicitudes {filtro ? ESTADO_CFG[filtro]?.label?.toLowerCase() : ''}</p>
+            <p className={`${isDay ? 'text-slate-600' : 'text-slate-400'} text-sm`}>
               {!filtro ? 'Aún no has solicitado ningún espacio.' : 'Prueba con otro filtro.'}
             </p>
             {!filtro && (
@@ -415,41 +433,46 @@ export default function MisSolicitudes() {
           <div className="space-y-6">
             {Object.entries(grupos).sort(([a],[b]) => b.localeCompare(a)).map(([mes, items]) => (
               <div key={mes}>
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 px-1">
+                <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 px-1 ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
                   {new Date(mes + '-01').toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
                 </h3>
                 <div className="space-y-2">
                   {items.map(s => {
-                    const cfg = ESTADO_CFG[s.estado] || ESTADO_CFG.PENDIENTE;
+                    const cfgs = isDay ? ESTADO_CFG_DAY : ESTADO_CFG;
+                    const cfg = cfgs[s.estado] || cfgs.PENDIENTE;
                     return (
                       <div key={s.id} onClick={() => setDetalle(s)}
-                        className="glass rounded-2xl p-4 2xl:p-5 cursor-pointer hover:bg-white/5 transition-colors">
+                        className={`rounded-2xl p-4 2xl:p-5 cursor-pointer transition-colors ${
+                          isDay
+                            ? 'bg-white border border-slate-200 shadow-sm hover:border-blue-200 hover:bg-slate-50'
+                            : 'glass hover:bg-white/5'
+                        }`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.text}`}>
+                              <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.bg} ${cfg.text}`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                                 {cfg.label}
                               </span>
-                              <span className="text-xs text-slate-500">
+                              <span className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
                                 {TIPO_ICON[s.espacio_tipo]} {s.espacio_nombre}
                               </span>
                             </div>
-                            <p className="font-medium text-white text-sm truncate">{s.motivo}</p>
+                            <p className={`font-medium text-sm truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{s.motivo}</p>
                             {s.estado === 'RECHAZADA' && s.motivo_rechazo && (
-                              <p className="text-xs text-red-400 mt-0.5 truncate">Rechazada: {s.motivo_rechazo}</p>
+                              <p className={`text-xs mt-0.5 truncate ${isDay ? 'text-red-700' : 'text-red-400'}`}>Rechazada: {s.motivo_rechazo}</p>
                             )}
                             {s.estado === 'LIBERADA' && s.motivo_liberacion && (
-                              <p className="text-xs text-violet-300 mt-0.5 truncate">Liberada: {s.motivo_liberacion}</p>
+                              <p className={`text-xs mt-0.5 truncate ${isDay ? 'text-violet-700' : 'text-violet-300'}`}>Liberada: {s.motivo_liberacion}</p>
                             )}
                             {s.requerimientos?.length > 0 && (
-                              <p className="text-xs text-slate-500 mt-0.5">
+                              <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
                                 {s.requerimientos.length} requerimiento{s.requerimientos.length > 1 ? 's' : ''}
                               </p>
                             )}
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-sm font-semibold text-white">{s.fecha}</p>
+                            <p className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{s.fecha}</p>
                             <p className="text-xs text-slate-400">{s.hora_inicio} – {s.hora_fin}</p>
                           </div>
                         </div>

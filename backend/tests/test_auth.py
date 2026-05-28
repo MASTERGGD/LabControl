@@ -67,6 +67,36 @@ class TestLogin:
         assert resp.status_code == 200
         assert resp.json()["usuario"]["rol"] == "DOCENTE"
 
+    def test_login_se_bloquea_temporalmente_por_fallos(self, client, admin_user):
+        """Tras varios intentos fallidos, el login devuelve 429 temporalmente."""
+        for _ in range(5):
+            resp = client.post(
+                "/auth/login",
+                data={"username": "admin@test.com", "password": "MalPassword"},
+            )
+            assert resp.status_code == 401
+
+        resp = client.post(
+            "/auth/login",
+            data={"username": "admin@test.com", "password": "MalPassword"},
+        )
+        assert resp.status_code == 429
+        assert "Retry-After" in resp.headers
+
+    def test_rate_limit_login_por_ip(self, client):
+        """El middleware corta exceso de solicitudes al endpoint de login."""
+        for _ in range(10):
+            client.post(
+                "/auth/login",
+                data={"username": "nadie@test.com", "password": "x"},
+            )
+
+        resp = client.post(
+            "/auth/login",
+            data={"username": "otro@test.com", "password": "x"},
+        )
+        assert resp.status_code == 429
+
 
 class TestMe:
 
@@ -97,5 +127,5 @@ class TestMe:
     def test_me_token_sin_bearer(self, client, admin_user):
         """Enviar el token sin el prefijo 'Bearer' devuelve 401."""
         token = get_token(client, "admin@test.com", "AdminPass123")
-        resp = client.get("/auth/me", headers={"Authorization": token})
+        resp = client.get("/auth/me", headers={"Authorization": token.replace("Bearer ", "")})
         assert resp.status_code == 401

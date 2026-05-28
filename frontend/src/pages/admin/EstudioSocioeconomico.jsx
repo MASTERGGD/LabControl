@@ -159,7 +159,7 @@ function Metric({ label, value, tone }) {
     blue: isDay ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-blue-950/25 border-blue-500/30 text-blue-300",
   };
   return (
-    <div className={`rounded-xl border p-4 ${tones[tone] || tones.blue}`}>
+    <div className={`card-lift rounded-xl border p-4 ${tones[tone] || tones.blue}`}>
       <p className="text-2xl font-bold">{value}</p>
       <p className="text-xs mt-0.5">{label}</p>
     </div>
@@ -187,7 +187,7 @@ export default function EstudioSocioeconomico() {
   return (
     <AdminLayout>
       <div className={`min-h-screen p-6 ${pageBg}`}>
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
               <p className={`text-xs uppercase tracking-[0.2em] ${muted}`}>Diseno funcional</p>
@@ -197,10 +197,17 @@ export default function EstudioSocioeconomico() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="rounded-lg border border-slate-600/70 px-4 py-2 text-sm text-slate-300 hover:bg-white/5">
+              <button
+                type="button"
+                className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                  isDay
+                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    : "border-slate-600/70 text-slate-300 hover:bg-white/5"
+                }`}
+              >
                 Importar Excel
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
+              <button type="button" className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600">
                 Nueva ficha
               </button>
             </div>
@@ -210,10 +217,10 @@ export default function EstudioSocioeconomico() {
             <Metric label="Campos contemplados" value={totalCampos} tone="blue" />
             <Metric label="Secciones del formato" value={SECCIONES.length} tone="green" />
             <Metric label="Reglas condicionales" value={camposCondicionales} tone="amber" />
-            <Metric label="Ruta alumno" value="/alumno" tone="blue" />
+            <Metric label="Acceso estudiante" value="Portal alumno" tone="blue" />
           </div>
 
-          <section className={`rounded-2xl border p-5 ${panel}`}>
+          <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-lg font-bold">Flujo de activacion para alumnos</h2>
@@ -222,7 +229,7 @@ export default function EstudioSocioeconomico() {
                 </p>
               </div>
               <div className={`rounded-xl border px-4 py-3 text-sm ${soft}`}>
-                URL sugerida: <span className="font-semibold">/alumno/estudio-socioeconomico</span>
+                Ruta interna: <span className="font-semibold">/alumno/estudio-socioeconomico</span>
               </div>
             </div>
             <div className="mt-5 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -232,7 +239,7 @@ export default function EstudioSocioeconomico() {
                 ["3", "Validar", "Servicios Escolares revisa calidad y solicita correccion si aplica."],
                 ["4", "Analizar", "Tutoria usa fichas validadas para semaforos y reportes."],
               ].map(([num, title, detail]) => (
-                <div key={num} className={`rounded-xl border p-4 ${soft}`}>
+                <div key={num} className={`card-lift rounded-xl border p-4 ${soft}`}>
                   <span className="inline-flex w-8 h-8 items-center justify-center rounded-lg bg-blue-600 text-white text-sm font-bold">{num}</span>
                   <p className="font-semibold mt-3">{title}</p>
                   <p className={`text-xs mt-1 ${muted}`}>{detail}</p>
@@ -241,8 +248,8 @@ export default function EstudioSocioeconomico() {
             </div>
           </section>
 
-          <div className="grid grid-cols-1 xl:grid-cols-[280px_1fr_320px] gap-6">
-            <aside className={`rounded-2xl border p-3 h-fit ${panel}`}>
+          <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)_360px] 2xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-6">
+            <aside className={`card-lift rounded-2xl border p-3 h-fit ${panel}`}>
               <p className={`text-xs font-semibold uppercase tracking-wide px-2 mb-2 ${muted}`}>Secciones</p>
               <div className="space-y-1">
                 {SECCIONES.map((s, index) => {
@@ -272,7 +279,7 @@ export default function EstudioSocioeconomico() {
               </div>
             </aside>
 
-            <main className={`rounded-2xl border ${panel}`}>
+            <main className={`card-lift rounded-2xl border ${panel}`}>
               <div className="p-6 border-b border-slate-700/50">
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                   <div>
@@ -284,7 +291,7 @@ export default function EstudioSocioeconomico() {
                   </span>
                 </div>
               </div>
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
                 {seccion.campos.map(campo => <FieldPreview key={campo[0]} campo={campo} />)}
               </div>
               <div className={`mx-6 mb-6 rounded-xl border p-4 ${soft}`}>
@@ -296,12 +303,12 @@ export default function EstudioSocioeconomico() {
             </main>
 
             <aside className="space-y-4">
-              <section className={`rounded-2xl border p-5 ${panel}`}>
+              <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
                 <h3 className="font-bold">Calidad de datos</h3>
                 <p className={`text-sm mt-1 ${muted}`}>Validaciones que deben ejecutarse al capturar, importar y antes de reportar.</p>
                 <div className="mt-4 space-y-3">
                   {REGLAS_CALIDAD.map(([titulo, detalle, prioridad]) => (
-                    <div key={titulo} className={`rounded-xl border p-3 ${soft}`}>
+                    <div key={titulo} className={`card-lift rounded-xl border p-3 ${soft}`}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold">{titulo}</p>
                         <span className={`text-[10px] rounded-full px-2 py-0.5 border ${
@@ -318,7 +325,7 @@ export default function EstudioSocioeconomico() {
                 </div>
               </section>
 
-              <section className={`rounded-2xl border p-5 ${panel}`}>
+              <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
                 <h3 className="font-bold">Flujo propuesto</h3>
                 <div className={`mt-4 space-y-3 text-sm ${muted}`}>
                   <p><span className="font-semibold text-blue-400">1.</span> Captura o prellenado desde Excel.</p>

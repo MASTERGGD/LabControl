@@ -6,7 +6,7 @@
  * - Acciones: publicar, archivar, eliminar
  * - Panel lateral de reporte de lecturas
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -15,31 +15,54 @@ import { useAuth } from '../../context/AuthContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = [
-  { v: 'GENERAL',        l: 'General',           color: 'bg-teal-500/20 text-teal-300 border-teal-500/30'     },
-  { v: 'URGENTE',        l: 'Urgente',           color: 'bg-red-500/20 text-red-300 border-red-500/30'        },
-  { v: 'EVENTOS',        l: 'Eventos institucionales', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-  { v: 'ACADEMICO',      l: 'Académico',         color: 'bg-blue-500/20 text-blue-300 border-blue-500/30'     },
-  { v: 'SERVICIOS_ESCOLARES', l: 'Servicios Escolares', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
-  { v: 'TUTORIA',        l: 'Tutoría',           color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-  { v: 'LABORATORIOS',   l: 'Laboratorios / TI', color: 'bg-sky-500/20 text-sky-300 border-sky-500/30' },
-  { v: 'ADMINISTRATIVO', l: 'Administrativo',    color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' },
-  { v: 'RRHH',           l: 'Recursos Humanos',  color: 'bg-pink-500/20 text-pink-300 border-pink-500/30'     },
-  { v: 'MANTENIMIENTO',  l: 'Mantenimiento',     color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
-  { v: 'CONVOCATORIAS',  l: 'Convocatorias',     color: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
-  { v: 'BECAS',          l: 'Becas y apoyos',    color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
-  { v: 'CALENDARIO_ACADEMICO', l: 'Calendario académico', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-  { v: 'SEGURIDAD',      l: 'Seguridad / Protección Civil', color: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
-  { v: 'VINCULACION',    l: 'Vinculación',       color: 'bg-lime-500/20 text-lime-300 border-lime-500/30' },
+  { v: 'GENERAL',        l: 'General',           color: 'bg-slate-100 text-slate-800 border-slate-300' },
+  { v: 'URGENTE',        l: 'Urgente',           color: 'bg-red-50 text-red-800 border-red-300' },
+  { v: 'EVENTOS',        l: 'Eventos institucionales', color: 'bg-violet-50 text-violet-800 border-violet-300' },
+  { v: 'ACADEMICO',      l: 'Académico',         color: 'bg-blue-50 text-blue-800 border-blue-300' },
+  { v: 'SERVICIOS_ESCOLARES', l: 'Servicios Escolares', color: 'bg-cyan-50 text-cyan-800 border-cyan-300' },
+  { v: 'TUTORIA',        l: 'Tutoría',           color: 'bg-indigo-50 text-indigo-800 border-indigo-300' },
+  { v: 'LABORATORIOS',   l: 'Laboratorios / TI', color: 'bg-sky-50 text-sky-800 border-sky-300' },
+  { v: 'ADMINISTRATIVO', l: 'Administrativo',    color: 'bg-slate-100 text-slate-800 border-slate-300' },
+  { v: 'RRHH',           l: 'Recursos Humanos',  color: 'bg-rose-50 text-rose-800 border-rose-300' },
+  { v: 'MANTENIMIENTO',  l: 'Mantenimiento',     color: 'bg-orange-50 text-orange-800 border-orange-300' },
+  { v: 'CONVOCATORIAS',  l: 'Convocatorias',     color: 'bg-purple-50 text-purple-800 border-purple-300' },
+  { v: 'BECAS',          l: 'Becas y apoyos',    color: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  { v: 'CALENDARIO_ACADEMICO', l: 'Calendario académico', color: 'bg-amber-50 text-amber-800 border-amber-300' },
+  { v: 'SEGURIDAD',      l: 'Seguridad / Protección Civil', color: 'bg-red-50 text-red-800 border-red-300' },
+  { v: 'VINCULACION',    l: 'Vinculación',       color: 'bg-lime-50 text-lime-900 border-lime-300' },
 ];
+const CATEGORIAS_SELECCIONABLES = CATEGORIAS.filter(c => c.v !== 'URGENTE');
 const PRIORIDADES = [
   { v: 'INFORMATIVO', l: 'Informativo', dot: 'bg-slate-400' },
   { v: 'IMPORTANTE',  l: 'Importante',  dot: 'bg-amber-400' },
   { v: 'URGENTE',     l: 'Urgente',     dot: 'bg-red-400'   },
 ];
+const ROLES_DESTINATARIO = ['DOCENTE', 'ADMINISTRATIVO', 'LAB_ADMIN', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'MEDICO'];
+const SEGUIMIENTO_OPCIONES = [
+  { v: '', l: 'Todos' },
+  { v: 'CON_RESPUESTAS', l: 'Con respuestas' },
+  { v: 'EN_SEGUIMIENTO', l: 'En seguimiento' },
+  { v: 'REVISADOS', l: 'Revisados' },
+  { v: 'PENDIENTES_LECTURA', l: 'Pendientes lectura' },
+];
+const generarPeriodos = () => {
+  const year = new Date().getFullYear();
+  const defs = [
+    { n: 1, l: 'Enero-Abril' },
+    { n: 2, l: 'Mayo-Agosto' },
+    { n: 3, l: 'Septiembre-Diciembre' },
+  ];
+  return [year - 1, year, year + 1].flatMap(y =>
+    defs.map(p => ({ v: `${y}-${p.n}`, l: `${p.l} ${y}` }))
+  );
+};
+const PERIODOS_ACADEMICOS = generarPeriodos();
 const ESTADOS_CFG = {
   BORRADOR:  { label: 'Borrador',  bg: 'bg-slate-500/20 border-slate-500/30', text: 'text-slate-400'  },
-  PUBLICADO: { label: 'Publicado', bg: 'bg-green-500/20 border-green-500/30', text: 'text-green-300'  },
+  PUBLICADO: { label: 'Publicado', bg: 'bg-emerald-50 border-emerald-300', text: 'text-emerald-800'  },
   ARCHIVADO: { label: 'Archivado', bg: 'bg-slate-500/10 border-slate-500/20', text: 'text-slate-500'  },
+  PROGRAMADO:{ label: 'Programado', bg: 'bg-amber-500/20 border-amber-500/40', text: 'text-amber-300'  },
+  EXPIRADO:  { label: 'Expirado',   bg: 'bg-slate-500/20 border-slate-500/30', text: 'text-slate-400'  },
 };
 const ROLES_OPTS = [
   { v: 'SUPER_ADMIN',    l: 'Super Admin'   },
@@ -52,7 +75,7 @@ const PRIO_MAP = Object.fromEntries(PRIORIDADES.map(p => [p.v, p]));
 
 const EMPTY_FORM = {
   titulo: '', contenido: '', categoria: 'GENERAL', prioridad: 'INFORMATIVO',
-  requiere_confirmacion: false, requiere_retroalimentacion: false, fijado: false,
+  requiere_confirmacion: false, requiere_retroalimentacion: false, notificar_email: false, fijado: false,
   area_emisora: '', departamento_emisor_id: '',
   fecha_publicacion: '', fecha_expiracion: '', fecha_limite_respuesta: '',
   dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [], dest_departamentos: [],
@@ -60,6 +83,36 @@ const EMPTY_FORM = {
 
 const toStartOfDay = value => value ? `${value}T00:00:00` : null;
 const toEndOfDay = value => value ? `${value}T23:59:59` : null;
+const isFutureDate = value => value && new Date(value) > new Date();
+const isPastDate = value => value && new Date(value) <= new Date();
+const rangoPeriodo = value => {
+  if (!value) return null;
+  const [yearRaw, periodoRaw] = value.split('-');
+  const year = Number(yearRaw);
+  const periodo = Number(periodoRaw);
+  if (!year || !periodo) return null;
+  const rangos = {
+    1: [new Date(year, 0, 1, 0, 0, 0), new Date(year, 3, 30, 23, 59, 59)],
+    2: [new Date(year, 4, 1, 0, 0, 0), new Date(year, 7, 31, 23, 59, 59)],
+    3: [new Date(year, 8, 1, 0, 0, 0), new Date(year, 11, 31, 23, 59, 59)],
+  };
+  return rangos[periodo] || null;
+};
+const fueActualizado = comunicado => {
+  if (!comunicado?.actualizado_en) return false;
+  const base = comunicado.fecha_publicacion || comunicado.creado_en;
+  if (!base) return false;
+  return new Date(comunicado.actualizado_en).getTime() - new Date(base).getTime() > 60_000;
+};
+const estadoVisible = comunicado => {
+  if (comunicado.estado === 'PUBLICADO' && isFutureDate(comunicado.fecha_publicacion)) {
+    return ESTADOS_CFG.PROGRAMADO;
+  }
+  if (comunicado.estado === 'PUBLICADO' && isPastDate(comunicado.fecha_expiracion)) {
+    return ESTADOS_CFG.EXPIRADO;
+  }
+  return ESTADOS_CFG[comunicado.estado] || ESTADOS_CFG.BORRADOR;
+};
 
 // ─── Modal Crear/Editar ────────────────────────────────────────────────────────
 function ModalComunicado({ comunicado, onClose, onSaved }) {
@@ -70,12 +123,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [error,  setError]  = useState('');
   const [usuarios, setUsuarios] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
-  const [categoriasPermitidas, setCategoriasPermitidas] = useState(CATEGORIAS);
+  const [categoriasPermitidas, setCategoriasPermitidas] = useState(CATEGORIAS_SELECCIONABLES);
   const [busquedaUsuario, setBusquedaUsuario] = useState('');
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
   const [adjuntosNuevos, setAdjuntosNuevos] = useState([]);
 
   const esTutorAdmin = usuarioActual?.rol === 'TUTORIA_ADMIN';
+  const fechaPublicacionBloqueada = comunicado?.estado === 'PUBLICADO' && !isFutureDate(comunicado?.fecha_publicacion);
 
   useEffect(() => {
     setCargandoUsuarios(true);
@@ -95,18 +149,19 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     }
     api.get(`/comunicados/categorias-permitidas${params.toString() ? `?${params}` : ''}`)
       .then(res => {
-        const permitidas = Array.isArray(res.data)
+        const permitidasRaw = Array.isArray(res.data)
           ? res.data.map(cat => {
               const local = CAT_MAP[cat.value];
               return { v: cat.value, l: local?.l || cat.label, color: local?.color || 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
             })
-          : CATEGORIAS;
+          : CATEGORIAS_SELECCIONABLES;
+        const permitidas = permitidasRaw.filter(cat => cat.v !== 'URGENTE');
         setCategoriasPermitidas(permitidas);
         if (permitidas.length && !permitidas.some(cat => cat.v === form.categoria)) {
           setForm(f => ({ ...f, categoria: permitidas[0].v }));
         }
       })
-      .catch(() => setCategoriasPermitidas(CATEGORIAS));
+      .catch(() => setCategoriasPermitidas(CATEGORIAS_SELECCIONABLES));
   }, [esTutorAdmin, usuarioActual?.rol, form.departamento_emisor_id, form.categoria]);
 
   useEffect(() => {
@@ -148,6 +203,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       prioridad:             comunicado.prioridad || 'INFORMATIVO',
       requiere_confirmacion: comunicado.requiere_confirmacion || false,
       requiere_retroalimentacion: comunicado.requiere_retroalimentacion || false,
+      notificar_email:       comunicado.notificar_email || false,
       fijado:                comunicado.fijado || false,
       area_emisora:          comunicado.area_emisora || '',
       departamento_emisor_id: comunicado.departamento_emisor_id || '',
@@ -170,6 +226,12 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   }, [usuarios]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    if (!comunicado && form.prioridad === 'URGENTE' && !form.notificar_email) {
+      setForm(f => ({ ...f, notificar_email: true }));
+    }
+  }, [comunicado, form.prioridad, form.notificar_email]);
 
   const buildDestinatarios = () => {
     if (esTutorAdmin && form.dest_tipo === 'ROL') return [{ tipo: 'ROL', ref: 'DOCENTE' }];
@@ -199,13 +261,14 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         prioridad:             form.prioridad,
         requiere_confirmacion: form.requiere_confirmacion,
         requiere_retroalimentacion: form.requiere_retroalimentacion,
+        notificar_email:       form.notificar_email,
         fecha_limite_respuesta: toEndOfDay(form.fecha_limite_respuesta),
         fijado:                form.fijado,
         area_emisora:          esTutorAdmin ? 'Tutoría' : (form.area_emisora?.trim() || null),
         departamento_emisor_id: esTutorAdmin ? null : usuarioActual?.rol === 'ADMINISTRATIVO'
           ? (usuarioActual?.departamento_id || null)
           : (form.departamento_emisor_id ? Number(form.departamento_emisor_id) : null),
-        fecha_publicacion:     toStartOfDay(form.fecha_publicacion),
+        fecha_publicacion:     fechaPublicacionBloqueada ? undefined : toStartOfDay(form.fecha_publicacion),
         fecha_expiracion:      toEndOfDay(form.fecha_expiracion),
         destinatarios,
       };
@@ -290,7 +353,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-2xl shadow-glass animate-fadeUp overflow-y-auto max-h-[92vh]">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+        <div className="sticky top-0 z-10 px-6 py-4 border-b border-white/5 bg-slate-900/95 backdrop-blur-xl flex items-center justify-between">
           <h3 className="font-semibold text-white">
             {comunicado ? '✏️ Editar comunicado' : '📢 Nuevo comunicado'}
           </h3>
@@ -393,7 +456,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fecha de publicación</label>
               <input type="date" className="input-dark" value={form.fecha_publicacion}
-                onChange={e => set('fecha_publicacion', e.target.value)} />
+                onChange={e => set('fecha_publicacion', e.target.value)}
+                disabled={fechaPublicacionBloqueada} />
+              {fechaPublicacionBloqueada && (
+                <p className="text-xs text-amber-300 mt-1">
+                  Fecha bloqueada: este comunicado ya fue visible para los usuarios.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fecha de expiración</label>
@@ -408,6 +477,23 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               checked={form.requiere_confirmacion}
               onChange={e => set('requiere_confirmacion', e.target.checked)} />
             <span className="text-sm text-slate-300">Requiere confirmación de lectura</span>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4">
+            <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500"
+              checked={form.notificar_email}
+              onChange={e => set('notificar_email', e.target.checked)} />
+            <span>
+              <span className="block text-sm text-slate-200 font-medium">Notificar por correo institucional</span>
+              <span className="block text-xs text-slate-500 mt-1">
+                El correo solo avisa que hay un comunicado en SIGA; la lectura y confirmación se registran en plataforma.
+              </span>
+              {form.notificar_email && form.fecha_publicacion && isFutureDate(toStartOfDay(form.fecha_publicacion)) && (
+                <span className="block text-xs text-amber-300 mt-1">
+                  Si programas una fecha futura, el correo no se enviará hasta publicar un comunicado visible.
+                </span>
+              )}
+            </span>
           </label>
 
           <div className="space-y-3 bg-white/5 rounded-xl p-4">
@@ -573,7 +659,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="sticky bottom-0 z-10 -mx-6 -mb-6 px-6 py-4 border-t border-white/5 bg-slate-900/95 backdrop-blur-xl flex justify-end gap-3">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm">
               Cancelar
@@ -590,8 +676,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 
 // ─── Panel lecturas ────────────────────────────────────────────────────────────
 function PanelLecturas({ comunicado, onClose }) {
+  const { usuario } = useAuth();
+  const { toast: showToast } = useToast();
   const [data, setData]     = useState(null);
   const [loading, setLoading] = useState(true);
+  const [filtroLecturas, setFiltroLecturas] = useState('todos');
+  const [comentarios, setComentarios] = useState({});
+  const [enviando, setEnviando] = useState({});
 
   const cargar = useCallback(() => {
     setLoading(true);
@@ -607,6 +698,24 @@ function PanelLecturas({ comunicado, onClose }) {
     cargar();
   };
 
+  const responderSeguimiento = async respuestaId => {
+    const comentario = (comentarios[respuestaId] || '').trim();
+    if (!comentario) {
+      showToast('Escribe un comentario', 'error');
+      return;
+    }
+    setEnviando(prev => ({ ...prev, [respuestaId]: true }));
+    try {
+      await api.post(`/comunicados/${comunicado.id}/respuestas/${respuestaId}/mensajes`, { comentario });
+      setComentarios(prev => ({ ...prev, [respuestaId]: '' }));
+      cargar();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No se pudo enviar el comentario', 'error');
+    } finally {
+      setEnviando(prev => ({ ...prev, [respuestaId]: false }));
+    }
+  };
+
   const descargarRespuestaAdjunto = async (respuestaId, adjunto) => {
     const res = await api.get(
       `/comunicados/${comunicado.id}/respuestas/${respuestaId}/adjuntos/${adjunto.id}/descargar`,
@@ -620,17 +729,33 @@ function PanelLecturas({ comunicado, onClose }) {
     URL.revokeObjectURL(url);
   };
 
+  const detalleFiltrado = useMemo(() => {
+    const detalle = data?.detalle || [];
+    if (filtroLecturas === 'leidos') return detalle.filter(u => u.leido || u.confirmado);
+    if (filtroLecturas === 'pendientes') return detalle.filter(u => !u.leido && !u.confirmado);
+    if (filtroLecturas === 'respondidos') return detalle.filter(u => Boolean(u.respuesta));
+    return detalle;
+  }, [data, filtroLecturas]);
+
+  const resumenItems = data ? [
+    { key: 'todos', label: 'Total', value: data.total, color: 'text-slate-950' },
+    { key: 'leidos', label: 'Leidos', value: data.leidos, color: 'text-emerald-700' },
+    comunicado.requiere_retroalimentacion
+      ? { key: 'respondidos', label: 'Respondidos', value: data.respondidos, color: 'text-cyan-700' }
+      : { key: 'pendientes', label: 'Pendientes', value: data.pendientes, color: 'text-amber-700' },
+  ] : [];
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col h-full overflow-hidden animate-slideInRight">
-        <div className="px-6 py-5 border-b border-white/5">
+      <div className="relative w-full max-w-md bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden animate-slideInRight">
+        <div className="px-6 py-5 border-b border-slate-200">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="font-bold text-white">Reporte de lecturas</h3>
-              <p className="text-sm text-slate-400 mt-0.5 truncate max-w-xs">{comunicado.titulo}</p>
+              <h3 className="font-bold text-slate-950">Reporte de lecturas</h3>
+              <p className="text-sm text-slate-600 mt-0.5 truncate max-w-xs">{comunicado.titulo}</p>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-white mt-1">
+            <button onClick={onClose} className="text-slate-500 hover:text-slate-900 mt-1">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -646,73 +771,144 @@ function PanelLecturas({ comunicado, onClose }) {
             <>
               {/* Resumen */}
               <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'Total',     value: data.total,      color: 'text-white'       },
-                  { label: 'Leídos',    value: data.leidos,     color: 'text-green-300'   },
-                  { label: comunicado.requiere_retroalimentacion ? 'Respondidos' : 'Pendientes',
-                    value: comunicado.requiere_retroalimentacion ? data.respondidos : data.pendientes,
-                    color: comunicado.requiere_retroalimentacion ? 'text-cyan-300' : 'text-amber-300' },
-                ].map(s => (
-                  <div key={s.label} className="bg-white/5 rounded-xl p-3 text-center">
+                {resumenItems.map(s => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setFiltroLecturas(s.key)}
+                    className={`rounded-xl p-3 text-center transition-all border ${
+                      filtroLecturas === s.key
+                        ? 'bg-blue-50 border-blue-300 shadow-lg shadow-blue-100'
+                        : 'bg-slate-50 border-transparent hover:bg-slate-100'
+                    }`}
+                  >
                     <p className="text-xs text-slate-500">{s.label}</p>
                     <p className={`text-xl font-bold mt-0.5 ${s.color}`}>{s.value}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
 
               {/* Barra de progreso */}
-              <div className="bg-white/5 rounded-full h-2 overflow-hidden">
+              <div className="bg-slate-100 rounded-full h-2 overflow-hidden">
                 <div className="bg-green-500 h-full rounded-full transition-all"
                   style={{ width: data.total ? `${(data.leidos/data.total)*100}%` : '0%' }} />
               </div>
 
               {/* Detalle */}
               <div className="space-y-2">
-                {data.detalle.map(u => (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-xs text-slate-500">
+                    Mostrando {detalleFiltrado.length} de {data.total}
+                  </p>
+                  {filtroLecturas !== 'todos' && (
+                    <button
+                      type="button"
+                      onClick={() => setFiltroLecturas('todos')}
+                      className="text-xs text-blue-300 hover:text-blue-200"
+                    >
+                      Ver todos
+                    </button>
+                  )}
+                </div>
+                {detalleFiltrado.length === 0 ? (
+                  <div className="rounded-xl bg-slate-50 px-4 py-8 text-center">
+                    <p className="text-sm text-slate-600">No hay usuarios en este filtro.</p>
+                  </div>
+                ) : detalleFiltrado.map(u => (
                   <div key={u.usuario_id}
-                    className="bg-white/5 rounded-xl px-4 py-3">
+                    className="bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
                     <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
+                      <p className="text-sm font-medium text-slate-950 truncate">{u.nombre}</p>
                       <p className="text-xs text-slate-500">{u.rol}</p>
                     </div>
                     <div className="flex-shrink-0">
                       {u.confirmado ? (
-                        <span className="text-xs bg-green-500/20 text-green-300 border border-green-500/30 px-2 py-1 rounded-full">
+                        <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-full">
                           ✓ Confirmado
                         </span>
                       ) : u.leido ? (
-                        <span className="text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-1 rounded-full">
+                        <span className="text-xs bg-blue-50 text-blue-800 border border-blue-200 px-2 py-1 rounded-full">
                           ✓ Leído
                         </span>
                       ) : (
-                        <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full">
+                        <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2 py-1 rounded-full">
                           Pendiente
                         </span>
                       )}
                     </div>
                     </div>
                     {comunicado.requiere_retroalimentacion && (
-                      <div className="mt-3 border-t border-white/5 pt-3">
+                      <div className="mt-3 border-t border-slate-200 pt-3">
                         {u.respuesta ? (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between gap-3">
                               <span className={`text-xs px-2 py-1 rounded-full border ${
                                 u.respuesta.estado === 'REVISADO'
-                                  ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-cyan-50 text-cyan-800 border-cyan-200'
                               }`}>
-                                {u.respuesta.estado === 'REVISADO' ? 'Revisado' : 'Respondido'}
+                                {u.respuesta.estado === 'REVISADO' ? 'Revisado' : u.respuesta.estado === 'EN_SEGUIMIENTO' ? 'En seguimiento' : 'Respondido'}
                               </span>
                               {u.respuesta.estado !== 'REVISADO' && (
                                 <button onClick={() => revisar(u.respuesta.id)}
-                                  className="text-xs px-2 py-1 rounded-lg bg-green-600/50 hover:bg-green-600 text-white">
+                                  className="text-xs px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white">
                                   Marcar revisado
                                 </button>
                               )}
                             </div>
-                            <p className="text-sm text-slate-300 whitespace-pre-line">{u.respuesta.comentario}</p>
-                            {u.respuesta.adjuntos?.length > 0 && (
+                            <div className="space-y-2">
+                              {(u.respuesta.mensajes?.length ? u.respuesta.mensajes : [{
+                                comentario: u.respuesta.comentario,
+                                creado_en: u.respuesta.creado_en,
+                              }]).map((m, idx) => (
+                                <div key={m.id || idx} className={`flex ${m.usuario_id === usuario?.id ? 'justify-end' : 'justify-start'}`}>
+                                  <div className={`max-w-[88%] rounded-xl border px-3 py-2 ${
+                                    m.usuario_id === usuario?.id
+                                      ? 'bg-blue-50 border-blue-200 text-blue-950'
+                                      : 'bg-white border-slate-200 text-slate-900'
+                                  }`}>
+                                    <p className="text-[11px] font-medium opacity-70 mb-1">
+                                      {m.usuario_nombre || (m.usuario_id === usuario?.id ? 'Tu respuesta' : u.nombre)}
+                                    </p>
+                                    <p className="text-sm whitespace-pre-line">{m.comentario}</p>
+                                    {idx === 0 && u.respuesta.adjuntos?.length > 0 && (
+                                      <div className="mt-2 space-y-1">
+                                        {u.respuesta.adjuntos.map(a => (
+                                          <button key={a.id} type="button"
+                                            onClick={() => descargarRespuestaAdjunto(u.respuesta.id, a)}
+                                            className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs text-slate-800 hover:bg-slate-100">
+                                            <span className="text-base">📎</span>
+                                            <span className="min-w-0 flex-1 truncate">{a.nombre_original}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                    <p className="text-[11px] opacity-60 mt-1">
+                                      {m.creado_en ? m.creado_en.slice(0,16).replace('T',' ') : 'Enviado'}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="space-y-2">
+                              <textarea
+                                rows={2}
+                                value={comentarios[u.respuesta.id] || ''}
+                                onChange={e => setComentarios(prev => ({ ...prev, [u.respuesta.id]: e.target.value }))}
+                                placeholder="Responder al seguimiento..."
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => responderSeguimiento(u.respuesta.id)}
+                                disabled={enviando[u.respuesta.id]}
+                                className="w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                {enviando[u.respuesta.id] ? 'Enviando...' : 'Enviar comentario'}
+                              </button>
+                            </div>
+                            {false && u.respuesta.adjuntos?.length > 0 && (
                               <div className="flex flex-wrap gap-2">
                                 {u.respuesta.adjuntos.map(a => (
                                   <button key={a.id} type="button"
@@ -944,6 +1140,18 @@ export default function ComunicadosAdmin() {
   const [loading, setLoading]         = useState(true);
   const [filtroEstado, setFiltroEstado]   = useState(searchParams.get('estado') || '');
   const [filtroCategoria, setFiltroCategoria] = useState(searchParams.get('categoria') || '');
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroPrioridad, setFiltroPrioridad] = useState('');
+  const [requiereConfirmacion, setRequiereConfirmacion] = useState(false);
+  const [requiereRetro, setRequiereRetro] = useState(false);
+  const [soloFijados, setSoloFijados] = useState(false);
+  const [filtrosAvanzados, setFiltrosAvanzados] = useState(false);
+  const [destTipo, setDestTipo] = useState('');
+  const [destBusqueda, setDestBusqueda] = useState('');
+  const [seguimiento, setSeguimiento] = useState('');
+  const [periodo, setPeriodo] = useState('');
+  const [publicadoDesde, setPublicadoDesde] = useState('');
+  const [publicadoHasta, setPublicadoHasta] = useState('');
   const [modal,    setModal]    = useState(null);   // null | 'crear' | objeto comunicado
   const [lecturas, setLecturas] = useState(null);   // comunicado seleccionado para reporte
   const [panelRespaldos, setPanelRespaldos] = useState(false);
@@ -955,26 +1163,54 @@ export default function ComunicadosAdmin() {
       const params = new URLSearchParams();
       if (filtroEstado)    params.set('estado',    filtroEstado);
       if (filtroCategoria) params.set('categoria', filtroCategoria);
+      if (busqueda.trim()) params.set('q', busqueda.trim());
+      if (filtroPrioridad) params.set('prioridad', filtroPrioridad);
+      if (requiereConfirmacion) params.set('requiere_confirmacion', 'true');
+      if (requiereRetro) params.set('requiere_retroalimentacion', 'true');
+      if (soloFijados) params.set('fijado', 'true');
+      if (destTipo) params.set('dest_tipo', destTipo);
+      if (destBusqueda.trim()) params.set('dest_busqueda', destBusqueda.trim());
+      if (seguimiento) params.set('seguimiento', seguimiento);
+      if (periodo) params.set('periodo', periodo);
+      if (publicadoDesde) params.set('publicado_desde', toStartOfDay(publicadoDesde));
+      if (publicadoHasta) params.set('publicado_hasta', toEndOfDay(publicadoHasta));
       const { data } = await api.get(`/comunicados?${params}`);
-      setComunicados(data);
+      let lista = Array.isArray(data) ? data : [];
+      const rango = rangoPeriodo(periodo);
+      if (rango) {
+        lista = lista.filter(c => {
+          if (!c.fecha_publicacion) return false;
+          const fecha = new Date(c.fecha_publicacion);
+          return fecha >= rango[0] && fecha <= rango[1];
+        });
+      }
+      if (publicadoDesde) {
+        const desde = new Date(toStartOfDay(publicadoDesde));
+        lista = lista.filter(c => c.fecha_publicacion && new Date(c.fecha_publicacion) >= desde);
+      }
+      if (publicadoHasta) {
+        const hasta = new Date(toEndOfDay(publicadoHasta));
+        lista = lista.filter(c => c.fecha_publicacion && new Date(c.fecha_publicacion) <= hasta);
+      }
+      setComunicados(lista);
     } catch { showToast('Error al cargar comunicados', 'error'); }
     finally { setLoading(false); }
-  }, [filtroEstado, filtroCategoria]);
+  }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
   useEffect(() => {
     const estado = searchParams.get('estado') || '';
     const categoria = searchParams.get('categoria') || '';
-    if (estado !== filtroEstado) setFiltroEstado(estado);
-    if (categoria !== filtroCategoria) setFiltroCategoria(categoria);
+    setFiltroEstado(estado);
+    setFiltroCategoria(categoria);
     if (searchParams.get('nuevo') === '1') {
       setModal('crear');
       const next = new URLSearchParams(searchParams);
       next.delete('nuevo');
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, filtroEstado, filtroCategoria]);
+  }, [searchParams, setSearchParams]);
 
   const accion = async (id, endpoint, label) => {
     try {
@@ -995,6 +1231,38 @@ export default function ComunicadosAdmin() {
       showToast(err.response?.data?.detail || 'Error', 'error');
     } finally { setConfirming(null); }
   };
+
+  const limpiarFiltros = () => {
+    setBusqueda('');
+    setFiltroEstado('');
+    setFiltroCategoria('');
+    setFiltroPrioridad('');
+    setRequiereConfirmacion(false);
+    setRequiereRetro(false);
+    setSoloFijados(false);
+    setDestTipo('');
+    setDestBusqueda('');
+    setSeguimiento('');
+    setPeriodo('');
+    setPublicadoDesde('');
+    setPublicadoHasta('');
+  };
+
+  const filtrosActivos = [
+    busqueda.trim(),
+    filtroEstado,
+    filtroCategoria,
+    filtroPrioridad,
+    requiereConfirmacion,
+    requiereRetro,
+    soloFijados,
+    destTipo,
+    destBusqueda.trim(),
+    seguimiento,
+    periodo,
+    publicadoDesde,
+    publicadoHasta,
+  ].filter(Boolean).length;
 
   return (
     <AdminLayout>
@@ -1020,7 +1288,17 @@ export default function ComunicadosAdmin() {
         </div>
 
         {/* Filtros */}
+        <div className="space-y-3">
         <div className="flex flex-wrap gap-3">
+          <div className="relative min-w-[260px] flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">⌕</span>
+            <input
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar por titulo, contenido, area o autor..."
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/25"
+            />
+          </div>
           {/* Estado */}
           <div className="flex gap-1 glass rounded-xl p-1">
             {[
@@ -1041,6 +1319,110 @@ export default function ComunicadosAdmin() {
             <option value="">Todas las categorías</option>
             {CATEGORIAS.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
           </select>
+          <select className="input-dark !py-1.5 !text-sm w-auto"
+            value={filtroPrioridad} onChange={e => setFiltroPrioridad(e.target.value)}>
+            <option value="">Todas las prioridades</option>
+            {PRIORIDADES.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+          <select className="input-dark !py-1.5 !text-sm w-auto"
+            value={periodo} onChange={e => setPeriodo(e.target.value)}>
+            <option value="">Todos los periodos</option>
+            {PERIODOS_ACADEMICOS.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => setFiltrosAvanzados(v => !v)}
+            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Mas filtros{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}
+          </button>
+          {filtrosActivos > 0 && (
+            <button
+              type="button"
+              onClick={limpiarFiltros}
+              className="px-3 py-1.5 rounded-xl bg-slate-100 text-sm text-slate-700 hover:bg-slate-200"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
+        {filtrosAvanzados && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={requiereConfirmacion} onChange={e => setRequiereConfirmacion(e.target.checked)} />
+                Requiere confirmacion
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={requiereRetro} onChange={e => setRequiereRetro(e.target.checked)} />
+                Requiere retroalimentacion
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={soloFijados} onChange={e => setSoloFijados(e.target.checked)} />
+                Solo fijados
+              </label>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="space-y-1 text-sm text-slate-700">
+                <span className="block text-xs font-medium text-slate-500">Publicado desde</span>
+                <input
+                  type="date"
+                  value={publicadoDesde}
+                  onChange={e => setPublicadoDesde(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                />
+              </label>
+              <label className="space-y-1 text-sm text-slate-700">
+                <span className="block text-xs font-medium text-slate-500">Publicado hasta</span>
+                <input
+                  type="date"
+                  value={publicadoHasta}
+                  onChange={e => setPublicadoHasta(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                />
+              </label>
+              <div className="hidden md:block" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <select
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                value={destTipo}
+                onChange={e => { setDestTipo(e.target.value); setDestBusqueda(''); }}
+              >
+                <option value="">Destinatario: cualquiera</option>
+                <option value="TODOS">Todos</option>
+                <option value="ROL">Rol</option>
+                <option value="USUARIO">Usuario</option>
+                <option value="DEPARTAMENTO">Departamento</option>
+              </select>
+              {destTipo === 'ROL' ? (
+                <select
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                  value={destBusqueda}
+                  onChange={e => setDestBusqueda(e.target.value)}
+                >
+                  <option value="">Cualquier rol</option>
+                  {ROLES_DESTINATARIO.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              ) : (
+                <input
+                  value={destBusqueda}
+                  onChange={e => setDestBusqueda(e.target.value)}
+                  disabled={!destTipo || destTipo === 'TODOS'}
+                  placeholder={destTipo === 'USUARIO' ? 'Buscar usuario...' : destTipo === 'DEPARTAMENTO' ? 'Buscar departamento...' : 'Selecciona tipo'}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 disabled:bg-slate-50"
+                />
+              )}
+              <select
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900"
+                value={seguimiento}
+                onChange={e => setSeguimiento(e.target.value)}
+              >
+                {SEGUIMIENTO_OPCIONES.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
         </div>
 
         {/* Lista */}
@@ -1060,9 +1442,11 @@ export default function ComunicadosAdmin() {
         ) : (
           <div className="space-y-3">
             {comunicados.map(c => {
-              const est  = ESTADOS_CFG[c.estado]  || ESTADOS_CFG.BORRADOR;
+              const est  = estadoVisible(c);
               const cat  = CAT_MAP[c.categoria]   || { l: c.categoria, color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
               const prio = PRIO_MAP[c.prioridad]  || PRIO_MAP.INFORMATIVO;
+              const programado = c.estado === 'PUBLICADO' && isFutureDate(c.fecha_publicacion);
+              const actualizado = fueActualizado(c);
               return (
                 <div key={c.id} className="glass rounded-2xl p-5">
                   <div className="flex items-start justify-between gap-4">
@@ -1080,17 +1464,22 @@ export default function ComunicadosAdmin() {
                           {prio.l}
                         </span>
                         {c.requiere_confirmacion && (
-                          <span className="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded-full">
+                          <span className="text-xs bg-violet-50 text-violet-800 border border-violet-300 px-2 py-1 rounded-full">
                             Req. confirmación
                           </span>
                         )}
                         {c.requiere_retroalimentacion && (
-                          <span className="text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-2 py-1 rounded-full">
+                          <span className="text-xs bg-sky-50 text-sky-800 border border-sky-300 px-2 py-1 rounded-full">
                             Retroalimentación
                           </span>
                         )}
+                        {c.notificar_email && (
+                          <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-1 rounded-full">
+                            Correo
+                          </span>
+                        )}
                         {c.fijado && (
-                          <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-1 rounded-full">
+                          <span className="text-xs bg-orange-50 text-orange-800 border border-orange-300 px-2 py-1 rounded-full">
                             Fijado
                           </span>
                         )}
@@ -1105,7 +1494,14 @@ export default function ComunicadosAdmin() {
                       <div className="flex gap-3 mt-2 text-xs text-slate-500">
                         {(c.departamento_emisor_nombre || c.area_emisora) && <span>📍 {c.departamento_emisor_nombre || c.area_emisora}</span>}
                         <span>por {c.autor_nombre}</span>
+                        {programado && <span className="text-amber-300">No visible todavia</span>}
                         {c.fecha_publicacion && <span>📅 {c.fecha_publicacion?.slice(0,10)}</span>}
+                        {actualizado && <span className="text-sky-800 font-medium">Actualizado {c.actualizado_en?.slice(0,16).replace('T',' ')}</span>}
+                        {c.email_ultimo_envio && (
+                          <span className="text-emerald-800 font-medium">
+                            Correos {c.email_enviados || 0} enviados · {c.email_fallidos || 0} fallidos
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1129,6 +1525,10 @@ export default function ComunicadosAdmin() {
                       )}
                       {c.estado === 'PUBLICADO' && (
                         <>
+                          <button onClick={() => setModal(c)}
+                            className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg transition-colors">
+                            Editar
+                          </button>
                           <button onClick={() => setLecturas(c)}
                             className="text-xs px-3 py-1.5 bg-blue-600/40 hover:bg-blue-600/70 text-blue-300 rounded-lg transition-colors">
                             📊 Lecturas

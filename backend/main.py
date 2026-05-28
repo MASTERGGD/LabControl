@@ -14,6 +14,7 @@ from alembic import command as alembic_command
 
 # Middleware de seguridad
 from middleware.security import SecurityHeadersMiddleware
+from services.rate_limit import RateLimitMiddleware
 
 # Routers
 from routers import auth as auth_router
@@ -167,6 +168,7 @@ app.add_middleware(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 # --- Routers -----------------------------------------------------------------
 

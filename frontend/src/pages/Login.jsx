@@ -148,7 +148,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-6">
-          SIGA v2.0 - UTECAN {new Date().getFullYear()}
+          SIGA v1.0 - UTECAN {new Date().getFullYear()}
         </p>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Estilos visuales por estado de PC ────────────────────────────────────────
 const PC_ESTILOS = {
@@ -17,6 +18,8 @@ const PC_ESTILOS = {
 
 // ─── Tarjeta visual de PC ─────────────────────────────────────────────────────
 function TarjetaPC({ pc, onClick, highlighted }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const est = PC_ESTILOS[pc.estado] || PC_ESTILOS.OPERATIVO;
   const clickable = ['OCUPADA','EN_CLASE','OPERATIVO'].includes(pc.estado) && !pc.bloqueada;
   const ocupada   = pc.estado === 'OCUPADA' && pc.alumno;
@@ -46,17 +49,22 @@ function TarjetaPC({ pc, onClick, highlighted }) {
       disabled={!clickable}
       style={{
         position: 'relative',
-        background: est.bg,
-        border: `1.5px solid ${est.border}`,
-        borderRadius: '0.875rem',
-        padding: ocupada ? '11px 9px 10px' : '14px 10px 12px',
-        minWidth: 90,
+        width: '100%',
+        minHeight: ocupada ? 104 : 92,
+        background: isDay
+          ? ocupada ? '#eff6ff' : mant ? '#fffbeb' : dano ? '#fef2f2' : baja ? '#f1f5f9' : '#ecfdf5'
+          : est.bg,
+        border: `1.5px solid ${isDay
+          ? ocupada ? '#93c5fd' : mant ? '#f59e0b' : dano ? '#fca5a5' : baja ? '#cbd5e1' : '#86efac'
+          : est.border}`,
+        borderRadius: '1rem',
+        padding: ocupada ? '14px 12px 12px' : '18px 12px 14px',
         textAlign: 'center',
         cursor: clickable ? 'pointer' : 'default',
         transition: 'all 0.2s cubic-bezier(.4,0,.2,1)',
         boxShadow: highlighted
           ? '0 0 0 2px #60a5fa, 0 0 18px rgba(59,130,246,0.35)'
-          : (ocupada ? `0 0 14px ${est.glow}` : 'none'),
+          : isDay ? '0 10px 24px rgba(15,23,42,0.06)' : (ocupada ? `0 0 14px ${est.glow}` : 'none'),
         opacity: baja ? 0.45 : 1,
         outline: 'none',
       }}
@@ -99,35 +107,35 @@ function TarjetaPC({ pc, onClick, highlighted }) {
           }}>
             {initials}
           </div>
-          <p style={{fontSize:10, fontWeight:700, color:'#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:9, color:'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
-            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:70}}>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#1d4ed8' : '#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:10, color:isDay ? '#1e3a8a' : 'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
+            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
             {shortName}
           </p>
-          <p style={{fontSize:8, color:'rgba(100,116,139,0.85)', margin:'1px 0 0'}}>{pc.alumno.matricula}</p>
+          <p style={{fontSize:9, color:isDay ? '#64748b' : 'rgba(100,116,139,0.85)', margin:'1px 0 0'}}>{pc.alumno.matricula}</p>
         </>
       ) : mant ? (
         <>
-          <p style={{fontSize:15, margin:'0 0 3px', lineHeight:1}}>🔧</p>
-          <p style={{fontSize:10, fontWeight:700, color:'#fbbf24', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:9, color:'rgba(251,191,36,0.55)', margin:'2px 0 0'}}>Mant.</p>
+          <p style={{fontSize:18, margin:'0 0 5px', lineHeight:1}}>🔧</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#92400e' : '#fbbf24', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:10, color:isDay ? '#b45309' : 'rgba(251,191,36,0.55)', margin:'2px 0 0'}}>Mant.</p>
         </>
       ) : dano ? (
         <>
-          <p style={{fontSize:15, margin:'0 0 3px', lineHeight:1}}>⚠️</p>
-          <p style={{fontSize:10, fontWeight:700, color:'#fca5a5', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:9, color:'rgba(252,165,165,0.55)', margin:'2px 0 0'}}>Dañada</p>
+          <p style={{fontSize:18, margin:'0 0 5px', lineHeight:1}}>⚠️</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#991b1b' : '#fca5a5', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:10, color:isDay ? '#b91c1c' : 'rgba(252,165,165,0.55)', margin:'2px 0 0'}}>Dañada</p>
         </>
       ) : baja ? (
         <>
-          <p style={{fontSize:10, fontWeight:700, color:'#475569', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:9, color:'rgba(71,85,105,0.6)', margin:'2px 0 0'}}>Baja</p>
+          <p style={{fontSize:12, fontWeight:800, color:'#475569', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:10, color:'rgba(71,85,105,0.7)', margin:'2px 0 0'}}>Baja</p>
         </>
       ) : (
         /* Libre */
         <>
-          <p style={{fontSize:10, fontWeight:700, color:'#4ade80', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:9, color:'rgba(74,222,128,0.4)', margin:'2px 0 0'}}>Libre</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#047857' : '#4ade80', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:10, color:isDay ? '#059669' : 'rgba(74,222,128,0.4)', margin:'3px 0 0'}}>Libre</p>
         </>
       )}
     </button>
@@ -137,6 +145,8 @@ function TarjetaPC({ pc, onClick, highlighted }) {
 // ─── Modal Asignar Alumno ─────────────────────────────────────────────────────
 
 function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [form, setForm]           = useState({ alumno_nombre: '', alumno_matricula: '' });
   const [alumnoQuery, setAlumnoQuery] = useState('');
   const [alumnoSeleccionado, setAlumnoSeleccionado] = useState(null);
@@ -170,13 +180,13 @@ function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className={`w-full max-w-sm shadow-2xl rounded-2xl overflow-hidden ${isDay ? 'bg-white border border-slate-200' : 'glass'}`}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.05)'}` }}>
           <div>
-            <h3 className="font-semibold text-white">Asignar alumno</h3>
+            <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Asignar alumno</h3>
             <p className="text-xs text-slate-400 mt-0.5">PC {pc.codigo}{pc.fila ? ` · Fila ${pc.fila}` : ''}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -185,13 +195,14 @@ function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Autocomplete alumno */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">
+            <label className={`block text-sm mb-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
               Buscar alumno *
               <span className="text-slate-500 font-normal ml-1">(nombre o matrícula)</span>
             </label>
-            <div className="[&_input]:bg-gray-700 [&_input]:text-white [&_input]:border-gray-600
-                            [&_input:focus]:ring-green-500 [&_ul]:bg-gray-800 [&_ul]:border-gray-600
-                            [&_li]:text-gray-200 [&_li:hover]:bg-gray-700">
+            <div className={isDay
+              ? "[&_input]:bg-white [&_input]:text-slate-950 [&_input]:border-slate-300 [&_input:focus]:ring-green-500 [&_ul]:bg-white [&_ul]:border-slate-200 [&_li]:text-slate-800 [&_li:hover]:bg-slate-100"
+              : "[&_input]:bg-gray-700 [&_input]:text-white [&_input]:border-gray-600 [&_input:focus]:ring-green-500 [&_ul]:bg-gray-800 [&_ul]:border-gray-600 [&_li]:text-gray-200 [&_li:hover]:bg-gray-700"
+            }>
               <AutocompleteInput
                 endpoint="/catalogo/alumnos/buscar"
                 placeholder="Escribe nombre o matrícula…"
@@ -220,24 +231,24 @@ function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
 
           {/* Datos auto-llenados o manuales */}
           {alumnoSeleccionado ? (
-            <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-sm space-y-1">
-              <p className="text-green-300 font-semibold">{form.alumno_nombre}</p>
-              <p className="text-green-400/80">Matrícula: {form.alumno_matricula}</p>
+            <div className={`rounded-lg px-4 py-3 text-sm space-y-1 ${isDay ? 'bg-emerald-50 border border-emerald-300' : 'bg-green-900/30 border border-green-700/50'}`}>
+              <p className={`font-semibold ${isDay ? 'text-emerald-950' : 'text-green-300'}`}>{form.alumno_nombre}</p>
+              <p className={isDay ? 'text-emerald-800' : 'text-green-400/80'}>Matrícula: {form.alumno_matricula}</p>
               {alumnoSeleccionado.carrera && (
-                <p className="text-green-400/60 text-xs">{alumnoSeleccionado.carrera}</p>
+                <p className={`text-xs ${isDay ? 'text-emerald-700' : 'text-green-400/60'}`}>{alumnoSeleccionado.carrera}</p>
               )}
             </div>
           ) : (
             /* Campos manuales como fallback si no está en catálogo */
             form.alumno_nombre && !alumnoSeleccionado && (
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Matrícula *</label>
+                <label className={`block text-sm mb-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>Matrícula *</label>
                 <input
                   value={form.alumno_matricula}
                   onChange={e => setForm(f => ({ ...f, alumno_matricula: e.target.value }))}
                   required
                   placeholder="Ej: 2023100123"
-                  className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className={`w-full px-4 py-2.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-green-500 ${isDay ? 'bg-white border-slate-300 text-slate-950' : 'input-dark text-white'}`}
                 />
               </div>
             )
@@ -246,7 +257,7 @@ function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
           {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3">
             <button type="button" onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors ${isDay ? 'bg-slate-200 hover:bg-slate-300 text-slate-900' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}>
               Cancelar
             </button>
             <button type="submit" disabled={loading}
@@ -263,6 +274,8 @@ function ModalAsignar({ pc, sesionId, onClose, onAsignada }) {
 // ─── Modal PC Ocupada ──────────────────────────────────────────────────────────
 
 function ModalPCOcupada({ pc, sesionId, onClose, onLiberada, onObservacion, onReportarDano }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [loading, setLoading] = useState(false);
 
   const handleLiberar = async () => {
@@ -279,23 +292,23 @@ function ModalPCOcupada({ pc, sesionId, onClose, onLiberada, onObservacion, onRe
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className={`w-full max-w-sm shadow-2xl rounded-2xl overflow-hidden ${isDay ? 'bg-white border border-slate-200' : 'glass'}`}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.05)'}` }}>
           <div>
-            <h3 className="font-semibold text-white">PC {pc.codigo}</h3>
-            {pc.fila && <p className="text-xs text-slate-400">Fila {pc.fila}</p>}
+            <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>PC {pc.codigo}</h3>
+            {pc.fila && <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Fila {pc.fila}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <div className="bg-gray-700 rounded-xl p-4">
-            <p className="text-xs text-slate-400 mb-1">Alumno asignado</p>
-            <p className="font-semibold text-white">{pc.alumno?.nombre}</p>
-            <p className="text-sm text-gray-300">{pc.alumno?.matricula}</p>
+          <div className={`rounded-xl p-4 ${isDay ? 'bg-slate-50 border border-slate-200' : 'bg-gray-700'}`}>
+            <p className={`text-xs mb-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Alumno asignado</p>
+            <p className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{pc.alumno?.nombre}</p>
+            <p className={`text-sm ${isDay ? 'text-slate-600' : 'text-gray-300'}`}>{pc.alumno?.matricula}</p>
           </div>
           <div className="flex flex-col gap-2">
             <button onClick={handleLiberar} disabled={loading}
@@ -424,6 +437,8 @@ function ModalReportarDano({ pc, sesion, onClose }) {
 // ─── Modal Cerrar Sesión ───────────────────────────────────────────────────────
 
 function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [obs, setObs]         = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -467,18 +482,18 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl">
+      <div className={`w-full max-w-sm shadow-2xl rounded-2xl overflow-hidden ${isDay ? 'bg-white border border-slate-200' : 'glass'}`}>
 
         {/* Header */}
-        <div className="p-5 border-b border-white/5 text-center">
-          <div className="w-12 h-12 bg-orange-900/40 rounded-full flex items-center justify-center mx-auto mb-3">
-            <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="p-5 text-center" style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.06)'}` }}>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${isDay ? 'bg-orange-100' : 'bg-orange-900/40'}`}>
+            <svg className={`w-6 h-6 ${isDay ? 'text-orange-700' : 'text-orange-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
             </svg>
           </div>
-          <h3 className="font-semibold text-white">¿Cerrar sesión?</h3>
-          <p className="text-slate-400 text-sm mt-1">
+          <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>¿Cerrar sesión?</h3>
+          <p className={`text-sm mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
             {sesion.materia} · {sesion.grupo}
           </p>
         </div>
@@ -487,14 +502,19 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
 
           {/* Nota de cierre (opcional) */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Nota de cierre (opcional)</label>
+            <label className={`block text-sm mb-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>Nota de cierre (opcional)</label>
             <textarea value={obs} onChange={e => setObs(e.target.value)} rows={2}
               placeholder="Ej: Clase completada sin incidentes."
-              className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm"/>
+              className={`w-full px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none text-sm rounded-xl ${
+                isDay
+                  ? 'bg-white border border-slate-300 text-slate-950 placeholder:text-slate-500'
+                  : 'input-dark text-white'
+              }`}
+            />
           </div>
 
           {/* Separador */}
-          <div className="border-t border-white/5"/>
+          <div style={{ borderTop: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.06)'}` }}/>
 
           {/* Toggle: ¿PC con problema? */}
           <div>
@@ -503,14 +523,14 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
               onClick={() => { setReportarPC(v => !v); setPcReporte(''); setNotaPC(''); setBloquearPC(false); }}
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition-all
                 ${reportarPC
-                  ? 'border-amber-500 bg-amber-900/30 text-amber-200'
-                  : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-white/5'}`}>
+                  ? isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500 bg-amber-900/30 text-amber-200'
+                  : isDay ? 'border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50' : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-white/5'}`}>
               <span className="flex items-center gap-2 text-sm font-medium">
                 <span className="text-lg">🖥️</span>
                 ¿Alguna PC quedó con problema?
               </span>
               <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all
-                ${reportarPC ? 'border-amber-400 bg-amber-400' : 'border-gray-500'}`}>
+                ${reportarPC ? 'border-amber-500 bg-amber-500' : isDay ? 'border-slate-500' : 'border-gray-500'}`}>
                 {reportarPC && <span className="text-gray-900 text-xs font-bold">✓</span>}
               </span>
             </button>
@@ -519,7 +539,7 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
               <div className="mt-3 space-y-3 pl-1">
                 {/* Selector de PC */}
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">¿Cuál PC?</label>
+                  <label className={`block text-xs mb-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>¿Cuál PC?</label>
                   <SelectDark
                     value={pcReporte}
                     onChange={setPcReporte}
@@ -536,10 +556,15 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
 
                 {/* Nota del problema */}
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">¿Qué pasó con esa PC?</label>
+                  <label className={`block text-xs mb-1 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>¿Qué pasó con esa PC?</label>
                   <textarea value={notaPC} onChange={e => setNotaPC(e.target.value)} rows={2}
                     placeholder="Ej: Se quedó instalando actualizaciones, no pude apagarla."
-                    className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none text-sm"/>
+                    className={`w-full px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none text-sm rounded-xl ${
+                      isDay
+                        ? 'bg-white border border-slate-300 text-slate-950 placeholder:text-slate-500'
+                        : 'input-dark text-white'
+                    }`}
+                  />
                 </div>
 
                 {/* Bloquear PC */}
@@ -548,8 +573,8 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
                   onClick={() => setBloquearPC(v => !v)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm transition-all
                     ${bloquearPC
-                      ? 'border-red-500 bg-red-900/30 text-red-200'
-                      : 'border-gray-600 text-slate-400 hover:border-gray-500 hover:bg-white/4'}`}>
+                      ? isDay ? 'border-red-500 bg-red-50 text-red-900' : 'border-red-500 bg-red-900/30 text-red-200'
+                      : isDay ? 'border-slate-300 text-slate-700 hover:border-slate-400 hover:bg-slate-50' : 'border-gray-600 text-slate-400 hover:border-gray-500 hover:bg-white/4'}`}>
                   <span className="text-base">{bloquearPC ? '🔒' : '🔓'}</span>
                   <span className="flex-1 text-left">
                     <span className="font-medium block">
@@ -562,7 +587,7 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
                     </span>
                   </span>
                   <span className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center
-                    ${bloquearPC ? 'border-red-400 bg-red-400' : 'border-gray-500'}`}>
+                    ${bloquearPC ? 'border-red-500 bg-red-500' : isDay ? 'border-slate-500' : 'border-gray-500'}`}>
                     {bloquearPC && <span className="text-gray-900 text-xs font-bold">✓</span>}
                   </span>
                 </button>
@@ -571,13 +596,15 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>
+            <p className={`text-sm rounded-lg px-3 py-2 border ${isDay ? 'text-red-800 bg-red-50 border-red-300' : 'text-red-400 bg-red-900/30 border-red-800'}`}>{error}</p>
           )}
 
           {/* Botones */}
           <div className="flex gap-3 pt-1">
             <button onClick={onClose} disabled={loading}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors ${
+                isDay ? 'bg-slate-200 hover:bg-slate-300 text-slate-900' : 'bg-gray-700 hover:bg-gray-600 text-white'
+              }`}>
               Cancelar
             </button>
             <button onClick={handleCerrar} disabled={loading}
@@ -817,6 +844,8 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
 // ─── Temporizador ─────────────────────────────────────────────────────────────
 
 function Temporizador({ segundos }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   if (segundos === null) return null;
 
   const abs     = Math.abs(segundos);
@@ -831,23 +860,23 @@ function Temporizador({ segundos }) {
   const avisoPrevio  = segundos >= 0 && segundos <= 600; // últimos 10 min
 
   if (enOvertime) return (
-    <div className="flex items-center gap-2 bg-red-900/60 border border-red-600 rounded-lg px-3 py-1.5 animate-pulse">
-      <span className="text-red-300 text-xs font-bold uppercase tracking-wide">Tiempo excedido</span>
-      <span className="text-red-200 font-mono font-bold text-sm">+{fmt}</span>
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 animate-pulse border ${isDay ? 'bg-red-50 border-red-300' : 'bg-red-900/60 border-red-600'}`}>
+      <span className={`text-xs font-bold uppercase tracking-wide ${isDay ? 'text-red-700' : 'text-red-300'}`}>Tiempo excedido</span>
+      <span className={`font-mono font-bold text-sm ${isDay ? 'text-red-800' : 'text-red-200'}`}>+{fmt}</span>
     </div>
   );
 
   if (avisoPrevio) return (
-    <div className="flex items-center gap-2 bg-amber-900/50 border border-amber-600 rounded-lg px-3 py-1.5">
-      <span className="text-amber-300 text-xs font-medium">Tiempo restante</span>
-      <span className="text-amber-200 font-mono font-bold text-sm">{fmt}</span>
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-900/50 border-amber-600'}`}>
+      <span className={`text-xs font-medium ${isDay ? 'text-amber-800' : 'text-amber-300'}`}>Tiempo restante</span>
+      <span className={`font-mono font-bold text-sm ${isDay ? 'text-amber-900' : 'text-amber-200'}`}>{fmt}</span>
     </div>
   );
 
   return (
-    <div className="flex items-center gap-2 bg-gray-700/60 border border-gray-600 rounded-lg px-3 py-1.5">
-      <span className="text-slate-400 text-xs">Tiempo</span>
-      <span className="text-gray-200 font-mono font-bold text-sm">{fmt}</span>
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${isDay ? 'bg-slate-100 border-slate-300' : 'bg-gray-700/60 border-gray-600'}`}>
+      <span className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Tiempo</span>
+      <span className={`font-mono font-bold text-sm ${isDay ? 'text-slate-900' : 'text-gray-200'}`}>{fmt}</span>
     </div>
   );
 }
@@ -855,6 +884,131 @@ function Temporizador({ segundos }) {
 // ─── Página principal ──────────────────────────────────────────────────────────
 
 // ─── Revisión de Recepción ────────────────────────────────────────────────────
+
+function ModalAutoAsignacionQR({ sesion, onClose }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [url, setUrl] = useState('');
+  const [qr, setQr] = useState('');
+  const [tokenPath, setTokenPath] = useState('');
+  const [originInput, setOriginInput] = useState(() =>
+    localStorage.getItem('autoasignacion_public_origin') ||
+    (process.env.REACT_APP_PUBLIC_APP_URL || '').replace(/\/$/, '') ||
+    window.location.origin
+  );
+  const publicOrigin = originInput.replace(/\/$/, '');
+  let originHost = '';
+  try {
+    originHost = new URL(publicOrigin).hostname;
+  } catch {
+    originHost = '';
+  }
+  const originValido = /^https?:\/\/[^/]+/i.test(publicOrigin);
+  const usesLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(originHost);
+
+  useEffect(() => {
+    let activo = true;
+    setLoading(true);
+    setError('');
+    api.post(`/sesiones/${sesion.id}/autoasignacion-token`)
+      .then(({ data }) => {
+        if (!activo) return;
+        setTokenPath(data.path);
+      })
+      .catch(err => {
+        if (!activo) return;
+        setError(err.response?.data?.detail || 'No se pudo generar el QR');
+      })
+      .finally(() => activo && setLoading(false));
+    return () => { activo = false; };
+  }, [sesion.id]);
+
+  useEffect(() => {
+    if (!tokenPath || !originValido) return;
+    const fullUrl = `${publicOrigin}${tokenPath}`;
+    setUrl(fullUrl);
+    setQr(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(fullUrl)}`);
+    localStorage.setItem('autoasignacion_public_origin', publicOrigin);
+  }, [tokenPath, publicOrigin, originValido]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className={`w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden ${isDay ? 'bg-white border border-slate-200' : 'glass'}`}>
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.06)'}` }}>
+          <div>
+            <h3 className={`font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Autoasignación por QR</h3>
+            <p className={`text-sm ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+              {sesion.laboratorio_nombre} · {sesion.tipo_sesion === 'LIBRE' ? 'Uso libre' : sesion.materia}
+            </p>
+          </div>
+          <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>×</button>
+        </div>
+        <div className="p-6">
+          {loading ? (
+            <div className={`py-16 text-center ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Generando QR...</div>
+          ) : error ? (
+            <div className={`rounded-xl border px-4 py-3 text-sm ${isDay ? 'bg-red-50 border-red-300 text-red-800' : 'bg-red-950/40 border-red-700/50 text-red-300'}`}>
+              {error}
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className={`rounded-2xl p-4 flex justify-center ${isDay ? 'bg-slate-50 border border-slate-200' : 'bg-white'}`}>
+                <img src={qr} alt="QR de autoasignación" className="w-72 h-72" />
+              </div>
+              <div className={`rounded-xl px-4 py-3 text-sm ${isDay ? 'bg-emerald-50 border border-emerald-200 text-emerald-900' : 'bg-emerald-950/25 border border-emerald-500/25 text-emerald-100'}`}>
+                Proyecta este QR. Cada alumno registra su matrícula y selecciona la PC donde está sentado.
+              </div>
+              {usesLocalhost && (
+                <div className={`rounded-xl px-4 py-3 text-sm font-semibold ${isDay ? 'bg-amber-50 border border-amber-300 text-amber-900' : 'bg-amber-950/30 border border-amber-500/30 text-amber-100'}`}>
+                  El QR sigue usando localhost. En celulares debe usar la IP de esta PC, por ejemplo http://192.168.1.80:3000.
+                </div>
+              )}
+              <div>
+                <label className={`block text-xs font-semibold mb-1 ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>
+                  Enlace para alumnos
+                </label>
+                <input
+                  value={originInput}
+                  onChange={e => setOriginInput(e.target.value.trim())}
+                  placeholder="http://192.168.1.80:3000"
+                  className={`w-full rounded-xl px-3 py-2 text-sm border focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
+                    isDay
+                      ? 'bg-white border-slate-300 text-slate-950'
+                      : 'bg-white/5 border-white/10 text-white'
+                  }`}
+                />
+                {!originValido && (
+                  <p className="mt-1 text-xs font-semibold text-red-600">
+                    Escribe una URL completa, por ejemplo http://192.168.1.80:3000
+                  </p>
+                )}
+              </div>
+              <p className={`break-all rounded-xl px-3 py-2 text-xs ${isDay ? 'bg-slate-100 text-slate-700' : 'bg-white/5 text-slate-300'}`}>
+                {url}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(url)}
+                  className={`flex-1 rounded-xl py-2.5 text-sm font-semibold border ${isDay ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50' : 'border-white/10 text-slate-200 hover:bg-white/5'}`}>
+                  Copiar enlace
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 rounded-xl py-2.5 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
+                  Listo
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const TIPO_PROBLEMA_OPTS = [
   { id:'DAÑO_FISICO',  label:'Daño físico'  },
@@ -865,6 +1019,8 @@ const TIPO_PROBLEMA_OPTS = [
 ];
 
 function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   // estados[pc_id] = { revisada, conProblema, tipo, descripcion, bloquear, prioridad }
   const [estados, setEstados]                 = useState({});
   const [ultimosUsuarios, setUltimosUsuarios] = useState({});
@@ -888,7 +1044,40 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
   const pendientes = total - revisadas;
   const progreso  = total > 0 ? Math.round((revisadas / total) * 100) : 0;
   const conProblemasCount = pcsMapeables.filter(p => estados[p.pc_id]?.conProblema).length;
+  const sinNovedadCount = pcsMapeables.filter(p => estados[p.pc_id]?.revisada && !estados[p.pc_id]?.conProblema).length;
   const listo     = pendientes === 0;
+
+  const colors = {
+    pageBg: isDay ? '#f1f5f9' : '#0b1120',
+    surface: isDay ? '#ffffff' : 'rgba(15,23,42,0.95)',
+    surfaceSoft: isDay ? '#f8fafc' : 'rgba(15,23,42,0.96)',
+    border: isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)',
+    text: isDay ? '#0f172a' : '#f1f5f9',
+    muted: isDay ? '#64748b' : '#94a3b8',
+    subtle: isDay ? '#475569' : '#64748b',
+    rowLine: isDay ? '#cbd5e1' : 'rgba(255,255,255,0.05)',
+  };
+
+  const marcarRestantesSinNovedad = () => {
+    setEstados(prev => {
+      const next = { ...prev };
+      pcsMapeables.forEach(pc => {
+        if (!next[pc.pc_id]?.revisada) {
+          next[pc.pc_id] = {
+            ...next[pc.pc_id],
+            revisada: true,
+            conProblema: false,
+            tipo: '',
+            descripcion: '',
+            bloquear: false,
+            prioridad: 'MEDIA',
+            autoValidada: true,
+          };
+        }
+      });
+      return next;
+    });
+  };
 
   const marcarPC = async (pcId, conProblema) => {
     setEstados(prev => ({
@@ -956,65 +1145,99 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
   }
 
   return (
-    <div style={{minHeight:'100dvh',background:'#0b1120',color:'white',display:'flex',flexDirection:'column'}}>
+    <div style={{minHeight:'100dvh',background:colors.pageBg,color:colors.text,display:'flex',flexDirection:'column'}}>
 
       {/* ── HEADER ── */}
-      <header style={{background:'rgba(15,23,42,0.95)',borderBottom:'1px solid rgba(255,255,255,0.06)',
+      <header style={{background:colors.surface,borderBottom:`1px solid ${colors.border}`,
         padding:'14px 20px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
         <div>
-          <p style={{fontSize:11,color:'#64748b',margin:'0 0 2px',textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}}>
+          <p style={{fontSize:11,color:colors.subtle,margin:'0 0 2px',textTransform:'uppercase',letterSpacing:'0.08em',fontWeight:600}}>
             {sesion.tipo_sesion === 'LIBRE' ? 'Uso Libre' : sesion.materia} · {sesion.laboratorio_nombre}
           </p>
-          <h2 style={{fontSize:16,fontWeight:700,color:'#f1f5f9',margin:0,lineHeight:1.2}}>
+          <h2 style={{fontSize:16,fontWeight:700,color:colors.text,margin:0,lineHeight:1.2}}>
             Recepción del laboratorio
           </h2>
-          <p style={{fontSize:11,color:'#94a3b8',margin:'2px 0 0'}}>
+          <p style={{fontSize:11,color:colors.muted,margin:'2px 0 0'}}>
             Revisión obligatoria antes de iniciar la clase
           </p>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',
-          background:'rgba(245,158,11,0.12)',border:'1px solid rgba(245,158,11,0.35)',borderRadius:8}}>
+          background:isDay ? '#fff7ed' : 'rgba(245,158,11,0.12)',
+          border:`1px solid ${isDay ? '#fed7aa' : 'rgba(245,158,11,0.35)'}`,borderRadius:8}}>
           <span style={{width:7,height:7,borderRadius:'50%',background:'#f59e0b',
             boxShadow:'0 0 8px #f59e0b',display:'inline-block'}}/>
-          <span style={{fontSize:11,color:'#fbbf24',fontWeight:600}}>Inspección obligatoria</span>
+          <span style={{fontSize:11,color:isDay ? '#9a3412' : '#fbbf24',fontWeight:700}}>Inspección obligatoria</span>
         </div>
       </header>
 
       {/* ── INSTRUCCIÓN + PROGRESO ── */}
-      <div style={{background:'rgba(245,158,11,0.06)',borderBottom:'1px solid rgba(245,158,11,0.12)',
+      <div style={{background:isDay ? '#fffbeb' : 'rgba(245,158,11,0.06)',
+        borderBottom:`1px solid ${isDay ? '#fde68a' : 'rgba(245,158,11,0.12)'}`,
         padding:'12px 20px',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:8}}>
-          <p style={{fontSize:12,color:'#fcd34d',margin:0,flex:1}}>
-            🔍 Revise cada equipo. Si detecta un problema, márquelo y descríbalo — se genera reporte automático con trazabilidad.
+          <p style={{fontSize:12,color:isDay ? '#92400e' : '#fcd34d',margin:0,flex:1,fontWeight:600}}>
+            🔍 Reporte solo los equipos con problema. Al terminar, marque las demás PCs como sin novedad para iniciar la clase sin perder tiempo.
           </p>
           {pcsYaFuera.length > 0 && (
-            <span style={{fontSize:10,color:'#94a3b8',background:'rgba(255,255,255,0.04)',
-              border:'1px solid rgba(255,255,255,0.08)',borderRadius:6,padding:'3px 8px',whiteSpace:'nowrap'}}>
+            <span style={{fontSize:10,color:colors.muted,background:isDay ? '#ffffff' : 'rgba(255,255,255,0.04)',
+              border:`1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.08)'}`,borderRadius:6,padding:'3px 8px',whiteSpace:'nowrap'}}>
               🔧 {pcsYaFuera.length} excluida{pcsYaFuera.length>1?'s':''}: {pcsYaFuera.map(p=>p.codigo).join(', ')}
             </span>
           )}
         </div>
         {/* Barra de progreso */}
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <div style={{flex:1,height:5,background:'rgba(255,255,255,0.07)',borderRadius:99,overflow:'hidden'}}>
+          <div style={{flex:1,height:5,background:isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)',borderRadius:99,overflow:'hidden'}}>
             <div style={{width:`${progreso}%`,height:'100%',borderRadius:99,
               background: progreso === 100
                 ? 'linear-gradient(90deg,#10b981,#34d399)'
                 : 'linear-gradient(90deg,#f59e0b,#fbbf24)',
               transition:'width .3s ease'}}/>
           </div>
-          <span style={{fontSize:11,fontWeight:700,color: progreso===100 ? '#34d399' : '#fbbf24',
+          <span style={{fontSize:11,fontWeight:800,color: progreso===100 ? (isDay ? '#047857' : '#34d399') : (isDay ? '#b45309' : '#fbbf24'),
             whiteSpace:'nowrap',minWidth:90,textAlign:'right'}}>
             {revisadas}/{total} revisadas
           </span>
           {conProblemasCount > 0 && (
-            <span style={{fontSize:10,color:'#f87171',background:'rgba(239,68,68,0.1)',
-              border:'1px solid rgba(239,68,68,0.25)',borderRadius:6,padding:'2px 7px',whiteSpace:'nowrap'}}>
+            <span style={{fontSize:10,color:isDay ? '#b91c1c' : '#f87171',background:isDay ? '#fef2f2' : 'rgba(239,68,68,0.1)',
+              border:`1px solid ${isDay ? '#fecaca' : 'rgba(239,68,68,0.25)'}`,borderRadius:6,padding:'2px 7px',whiteSpace:'nowrap'}}>
               ⚠ {conProblemasCount} problema{conProblemasCount>1?'s':''}
+            </span>
+          )}
+          {sinNovedadCount > 0 && (
+            <span style={{fontSize:10,color:isDay ? '#047857' : '#34d399',background:isDay ? '#ecfdf5' : 'rgba(16,185,129,0.1)',
+              border:`1px solid ${isDay ? '#a7f3d0' : 'rgba(16,185,129,0.25)'}`,borderRadius:6,padding:'2px 7px',whiteSpace:'nowrap'}}>
+              ✓ {sinNovedadCount} sin novedad
             </span>
           )}
         </div>
       </div>
+
+      {pendientes > 0 && (
+        <div style={{padding:'10px 20px',background:colors.surfaceSoft,borderBottom:`1px solid ${colors.border}`,
+          display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',flexShrink:0}}>
+          <div>
+            <p style={{fontSize:12,color:colors.text,fontWeight:700,margin:0}}>
+              Flujo rápido: reporta las excepciones y valida el resto en un clic
+            </p>
+            <p style={{fontSize:11,color:colors.muted,margin:'2px 0 0'}}>
+              Se marcarán como sin novedad las PCs que aún no revisaste manualmente.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={marcarRestantesSinNovedad}
+            style={{
+              padding:'9px 14px',borderRadius:10,fontSize:12,fontWeight:800,
+              border:`1px solid ${isDay ? '#047857' : 'rgba(52,211,153,0.35)'}`,cursor:'pointer',
+              background:isDay ? '#047857' : 'rgba(16,185,129,0.14)',color:isDay ? '#ffffff' : '#6ee7b7',
+              boxShadow:isDay ? '0 8px 20px rgba(4,120,87,0.18)' : '0 0 16px rgba(16,185,129,0.12)',
+              whiteSpace:'nowrap',
+            }}>
+            ✓ Marcar {pendientes} restante{pendientes!==1?'s':''} sin novedad
+          </button>
+        </div>
+      )}
 
       {/* ── GRID POR FILA ── */}
       <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
@@ -1024,12 +1247,12 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
               {/* Cabecera de fila */}
               <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
                 <span style={{fontSize:9,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',
-                  color:'#334155',padding:'3px 8px',background:'rgba(255,255,255,0.04)',
-                  border:'1px solid rgba(255,255,255,0.06)',borderRadius:5}}>
+                  color:colors.subtle,padding:'3px 8px',background:isDay ? '#e2e8f0' : 'rgba(255,255,255,0.04)',
+                  border:`1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.06)'}`,borderRadius:5}}>
                   Fila {fila}
                 </span>
-                <div style={{flex:1,height:1,background:'rgba(255,255,255,0.05)'}}/>
-                <span style={{fontSize:10,color:'#475569'}}>
+                <div style={{flex:1,height:1,background:colors.rowLine}}/>
+                <span style={{fontSize:10,color:colors.muted}}>
                   {filas[fila].filter(p => estados[p.pc_id]?.revisada).length}/{filas[fila].length}
                 </span>
               </div>
@@ -1045,26 +1268,26 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                   return (
                     <div key={pc.pc_id} style={{
                       background: conProblema
-                        ? 'rgba(120,53,15,0.25)'
-                        : revisada ? 'rgba(6,78,59,0.2)' : 'rgba(255,255,255,0.03)',
+                        ? (isDay ? '#fff7ed' : 'rgba(120,53,15,0.25)')
+                        : revisada ? (isDay ? '#ecfdf5' : 'rgba(6,78,59,0.2)') : (isDay ? '#ffffff' : 'rgba(255,255,255,0.03)'),
                       border: conProblema
-                        ? '1.5px solid rgba(251,146,60,0.4)'
-                        : revisada ? '1.5px solid rgba(52,211,153,0.3)' : '1px solid rgba(255,255,255,0.07)',
+                        ? `1.5px solid ${isDay ? '#fb923c' : 'rgba(251,146,60,0.4)'}`
+                        : revisada ? `1.5px solid ${isDay ? '#34d399' : 'rgba(52,211,153,0.3)'}` : `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.07)'}`,
                       borderRadius:12,
                       padding:'10px 12px',
                       transition:'all .2s',
+                      boxShadow:isDay ? '0 8px 18px rgba(15,23,42,0.05)' : 'none',
                     }}>
                       {/* Fila superior: código + botones */}
                       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
                         <div>
-                          <p style={{fontSize:13,fontWeight:800,color:'#f1f5f9',margin:0,letterSpacing:'0.03em'}}>
+                          <p style={{fontSize:13,fontWeight:800,color:colors.text,margin:0,letterSpacing:'0.03em'}}>
                             {pc.codigo}
                           </p>
-                          {pc.fila && (
-                            <p style={{fontSize:9,color:'#475569',margin:'1px 0 0',textTransform:'uppercase',letterSpacing:'0.06em'}}>
-                              Fila {pc.fila}
-                            </p>
-                          )}
+                          <p style={{fontSize:9,color:colors.muted,margin:'1px 0 0',textTransform:'uppercase',letterSpacing:'0.06em'}}>
+                            {pc.fila ? `Fila ${pc.fila}` : 'Sin fila'}
+                            {est.autoValidada && !conProblema ? ' · Auto OK' : ''}
+                          </p>
                         </div>
                         <div style={{display:'flex',gap:5,flexShrink:0}}>
                           <button onClick={() => marcarPC(pc.pc_id, false)}
@@ -1073,8 +1296,8 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                               cursor:'pointer',transition:'all .15s',border:'none',
                               background: !conProblema && revisada
                                 ? 'linear-gradient(135deg,#059669,#10b981)'
-                                : 'rgba(255,255,255,0.07)',
-                              color: !conProblema && revisada ? 'white' : '#64748b',
+                                : isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)',
+                              color: !conProblema && revisada ? 'white' : (isDay ? '#334155' : '#64748b'),
                               boxShadow: !conProblema && revisada ? '0 0 12px rgba(16,185,129,0.3)' : 'none',
                             }}>
                             ✓ OK
@@ -1085,8 +1308,8 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                               cursor:'pointer',transition:'all .15s',border:'none',
                               background: conProblema
                                 ? 'linear-gradient(135deg,#dc2626,#ef4444)'
-                                : 'rgba(255,255,255,0.07)',
-                              color: conProblema ? 'white' : '#64748b',
+                                : isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)',
+                              color: conProblema ? 'white' : (isDay ? '#334155' : '#64748b'),
                               boxShadow: conProblema ? '0 0 12px rgba(239,68,68,0.3)' : 'none',
                             }}>
                             ⚠ Problema
@@ -1096,12 +1319,12 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
 
                       {/* Panel guiado cuando hay problema */}
                       {conProblema && (
-                        <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid rgba(251,146,60,0.2)',
+                        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${isDay ? '#fed7aa' : 'rgba(251,146,60,0.2)'}`,
                           display:'flex',flexDirection:'column',gap:8}}>
 
                           {/* Tipo de problema */}
                           <div>
-                            <p style={{fontSize:9,color:'#94a3b8',margin:'0 0 5px',fontWeight:600,
+                            <p style={{fontSize:9,color:colors.muted,margin:'0 0 5px',fontWeight:600,
                               textTransform:'uppercase',letterSpacing:'0.08em'}}>Tipo de problema</p>
                             <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
                               {TIPO_PROBLEMA_OPTS.map(opt => (
@@ -1111,10 +1334,10 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                                     padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,
                                     cursor:'pointer',transition:'all .15s',
                                     background: est.tipo === opt.id
-                                      ? 'rgba(251,146,60,0.25)' : 'rgba(255,255,255,0.05)',
+                                      ? (isDay ? '#fed7aa' : 'rgba(251,146,60,0.25)') : (isDay ? '#ffffff' : 'rgba(255,255,255,0.05)'),
                                     border: est.tipo === opt.id
-                                      ? '1px solid rgba(251,146,60,0.5)' : '1px solid rgba(255,255,255,0.07)',
-                                    color: est.tipo === opt.id ? '#fb923c' : '#64748b',
+                                      ? `1px solid ${isDay ? '#ea580c' : 'rgba(251,146,60,0.5)'}` : `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.07)'}`,
+                                    color: est.tipo === opt.id ? (isDay ? '#9a3412' : '#fb923c') : colors.subtle,
                                   }}>
                                   {opt.label}
                                 </button>
@@ -1128,8 +1351,8 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                             value={est.descripcion || ''}
                             onChange={e => setDetalle(pc.pc_id,'descripcion',e.target.value)}
                             style={{
-                              width:'100%',background:'rgba(0,0,0,0.3)',
-                              border:'1px solid rgba(251,146,60,0.25)',color:'white',
+                              width:'100%',background:isDay ? '#ffffff' : 'rgba(0,0,0,0.3)',
+                              border:`1px solid ${isDay ? '#fdba74' : 'rgba(251,146,60,0.25)'}`,color:colors.text,
                               fontSize:11,borderRadius:7,padding:'6px 9px',
                               resize:'none',outline:'none',fontFamily:'inherit',boxSizing:'border-box',
                             }}
@@ -1143,9 +1366,9 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
                                   style={{
                                     padding:'2px 8px',borderRadius:5,fontSize:9,fontWeight:700,
                                     cursor:'pointer',
-                                    background: est.prioridad===v ? 'rgba(255,255,255,0.12)':'rgba(255,255,255,0.04)',
-                                    border: est.prioridad===v ? '1px solid rgba(255,255,255,0.2)':'1px solid rgba(255,255,255,0.06)',
-                                    color: est.prioridad===v ? '#f1f5f9':'#475569',
+                                    background: est.prioridad===v ? (isDay ? '#e2e8f0' : 'rgba(255,255,255,0.12)') : (isDay ? '#ffffff' : 'rgba(255,255,255,0.04)'),
+                                    border: est.prioridad===v ? `1px solid ${isDay ? '#94a3b8' : 'rgba(255,255,255,0.2)'}` : `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)'}`,
+                                    color: est.prioridad===v ? colors.text : colors.subtle,
                                   }}>
                                   {ico} {v}
                                 </button>
@@ -1161,27 +1384,28 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
 
                           {/* Último usuario */}
                           {ultimoUsu?.loading ? (
-                            <p style={{fontSize:10,color:'#64748b',fontStyle:'italic',margin:0}}>
+                            <p style={{fontSize:10,color:colors.muted,fontStyle:'italic',margin:0}}>
                               Buscando último usuario…
                             </p>
                           ) : ultimoUsu && !ultimoUsu.loading ? (
                             <div style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',
-                              background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:7}}>
+                              background:isDay ? '#fffbeb' : 'rgba(245,158,11,0.08)',
+                              border:`1px solid ${isDay ? '#fde68a' : 'rgba(245,158,11,0.2)'}`,borderRadius:7}}>
                               <span style={{fontSize:14}}>🎓</span>
                               <div style={{minWidth:0,flex:1}}>
-                                <p style={{fontSize:11,fontWeight:600,color:'#fcd34d',margin:0,
+                                <p style={{fontSize:11,fontWeight:600,color:isDay ? '#92400e' : '#fcd34d',margin:0,
                                   overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                                   {ultimoUsu.alumno_nombre}
                                 </p>
-                                <p style={{fontSize:9,color:'rgba(251,191,36,0.6)',margin:'1px 0 0'}}>
+                                <p style={{fontSize:9,color:isDay ? '#b45309' : 'rgba(251,191,36,0.6)',margin:'1px 0 0'}}>
                                   {ultimoUsu.alumno_matricula}
                                   {ultimoUsu.sesion_materia ? ` · ${ultimoUsu.sesion_materia}` : ''}
                                 </p>
                               </div>
-                              <span style={{fontSize:9,color:'#64748b',whiteSpace:'nowrap'}}>último uso</span>
+                              <span style={{fontSize:9,color:colors.muted,whiteSpace:'nowrap'}}>último uso</span>
                             </div>
                           ) : ultimosUsuarios.hasOwnProperty(pc.pc_id) ? (
-                            <p style={{fontSize:10,color:'#475569',fontStyle:'italic',margin:0}}>
+                            <p style={{fontSize:10,color:colors.subtle,fontStyle:'italic',margin:0}}>
                               Sin historial de uso previo
                             </p>
                           ) : null}
@@ -1197,24 +1421,30 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
       </div>
 
       {/* ── FOOTER FIJO ── */}
-      <footer style={{background:'rgba(15,23,42,0.97)',borderTop:'1px solid rgba(255,255,255,0.06)',
+      <footer style={{background:colors.surface,borderTop:`1px solid ${colors.border}`,
         padding:'12px 20px',flexShrink:0,display:'flex',alignItems:'center',
         justifyContent:'space-between',gap:12}}>
         <div>
           {!listo ? (
-            <p style={{fontSize:13,color:'#94a3b8',margin:0}}>
-              <span style={{fontWeight:700,color:'#f1f5f9'}}>{pendientes}</span> equipo{pendientes!==1?'s':''} por revisar
+            <p style={{fontSize:13,color:colors.muted,margin:0}}>
+              <span style={{fontWeight:800,color:colors.text}}>{pendientes}</span> equipo{pendientes!==1?'s':''} por revisar
             </p>
           ) : conProblemasCount > 0 ? (
             <p style={{fontSize:13,color:'#fb923c',fontWeight:600,margin:0}}>
-              ⚠ {conProblemasCount} problema{conProblemasCount!==1?'s':''} registrado{conProblemasCount!==1?'s':''}
+              ⚠ {conProblemasCount} problema{conProblemasCount!==1?'s':''} registrado{conProblemasCount!==1?'s':''} · {sinNovedadCount} sin novedad
             </p>
           ) : (
             <p style={{fontSize:13,color:'#34d399',fontWeight:600,margin:0}}>
               ✓ Todos los equipos en orden
             </p>
           )}
-          {error && <p style={{fontSize:11,color:'#f87171',margin:'2px 0 0'}}>{error}</p>}
+          {listo && (
+            <p style={{fontSize:11,color:colors.muted,margin:'2px 0 0'}}>
+              Se guardará la recepción con {sinNovedadCount} equipo{sinNovedadCount!==1?'s':''} sin novedad
+              {conProblemasCount > 0 ? ` y ${conProblemasCount} incidente${conProblemasCount!==1?'s':''}` : ''}.
+            </p>
+          )}
+          {error && <p style={{fontSize:11,color:isDay ? '#b91c1c' : '#f87171',margin:'2px 0 0',fontWeight:600}}>{error}</p>}
         </div>
         <button
           onClick={handleConfirmar}
@@ -1225,8 +1455,8 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
             transition:'all .2s',
             background: listo && !loading
               ? 'linear-gradient(135deg,#059669,#10b981)'
-              : 'rgba(255,255,255,0.07)',
-            color: listo && !loading ? 'white' : '#475569',
+              : (isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)'),
+            color: listo && !loading ? 'white' : (isDay ? '#64748b' : '#475569'),
             boxShadow: listo && !loading ? '0 0 20px rgba(16,185,129,0.3)' : 'none',
             opacity: loading ? 0.7 : 1,
           }}>
@@ -1242,6 +1472,8 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
 }
 // ─── Panel de detalle de PC seleccionada ──────────────────────────────────────
 function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onReportarDano }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const libre   = pc.estado === 'EN_CLASE' || pc.estado === 'OPERATIVO';
   const ocupada = pc.estado === 'OCUPADA';
 
@@ -1253,17 +1485,17 @@ function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onRe
       {/* Header del panel */}
       <div style={{
         padding:'1rem 1.25rem 0.875rem',
-        borderBottom:'1px solid rgba(255,255,255,0.07)',
+        borderBottom:`1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.07)'}`,
         display:'flex', alignItems:'flex-start', justifyContent:'space-between',
       }}>
         <div>
           <p style={{fontSize:11, fontWeight:700, color:'#475569', textTransform:'uppercase',
             letterSpacing:'0.14em', margin:'0 0 4px'}}>PC Seleccionada</p>
-          <p style={{fontSize:22, fontWeight:800, color:'#f1f5f9', margin:0}}>{pc.codigo}</p>
-          {pc.fila && <p style={{fontSize:11, color:'#475569', margin:'2px 0 0'}}>Fila {pc.fila}</p>}
+          <p style={{fontSize:22, fontWeight:800, color:isDay ? '#0f172a' : '#f1f5f9', margin:0}}>{pc.codigo}</p>
+          {pc.fila && <p style={{fontSize:11, color:isDay ? '#64748b' : '#475569', margin:'2px 0 0'}}>Fila {pc.fila}</p>}
         </div>
         <button onClick={onClose} style={{background:'none', border:'none', cursor:'pointer',
-          color:'#475569', padding:4, borderRadius:8}}
+          color:isDay ? '#64748b' : '#475569', padding:4, borderRadius:8}}
           className="hover:text-white transition-colors">
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
@@ -1289,7 +1521,8 @@ function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onRe
         {/* Info alumno (si está ocupada) */}
         {ocupada && pc.alumno && (
           <div style={{
-            background:'rgba(30,41,59,0.5)', border:'1px solid rgba(255,255,255,0.07)',
+            background:isDay ? '#f8fafc' : 'rgba(30,41,59,0.5)',
+            border:`1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.07)'}`,
             borderRadius:'0.875rem', padding:'0.875rem 1rem', marginBottom:14,
           }}>
             <div style={{display:'flex', alignItems:'center', gap:10}}>
@@ -1302,7 +1535,7 @@ function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onRe
                 {pc.alumno.nombre.trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
               </div>
               <div style={{minWidth:0}}>
-                <p style={{fontSize:13, fontWeight:600, color:'#e2e8f0', margin:0,
+                <p style={{fontSize:13, fontWeight:600, color:isDay ? '#0f172a' : '#e2e8f0', margin:0,
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
                   {pc.alumno.nombre}
                 </p>
@@ -1386,6 +1619,8 @@ export default function SesionActiva() {
   const navigate     = useNavigate();
   const location     = useLocation();
   const { usuario }  = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
 
   const [sesion, setSesion]         = useState(null);
   const [pcs, setPcs]               = useState([]);
@@ -1395,6 +1630,7 @@ export default function SesionActiva() {
   const [modalAsignar, setModalAsignar]   = useState(null);  // pc seleccionada
   const [modalOcupada, setModalOcupada]   = useState(null);
   const [modalCerrar, setModalCerrar]     = useState(false);
+  const [modalQR, setModalQR]             = useState(false);
   const [modalObs, setModalObs]           = useState(null);
   const [modalDano, setModalDano]         = useState(null);
   const [wsConectado, setWsConectado]     = useState(false);
@@ -1574,9 +1810,19 @@ export default function SesionActiva() {
   }
 
   return (
-    <div className="min-h-screen text-white flex flex-col">
+    <div
+      className={`h-screen flex flex-col ${isDay ? 'text-slate-950' : 'text-white'}`}
+      style={{ background: isDay ? '#f1f5f9' : '#0b1120' }}
+    >
       {/* Topbar sesión */}
-      <header className="glass-sm border-b border-white/5 px-4 py-3 flex items-center justify-between shrink-0">
+      <header
+        className="px-4 py-3 flex items-center justify-between shrink-0"
+        style={{
+          background: isDay ? '#ffffff' : 'rgba(15,23,42,0.92)',
+          borderBottom: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)'}`,
+          boxShadow: isDay ? '0 1px 0 rgba(15,23,42,0.04)' : 'none',
+        }}
+      >
         <div className="flex items-center gap-3">
           {/* Indicador WS / Polling */}
           <span className="relative flex h-2.5 w-2.5">
@@ -1590,12 +1836,12 @@ export default function SesionActiva() {
             }
           </span>
           <div>
-            <p className="font-semibold text-sm text-white leading-tight">
+            <p className={`font-semibold text-sm leading-tight ${isDay ? 'text-slate-950' : 'text-white'}`}>
               {sesion.tipo_sesion === 'LIBRE'
                 ? <span className="flex items-center gap-1.5">🖥️ Sesión Libre</span>
                 : sesion.materia}
             </p>
-            <p className="text-xs text-slate-400">
+            <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
               {sesion.tipo_sesion === 'LIBRE'
                 ? sesion.laboratorio_nombre
                 : `${sesion.grupo} · ${sesion.laboratorio_nombre}`}
@@ -1607,43 +1853,67 @@ export default function SesionActiva() {
         <div className="hidden sm:flex items-center gap-4 text-sm">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-red-500"></span>
-            <span className="text-red-300 font-medium">{pcsOcupadas}</span>
-            <span className="text-slate-400">ocupadas</span>
+            <span className={`font-medium ${isDay ? 'text-red-600' : 'text-red-300'}`}>{pcsOcupadas}</span>
+            <span className={isDay ? 'text-slate-600' : 'text-slate-400'}>ocupadas</span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-green-500"></span>
-            <span className="text-green-300 font-medium">{pcsLibres}</span>
-            <span className="text-slate-400">libres</span>
+            <span className={`font-medium ${isDay ? 'text-emerald-700' : 'text-green-300'}`}>{pcsLibres}</span>
+            <span className={isDay ? 'text-slate-600' : 'text-slate-400'}>libres</span>
           </span>
           <Temporizador segundos={countdown} />
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => setModalQR(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
+            style={isDay ? { color: '#ffffff', backgroundColor: '#047857', border: '1px solid #065f46' } : { color: '#ffffff' }}>
+            QR alumnos
+          </button>
           <button onClick={() => navigate(`${location.pathname}/asistencia`)}
-            className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-xs font-medium transition-colors">
-            📋 Asistencia
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              isDay ? 'bg-blue-700 hover:bg-blue-800 text-white shadow-sm' : 'bg-blue-700 hover:bg-blue-600 text-white'
+            }`}
+            style={isDay ? { color: '#ffffff', backgroundColor: '#1d4ed8', border: '1px solid #1e40af' } : { color: '#ffffff' }}>
+            Asistencia
           </button>
           <button onClick={() => setModalObs({})}
-            className="px-3 py-1.5 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg text-xs font-medium transition-colors">
-            ⚠️ Observación
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              isDay ? 'bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-sm' : 'bg-yellow-700 hover:bg-yellow-600 text-white'
+            }`}
+            style={isDay ? { color: '#ffffff', backgroundColor: '#b45309', border: '1px solid #92400e' } : { color: '#ffffff' }}>
+            Observación
           </button>
           <button onClick={() => setModalCerrar(true)}
-            className="px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white rounded-lg text-xs font-semibold transition-colors">
-            ⏹ Cerrar
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              isDay ? 'bg-red-700 hover:bg-red-800 text-white shadow-sm' : 'bg-red-700 hover:bg-red-600 text-white'
+            }`}
+            style={isDay ? { color: '#ffffff', backgroundColor: '#b91c1c', border: '1px solid #991b1b' } : { color: '#ffffff' }}>
+            Cerrar
           </button>
         </div>
       </header>
 
       {/* Buscador + Chips de filtro */}
-      <div className="px-4 py-2.5 border-b border-white/5 flex flex-wrap items-center gap-2"
-           style={{background:'rgba(8,14,30,0.75)'}}>
+      <div
+        className="px-4 py-2.5 flex flex-wrap items-center gap-2"
+        style={{
+          background: isDay ? '#f8fafc' : 'rgba(8,14,30,0.75)',
+          borderBottom: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)'}`,
+        }}
+      >
         <div className="relative flex-1 min-w-[160px] max-w-xs">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
           <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
             placeholder="PC, alumno, matrícula…"
-            className="bg-white/5 border border-white/10 text-white text-sm rounded-xl pl-9 pr-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-green-500"/>
+            className={`text-sm rounded-xl pl-9 pr-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-green-500 ${
+              isDay
+                ? 'bg-white border border-slate-300 text-slate-950 placeholder:text-slate-500'
+                : 'bg-white/5 border border-white/10 text-white'
+            }`}
+          />
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto">
           {[
@@ -1656,9 +1926,9 @@ export default function SesionActiva() {
               style={{
                 padding:'5px 11px', borderRadius:20, fontSize:12, fontWeight:600,
                 whiteSpace:'nowrap', transition:'all 0.15s', flexShrink:0,
-                background: filtroEstado===f.id ? '#16a34a' : 'rgba(255,255,255,0.06)',
-                border:`1px solid ${filtroEstado===f.id ? '#16a34a' : 'rgba(255,255,255,0.09)'}`,
-                color: filtroEstado===f.id ? '#fff' : '#64748b',
+                background: filtroEstado===f.id ? '#16a34a' : isDay ? '#ffffff' : 'rgba(255,255,255,0.06)',
+                border:`1px solid ${filtroEstado===f.id ? '#16a34a' : isDay ? '#cbd5e1' : 'rgba(255,255,255,0.09)'}`,
+                color: filtroEstado===f.id ? '#fff' : isDay ? '#475569' : '#64748b',
               }}>
               {f.label}{f.count > 0 ? ` ${f.count}` : ''}
             </button>
@@ -1682,21 +1952,24 @@ export default function SesionActiva() {
       {/* Mapa de PCs + Panel detalle */}
       <div className="flex-1 overflow-hidden flex min-h-0">
       {/* Scroll area del mapa */}
-      <div className="flex-1 overflow-auto p-4 lg:p-5">
+      <div className="flex-1 overflow-auto p-4 lg:p-6">
         {pcs.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-slate-500 text-sm">
             {wsConectado || modoPolling ? 'Sin computadoras registradas en este laboratorio' : 'Conectando al servidor...'}
           </div>
         ) : filasOrdenadas.length > 0 ? (
-          <div className="space-y-6">
+          <div className="space-y-7 w-full">
             {filasOrdenadas.map(fila => (
               <div key={fila}>
                 {fila !== '—' && (
-                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">
+                  <p className={`text-xs font-semibold uppercase tracking-wider mb-3 ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
                     Fila {fila}
                   </p>
                 )}
-                <div className="flex flex-wrap gap-2">
+                <div
+                  className="grid gap-3 2xl:gap-4"
+                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))' }}
+                >
                   {filas[fila].sort((a,b) => a.numero - b.numero).map(pc => {
                     const highlighted = !!(busqueda && (
                       pc.alumno?.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -1712,7 +1985,7 @@ export default function SesionActiva() {
           </div>
         ) : (
           /* Sin filas definidas — grid plano */
-          <div className="flex flex-wrap gap-2">
+          <div className="grid gap-3 2xl:gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))' }}>
             {pcsFiltradas.sort((a,b) => a.numero - b.numero).map(pc => (
               <TarjetaPC key={pc.pc_id} pc={pc} onClick={handlePcClick} highlighted={false}/>
             ))}
@@ -1723,7 +1996,10 @@ export default function SesionActiva() {
       {/* Panel detalle — desktop: columna lateral */}
       {selectedPc && (
         <aside className="hidden lg:flex w-80 shrink-0 flex-col border-l border-white/8 overflow-auto"
-               style={{background:'rgba(6,10,24,0.92)'}}>
+               style={{
+                 background: isDay ? '#ffffff' : 'rgba(6,10,24,0.92)',
+                 borderLeft: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.08)'}`,
+               }}>
           <PanelDetallePC
             pc={selectedPc}
             onClose={() => setSelectedPc(null)}
@@ -1738,7 +2014,13 @@ export default function SesionActiva() {
       </div>{/* fin flex mapa+panel */}
 
       {/* Leyenda inferior */}
-      <footer className="glass-sm border-t border-white/5 px-4 py-2 flex items-center gap-4 text-xs text-slate-400 shrink-0">
+      <footer
+        className={`px-4 py-2 flex items-center gap-4 text-xs shrink-0 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}
+        style={{
+          background: isDay ? '#ffffff' : 'rgba(15,23,42,0.92)',
+          borderTop: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.06)'}`,
+        }}
+      >
         {[
           { color:'bg-red-500',    label: `${pcsOcupadas} Ocupadas` },
           { color:'bg-green-600',  label: `${pcsLibres} Libres` },
@@ -1757,7 +2039,12 @@ export default function SesionActiva() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                onClick={() => setSelectedPc(null)}/>
           <div className="relative rounded-t-2xl overflow-hidden"
-               style={{background:'#0a1020', border:'1px solid rgba(255,255,255,0.08)', maxHeight:'72vh', overflowY:'auto'}}>
+               style={{
+                 background: isDay ? '#ffffff' : '#0a1020',
+                 border:'1px solid rgba(255,255,255,0.08)',
+                 maxHeight:'72vh',
+                 overflowY:'auto'
+               }}>
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div style={{width:36, height:4, borderRadius:99, background:'rgba(255,255,255,0.15)'}}/>
@@ -1775,6 +2062,9 @@ export default function SesionActiva() {
       )}
 
       {/* Modales */}
+      {modalQR && (
+        <ModalAutoAsignacionQR sesion={sesion} onClose={() => setModalQR(false)} />
+      )}
       {modalAsignar && (
         <ModalAsignar pc={modalAsignar} sesionId={sesionId}
           onClose={() => setModalAsignar(null)}

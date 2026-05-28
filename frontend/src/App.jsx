@@ -39,12 +39,12 @@ import MisSolicitudes from './pages/espacios/MisSolicitudes';
 import ComunicadosAdmin from './pages/admin/ComunicadosAdmin';
 import MisComunicados from './pages/comunicados/MisComunicados';
 import TutoriaAdmin from './pages/admin/TutoriaAdmin';
-import EstudioSocioeconomico from './pages/admin/EstudioSocioeconomico';
 import MisTutorados from './pages/docente/MisTutorados';
 import ConsultorioMedico from './pages/medico/ConsultorioMedico';
 import AlumnoEstudioSocioeconomico from './pages/alumno/AlumnoEstudioSocioeconomico';
 import SEAlumnos from './pages/servicios_escolares/SEAlumnos';
 import SEFichas from './pages/servicios_escolares/SEFichas';
+import AutoAsignacion from './pages/AutoAsignacion';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -100,6 +100,7 @@ function AppRoutes() {
     <Routes>
       {/* Pública */}
       <Route path="/login" element={<Login />} />
+      <Route path="/autoasignacion/:token" element={<AutoAsignacion />} />
 
       {/* SUPER_ADMIN: dashboard general de plataforma */}
       <Route
@@ -340,8 +341,8 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/admin/tutoria/estudio-socioeconomico" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN']}>
-          <EstudioSocioeconomico />
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+          <Navigate to="/servicios-escolares/estudios-socioeconomicos" replace />
         </RutaProtegida>
       }/>
 

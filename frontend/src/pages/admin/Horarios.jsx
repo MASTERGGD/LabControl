@@ -6,6 +6,7 @@ import TimeGrid from '../../components/TimeGrid';
 import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const HORAS = [
@@ -464,6 +465,8 @@ const MOTIVOS_BLOQUEO = [
 // ─── Modal Bloquear Slot ───────────────────────────────────────────────────────
 
 function ModalBloquear({ slot, onClose, onBloqueado }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [motivoId, setMotivoId]       = useState(null);
   const [motivoCustom, setMotivoCustom] = useState('');
   const [cancelarRes, setCancelarRes] = useState(true);
@@ -497,15 +500,15 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl">
-        <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+      <div className={`w-full max-w-sm shadow-2xl rounded-2xl overflow-hidden ${isDay ? 'bg-white border border-slate-200' : 'glass'}`}>
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.05)'}` }}>
           <div>
-            <h3 className="font-semibold text-white">🔒 Bloquear turno institucional</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>🔒 Bloquear turno institucional</h3>
+            <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
               {DIAS_NOMBRE[slot.dia_semana]} · {slot.hora_inicio}–{slot.hora_fin}
             </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -515,14 +518,18 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
         <div className="p-5 space-y-4">
           {/* Motivo */}
           <div>
-            <p className="text-xs text-slate-400 mb-2">¿Motivo del bloqueo?</p>
+            <p className={`text-xs mb-2 ${isDay ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>¿Motivo del bloqueo?</p>
             <div className="grid grid-cols-2 gap-2">
               {MOTIVOS_BLOQUEO.map((m, i) => (
                 <button key={i} type="button" onClick={() => { setMotivoId(i); setMotivoCustom(''); }}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm text-left transition-all
                     ${motivoId === i
-                      ? 'border-purple-500 bg-purple-900/40 text-purple-200'
-                      : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-white/5'}`}>
+                      ? isDay
+                        ? 'border-purple-500 bg-purple-50 text-purple-950 shadow-sm'
+                        : 'border-purple-500 bg-purple-900/40 text-purple-200'
+                      : isDay
+                        ? 'border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400 hover:bg-white'
+                        : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-white/5'}`}>
                   <span>{m.icon}</span>
                   <span className="leading-tight text-xs">{m.label}</span>
                 </button>
@@ -533,10 +540,10 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
           {/* Campo libre si eligió "Otro" */}
           {motivoId === MOTIVOS_BLOQUEO.length - 1 && (
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Describe el motivo</label>
+              <label className={`block text-xs mb-1 ${isDay ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>Describe el motivo</label>
               <input value={motivoCustom} onChange={e => setMotivoCustom(e.target.value)}
                 placeholder="Ej: Visita de supervisión..."
-                className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"/>
+                className={`w-full px-4 py-2.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm ${isDay ? 'bg-white border-slate-300 text-slate-950 placeholder:text-slate-400' : 'input-dark text-white'}`}/>
             </div>
           )}
 
@@ -545,8 +552,8 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
             <button type="button" onClick={() => setCancelarRes(v => !v)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-sm transition-all
                 ${cancelarRes
-                  ? 'border-red-500 bg-red-900/30 text-red-200'
-                  : 'border-gray-600 text-slate-400 hover:border-gray-500'}`}>
+                  ? isDay ? 'border-red-300 bg-red-50 text-red-900' : 'border-red-500 bg-red-900/30 text-red-200'
+                  : isDay ? 'border-slate-300 text-slate-600 hover:border-slate-400' : 'border-gray-600 text-slate-400 hover:border-gray-500'}`}>
               <span className="text-base">{cancelarRes ? '❌' : '⬜'}</span>
               <span className="flex-1 text-left">
                 <span className="font-medium block">Cancelar la reservación existente</span>
@@ -561,11 +568,15 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
 
           <div className="flex gap-3 pt-1">
             <button onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors ${isDay ? 'bg-slate-100 hover:bg-slate-200 text-slate-900' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}>
               Cancelar
             </button>
             <button onClick={handleBloquear} disabled={loading || !motivoFinal}
-              className="btn-emerald flex-1 disabled:bg-gray-600 disabled:text-slate-400 disabled:shadow-none">
+              className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+                loading || !motivoFinal
+                  ? isDay ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-gray-600 text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+              }`}>
               {loading ? 'Bloqueando...' : '🔒 Bloquear turno'}
             </button>
           </div>

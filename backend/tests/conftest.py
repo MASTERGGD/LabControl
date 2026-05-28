@@ -41,6 +41,7 @@ from models.usuario import Usuario, RolUsuario
 from models.cumplimiento import EventoCumplimiento  # noqa: F401
 from models.laboratorio import Laboratorio
 from dependencies import hashear_password
+from services.rate_limit import RateLimitMiddleware, reset_rate_limit_state
 
 # -- Engine de test -------------------------------------------------------------
 engine_test = create_engine(
@@ -89,6 +90,7 @@ from routers import (
 )
 
 test_app = FastAPI(title="LabControl-Test", docs_url=None)
+test_app.add_middleware(RateLimitMiddleware)
 test_app.include_router(auth_router.router)
 test_app.include_router(laboratorios_router.router)
 test_app.include_router(usuarios_router.router)
@@ -112,6 +114,7 @@ test_app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(autouse=True)
 def reset_db():
     """Recrea todas las tablas antes de cada test usando drop_all + create_all."""
+    reset_rate_limit_state()
     Base.metadata.drop_all(bind=engine_test)
     Base.metadata.create_all(bind=engine_test)
     yield

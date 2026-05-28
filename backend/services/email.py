@@ -82,6 +82,8 @@ _COLORES = {
     "MANTENIMIENTO":    ("#f97316", "🔧"),
     "RESERVACION":      ("#3b82f6", "📅"),
     "OVERTIME":         ("#a855f7", "⏰"),
+    "COMUNICADO":        ("#059669", "📣"),
+    "COMUNICADO_URGENTE": ("#dc2626", "⚠️"),
 }
 
 

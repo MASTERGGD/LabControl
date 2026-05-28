@@ -5,9 +5,32 @@ import api from '../../hooks/useApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(iso) {
+function fmtRaw(iso) {
   if (!iso) return '—';
   return iso.substring(0, 16).replace('T', '  ');
+}
+
+function fmt(iso) {
+  if (!iso) return '—';
+  const raw = String(iso);
+  const date = new Date(/[zZ]$|[+-]\d\d:\d\d$/.test(raw) ? raw : `${raw}Z`);
+  if (Number.isNaN(date.getTime())) return '—';
+  const parts = new Intl.DateTimeFormat('es-MX', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = type => parts.find(p => p.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')}  ${get('hour')}:${get('minute')}`;
+}
+
+function fmtHora(iso) {
+  const value = fmt(iso);
+  return value.includes('  ') ? value.split('  ')[1] : value;
 }
 
 function Badge({ children, color = 'slate' }) {
@@ -275,10 +298,10 @@ export default function AsistenciaSesion() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap font-mono">
-                        {al.hora_entrada ? fmt(al.hora_entrada).split('  ')[1] : '—'}
+                        {al.hora_entrada ? fmtHora(al.hora_entrada) : '—'}
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap font-mono">
-                        {al.hora_salida ? fmt(al.hora_salida).split('  ')[1] : (al.activa ? '—' : '—')}
+                        {al.hora_salida ? fmtHora(al.hora_salida) : (al.activa ? '—' : '—')}
                       </td>
                       <td className="px-4 py-3 text-center text-slate-400 text-xs">
                         {al.duracion_min != null ? `${al.duracion_min} min` : '—'}

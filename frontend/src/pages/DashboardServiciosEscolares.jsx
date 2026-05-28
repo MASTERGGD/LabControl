@@ -14,7 +14,7 @@ function Stat({ label, value, detail, tone = "blue" }) {
     slate: isDay ? "bg-white border-slate-200 text-slate-700" : "bg-slate-900/70 border-slate-700 text-slate-300",
   };
   return (
-    <div className={`rounded-xl border p-4 ${tones[tone] || tones.blue}`}>
+    <div className={`card-lift rounded-xl border p-4 ${tones[tone] || tones.blue}`}>
       <p className="text-3xl font-bold">{value}</p>
       <p className="text-sm font-medium mt-1">{label}</p>
       {detail && <p className="text-xs opacity-75 mt-1">{detail}</p>}
@@ -29,7 +29,7 @@ function Action({ title, detail, action, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border p-4 text-left transition-colors ${
+      className={`card-lift rounded-xl border p-4 text-left transition-colors ${
         isDay ? "bg-white border-slate-200 hover:bg-slate-50" : "bg-slate-900/70 border-slate-700 hover:bg-white/5"
       }`}
     >
@@ -72,7 +72,7 @@ export default function DashboardServiciosEscolares() {
   return (
     <AdminLayout>
       <div className={`min-h-screen p-6 ${pageBg}`}>
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
               <p className={`text-xs uppercase tracking-[0.22em] ${muted}`}>Panel institucional</p>
@@ -90,15 +90,15 @@ export default function DashboardServiciosEscolares() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <Stat label="Alumnos activos" value={loading ? "..." : alumnos.length} detail="Catalogo academico" tone="blue" />
             <Stat label="Carreras con alumnos" value={loading ? "..." : resumen.carreras} detail="Segun registros activos" tone="emerald" />
             <Stat label="Periodos registrados" value={loading ? "..." : resumen.periodos} detail="Historico cargado" tone="slate" />
             <Stat label="Datos por revisar" value={loading ? "..." : resumen.sinGrupo} detail="Grupo o cuatrimestre faltante" tone="amber" />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <section className={`rounded-2xl border p-5 ${panel}`}>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)] gap-6">
+            <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
               <h2 className="text-lg font-bold">Funciones del area</h2>
               <div className="mt-4 grid gap-3">
                 <Action
@@ -110,20 +110,20 @@ export default function DashboardServiciosEscolares() {
                 <Action
                   title="Estudios socioeconomicos"
                   detail="Activacion para alumnos, revision de fichas enviadas y calidad de datos."
-                  action="Disenar"
+                  action="Gestionar"
                   onClick={() => navigate("/servicios-escolares/estudios-socioeconomicos")}
                 />
               </div>
             </section>
 
-            <section className={`rounded-2xl border p-5 ${panel}`}>
+            <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
               <h2 className="text-lg font-bold">Flujo recomendado</h2>
               <div className={`mt-4 space-y-3 text-sm ${muted}`}>
                 <p><span className="font-semibold text-blue-500">1.</span> Registrar alumno al recibir matricula.</p>
                 <p><span className="font-semibold text-blue-500">2.</span> Actualizar correo institucional cuando sea asignado.</p>
                 <p><span className="font-semibold text-blue-500">3.</span> Activar acceso SIGA y estudio socioeconomico.</p>
                 <p><span className="font-semibold text-blue-500">4.</span> Validar o solicitar correccion de la ficha enviada.</p>
-                <p><span className="font-semibold text-blue-500">5.</span> Entregar datos validados a Tutoria para analisis.</p>
+                <p><span className="font-semibold text-blue-500">5.</span> Compartir datos validados con Tutoria para seguimiento y analisis.</p>
               </div>
             </section>
           </div>

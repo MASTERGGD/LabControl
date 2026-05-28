@@ -739,7 +739,7 @@ function ModalSeguimientoAlumno({ alumnoId, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl flex flex-col" style={{ maxHeight: "90vh" }}>
         {/* Header */}
         <div className="p-5 border-b border-slate-700 flex items-start justify-between">
           {loading ? (
@@ -777,24 +777,31 @@ function ModalSeguimientoAlumno({ alumnoId, onClose }) {
         {/* Tabs internas */}
         {!loading && data && (
           <>
-            <div className="flex gap-1 px-5 pt-4">
+            <div className="px-5 pt-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5">
               {[
-                { id: "sesiones",       label: `Sesiones (${data.total_sesiones})` },
-                { id: "canalizaciones", label: `Canalizaciones (${data.canalizaciones.length})` },
-                { id: "evolucion",      label: `Evolución (${(data.evolucion_seguimiento || []).length})` },
-                { id: "informes",       label: `Informes (${(data.informes || []).length})` },
-                { id: "trayectoria",    label: `Trayectoria (${(data.grupos_historial || []).length})` },
-                { id: "documentos",     label: `Documentos (${(data.documentos_generados || []).length})` },
-                { id: "ficha",          label: "Ficha completa" },
-                { id: "perfil",         label: "Perfil socioeconómico" },
+                { id: "sesiones",       label: "Sesiones", count: data.total_sesiones },
+                { id: "canalizaciones", label: "Canalizaciones", count: data.canalizaciones.length },
+                { id: "evolucion",      label: "Evolución", count: (data.evolucion_seguimiento || []).length },
+                { id: "informes",       label: "Informes", count: (data.informes || []).length },
+                { id: "trayectoria",    label: "Trayectoria", count: (data.grupos_historial || []).length },
+                { id: "documentos",     label: "Documentos", count: (data.documentos_generados || []).length },
+                { id: "ficha",          label: "Ficha" },
+                { id: "perfil",         label: "Perfil SE" },
               ].map(t => (
                 <button key={t.id} onClick={() => setSeccion(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    seccion === t.id ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  className={`min-w-0 px-2 py-2 rounded-lg text-xs font-medium transition-all ${
+                    seccion === t.id ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-white hover:bg-slate-800"
                   }`}>
-                  {t.label}
+                  <span className="block leading-tight">{t.label}</span>
+                  {typeof t.count === "number" && (
+                    <span className={`mt-0.5 block text-[11px] ${seccion === t.id ? "text-white/80" : "text-slate-500"}`}>
+                      {t.count}
+                    </span>
+                  )}
                 </button>
               ))}
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-5 pt-3 space-y-2">
@@ -1519,16 +1526,20 @@ export default function TutoriaAdmin() {
   };
 
   const alertasAltas = alertas.filter(a => a.nivel === "ALTO").length;
+  const alertasDashboard = [...alertas]
+    .sort((a, b) => (a.nivel === "ALTO" ? -1 : 1) - (b.nivel === "ALTO" ? -1 : 1))
+    .slice(0, 4);
+  const alertasRestantes = Math.max(alertas.length - alertasDashboard.length, 0);
   const TABS = [
-    { id: "dashboard",      label: "Dashboard" + (alertasAltas > 0 ? ` 🔴${alertasAltas}` : "") },
-    { id: "grupos",         label: "Grupos tutorados" },
+    { id: "dashboard",      label: "Dashboard" + (alertasAltas > 0 ? ` (${alertasAltas})` : "") },
+    { id: "grupos",         label: "Grupos" },
     { id: "canalizaciones", label: "Canalizaciones" + (dash?.canalizaciones_pendientes > 0 ? ` (${dash.canalizaciones_pendientes})` : "") },
-    { id: "informes",       label: "Informes bimestrales" },
-    { id: "riesgo",         label: "🚨 Alumnos en Riesgo" },
-    { id: "reporte",        label: "📊 Reporte General" },
+    { id: "informes",       label: "Informes" },
+    { id: "riesgo",         label: "Alumnos en riesgo" },
+    { id: "reporte",        label: "Reporte general" },
     { id: "programacion",   label: "Programación" },
-    { id: "cierre",         label: "Cierre de periodo" },
-    { id: "documentos",     label: "Control documental" },
+    { id: "cierre",         label: "Cierre" },
+    { id: "documentos",     label: "Documentos" },
   ];
 
   return (
@@ -1554,7 +1565,7 @@ export default function TutoriaAdmin() {
       </div>
 
       {/* Tabs */}
-      <div className={`flex gap-1 rounded-xl p-1 w-fit max-w-full overflow-x-auto ${isDay ? "bg-white border border-slate-200" : "bg-slate-800/50"}`}>
+      <div className={`flex flex-wrap gap-1 rounded-xl p-1 w-full max-w-full ${isDay ? "bg-white border border-slate-200" : "bg-slate-800/50"}`}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
@@ -1568,31 +1579,6 @@ export default function TutoriaAdmin() {
       {/* â”€â”€ DASHBOARD â”€â”€ */}
       {tab === "dashboard" && dash && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-            <StatCard label="Grupos activos" value={dash.total_grupos} icon="G" tone="blue" hint="Con tutor asignado" />
-            <StatCard label="Tutores asignados" value={dash.total_tutores} icon="T" hint="Docentes con grupo" />
-            <StatCard label="Alumnos tutorados" value={dash.total_tutorados} icon="A" tone="emerald" hint="Asignaciones activas" />
-            <StatCard label="Sesiones esta semana" value={dash.sesiones_esta_semana} icon="S" hint="Registros F-DC-07" />
-            <StatCard label="Grupos sin alumnos" value={gruposSinAlumnos.length} icon="!" alert={gruposSinAlumnos.length > 0} hint="Revisar asignación" />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
-            <StatCard label="Estudios importados" value={dash.perfiles_importados || 0} icon="E"
-              tone="blue" hint="Perfiles socioeconómicos" />
-            <StatCard label="Alumnos en riesgo alto" value={dash.perfiles_riesgo_alto ?? dash.alumnos_riesgo_alto ?? 0} icon="R"
-              alert={(dash.perfiles_riesgo_alto ?? dash.alumnos_riesgo_alto ?? 0) > 0} hint="Semáforo socioeconómico" />
-            <StatCard label="Riesgo medio" value={dash.perfiles_riesgo_medio || 0} icon="M"
-              alert={(dash.perfiles_riesgo_medio || 0) > 0} hint="Vulnerabilidad moderada" />
-            <StatCard label="Sin grupo tutorado" value={dash.perfiles_sin_grupo || 0} icon="G"
-              alert={(dash.perfiles_sin_grupo || 0) > 0} hint="Importados sin asignación" />
-            <StatCard label="Asistencia global" value={`${dash.porcentaje_asistencia || 0}%`} icon="%"
-              tone="emerald" hint="Sesiones registradas" />
-            <StatCard label="Canalizaciones abiertas" value={dash.canalizaciones_abiertas || 0} icon="C"
-              alert={(dash.canalizaciones_abiertas || 0) > 0} hint="Pendientes + seguimiento" />
-            <StatCard label="Tiempo de atención" value={dash.promedio_dias_atencion == null ? "—" : `${dash.promedio_dias_atencion} d`} icon="D"
-              tone="blue" hint="Promedio de canalizaciones atendidas" />
-          </div>
-
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4">
             <section className="rounded-2xl border border-white/10 bg-slate-900/40 p-5">
               <div className="flex items-center justify-between gap-3 mb-4">
@@ -1639,6 +1625,55 @@ export default function TutoriaAdmin() {
               )}
             </section>
           </div>
+
+          <section className="space-y-3">
+            <div className="flex items-end justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg font-semibold">Resumen operativo</h2>
+                <p className="text-sm text-slate-400">Solo los datos necesarios para decidir qué revisar hoy.</p>
+              </div>
+              <button onClick={() => setTab("reporte")}
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-white/5">
+                Ver reporte completo
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+              <StatCard label="Grupos activos" value={dash.total_grupos} icon="G" tone="blue" hint="Con tutor asignado" />
+              <StatCard label="Tutores asignados" value={dash.total_tutores} icon="T" hint="Docentes con grupo" />
+              <StatCard label="Alumnos tutorados" value={dash.total_tutorados} icon="A" tone="emerald" hint="Asignaciones activas" />
+              <StatCard label="Riesgo alto" value={dash.perfiles_riesgo_alto ?? dash.alumnos_riesgo_alto ?? 0} icon="R"
+                alert={(dash.perfiles_riesgo_alto ?? dash.alumnos_riesgo_alto ?? 0) > 0} hint="Atención prioritaria" />
+              <StatCard label="Canalizaciones abiertas" value={dash.canalizaciones_abiertas || 0} icon="C"
+                alert={(dash.canalizaciones_abiertas || 0) > 0} hint="Pendientes + seguimiento" />
+              <StatCard label="Asistencia global" value={`${dash.porcentaje_asistencia || 0}%`} icon="%"
+                tone="emerald" hint="Sesiones registradas" />
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+              <div>
+                <h2 className="text-lg font-semibold">Resumen del periodo</h2>
+                <p className="text-sm text-slate-400">Métricas de contexto separadas de los pendientes diarios.</p>
+              </div>
+              <button onClick={() => setTab("grupos")}
+                className="text-xs px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-white/5">
+                Revisar asignaciones
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+              <StatCard label="Sesiones esta semana" value={dash.sesiones_esta_semana} icon="S" hint="Registros F-DC-07" />
+              <StatCard label="Grupos sin alumnos" value={gruposSinAlumnos.length} icon="!" alert={gruposSinAlumnos.length > 0} hint="Revisar asignación" />
+              <StatCard label="Estudios importados" value={dash.perfiles_importados || 0} icon="E"
+                tone="blue" hint="Perfiles socioeconómicos" />
+              <StatCard label="Riesgo medio" value={dash.perfiles_riesgo_medio || 0} icon="M"
+                alert={(dash.perfiles_riesgo_medio || 0) > 0} hint="Vulnerabilidad moderada" />
+              <StatCard label="Sin grupo tutorado" value={dash.perfiles_sin_grupo || 0} icon="G"
+                alert={(dash.perfiles_sin_grupo || 0) > 0} hint="Importados sin asignación" />
+              <StatCard label="Tiempo de atención" value={dash.promedio_dias_atencion == null ? "—" : `${dash.promedio_dias_atencion} d`} icon="D"
+                tone="blue" hint="Promedio de canalizaciones atendidas" />
+            </div>
+          </section>
 
           <section className="rounded-2xl border border-white/10 bg-slate-900/40 p-5">
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
@@ -1702,8 +1737,10 @@ export default function TutoriaAdmin() {
           <section className="rounded-2xl border border-white/10 bg-slate-900/40 p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <div>
-                <h2 className="text-lg font-semibold">Alertas del sistema</h2>
-                <p className="text-xs text-slate-500">{alertas.length} alerta(s) activa(s)</p>
+                <h2 className="text-lg font-semibold">Alertas prioritarias</h2>
+                <p className="text-xs text-slate-500">
+                  {alertas.length} alerta(s) activa(s){alertasRestantes > 0 ? ` · mostrando ${alertasDashboard.length}` : ""}
+                </p>
               </div>
               <button
                 onClick={async () => {
@@ -1723,8 +1760,8 @@ export default function TutoriaAdmin() {
                 <p className="text-xs text-slate-500 mt-0.5">Todos los tutores han registrado sesiones recientes y no hay canalizaciones sin atender.</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                {alertas.map((a, i) => (
+              <div className="space-y-2">
+                {alertasDashboard.map((a, i) => (
                   <div key={i} className={`rounded-xl border px-4 py-3 ${
                     a.nivel === "ALTO"
                       ? "border-red-500/30 bg-red-950/15"
@@ -1774,6 +1811,14 @@ export default function TutoriaAdmin() {
                     </div>
                   </div>
                 ))}
+                {alertasRestantes > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTab("programacion")}
+                    className="w-full rounded-xl border border-slate-700/70 bg-slate-800/35 px-4 py-3 text-sm text-slate-300 hover:bg-white/5">
+                    Ver {alertasRestantes} alerta(s) más en programación y seguimiento
+                  </button>
+                )}
               </div>
             )}
           </section>

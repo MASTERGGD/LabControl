@@ -33,6 +33,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -40,11 +41,13 @@ from dependencies import get_current_user, require_roles
 from models.comunicado import (
     Comunicado, ComunicadoAdjunto, ComunicadoDestinatario, ComunicadoLectura,
     ComunicadoRespaldo, ComunicadoRespuesta, ComunicadoRespuestaAdjunto,
+    ComunicadoRespuestaMensaje,
     CategoriaComunicado, EstadoComunicado, PrioridadComunicado, TipoDestinatario,
 )
 from models.departamento import Departamento
 from models.usuario import RolUsuario, Usuario
 from services.auditoria import registrar
+from services.email import enviar_notificacion
 
 router = APIRouter(prefix="/comunicados", tags=["Comunicados"])
 
@@ -79,7 +82,7 @@ CATEGORIAS_COMUNICADOS = [
     {"value": "VINCULACION", "label": "Vinculacion", "color": "lime"},
 ]
 CATEGORIA_VALUES = {c["value"] for c in CATEGORIAS_COMUNICADOS}
-CATEGORIAS_TRANSVERSALES = {"GENERAL", "URGENTE", "EVENTOS"}
+CATEGORIAS_TRANSVERSALES = {"GENERAL", "EVENTOS"}
 CATEGORIAS_POR_PROCESO = {
     "RH": {"RRHH", "ADMINISTRATIVO", "CONVOCATORIAS"},
     "TUTORIA": {"TUTORIA", "ACADEMICO"},
@@ -128,7 +131,7 @@ def _proceso_departamento(dep: Departamento | None) -> str | None:
 
 def _categorias_por_proceso(proceso: str | None) -> set[str]:
     if not proceso:
-        return set(CATEGORIA_VALUES)
+        return set(CATEGORIA_VALUES) - {"URGENTE"}
     return CATEGORIAS_TRANSVERSALES | CATEGORIAS_POR_PROCESO.get(proceso, set())
 
 
@@ -181,6 +184,44 @@ def _comunicado_aplica_a(comunicado: Comunicado, usuario: Usuario) -> bool:
     return False
 
 
+def _usuarios_destinatarios(db: Session, comunicado: Comunicado) -> list[Usuario]:
+    usuarios = db.query(Usuario).filter(Usuario.activo == True).all()
+    return [u for u in usuarios if _comunicado_aplica_a(comunicado, u)]
+
+
+def _url_comunicado() -> str:
+    base = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return f"{base}/comunicados"
+
+
+def _enviar_email_comunicado(db: Session, comunicado: Comunicado) -> tuple[int, int]:
+    destinatarios = _usuarios_destinatarios(db, comunicado)
+    enviados = 0
+    fallidos = 0
+    tipo_email = "COMUNICADO_URGENTE" if comunicado.prioridad == PrioridadComunicado.URGENTE else "COMUNICADO"
+    mensaje = (
+        f"Tienes un comunicado nuevo en SIGA: {comunicado.titulo}. "
+        "Ingresa a la plataforma para consultarlo"
+        + (" y confirmar lectura si aplica." if comunicado.requiere_confirmacion else ".")
+    )
+    for destinatario in destinatarios:
+        if not destinatario.email:
+            fallidos += 1
+            continue
+        ok = enviar_notificacion(
+            destinatario=destinatario.email,
+            tipo=tipo_email,
+            titulo=f"Comunicado: {comunicado.titulo}",
+            mensaje=mensaje,
+            url=_url_comunicado(),
+        )
+        if ok:
+            enviados += 1
+        else:
+            fallidos += 1
+    return enviados, fallidos
+
+
 def _esta_activo(c: Comunicado) -> bool:
     now = _utcnow()
     if c.estado != EstadoComunicado.PUBLICADO:
@@ -190,6 +231,27 @@ def _esta_activo(c: Comunicado) -> bool:
     if c.fecha_expiracion and c.fecha_expiracion <= now:
         return False
     return True
+
+
+def _fecha_publicacion_bloqueada(c: Comunicado) -> bool:
+    if c.estado != EstadoComunicado.PUBLICADO:
+        return False
+    return not c.fecha_publicacion or c.fecha_publicacion <= _utcnow()
+
+
+def _rango_periodo(periodo: str) -> tuple[datetime.datetime, datetime.datetime] | None:
+    try:
+        year_raw, periodo_raw = periodo.split("-", 1)
+        year = int(year_raw)
+        periodo_num = int(periodo_raw)
+    except ValueError:
+        return None
+    rangos = {
+        1: (datetime.datetime(year, 1, 1), datetime.datetime(year, 4, 30, 23, 59, 59)),
+        2: (datetime.datetime(year, 5, 1), datetime.datetime(year, 8, 31, 23, 59, 59)),
+        3: (datetime.datetime(year, 9, 1), datetime.datetime(year, 12, 31, 23, 59, 59)),
+    }
+    return rangos.get(periodo_num)
 
 
 def _get_respuesta_from_rel(c: Comunicado, usuario_id: int) -> ComunicadoRespuesta | None:
@@ -210,6 +272,10 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         "estado":                c.estado,
         "requiere_confirmacion": c.requiere_confirmacion,
         "requiere_retroalimentacion": c.requiere_retroalimentacion,
+        "notificar_email":      c.notificar_email,
+        "email_enviados":       c.email_enviados,
+        "email_fallidos":       c.email_fallidos,
+        "email_ultimo_envio":   c.email_ultimo_envio.isoformat() if c.email_ultimo_envio else None,
         "fecha_limite_respuesta": c.fecha_limite_respuesta.isoformat() if c.fecha_limite_respuesta else None,
         "fijado":                c.fijado,
         "area_emisora":          c.area_emisora,
@@ -290,11 +356,30 @@ def _serializar_adjunto(a: ComunicadoAdjunto | ComunicadoRespuestaAdjunto) -> di
 def _serializar_respuesta(r: ComunicadoRespuesta | None) -> dict | None:
     if not r:
         return None
+    mensajes = [
+        {
+            "id": m.id,
+            "usuario_id": m.usuario_id,
+            "usuario_nombre": m.usuario.nombre if m.usuario else None,
+            "comentario": m.comentario,
+            "creado_en": m.creado_en.isoformat() if m.creado_en else None,
+        }
+        for m in r.mensajes
+    ]
+    if not mensajes:
+        mensajes = [{
+            "id": None,
+            "usuario_id": r.usuario_id,
+            "usuario_nombre": r.usuario.nombre if r.usuario else None,
+            "comentario": r.comentario,
+            "creado_en": r.creado_en.isoformat() if r.creado_en else None,
+        }]
     return {
         "id": r.id,
         "usuario_id": r.usuario_id,
         "usuario_nombre": r.usuario.nombre if r.usuario else None,
         "comentario": r.comentario,
+        "mensajes": mensajes,
         "estado": r.estado,
         "revisado_por_id": r.revisado_por_id,
         "revisado_por_nombre": r.revisado_por.nombre if r.revisado_por else None,
@@ -406,6 +491,10 @@ def _manifest_comunicados(comunicados: list[Comunicado]) -> dict:
                 "estado": c.estado,
                 "requiere_confirmacion": c.requiere_confirmacion,
                 "requiere_retroalimentacion": c.requiere_retroalimentacion,
+                "notificar_email": c.notificar_email,
+                "email_enviados": c.email_enviados,
+                "email_fallidos": c.email_fallidos,
+                "email_ultimo_envio": c.email_ultimo_envio.isoformat() if c.email_ultimo_envio else None,
                 "fecha_limite_respuesta": c.fecha_limite_respuesta.isoformat() if c.fecha_limite_respuesta else None,
                 "fijado": c.fijado,
                 "area_emisora": c.area_emisora,
@@ -532,6 +621,7 @@ class ComunicadoCreate(BaseModel):
     prioridad:             str = "INFORMATIVO"
     requiere_confirmacion: bool = False
     requiere_retroalimentacion: bool = False
+    notificar_email:       bool = False
     fecha_limite_respuesta: Optional[datetime.datetime] = None
     fijado:                bool = False
     area_emisora:          Optional[str] = None
@@ -549,6 +639,7 @@ class ComunicadoUpdate(BaseModel):
     prioridad:             Optional[str] = None
     requiere_confirmacion: Optional[bool] = None
     requiere_retroalimentacion: Optional[bool] = None
+    notificar_email:       Optional[bool] = None
     fecha_limite_respuesta: Optional[datetime.datetime] = None
     fijado:                Optional[bool] = None
     area_emisora:          Optional[str] = None
@@ -570,6 +661,10 @@ class RespuestaCreate(BaseModel):
 
 class RespuestaEstadoUpdate(BaseModel):
     estado: str
+
+
+class RespuestaMensajeCreate(BaseModel):
+    comentario: str
 
 
 # ─── Endpoints usuario ─────────────────────────────────────────────────────────
@@ -759,6 +854,13 @@ async def responder_comunicado(
         respuesta.revisado_en = None
         respuesta.actualizado_en = now
 
+    db.add(ComunicadoRespuestaMensaje(
+        respuesta_id=respuesta.id,
+        usuario_id=usuario.id,
+        comentario=comentario,
+        creado_en=now,
+    ))
+
     if archivo and archivo.filename:
         if len(respuesta.adjuntos) >= 1:
             raise HTTPException(400, "Solo se permite un archivo por respuesta")
@@ -826,6 +928,17 @@ def descargar_adjunto_respuesta(
 def listar_comunicados(
     estado:    Optional[str] = Query(None),
     categoria: Optional[str] = Query(None),
+    q_texto: Optional[str] = Query(None, alias="q"),
+    prioridad: Optional[str] = Query(None),
+    requiere_confirmacion: Optional[bool] = Query(None),
+    requiere_retroalimentacion: Optional[bool] = Query(None),
+    fijado: Optional[bool] = Query(None),
+    dest_tipo: Optional[str] = Query(None),
+    dest_busqueda: Optional[str] = Query(None),
+    seguimiento: Optional[str] = Query(None),
+    periodo: Optional[str] = Query(None),
+    publicado_desde: Optional[datetime.datetime] = Query(None),
+    publicado_hasta: Optional[datetime.datetime] = Query(None),
     db:        Session = Depends(get_db),
     usuario:   Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
@@ -840,6 +953,84 @@ def listar_comunicados(
         q = q.filter(Comunicado.estado == estado)
     if categoria:
         q = q.filter(Comunicado.categoria == categoria)
+    if prioridad:
+        q = q.filter(Comunicado.prioridad == prioridad)
+    if requiere_confirmacion is not None:
+        q = q.filter(Comunicado.requiere_confirmacion == requiere_confirmacion)
+    if requiere_retroalimentacion is not None:
+        q = q.filter(Comunicado.requiere_retroalimentacion == requiere_retroalimentacion)
+    if fijado is not None:
+        q = q.filter(Comunicado.fijado == fijado)
+    if periodo:
+        rango = _rango_periodo(periodo)
+        if not rango:
+            raise HTTPException(422, "Periodo invalido")
+        q = q.filter(Comunicado.fecha_publicacion >= rango[0], Comunicado.fecha_publicacion <= rango[1])
+    if publicado_desde:
+        q = q.filter(Comunicado.fecha_publicacion >= publicado_desde)
+    if publicado_hasta:
+        q = q.filter(Comunicado.fecha_publicacion <= publicado_hasta)
+    if q_texto:
+        like = f"%{q_texto.strip()}%"
+        autor_ids = [u.id for u in db.query(Usuario.id).filter(or_(
+            Usuario.nombre.ilike(like),
+            Usuario.email.ilike(like),
+        )).all()]
+        q = q.filter(or_(
+            Comunicado.titulo.ilike(like),
+            Comunicado.contenido.ilike(like),
+            Comunicado.area_emisora.ilike(like),
+            Comunicado.autor_id.in_(autor_ids) if autor_ids else False,
+        ))
+    if dest_tipo:
+        dest_tipo = dest_tipo.upper()
+        refs: list[str] | None = None
+        if dest_busqueda and dest_tipo == TipoDestinatario.USUARIO:
+            like = f"%{dest_busqueda.strip()}%"
+            refs = [
+                str(u.id)
+                for u in db.query(Usuario.id).filter(or_(
+                    Usuario.nombre.ilike(like),
+                    Usuario.email.ilike(like),
+                )).all()
+            ]
+        elif dest_busqueda and dest_tipo == TipoDestinatario.DEPARTAMENTO:
+            like = f"%{dest_busqueda.strip()}%"
+            refs = [
+                str(d.id)
+                for d in db.query(Departamento.id).filter(Departamento.nombre.ilike(like)).all()
+            ]
+            if dest_busqueda.strip().isdigit():
+                refs.append(dest_busqueda.strip())
+        elif dest_busqueda:
+            refs = [dest_busqueda.strip()]
+        dest_q = db.query(ComunicadoDestinatario.comunicado_id).filter(
+            ComunicadoDestinatario.tipo_destinatario == dest_tipo
+        )
+        if refs is not None:
+            if not refs:
+                return []
+            dest_q = dest_q.filter(ComunicadoDestinatario.destinatario_ref.in_(refs))
+        q = q.filter(Comunicado.id.in_(dest_q))
+    if seguimiento:
+        seguimiento = seguimiento.upper()
+        if seguimiento == "CON_RESPUESTAS":
+            q = q.filter(Comunicado.id.in_(db.query(ComunicadoRespuesta.comunicado_id)))
+        elif seguimiento == "EN_SEGUIMIENTO":
+            q = q.filter(Comunicado.id.in_(
+                db.query(ComunicadoRespuesta.comunicado_id).filter(ComunicadoRespuesta.estado == "EN_SEGUIMIENTO")
+            ))
+        elif seguimiento == "REVISADOS":
+            q = q.filter(Comunicado.id.in_(
+                db.query(ComunicadoRespuesta.comunicado_id).filter(ComunicadoRespuesta.estado == "REVISADO")
+            ))
+        elif seguimiento == "PENDIENTES_LECTURA":
+            q = q.filter(Comunicado.id.in_(
+                db.query(ComunicadoDestinatario.comunicado_id).outerjoin(
+                    ComunicadoLectura,
+                    ComunicadoLectura.comunicado_id == ComunicadoDestinatario.comunicado_id,
+                ).filter(ComunicadoLectura.leido_en.is_(None))
+            ))
     comunicados = q.order_by(Comunicado.fijado.desc(), Comunicado.creado_en.desc()).all()
     return [_serializar(c) for c in comunicados]
 
@@ -872,6 +1063,7 @@ def crear_comunicado(
         estado=EstadoComunicado.BORRADOR,
         requiere_confirmacion=body.requiere_confirmacion,
         requiere_retroalimentacion=body.requiere_retroalimentacion,
+        notificar_email=body.notificar_email,
         fecha_limite_respuesta=body.fecha_limite_respuesta,
         fijado=body.fijado,
         area_emisora="Tutoría" if usuario.rol == RolUsuario.TUTORIA_ADMIN else body.area_emisora,
@@ -1141,7 +1333,7 @@ def revisar_respuesta(
     if not respuesta:
         raise HTTPException(404, "Respuesta no encontrada")
     estado = body.estado.upper()
-    if estado not in {"RESPONDIDO", "REVISADO"}:
+    if estado not in {"RESPONDIDO", "EN_SEGUIMIENTO", "REVISADO"}:
         raise HTTPException(422, "Estado invalido")
     respuesta.estado = estado
     if estado == "REVISADO":
@@ -1151,6 +1343,40 @@ def revisar_respuesta(
         respuesta.revisado_por_id = None
         respuesta.revisado_en = None
     respuesta.actualizado_en = _utcnow()
+    db.commit()
+    db.refresh(respuesta)
+    return _serializar_respuesta(respuesta)
+
+
+@router.post("/{comunicado_id}/respuestas/{respuesta_id}/mensajes", status_code=status.HTTP_201_CREATED)
+def responder_seguimiento(
+    comunicado_id: int,
+    respuesta_id: int,
+    body: RespuestaMensajeCreate,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
+):
+    c = db.query(Comunicado).filter_by(id=comunicado_id).first()
+    if not c:
+        raise HTTPException(404, "Comunicado no encontrado")
+    _validar_acceso_gestion(c, usuario, "responder")
+    respuesta = db.query(ComunicadoRespuesta).filter_by(id=respuesta_id, comunicado_id=comunicado_id).first()
+    if not respuesta:
+        raise HTTPException(404, "Respuesta no encontrada")
+    comentario = body.comentario.strip()
+    if not comentario:
+        raise HTTPException(422, "Escribe un comentario")
+    now = _utcnow()
+    db.add(ComunicadoRespuestaMensaje(
+        respuesta_id=respuesta.id,
+        usuario_id=usuario.id,
+        comentario=comentario,
+        creado_en=now,
+    ))
+    respuesta.estado = "EN_SEGUIMIENTO"
+    respuesta.revisado_por_id = None
+    respuesta.revisado_en = None
+    respuesta.actualizado_en = now
     db.commit()
     db.refresh(respuesta)
     return _serializar_respuesta(respuesta)
@@ -1185,6 +1411,13 @@ def editar_comunicado(
     if usuario.rol == RolUsuario.TUTORIA_ADMIN and body.destinatarios is not None:
         _validar_destinatarios_tutoria(db, body.destinatarios)
     datos_update = body.model_dump(exclude_none=True)
+    if "fecha_publicacion" in datos_update and _fecha_publicacion_bloqueada(c):
+        nueva_fecha = datos_update["fecha_publicacion"]
+        if nueva_fecha != c.fecha_publicacion:
+            raise HTTPException(
+                400,
+                "La fecha de publicacion no puede modificarse cuando el comunicado ya fue visible para los usuarios",
+            )
     categoria_final = datos_update.get("categoria", c.categoria)
     departamento_final = datos_update.get("departamento_emisor_id", c.departamento_emisor_id)
     if usuario.rol == RolUsuario.ADMINISTRATIVO:
@@ -1264,6 +1497,11 @@ def publicar_comunicado(
     if not c.fecha_publicacion:
         c.fecha_publicacion = _utcnow()
     c.actualizado_en = _utcnow()
+    if c.notificar_email and _esta_activo(c):
+        enviados, fallidos = _enviar_email_comunicado(db, c)
+        c.email_enviados = enviados
+        c.email_fallidos = fallidos
+        c.email_ultimo_envio = _utcnow()
     db.commit()
     registrar(db, usuario.id, "PUBLICAR_COMUNICADO",
               f"Comunicado #{c.id} '{c.titulo}' publicado")

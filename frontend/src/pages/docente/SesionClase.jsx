@@ -7,6 +7,7 @@ import AutocompleteInput, { formatApiError } from '../../components/Autocomplete
 import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
 import AdminLayout from '../../components/AdminLayout';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -847,6 +848,8 @@ const DURACIONES_LIBRE = [30, 60, 90, 120];
 
 function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
   const navigate  = useNavigate();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [labId,      setLabId]      = useState(labs[0]?.id ?? '');
   const [observacion, setObservacion] = useState('');
   const [duracion,   setDuracion]   = useState(60);
@@ -867,6 +870,9 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
     try {
       const { data } = await api.post('/sesiones', {
         laboratorio_id:   Number(labId),
+        tipo_sesion:      'LIBRE',
+        materia:          'Uso Libre',
+        grupo:            'Acceso Libre',
         observacion:      observacion.trim() || null,
         fin_estimado_min: duracion,
       });
@@ -902,9 +908,11 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Aviso sesión activa */}
           {sesionActiva && (
-            <div className="bg-amber-950/40 border border-amber-700/40 rounded-xl p-3 text-sm">
-              <p className="text-amber-400 font-medium">⚠️ Ya hay una sesión abierta en este laboratorio</p>
-              <p className="text-slate-400 text-xs mt-0.5">
+            <div className={`rounded-xl p-3 text-sm border ${
+              isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-950/40 border-amber-700/40'
+            }`}>
+              <p className={`font-semibold ${isDay ? 'text-amber-900' : 'text-amber-400'}`}>⚠️ Ya hay una sesión abierta en este laboratorio</p>
+              <p className={`text-xs mt-0.5 ${isDay ? 'text-amber-800/80' : 'text-slate-400'}`}>
                 {sesionActiva.tipo_sesion === 'LIBRE' ? 'Sesión libre' : sesionActiva.materia}
                 {sesionActiva.grupo ? ` · ${sesionActiva.grupo}` : ''}
               </p>
@@ -963,7 +971,11 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>
+            <div className={`rounded-xl px-3 py-2.5 text-sm border ${
+              isDay ? 'bg-red-50 border-red-300 text-red-800' : 'bg-red-950/50 border-red-800/50 text-red-300'
+            }`}>
+              <p className="font-semibold leading-snug">{error}</p>
+            </div>
           )}
 
           <div className="flex gap-3 pt-1">
