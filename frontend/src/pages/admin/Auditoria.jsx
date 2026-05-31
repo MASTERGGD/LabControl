@@ -27,14 +27,27 @@ const BADGE = {
   EDITAR_LAB:         'bg-amber-500/15  text-amber-400  border-amber-500/30',
 };
 
+// Convierte CREAR_EXPEDIENTE_MEDICO → Crear expediente médico
+const fmtAccion = s => {
+  if (!s) return '—';
+  const raw = s.replace(/_/g, ' ').toLowerCase();
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+// Convierte CONSULTORIO_PACIENTE → Consultorio paciente
+const fmtRecurso = s => {
+  if (!s) return '—';
+  const raw = s.replace(/_/g, ' ').toLowerCase();
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+};
+
 function AccionBadge({ accion, exito }) {
   const cls = !exito
     ? 'bg-red-500/20 text-red-400 border-red-500/30'
     : (BADGE[accion] || 'bg-slate-500/15 text-slate-400 border-slate-500/30');
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${cls}`}>
-      {!exito && <span>&#x2715;</span>}
-      {accion.replace(/_/g, ' ')}
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${cls}`}>
+      {!exito && <span className="text-[10px]">✕</span>}
+      {fmtAccion(accion)}
     </span>
   );
 }
@@ -54,28 +67,48 @@ function DetalleModal({ log, onClose }) {
             </svg>
           </button>
         </div>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-2.5 text-sm">
           {[
-            ['ID',        log.id],
+            ['ID',         log.id],
             ['Fecha/Hora', log.timestamp ? new Date(log.timestamp).toLocaleString('es-MX') : '—'],
-            ['Usuario',   log.usuario_nombre || '—'],
-            ['Email',     log.usuario_email  || '—'],
-            ['Accion',    <AccionBadge key="a" accion={log.accion} exito={log.exito} />],
-            ['Recurso',   log.recurso],
-            ['Recurso ID',log.recurso_id ?? '—'],
-            ['IP',        log.ip_address || '—'],
-            ['Resultado', log.exito ? 'Exitoso' : 'Fallido'],
+            ['Usuario',    log.usuario_nombre || '—'],
+            ['Email',      log.usuario_email  || '—'],
+            ['Acción',     fmtAccion(log.accion)],
+            ['Resultado',  log.exito
+              ? <span key="r" className="text-emerald-400 font-medium">Exitoso</span>
+              : <span key="r" className="text-red-400 font-medium">Fallido</span>],
+            ['Recurso',    fmtRecurso(log.recurso)],
+            ['Recurso ID', log.recurso_id ?? '—'],
+            ...(log.detalle?.usuario_afectado ? [['Afectado', log.detalle.usuario_afectado]] : []),
+            ...(log.detalle?.alumno           ? [['Alumno',   log.detalle.alumno]]           : []),
+            ...(log.detalle?.grupo            ? [['Grupo',    log.detalle.grupo]]             : []),
+            ['IP',         log.ip_address || '—'],
           ].map(([k, v]) => (
-            <div key={k} className="flex gap-3">
-              <span className="text-slate-500 w-28 shrink-0">{k}</span>
-              <span className="text-slate-200 break-all">{v}</span>
+            <div key={k} className="flex gap-3 items-baseline">
+              {/* Ancho fijo de etiqueta — eje visual alineado */}
+              <span className="text-slate-500 w-24 shrink-0 text-xs">{k}</span>
+              <span className="text-slate-200 break-all text-sm">{v}</span>
             </div>
           ))}
+
           {log.detalle && (
-            <div>
-              <span className="text-slate-500 block mb-1">Detalle</span>
-              <pre className="bg-slate-800 rounded-xl p-3 text-xs text-slate-300 overflow-auto max-h-40">
-                {JSON.stringify(log.detalle, null, 2)}
+            <div className="pt-1">
+              <span className="text-slate-500 text-xs block mb-1.5">Detalle</span>
+              {/* Syntax-highlighted JSON */}
+              <pre className="bg-slate-950 border border-slate-700/60 rounded-xl p-3 text-xs font-mono overflow-auto max-h-52 leading-relaxed">
+                {JSON.stringify(log.detalle, null, 2)
+                  .split('\n')
+                  .map((line, i) => {
+                    // Colorear llaves, strings, números y booleanos
+                    const html = line
+                      .replace(/("[\w_]+")\s*:/g, '<span style="color:#93c5fd">$1</span>:')
+                      .replace(/:\s*(".*?")/g, ': <span style="color:#86efac">$1</span>')
+                      .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color:#fca5a5">$1</span>')
+                      .replace(/:\s*(true|false|null)/g, ': <span style="color:#c4b5fd">$1</span>');
+                    return (
+                      <span key={i} dangerouslySetInnerHTML={{ __html: html + '\n' }} />
+                    );
+                  })}
               </pre>
             </div>
           )}
@@ -181,11 +214,11 @@ export default function Auditoria() {
   // Opciones para SelectDark
   const accionOpts = [
     { value: '', label: 'Todas las acciones' },
-    ...opciones.acciones.map(a => ({ value: a, label: a.replace(/_/g, ' ') })),
+    ...opciones.acciones.map(a => ({ value: a, label: fmtAccion(a) })),
   ];
   const recursoOpts = [
     { value: '', label: 'Todos los recursos' },
-    ...opciones.recursos.map(r => ({ value: r, label: r })),
+    ...opciones.recursos.map(r => ({ value: r, label: fmtRecurso(r) })),
   ];
 
   return (
@@ -194,7 +227,7 @@ export default function Auditoria() {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white">Bitacora de Auditoria</h1>
+            <h1 className="text-2xl font-bold text-white">Bitácora de Auditoría</h1>
             <p className="text-slate-400 text-sm mt-0.5">
               {total.toLocaleString()} registros totales
             </p>
@@ -215,9 +248,9 @@ export default function Auditoria() {
         </div>
 
         {/* Filtros */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {/* Texto libre */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+          {/* Fila 1: búsqueda de texto + filtros de selección */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <input
               className={inputCls}
               placeholder="Buscar usuario, IP..."
@@ -225,60 +258,29 @@ export default function Auditoria() {
               onChange={e => setBuscar(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && cargar(1)}
             />
-
-            {/* Accion — SelectDark */}
-            <SelectDark
-              value={accion}
-              onChange={setAccion}
-              options={accionOpts}
-              placeholder="Todas las acciones"
-              size="sm"
-            />
-
-            {/* Recurso — SelectDark */}
-            <SelectDark
-              value={recurso}
-              onChange={setRecurso}
-              options={recursoOpts}
-              placeholder="Todos los recursos"
-              size="sm"
-            />
-
-            {/* Resultado — SelectDark */}
-            <SelectDark
-              value={exito}
-              onChange={setExito}
-              options={EXITO_OPTS}
-              placeholder="Todos los resultados"
-              size="sm"
-            />
-
-            {/* Fechas */}
-            <DatePickerDark
-              value={fechaInicio}
-              onChange={setFechaInicio}
-              placeholder="Fecha inicio"
-            />
-            <DatePickerDark
-              value={fechaFin}
-              onChange={setFechaFin}
-              placeholder="Fecha fin"
-            />
+            <SelectDark value={accion} onChange={setAccion} options={accionOpts} placeholder="Todas las acciones" size="sm" />
+            <SelectDark value={recurso} onChange={setRecurso} options={recursoOpts} placeholder="Todos los recursos" size="sm" />
+            <SelectDark value={exito} onChange={setExito} options={EXITO_OPTS} placeholder="Todos los resultados" size="sm" />
           </div>
 
-          <div className="flex gap-2 mt-3">
-            <button
-              onClick={() => cargar(1)}
-              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Buscar
-            </button>
-            <button
-              onClick={limpiar}
-              className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-medium rounded-lg transition-colors"
-            >
-              Limpiar
-            </button>
+          {/* Fila 2: fechas + botones en la misma línea */}
+          <div className="flex flex-wrap items-center gap-3">
+            <DatePickerDark value={fechaInicio} onChange={setFechaInicio} placeholder="Fecha inicio" />
+            <DatePickerDark value={fechaFin}    onChange={setFechaFin}    placeholder="Fecha fin" />
+            <div className="flex gap-2 ml-auto">
+              <button
+                onClick={() => cargar(1)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-colors"
+              >
+                Buscar
+              </button>
+              <button
+                onClick={limpiar}
+                className="px-4 py-2 border border-slate-600/80 text-slate-300 hover:bg-white/5 text-xs font-medium rounded-xl transition-colors"
+              >
+                Limpiar
+              </button>
+            </div>
           </div>
         </div>
 
@@ -293,11 +295,12 @@ export default function Auditoria() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-800">
-                    {['Fecha/Hora','Usuario','Accion','Recurso','Recurso ID','IP',''].map(h => (
+                    {['Fecha/Hora','Usuario','Acción','Recurso','Recurso ID','IP'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {h}
                       </th>
                     ))}
+                    <th className="w-14 py-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -337,12 +340,14 @@ export default function Auditoria() {
                       <td className="px-4 py-3">
                         <AccionBadge accion={item.accion} exito={item.exito} />
                       </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">{item.recurso}</td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{fmtRecurso(item.recurso)}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{item.recurso_id ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs font-mono">{item.ip_address || '—'}</td>
-                      <td className="px-4 py-3">
-                        <button className="text-slate-600 hover:text-blue-400 transition-colors" title="Ver detalle"
-                                onClick={e => { e.stopPropagation(); setDetalle(item); }}>
+                      <td className="w-14 py-3 text-center">
+                        <button
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-blue-400/10 transition-colors"
+                          title="Ver detalle"
+                          onClick={e => { e.stopPropagation(); setDetalle(item); }}>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

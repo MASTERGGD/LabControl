@@ -11,6 +11,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = {
@@ -40,6 +41,11 @@ const MAX_EVIDENCIA_BYTES = MAX_EVIDENCIA_MB * 1024 * 1024;
 const TIPOS_EVIDENCIA = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 const EXTENSIONES_EVIDENCIA = '.pdf, .jpg, .jpeg, .png, .webp';
 const CHIP_CATEGORIA_CLARO = 'bg-teal-50 text-teal-800 border-teal-200';
+const toTitleCase = s =>
+  s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
+const formatFecha = s =>
+  s ? s.slice(0,16).replace('T', ' ') : '';
+
 const fueActualizado = comunicado => {
   if (!comunicado?.actualizado_en) return false;
   const base = comunicado.fecha_publicacion || comunicado.creado_en;
@@ -257,9 +263,15 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="grid grid-cols-[120px,1fr] gap-x-3 gap-y-2 text-sm">
-              {c.area_emisora && (
+              {c.departamento_emisor_nombre && (
                 <>
-                  <span className="text-slate-500">Area emisora</span>
+                  <span className="text-slate-500">Departamento</span>
+                  <span className="text-slate-900 font-medium">{c.departamento_emisor_nombre}</span>
+                </>
+              )}
+              {c.area_emisora && c.area_emisora !== c.departamento_emisor_nombre && (
+                <>
+                  <span className="text-slate-500">Área emisora</span>
                   <span className="text-slate-900 font-medium">{c.area_emisora}</span>
                 </>
               )}
@@ -370,16 +382,16 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
                     usuario_nombre: respuestaLocal.usuario_nombre,
                   }]).map((m, idx) => (
                     <div key={m.id || idx} className={`flex ${m.usuario_id === usuario?.id || !m.usuario_id ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[88%] rounded-2xl px-4 py-3 shadow-sm border ${
+                      <div className={`max-w-[88%] rounded-xl border px-3 py-2 ${
                         m.usuario_id === usuario?.id || !m.usuario_id
-                          ? 'rounded-br-md bg-emerald-50 border-emerald-200'
-                          : 'rounded-bl-md bg-blue-50 border-blue-200'
+                          ? 'bg-blue-50 border-blue-200 text-blue-950'
+                          : 'bg-white border-slate-200 text-slate-900'
                       }`}>
-                        <p className="text-[11px] font-medium text-slate-500 mb-1">
+                        <p className="text-[11px] font-medium opacity-70 mb-1">
                           {m.usuario_nombre || (m.usuario_id === usuario?.id || !m.usuario_id ? 'Tu respuesta' : 'Emisor')}
                         </p>
-                        <p className="text-sm text-slate-900 whitespace-pre-line">{m.comentario}</p>
-                        <p className="text-[11px] text-slate-500 mt-2 text-right">
+                        <p className="text-sm whitespace-pre-line">{m.comentario}</p>
+                        <p className="text-[11px] opacity-60 mt-1 text-right">
                           {m.creado_en ? m.creado_en.slice(0,16).replace('T',' ') : 'Enviado'}
                         </p>
                       </div>
@@ -415,7 +427,7 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
                   </label>
                 )}
                 <button type="submit" disabled={acting}
-                  className="w-full bg-cyan-600/70 hover:bg-cyan-600 text-white rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50">
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl py-2.5 text-sm font-medium transition-colors disabled:opacity-50">
                   {acting ? 'Enviando...' : respuestaLocal ? 'Agregar comentario' : 'Enviar respuesta'}
                 </button>
               </form>
@@ -459,16 +471,31 @@ export default function MisComunicados() {
   const [loading, setLoading]         = useState(true);
   const [filtro, setFiltro]           = useState('pendientes'); // 'pendientes' | 'todos'
   const [filtroCat, setFiltroCat]     = useState('');
+  const [filtroPrio, setFiltroPrio]   = useState('');
+  const [busqueda, setBusqueda]       = useState('');
   const [detalle, setDetalle]         = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const params = filtro === 'pendientes' ? '?solo_pendientes=true' : '';
+      const urlParams = new URLSearchParams(location.search);
+      const abrirPendiente = urlParams.get('abrir') === 'pendiente';
+      const abrirId = urlParams.get('id') ? parseInt(urlParams.get('id')) : null;
+
+      // Si viene un ID específico desde notificación, cargar todos para encontrarlo
+      const forzarTodos = Boolean(abrirId);
+      const params = (!forzarTodos && filtro === 'pendientes') ? '?solo_pendientes=true' : '';
       const { data } = await api.get(`/comunicados/mis-comunicados${params}`);
       setComunicados(data);
-      const abrirPendiente = new URLSearchParams(location.search).get('abrir') === 'pendiente';
-      if (abrirPendiente) {
+
+      if (abrirId) {
+        const target = data.find(c => c.id === abrirId);
+        if (target) {
+          setDetalle(target);
+          setFiltro('todos'); // cambiar vista a "todos" para que el comunicado sea visible
+        }
+        navigate('/comunicados', { replace: true });
+      } else if (abrirPendiente) {
         const primeroPendiente = data.find(c => !c.leido || (c.requiere_confirmacion && !c.confirmado));
         if (primeroPendiente) setDetalle(primeroPendiente);
         navigate('/comunicados', { replace: true });
@@ -489,7 +516,17 @@ export default function MisComunicados() {
     });
   };
 
-  const filtrados = comunicados.filter(c => !filtroCat || c.categoria === filtroCat);
+  const filtrados = comunicados.filter(c => {
+    if (filtroCat  && c.categoria !== filtroCat)   return false;
+    if (filtroPrio && c.prioridad !== filtroPrio)   return false;
+    if (busqueda.trim()) {
+      const q = busqueda.trim().toLowerCase();
+      const enTitulo    = (c.titulo    || '').toLowerCase().includes(q);
+      const enContenido = (c.contenido || '').toLowerCase().includes(q);
+      if (!enTitulo && !enContenido) return false;
+    }
+    return true;
+  });
 
   // Separar urgentes del resto
   const urgentes  = filtrados.filter(c => c.prioridad === 'URGENTE'     && !c.leido);
@@ -507,6 +544,7 @@ export default function MisComunicados() {
 
         {/* Filtros */}
         <div className="flex flex-wrap gap-3 items-center">
+          {/* Estado */}
           <div className="flex gap-1 glass rounded-xl p-1">
             {[
               { k: 'pendientes', l: 'Pendientes' },
@@ -514,17 +552,52 @@ export default function MisComunicados() {
             ].map(({ k, l }) => (
               <button key={k} onClick={() => setFiltro(k)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filtro === k ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  filtro === k ? 'bg-blue-600 !text-white' : 'text-slate-300 hover:text-white'
                 }`}>{l}</button>
             ))}
           </div>
-          <select className="input-dark !py-1.5 !text-sm w-auto"
+
+          {/* Categoría */}
+          <select className="input-dark !py-1.5 !text-sm"
+            style={{ maxWidth: 200 }}
             value={filtroCat} onChange={e => setFiltroCat(e.target.value)}>
             <option value="">Todas las categorías</option>
             {Object.entries(CATEGORIAS).map(([v, c]) =>
               <option key={v} value={v}>{c.l}</option>
             )}
           </select>
+
+          {/* Prioridad */}
+          <select className="input-dark !py-1.5 !text-sm"
+            style={{ maxWidth: 160 }}
+            value={filtroPrio} onChange={e => setFiltroPrio(e.target.value)}>
+            <option value="">Toda prioridad</option>
+            <option value="URGENTE">🔴 Urgente</option>
+            <option value="IMPORTANTE">🟡 Importante</option>
+            <option value="INFORMATIVO">⚪ Informativo</option>
+          </select>
+
+          {/* Búsqueda */}
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#9CA3AF' }}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Buscar..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              className="input-dark !py-1.5 !text-sm pl-7 pr-3 w-44"
+            />
+            {busqueda && (
+              <button onClick={() => setBusqueda('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -586,10 +659,16 @@ export default function MisComunicados() {
 }
 
 function TarjetaComunicado({ c, onClick }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const cat  = CATEGORIAS[c.categoria]    || { l: c.categoria, color: 'bg-slate-500/20 text-slate-300 border-slate-500/30' };
   const prio = PRIORIDAD_CFG[c.prioridad] || PRIORIDAD_CFG.INFORMATIVO;
   const isUrgente = c.prioridad === 'URGENTE' && !c.leido;
   const actualizado = fueActualizado(c);
+
+  const colorTitulo  = isDay ? '#0F172A' : '#FFFFFF';
+  const colorCuerpo  = isDay ? '#475569' : '#D1D5DB';
+  const colorMeta    = isDay ? '#64748B' : '#9CA3AF';
 
   return (
     <div onClick={onClick}
@@ -630,22 +709,33 @@ function TarjetaComunicado({ c, onClick }) {
               </span>
             )}
           </div>
-          <p className={`font-medium text-sm truncate ${!c.leido ? 'text-white' : 'text-slate-300'}`}>
-            {c.titulo}
+          <p className="font-semibold text-sm truncate" style={{ color: colorTitulo }}>
+            {toTitleCase(c.titulo)}
           </p>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">{c.contenido}</p>
-          {c.area_emisora && (
-            <p className="text-xs text-slate-600 mt-1">📍 {c.area_emisora}</p>
+          <p className="text-xs mt-0.5 truncate" style={{ color: colorCuerpo }}>{c.contenido}</p>
+          {(c.departamento_emisor_nombre || c.area_emisora) && (
+            <p className="text-xs mt-1" style={{ color: colorMeta }}>
+              📍{' '}
+              {c.departamento_emisor_nombre
+                ? <>
+                    <span className="font-medium">{c.departamento_emisor_nombre}</span>
+                    {c.area_emisora && c.area_emisora !== c.departamento_emisor_nombre && (
+                      <span> · {toTitleCase(c.area_emisora)}</span>
+                    )}
+                  </>
+                : toTitleCase(c.area_emisora)
+              }
+            </p>
           )}
           {actualizado && (
-            <p className="text-xs text-blue-400 mt-1">Actualizado {c.actualizado_en?.slice(0,16).replace('T',' ')}</p>
+            <p className="text-xs mt-1" style={{ color: colorMeta }}>Actualizado {formatFecha(c.actualizado_en)}</p>
           )}
         </div>
         <div className="text-right flex-shrink-0">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs" style={{ color: colorMeta }}>
             {c.fecha_publicacion?.slice(0,10)}
           </p>
-          {c.leido && <p className="text-xs font-medium text-emerald-700 mt-1">Leído</p>}
+          {c.leido && <p className={`text-xs font-semibold mt-1 ${isDay ? 'text-emerald-600' : 'text-emerald-400'}`}>Leído</p>}
         </div>
       </div>
     </div>

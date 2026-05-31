@@ -54,8 +54,8 @@ function TarjetaPC({ pc, onClick, highlighted }) {
         background: isDay
           ? ocupada ? '#eff6ff' : mant ? '#fffbeb' : dano ? '#fef2f2' : baja ? '#f1f5f9' : '#ecfdf5'
           : est.bg,
-        border: `1.5px solid ${isDay
-          ? ocupada ? '#93c5fd' : mant ? '#f59e0b' : dano ? '#fca5a5' : baja ? '#cbd5e1' : '#86efac'
+        border: `${ocupada ? '2.5px' : '1.5px'} solid ${isDay
+          ? ocupada ? '#3b82f6' : mant ? '#f59e0b' : dano ? '#fca5a5' : baja ? '#cbd5e1' : '#86efac'
           : est.border}`,
         borderRadius: '1rem',
         padding: ocupada ? '14px 12px 12px' : '18px 12px 14px',
@@ -107,7 +107,7 @@ function TarjetaPC({ pc, onClick, highlighted }) {
           }}>
             {initials}
           </div>
-          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#1d4ed8' : '#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#1d4ed8' : '#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
           <p style={{fontSize:10, color:isDay ? '#1e3a8a' : 'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
             {shortName}
@@ -117,25 +117,25 @@ function TarjetaPC({ pc, onClick, highlighted }) {
       ) : mant ? (
         <>
           <p style={{fontSize:18, margin:'0 0 5px', lineHeight:1}}>🔧</p>
-          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#92400e' : '#fbbf24', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#92400e' : '#fbbf24', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
           <p style={{fontSize:10, color:isDay ? '#b45309' : 'rgba(251,191,36,0.55)', margin:'2px 0 0'}}>Mant.</p>
         </>
       ) : dano ? (
         <>
           <p style={{fontSize:18, margin:'0 0 5px', lineHeight:1}}>⚠️</p>
-          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#991b1b' : '#fca5a5', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#991b1b' : '#fca5a5', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
           <p style={{fontSize:10, color:isDay ? '#b91c1c' : 'rgba(252,165,165,0.55)', margin:'2px 0 0'}}>Dañada</p>
         </>
       ) : baja ? (
         <>
-          <p style={{fontSize:12, fontWeight:800, color:'#475569', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
+          <p style={{fontSize:12, fontWeight:800, color:'#475569', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
           <p style={{fontSize:10, color:'rgba(71,85,105,0.7)', margin:'2px 0 0'}}>Baja</p>
         </>
       ) : (
         /* Libre */
         <>
-          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#047857' : '#4ade80', letterSpacing:'0.04em', margin:0}}>{pc.codigo}</p>
-          <p style={{fontSize:10, color:isDay ? '#059669' : 'rgba(74,222,128,0.4)', margin:'3px 0 0'}}>Libre</p>
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#047857' : '#4ade80', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
+          <p style={{fontSize:10, color:isDay ? '#059669' : '#6ee7b7', margin:'3px 0 0'}}>Libre</p>
         </>
       )}
     </button>
@@ -630,6 +630,8 @@ const CATEGORIAS_AULA = [
 ];
 
 function ModalObservacion({ pc, sesionId, sesion, onClose }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [loading, setLoading]   = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError]       = useState('');
@@ -714,7 +716,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
           <>
             <div className="px-5 pt-5 pb-4 border-b border-white/5 flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-white">⚠️ Observación — PC {pc.codigo}</h3>
+                <h3 className="font-semibold text-white">⚠️ Observación — {pc.codigo.replace('--', '-')}</h3>
                 {pc.fila && <p className="text-xs text-slate-400 mt-0.5">Fila {pc.fila}</p>}
               </div>
               <button onClick={onClose} className="text-slate-400 hover:text-white">
@@ -750,11 +752,17 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
               {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
               <div className="flex gap-3">
                 <button type="button" onClick={onClose}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+                  className="flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors"
+                  style={{ background: '#f3f4f6', color: '#374151' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#e5e7eb'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#f3f4f6'}>
                   Cancelar
                 </button>
                 <button type="submit" disabled={loading}
-                  className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-800 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+                  className="flex-1 rounded-lg py-2.5 text-sm font-semibold text-white transition-colors"
+                  style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg,#047857,#059669)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg,#059669,#10b981)'}>
                   {loading ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
@@ -766,8 +774,10 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
           <>
             <div className="px-5 pt-5 pb-4 border-b border-white/5 flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-white">⚠️ Reportar problema del aula</h3>
-                <p className="text-xs text-slate-400 mt-0.5">El reporte llegará al responsable del laboratorio</p>
+                <h3 className={`font-semibold flex items-center gap-2 ${isDay ? 'text-slate-900' : 'text-white'}`}>
+                  <span>⚠️</span> Reportar problema del aula
+                </h3>
+                <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>El reporte llegará al responsable del laboratorio</p>
               </div>
               <button onClick={onClose} className="text-slate-400 hover:text-white">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -784,11 +794,17 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                       onClick={() => handleSelectCategoria(cat)}
                       className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all text-center
                         ${categoriaId === cat.id
-                          ? 'border-yellow-500 bg-yellow-900/40 text-yellow-200'
-                          : 'border-gray-600 text-gray-300 hover:border-gray-500 hover:bg-white/5'
+                          ? 'border-emerald-500 bg-emerald-500/10'
+                          : isDay
+                            ? 'border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'
+                            : 'border-slate-600 hover:border-slate-500 hover:bg-white/5'
                         }`}>
                       <span className="text-xl">{cat.icon}</span>
-                      <span className="text-xs leading-tight">{cat.label}</span>
+                      <span className={`text-xs leading-tight font-medium ${
+                        categoriaId === cat.id
+                          ? 'text-emerald-600'
+                          : isDay ? 'text-slate-700' : 'text-slate-300'
+                      }`}>{cat.label}</span>
                     </button>
                   ))}
                 </div>
@@ -824,11 +840,15 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
 
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={onClose}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors ${
+                    isDay
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      : 'bg-slate-700 hover:bg-slate-600 text-white'
+                  }`}>
                   Cancelar
                 </button>
                 <button type="submit" disabled={loading || !categoriaSeleccionada}
-                  className="flex-1 bg-yellow-600 hover:bg-yellow-500 disabled:bg-gray-600 disabled:text-slate-400 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
                   {loading ? 'Enviando...' : '📋 Enviar reporte'}
                 </button>
               </div>
@@ -1583,13 +1603,19 @@ function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onRe
                   background:'transparent', color:'#94a3b8',
                   border:'1px solid rgba(255,255,255,0.10)',
                   fontSize:13, fontWeight:600, cursor:'pointer',
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+                  display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
+                  textAlign:'left',
                 }}>
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
-                </svg>
-                Agregar observación
+                <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                  </svg>
+                  Agregar observación
+                </span>
+                <span style={{ fontSize:11, color:'#64748b', fontWeight:400, paddingLeft:24 }}>
+                  Nota informativa · no cambia el estado de la PC
+                </span>
               </button>
             </>
           )}
@@ -1599,13 +1625,19 @@ function PanelDetallePC({ pc, onClose, onAsignar, onLiberar, onObservacion, onRe
               background:'transparent', color:'#f87171',
               border:'1px solid rgba(239,68,68,0.20)',
               fontSize:13, fontWeight:600, cursor:'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+              display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
+              textAlign:'left',
             }}>
-            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-            </svg>
-            Reportar daño
+            <span style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              Reportar daño
+            </span>
+            <span style={{ fontSize:11, color:'#f87171', opacity:0.65, fontWeight:400, paddingLeft:24 }}>
+              Alerta al responsable · puede marcar la PC como dañada
+            </span>
           </button>
         </div>
       </div>
@@ -1866,29 +1898,29 @@ export default function SesionActiva() {
 
         <div className="flex items-center gap-2">
           <button onClick={() => setModalQR(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
-            style={isDay ? { color: '#ffffff', backgroundColor: '#047857', border: '1px solid #065f46' } : { color: '#ffffff' }}>
+            className="rounded-lg text-xs font-semibold transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
+            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#047857', border: '1px solid #065f46' } : { color: '#ffffff' }) }}>
             QR alumnos
           </button>
           <button onClick={() => navigate(`${location.pathname}/asistencia`)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`rounded-lg text-xs font-semibold transition-colors ${
               isDay ? 'bg-blue-700 hover:bg-blue-800 text-white shadow-sm' : 'bg-blue-700 hover:bg-blue-600 text-white'
             }`}
-            style={isDay ? { color: '#ffffff', backgroundColor: '#1d4ed8', border: '1px solid #1e40af' } : { color: '#ffffff' }}>
+            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#1d4ed8', border: '1px solid #1e40af' } : { color: '#ffffff' }) }}>
             Asistencia
           </button>
           <button onClick={() => setModalObs({})}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`rounded-lg text-xs font-semibold transition-colors ${
               isDay ? 'bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-sm' : 'bg-yellow-700 hover:bg-yellow-600 text-white'
             }`}
-            style={isDay ? { color: '#ffffff', backgroundColor: '#b45309', border: '1px solid #92400e' } : { color: '#ffffff' }}>
+            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#b45309', border: '1px solid #92400e' } : { color: '#ffffff' }) }}>
             Observación
           </button>
           <button onClick={() => setModalCerrar(true)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            className={`rounded-lg text-xs font-semibold transition-colors ${
               isDay ? 'bg-red-700 hover:bg-red-800 text-white shadow-sm' : 'bg-red-700 hover:bg-red-600 text-white'
             }`}
-            style={isDay ? { color: '#ffffff', backgroundColor: '#b91c1c', border: '1px solid #991b1b' } : { color: '#ffffff' }}>
+            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#b91c1c', border: '1px solid #991b1b' } : { color: '#ffffff' }) }}>
             Cerrar
           </button>
         </div>

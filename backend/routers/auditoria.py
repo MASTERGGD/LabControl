@@ -104,7 +104,7 @@ def listar_auditoria(
     def _fmt(r: AuditLog):
         return {
             "id":             r.id,
-            "timestamp":      r.timestamp.isoformat() if r.timestamp else None,
+            "timestamp":      r.timestamp.isoformat() + "Z" if r.timestamp else None,
             "usuario_id":     r.usuario_id,
             "usuario_nombre": r.usuario_nombre,
             "usuario_email":  r.usuario_email,

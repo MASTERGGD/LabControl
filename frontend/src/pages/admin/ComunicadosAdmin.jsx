@@ -98,6 +98,9 @@ const rangoPeriodo = value => {
   };
   return rangos[periodo] || null;
 };
+const toTitleCase = s =>
+  s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+
 const fueActualizado = comunicado => {
   if (!comunicado?.actualizado_en) return false;
   const base = comunicado.fecha_publicacion || comunicado.creado_en;
@@ -745,27 +748,78 @@ function PanelLecturas({ comunicado, onClose }) {
       : { key: 'pendientes', label: 'Pendientes', value: data.pendientes, color: 'text-amber-700' },
   ] : [];
 
+  const cat  = CAT_MAP[comunicado.categoria]  || { l: comunicado.categoria,  color: 'bg-slate-100 text-slate-800 border-slate-300' };
+  const prio = PRIO_MAP[comunicado.prioridad] || { l: comunicado.prioridad, dot: 'bg-slate-400' };
+  const isUrgente = comunicado.prioridad === 'URGENTE';
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden animate-slideInRight">
-        <div className="px-6 py-5 border-b border-slate-200">
+      <div className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col h-full overflow-hidden animate-slideInRight">
+
+        {/* Header estilo MisComunicados */}
+        <div className={`px-6 py-5 border-b border-white/5 flex-shrink-0 ${isUrgente ? 'bg-gradient-to-r from-red-950/40' : 'bg-gradient-to-r from-slate-800/50'}`}>
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="font-bold text-slate-950">Reporte de lecturas</h3>
-              <p className="text-sm text-slate-600 mt-0.5 truncate max-w-xs">{comunicado.titulo}</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cat.color}`}>
+                  {cat.l}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+                  <span className={`w-1.5 h-1.5 rounded-full ${prio.dot}`} />
+                  {prio.l}
+                </span>
+              </div>
+              <h3 className="font-bold text-white text-lg leading-snug">{comunicado.titulo}</h3>
             </div>
-            <button onClick={onClose} className="text-slate-500 hover:text-slate-900 mt-1">
+            <button onClick={onClose} className="text-slate-400 hover:text-white mt-1 flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           </div>
         </div>
+
+        {/* Contenido del comunicado */}
+        <div className="px-6 py-4 border-b border-white/5 flex-shrink-0 space-y-3">
+          {isUrgente && (
+            <div className="bg-red-500/15 border border-red-500/30 rounded-xl px-4 py-2.5 flex items-center gap-2">
+              <span className="text-lg">⚠️</span>
+              <p className="text-sm text-red-300 font-medium">Comunicado urgente — requiere atención inmediata</p>
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Contenido</p>
+            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-white/5 rounded-xl px-4 py-3">
+              {comunicado.contenido}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 grid grid-cols-[110px,1fr] gap-x-3 gap-y-1.5 text-sm">
+            {(comunicado.departamento_emisor_nombre || comunicado.area_emisora) && (
+              <>
+                <span className="text-slate-500">Área emisora</span>
+                <span className="text-slate-300 font-medium">
+                  {comunicado.departamento_emisor_nombre || comunicado.area_emisora}
+                </span>
+              </>
+            )}
+            <span className="text-slate-500">Publicado por</span>
+            <span className="text-slate-300 font-medium">{comunicado.autor_nombre}</span>
+            {comunicado.fecha_publicacion && (
+              <>
+                <span className="text-slate-500">Publicado el</span>
+                <span className="text-slate-300">{comunicado.fecha_publicacion.slice(0,16).replace('T',' ')}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Reporte de lecturas */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Reporte de lecturas</p>
           {loading ? (
             <div className="space-y-3">
-              {[1,2,3].map(i => <div key={i} className="h-12 glass rounded-xl animate-pulse" />)}
+              {[1,2,3].map(i => <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />)}
             </div>
           ) : data ? (
             <>
@@ -804,7 +858,7 @@ function PanelLecturas({ comunicado, onClose }) {
                     <button
                       type="button"
                       onClick={() => setFiltroLecturas('todos')}
-                      className="text-xs text-blue-300 hover:text-blue-200"
+                      className="text-xs text-teal-700 hover:text-teal-900"
                     >
                       Ver todos
                     </button>
@@ -857,10 +911,11 @@ function PanelLecturas({ comunicado, onClose }) {
                                 </button>
                               )}
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-2 mb-3">
                               {(u.respuesta.mensajes?.length ? u.respuesta.mensajes : [{
                                 comentario: u.respuesta.comentario,
                                 creado_en: u.respuesta.creado_en,
+                                usuario_nombre: u.respuesta.usuario_nombre,
                               }]).map((m, idx) => (
                                 <div key={m.id || idx} className={`flex ${m.usuario_id === usuario?.id ? 'justify-end' : 'justify-start'}`}>
                                   <div className={`max-w-[88%] rounded-xl border px-3 py-2 ${
@@ -869,7 +924,7 @@ function PanelLecturas({ comunicado, onClose }) {
                                       : 'bg-white border-slate-200 text-slate-900'
                                   }`}>
                                     <p className="text-[11px] font-medium opacity-70 mb-1">
-                                      {m.usuario_nombre || (m.usuario_id === usuario?.id ? 'Tu respuesta' : u.nombre)}
+                                      {m.usuario_nombre || (m.usuario_id === usuario?.id ? 'Tú' : u.nombre)}
                                     </p>
                                     <p className="text-sm whitespace-pre-line">{m.comentario}</p>
                                     {idx === 0 && u.respuesta.adjuntos?.length > 0 && (
@@ -921,7 +976,7 @@ function PanelLecturas({ comunicado, onClose }) {
                             )}
                           </div>
                         ) : (
-                          <p className="text-xs text-amber-300">Sin respuesta</p>
+                          <p className="text-xs text-amber-600 italic">Sin respuesta aún</p>
                         )}
                       </div>
                     )}
@@ -1139,9 +1194,11 @@ export default function ComunicadosAdmin() {
   const [comunicados, setComunicados] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [filtroEstado, setFiltroEstado]   = useState(searchParams.get('estado') || '');
-  const [filtroCategoria, setFiltroCategoria] = useState(searchParams.get('categoria') || '');
+  const categoriaInicial = searchParams.get('categoria') || '';
+  const prioridadInicial = searchParams.get('prioridad') || '';
+  const [filtroCategoria, setFiltroCategoria] = useState(categoriaInicial === 'URGENTE' ? '' : categoriaInicial);
   const [busqueda, setBusqueda] = useState('');
-  const [filtroPrioridad, setFiltroPrioridad] = useState('');
+  const [filtroPrioridad, setFiltroPrioridad] = useState(categoriaInicial === 'URGENTE' ? 'URGENTE' : prioridadInicial);
   const [requiereConfirmacion, setRequiereConfirmacion] = useState(false);
   const [requiereRetro, setRequiereRetro] = useState(false);
   const [soloFijados, setSoloFijados] = useState(false);
@@ -1152,13 +1209,19 @@ export default function ComunicadosAdmin() {
   const [periodo, setPeriodo] = useState('');
   const [publicadoDesde, setPublicadoDesde] = useState('');
   const [publicadoHasta, setPublicadoHasta] = useState('');
-  const [modal,    setModal]    = useState(null);   // null | 'crear' | objeto comunicado
-  const [lecturas, setLecturas] = useState(null);   // comunicado seleccionado para reporte
+  const [modal,    setModal]    = useState(null);
+  const [lecturas, setLecturas] = useState(null);
   const [panelRespaldos, setPanelRespaldos] = useState(false);
-  const [confirming, setConfirming] = useState(null); // { id, accion }
+  const [confirming, setConfirming] = useState(null);
+  const [page, setPage]         = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal]       = useState(0);
+  const [pages, setPages]       = useState(1);
 
-  const cargar = useCallback(async () => {
+  const cargar = useCallback(async (resetPage = false) => {
     setLoading(true);
+    const currentPage = resetPage ? 1 : page;
+    if (resetPage) setPage(1);
     try {
       const params = new URLSearchParams();
       if (filtroEstado)    params.set('estado',    filtroEstado);
@@ -1174,36 +1237,28 @@ export default function ComunicadosAdmin() {
       if (periodo) params.set('periodo', periodo);
       if (publicadoDesde) params.set('publicado_desde', toStartOfDay(publicadoDesde));
       if (publicadoHasta) params.set('publicado_hasta', toEndOfDay(publicadoHasta));
+      params.set('page', currentPage);
+      params.set('page_size', pageSize);
       const { data } = await api.get(`/comunicados?${params}`);
-      let lista = Array.isArray(data) ? data : [];
-      const rango = rangoPeriodo(periodo);
-      if (rango) {
-        lista = lista.filter(c => {
-          if (!c.fecha_publicacion) return false;
-          const fecha = new Date(c.fecha_publicacion);
-          return fecha >= rango[0] && fecha <= rango[1];
-        });
-      }
-      if (publicadoDesde) {
-        const desde = new Date(toStartOfDay(publicadoDesde));
-        lista = lista.filter(c => c.fecha_publicacion && new Date(c.fecha_publicacion) >= desde);
-      }
-      if (publicadoHasta) {
-        const hasta = new Date(toEndOfDay(publicadoHasta));
-        lista = lista.filter(c => c.fecha_publicacion && new Date(c.fecha_publicacion) <= hasta);
-      }
-      setComunicados(lista);
+      setComunicados(data.items || []);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
     } catch { showToast('Error al cargar comunicados', 'error'); }
     finally { setLoading(false); }
-  }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta]);
+  }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta, page, pageSize]);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  // Cambio de página o page_size → cargar sin reset
+  useEffect(() => { cargar(); }, [page, pageSize]);
+  // Cambio de cualquier filtro → volver a página 1
+  useEffect(() => { cargar(true); }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta]);
 
   useEffect(() => {
     const estado = searchParams.get('estado') || '';
     const categoria = searchParams.get('categoria') || '';
+    const prioridad = searchParams.get('prioridad') || '';
     setFiltroEstado(estado);
-    setFiltroCategoria(categoria);
+    setFiltroCategoria(categoria === 'URGENTE' ? '' : categoria);
+    setFiltroPrioridad(categoria === 'URGENTE' ? 'URGENTE' : prioridad);
     if (searchParams.get('nuevo') === '1') {
       setModal('crear');
       const next = new URLSearchParams(searchParams);
@@ -1211,6 +1266,19 @@ export default function ComunicadosAdmin() {
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  // Abrir panel de retroalimentación cuando se llega desde una notificación (?id=)
+  useEffect(() => {
+    const idParam = searchParams.get('id');
+    if (!idParam || comunicados.length === 0) return;
+    const target = comunicados.find(c => c.id === parseInt(idParam));
+    if (target) {
+      setLecturas(target);
+      const next = new URLSearchParams(searchParams);
+      next.delete('id');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, comunicados, setSearchParams]);
 
   const accion = async (id, endpoint, label) => {
     try {
@@ -1289,7 +1357,8 @@ export default function ComunicadosAdmin() {
 
         {/* Filtros */}
         <div className="space-y-3">
-        <div className="flex flex-wrap gap-3">
+        {/* ── Fila 1: búsqueda + botones de estado ── */}
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[260px] flex-1">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">⌕</span>
             <input
@@ -1309,42 +1378,47 @@ export default function ComunicadosAdmin() {
             ].map(({ k, l }) => (
               <button key={k} onClick={() => setFiltroEstado(k)}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filtroEstado === k ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                  filtroEstado === k ? 'bg-emerald-600 !text-white' : 'text-slate-400 hover:text-white'
                 }`}>{l}</button>
             ))}
           </div>
+        </div>
+        {/* ── Fila 2: selectores de categoría, prioridad, periodo y acciones ── */}
+        <div className="flex items-center gap-2">
           {/* Categoría */}
-          <select className="input-dark !py-1.5 !text-sm w-auto"
+          <select className="input-dark !py-1.5 !text-sm flex-1 min-w-0"
             value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)}>
             <option value="">Todas las categorías</option>
-            {CATEGORIAS.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
+            {CATEGORIAS_SELECCIONABLES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
           </select>
-          <select className="input-dark !py-1.5 !text-sm w-auto"
+          <select className="input-dark !py-1.5 !text-sm flex-1 min-w-0"
             value={filtroPrioridad} onChange={e => setFiltroPrioridad(e.target.value)}>
             <option value="">Todas las prioridades</option>
             {PRIORIDADES.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
-          <select className="input-dark !py-1.5 !text-sm w-auto"
+          <select className="input-dark !py-1.5 !text-sm flex-1 min-w-0"
             value={periodo} onChange={e => setPeriodo(e.target.value)}>
             <option value="">Todos los periodos</option>
             {PERIODOS_ACADEMICOS.map(p => <option key={p.v} value={p.v}>{p.l}</option>)}
           </select>
-          <button
-            type="button"
-            onClick={() => setFiltrosAvanzados(v => !v)}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            Mas filtros{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}
-          </button>
-          {filtrosActivos > 0 && (
+          <div className="flex items-center gap-2 pl-3 border-l border-slate-200 shrink-0">
             <button
               type="button"
-              onClick={limpiarFiltros}
-              className="px-3 py-1.5 rounded-xl bg-slate-100 text-sm text-slate-700 hover:bg-slate-200"
+              onClick={() => setFiltrosAvanzados(v => !v)}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-700 hover:bg-slate-50 whitespace-nowrap"
             >
-              Limpiar
+              Más filtros{filtrosActivos > 0 ? ` (${filtrosActivos})` : ''}
             </button>
-          )}
+            {filtrosActivos > 0 && (
+              <button
+                type="button"
+                onClick={limpiarFiltros}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 text-sm text-slate-700 hover:bg-slate-200 whitespace-nowrap"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
         {filtrosAvanzados && (
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
@@ -1448,101 +1522,120 @@ export default function ComunicadosAdmin() {
               const programado = c.estado === 'PUBLICADO' && isFutureDate(c.fecha_publicacion);
               const actualizado = fueActualizado(c);
               return (
-                <div key={c.id} className="glass rounded-2xl p-5">
+                <div key={c.id}
+                  className="glass rounded-2xl px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors"
+                  onClick={() => setLecturas(c)}
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      {/* Badges */}
+
+                      {/* Fila superior: estado + categoría + indicadores discretos */}
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium ${est.bg} ${est.text}`}>
+                        {/* Estado — badge principal con color fuerte */}
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${est.bg} ${est.text}`}>
                           {est.label}
                         </span>
-                        <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${cat.color}`}>
+                        {/* Categoría */}
+                        <span className={`text-xs px-2.5 py-0.5 rounded-full border font-medium ${cat.color}`}>
                           {cat.l}
                         </span>
-                        <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
-                          <span className={`w-1.5 h-1.5 rounded-full ${prio.dot}`} />
-                          {prio.l}
-                        </span>
-                        {c.requiere_confirmacion && (
-                          <span className="text-xs bg-violet-50 text-violet-800 border border-violet-300 px-2 py-1 rounded-full">
-                            Req. confirmación
+                        {/* Prioridad: solo punto + texto, sin fondo */}
+                        {prio.v !== 'INFORMATIVO' && (
+                          <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                            <span className={`w-1.5 h-1.5 rounded-full ${prio.dot}`} />
+                            {prio.l}
                           </span>
+                        )}
+                        {/* Indicadores discretos (iconos, sin fondo de color) */}
+                        {c.fijado && (
+                          <span title="Fijado" className="text-slate-400 text-sm leading-none">📌</span>
+                        )}
+                        {c.requiere_confirmacion && (
+                          <span title="Requiere confirmación" className="text-slate-400 text-sm leading-none">✅</span>
                         )}
                         {c.requiere_retroalimentacion && (
-                          <span className="text-xs bg-sky-50 text-sky-800 border border-sky-300 px-2 py-1 rounded-full">
-                            Retroalimentación
-                          </span>
+                          <span title="Requiere retroalimentación" className="text-slate-400 text-sm leading-none">💬</span>
                         )}
                         {c.notificar_email && (
-                          <span className="text-xs bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-1 rounded-full">
-                            Correo
-                          </span>
-                        )}
-                        {c.fijado && (
-                          <span className="text-xs bg-orange-50 text-orange-800 border border-orange-300 px-2 py-1 rounded-full">
-                            Fijado
-                          </span>
+                          <span title="Envía correo" className="text-slate-400 text-sm leading-none">✉️</span>
                         )}
                         {c.adjuntos?.length > 0 && (
-                          <span className="text-xs bg-white/5 text-slate-300 border border-white/10 px-2 py-1 rounded-full">
-                            {c.adjuntos.length} adjunto{c.adjuntos.length !== 1 ? 's' : ''}
+                          <span title={`${c.adjuntos.length} adjunto(s)`} className="text-slate-400 text-sm leading-none">
+                            📎 <span className="text-xs">{c.adjuntos.length}</span>
                           </span>
                         )}
+                        {programado && (
+                          <span className="text-xs text-amber-400 font-medium">⏰ Programado</span>
+                        )}
                       </div>
-                      <h3 className="font-semibold text-white truncate">{c.titulo}</h3>
-                      <p className="text-sm text-slate-400 mt-0.5 line-clamp-2">{c.contenido}</p>
-                      <div className="flex gap-3 mt-2 text-xs text-slate-500">
-                        {(c.departamento_emisor_nombre || c.area_emisora) && <span>📍 {c.departamento_emisor_nombre || c.area_emisora}</span>}
-                        <span>por {c.autor_nombre}</span>
-                        {programado && <span className="text-amber-300">No visible todavia</span>}
-                        {c.fecha_publicacion && <span>📅 {c.fecha_publicacion?.slice(0,10)}</span>}
-                        {actualizado && <span className="text-sky-800 font-medium">Actualizado {c.actualizado_en?.slice(0,16).replace('T',' ')}</span>}
-                        {c.email_ultimo_envio && (
-                          <span className="text-emerald-800 font-medium">
-                            Correos {c.email_enviados || 0} enviados · {c.email_fallidos || 0} fallidos
+
+                      {/* Título — más peso visual, estilo título */}
+                      <h3 className="font-bold text-white text-base leading-snug">
+                        {toTitleCase(c.titulo)}
+                      </h3>
+                      <p className="text-sm text-slate-400 mt-0.5 line-clamp-1">{c.contenido}</p>
+
+                      {/* Metadatos — gris neutro uniforme, sin colores que compitan */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-xs text-slate-500">
+                        {(c.departamento_emisor_nombre || c.area_emisora) && (
+                          <span className="flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            {c.departamento_emisor_nombre || c.area_emisora}
                           </span>
+                        )}
+                        <span>por {c.autor_nombre}</span>
+                        {c.fecha_publicacion && (
+                          <span className="flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            {c.fecha_publicacion.slice(0,10)}
+                          </span>
+                        )}
+                        {actualizado && (
+                          <span>Actualizado {c.actualizado_en?.slice(0,16).replace('T',' ')}</span>
+                        )}
+                        {c.email_ultimo_envio && (
+                          <span>Correos {c.email_enviados || 0} enviados · {c.email_fallidos || 0} fallidos</span>
                         )}
                       </div>
                     </div>
 
-                    {/* Acciones */}
-                    <div className="flex flex-col gap-2 flex-shrink-0">
+                    {/* Acciones — ancho uniforme en todos los botones */}
+                    <div className="flex flex-col gap-1.5 flex-shrink-0 w-[92px]" onClick={e => e.stopPropagation()}>
+                      {/* Lecturas — acción primaria, siempre visible */}
+                      <button onClick={() => setLecturas(c)}
+                        className="w-full text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium text-center">
+                        Lecturas
+                      </button>
+                      {/* Editar — ghost, solo si no archivado */}
+                      {c.estado !== 'ARCHIVADO' && (
+                        <button onClick={() => setModal(c)}
+                          className="w-full text-xs px-3 py-1.5 border border-white/15 hover:bg-white/5 text-slate-400 hover:text-white rounded-lg transition-colors text-center">
+                          Editar
+                        </button>
+                      )}
+                      {/* Publicar (borrador) */}
                       {c.estado === 'BORRADOR' && (
-                        <>
-                          <button onClick={() => setModal(c)}
-                            className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg transition-colors">
-                            ✏️ Editar
-                          </button>
-                          <button onClick={() => setConfirming({ id: c.id, accion: 'publicar' })}
-                            className="text-xs px-3 py-1.5 bg-green-600/70 hover:bg-green-600 text-white rounded-lg transition-colors">
-                            📤 Publicar
-                          </button>
-                          <button onClick={() => setConfirming({ id: c.id, accion: 'eliminar' })}
-                            className="text-xs px-3 py-1.5 bg-red-600/40 hover:bg-red-600/70 text-red-300 rounded-lg transition-colors">
-                            🗑 Eliminar
-                          </button>
-                        </>
+                        <button onClick={() => setConfirming({ id: c.id, accion: 'publicar' })}
+                          className="w-full text-xs px-3 py-1.5 border border-emerald-600/50 hover:bg-emerald-600/20 text-emerald-400 rounded-lg transition-colors text-center">
+                          Publicar
+                        </button>
                       )}
+                      {/* Archivar / Eliminar */}
                       {c.estado === 'PUBLICADO' && (
-                        <>
-                          <button onClick={() => setModal(c)}
-                            className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg transition-colors">
-                            Editar
-                          </button>
-                          <button onClick={() => setLecturas(c)}
-                            className="text-xs px-3 py-1.5 bg-blue-600/40 hover:bg-blue-600/70 text-blue-300 rounded-lg transition-colors">
-                            📊 Lecturas
-                          </button>
-                          <button onClick={() => setConfirming({ id: c.id, accion: 'archivar' })}
-                            className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg transition-colors">
-                            📁 Archivar
-                          </button>
-                        </>
+                        <button onClick={() => setConfirming({ id: c.id, accion: 'archivar' })}
+                          className="w-full text-xs px-3 py-1.5 border border-white/10 hover:bg-white/5 text-slate-500 hover:text-slate-300 rounded-lg transition-colors text-center">
+                          Archivar
+                        </button>
                       )}
-                      {c.estado === 'ARCHIVADO' && (
-                        <button onClick={() => setLecturas(c)}
-                          className="text-xs px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-400 rounded-lg transition-colors">
-                          📊 Ver lecturas
+                      {c.estado === 'BORRADOR' && (
+                        <button onClick={() => setConfirming({ id: c.id, accion: 'eliminar' })}
+                          className="w-full text-xs px-3 py-1.5 border border-red-500/20 hover:bg-red-500/10 text-red-400 rounded-lg transition-colors text-center">
+                          Eliminar
                         </button>
                       )}
                     </div>
@@ -1579,6 +1672,52 @@ export default function ComunicadosAdmin() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── Paginación ── */}
+        {!loading && total > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <span>Mostrando {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, total)} de {total} comunicados</span>
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="ml-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs px-2 py-1"
+              >
+                {[10, 25, 50].map(n => <option key={n} value={n}>{n} por página</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                ‹
+              </button>
+              {Array.from({ length: pages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === pages || Math.abs(p - page) <= 1)
+                .reduce((acc, p, idx, arr) => {
+                  if (idx > 0 && p - arr[idx - 1] > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) => p === '...' ? (
+                  <span key={`ellipsis-${idx}`} className="px-2 text-slate-400 text-sm">…</span>
+                ) : (
+                  <button key={p} onClick={() => setPage(p)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                      page === p
+                        ? 'bg-emerald-600 border-emerald-600 text-white font-semibold'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}>
+                    {p}
+                  </button>
+                ))
+              }
+              <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 disabled:opacity-40 transition-colors">
+                ›
+              </button>
+            </div>
           </div>
         )}
       </div>

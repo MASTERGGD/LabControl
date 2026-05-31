@@ -48,6 +48,7 @@ from models.departamento import Departamento
 from models.usuario import RolUsuario, Usuario
 from services.auditoria import registrar
 from services.email import enviar_notificacion
+from routers.notificaciones import crear_notificacion
 
 router = APIRouter(prefix="/comunicados", tags=["Comunicados"])
 
@@ -135,19 +136,33 @@ def _categorias_por_proceso(proceso: str | None) -> set[str]:
     return CATEGORIAS_TRANSVERSALES | CATEGORIAS_POR_PROCESO.get(proceso, set())
 
 
+def _dep_responsable(db: Session, usuario: Usuario):
+    """Departamento del que el usuario es responsable designado, o None."""
+    return db.query(Departamento).filter(
+        Departamento.responsable_id == usuario.id,
+        Departamento.activo == True,
+    ).first()
+
+
 def _categorias_permitidas(db: Session, usuario: Usuario, departamento_id: int | None = None) -> list[dict]:
     proceso = None
     dep = None
     if usuario.rol == RolUsuario.TUTORIA_ADMIN:
         proceso = "TUTORIA"
+    elif usuario.rol == RolUsuario.LAB_ADMIN:
+        proceso = "LABORATORIOS"
     elif usuario.rol == RolUsuario.ADMINISTRATIVO:
         dep = db.query(Departamento).filter(Departamento.id == usuario.departamento_id).first() if usuario.departamento_id else None
         proceso = _proceso_departamento(dep)
-    elif departamento_id:
-        dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
-        proceso = _proceso_departamento(dep)
-    elif usuario.rol == RolUsuario.LAB_ADMIN:
-        proceso = "LABORATORIOS"
+    else:
+        # Responsable designado de departamento (cualquier rol)
+        dep_resp = _dep_responsable(db, usuario)
+        if dep_resp:
+            proceso = _proceso_departamento(dep_resp)
+            dep = dep_resp
+        elif departamento_id:
+            dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
+            proceso = _proceso_departamento(dep)
 
     permitidas = _categorias_por_proceso(proceso)
     return [c for c in CATEGORIAS_COMUNICADOS if c["value"] in permitidas]
@@ -566,7 +581,18 @@ def _leer_manifest(path: Path) -> dict:
 
 
 def _es_emisor_limitado(usuario: Usuario) -> bool:
+    """Emisor que solo puede ver y gestionar sus propios comunicados (no todos)."""
     return usuario.rol in {RolUsuario.ADMINISTRATIVO, RolUsuario.TUTORIA_ADMIN}
+
+
+def _puede_emitir_comunicados(db: Session, usuario: Usuario) -> bool:
+    """True si el usuario tiene permiso para crear/publicar comunicados."""
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        return True
+    if usuario.rol in (RolUsuario.ADMINISTRATIVO, RolUsuario.TUTORIA_ADMIN):
+        return True
+    # Responsable designado de algún departamento
+    return _dep_responsable(db, usuario) is not None
 
 
 def _validar_acceso_gestion(c: Comunicado, usuario: Usuario, accion: str = "gestionar") -> None:
@@ -873,6 +899,41 @@ async def responder_comunicado(
 
     db.commit()
     db.refresh(respuesta)
+
+    titulo_com = (c.titulo or "Comunicado")[:60]
+    notificados = set()
+
+    # 1. Notificar al autor/emisor si no es quien responde
+    if c.autor_id and c.autor_id != usuario.id:
+        crear_notificacion(
+            db=db,
+            usuario_id=c.autor_id,
+            tipo="COMUNICADO_RESPUESTA",
+            titulo=f"Nueva respuesta: {titulo_com}",
+            mensaje=f"{usuario.nombre} respondió a tu comunicado «{titulo_com}»",
+            url=f"/admin/comunicados?id={comunicado_id}",
+        )
+        notificados.add(c.autor_id)
+
+    # 2. Si el autor ES quien responde (emisor retroalimentando su propio comunicado),
+    #    notificar a quienes hayan participado en el hilo de seguimiento
+    if usuario.id == c.autor_id:
+        participantes = db.query(ComunicadoRespuestaMensaje.usuario_id).filter(
+            ComunicadoRespuestaMensaje.respuesta_id == respuesta.id,
+            ComunicadoRespuestaMensaje.usuario_id != usuario.id,
+        ).distinct().all()
+        for (pid,) in participantes:
+            if pid and pid not in notificados:
+                crear_notificacion(
+                    db=db,
+                    usuario_id=pid,
+                    tipo="COMUNICADO_RESPUESTA",
+                    titulo=f"Nueva respuesta: {titulo_com}",
+                    mensaje=f"{usuario.nombre} agregó una respuesta en «{titulo_com}»",
+                    url=f"/admin/comunicados?id={comunicado_id}",
+                )
+                notificados.add(pid)
+
     return _serializar_respuesta(respuesta)
 
 
@@ -939,6 +1000,8 @@ def listar_comunicados(
     periodo: Optional[str] = Query(None),
     publicado_desde: Optional[datetime.datetime] = Query(None),
     publicado_hasta: Optional[datetime.datetime] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     db:        Session = Depends(get_db),
     usuario:   Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
@@ -951,6 +1014,9 @@ def listar_comunicados(
         q = q.filter(Comunicado.autor_id == usuario.id)
     if estado:
         q = q.filter(Comunicado.estado == estado)
+    if categoria == "URGENTE" and not prioridad:
+        prioridad = "URGENTE"
+        categoria = None
     if categoria:
         q = q.filter(Comunicado.categoria == categoria)
     if prioridad:
@@ -1031,8 +1097,21 @@ def listar_comunicados(
                     ComunicadoLectura.comunicado_id == ComunicadoDestinatario.comunicado_id,
                 ).filter(ComunicadoLectura.leido_en.is_(None))
             ))
-    comunicados = q.order_by(Comunicado.fijado.desc(), Comunicado.creado_en.desc()).all()
-    return [_serializar(c) for c in comunicados]
+    total = q.count()
+    pages = max(1, -(-total // page_size))  # ceil division
+    comunicados = (
+        q.order_by(Comunicado.fijado.desc(), Comunicado.creado_en.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return {
+        "items":     [_serializar(c) for c in comunicados],
+        "total":     total,
+        "page":      page,
+        "page_size": page_size,
+        "pages":     pages,
+    }
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -1379,6 +1458,34 @@ def responder_seguimiento(
     respuesta.actualizado_en = now
     db.commit()
     db.refresh(respuesta)
+
+    titulo_com = (c.titulo or "Comunicado")[:60]
+    notificados = set()
+
+    # 1. Notificar al EMISOR del comunicado (autor) si no es quien está respondiendo
+    #    El emisor gestiona desde /admin/comunicados (vista de gestión, no de destinatario)
+    if c.autor_id and c.autor_id != usuario.id:
+        crear_notificacion(
+            db=db,
+            usuario_id=c.autor_id,
+            tipo="COMUNICADO_SEGUIMIENTO",
+            titulo=f"Seguimiento: {titulo_com}",
+            mensaje=f"{usuario.nombre} respondió en tu comunicado «{titulo_com}»",
+            url=f"/admin/comunicados?id={comunicado_id}",
+        )
+        notificados.add(c.autor_id)
+
+    # 2. Notificar al destinatario que envió la respuesta si es distinto al usuario y al autor
+    if respuesta.usuario_id and respuesta.usuario_id != usuario.id and respuesta.usuario_id not in notificados:
+        crear_notificacion(
+            db=db,
+            usuario_id=respuesta.usuario_id,
+            tipo="COMUNICADO_SEGUIMIENTO",
+            titulo=f"Seguimiento: {titulo_com}",
+            mensaje=f"{usuario.nombre} agregó un comentario en «{titulo_com}»",
+            url=f"/admin/comunicados?id={comunicado_id}",
+        )
+
     return _serializar_respuesta(respuesta)
 
 

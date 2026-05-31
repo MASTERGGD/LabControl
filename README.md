@@ -1,206 +1,150 @@
 # S I G A - UTECAN
 
-Sistema Integral de Gestion Academica para la Universidad Tecnologica de Candelaria.
+Sistema Integral de Gestión Académica para la Universidad Tecnológica de Candelaria.
 
-SIGA-UTECAN centraliza procesos academicos, administrativos y de seguimiento institucional: laboratorios, espacios, comunicados, tutorias, estudios socioeconomicos, consultorio medico, catalogos y reportes.
+SIGA centraliza laboratorios, espacios, comunicados, tutorías, estudios socioeconómicos, consultorio médico, catálogos y reportes en una sola plataforma institucional con tema claro/oscuro y roles diferenciados.
 
-## Estado Actual
+## Estado del Proyecto
 
-El proyecto esta en desarrollo activo. La aplicacion funciona con:
+En desarrollo activo. Stack principal:
 
-- Backend FastAPI con SQLAlchemy, Alembic, JWT y PostgreSQL.
-- Frontend React 18 con React Router, Tailwind CSS y experiencia PWA.
-- Docker Compose para levantar base de datos, backend y frontend.
-- Roles diferenciados para administracion, docentes, servicios escolares, tutorias, medico, administrativos y alumnos.
+- **Backend:** FastAPI · SQLAlchemy · Alembic · JWT · PostgreSQL
+- **Frontend:** React 18 · React Router · Tailwind CSS · PWA
+- **Infraestructura:** Docker Compose (db + backend + frontend)
 
-## Cambios Recientes Importantes
+## Módulos Principales
 
-### Identidad institucional
-
-- Renombrado visual de `LabControl - UTECAN` a `S I G A - UTECAN`.
-- Actualizacion de `title`, manifest PWA y metadatos del navegador.
-- Favicon e iconos PWA reemplazados por el logo institucional.
-- Logo del sidebar y encabezado movil actualizado con la identidad UTECAN.
-
-### Comunicados
-
-- Comunicados con destinatarios por todos, rol, departamento o usuarios especificos.
-- Categorias controladas por contexto institucional para evitar usos fuera de procedimiento.
-- Retroalimentacion opcional para comunicados.
-- Adjuntos para comunicados.
-- Lecturas, confirmaciones y seguimiento de pendientes.
-- Panel de respaldos para generar paquetes ZIP con historial.
-- Soporte para importar respaldos y consultar comunicados archivados.
-
-### Servicios Escolares y alumnos
-
-- Rol `SERVICIOS_ESCOLARES`.
-- Panel especifico para Servicios Escolares.
-- Registro y administracion de alumnos.
-- Activacion del estudio socioeconomico para alumnos.
-- Acceso de alumno al tablero para responder su estudio.
-- Catalogo de carreras con nombre y clave.
-- Integracion de carrera del alumno desde su ficha academica.
-
-### Estudio socioeconomico
-
-- Flujo para que Servicios Escolares active el estudio.
-- Vista de alumno para capturar informacion socioeconomica.
-- Correcciones de validacion en campos numericos.
-- Manejo de errores de API para evitar renderizar objetos crudos en React.
-- Campos ampliados de ficha socioeconomica.
-
-### Tutoria
-
-- Rol `TUTORIA_ADMIN`.
-- Panel de tutoria.
-- Mis tutorados para docentes.
-- Historial y seguimiento de estados de tutoria.
-- Documentos y programacion de tutorias.
-- Formato con logo institucional para documentos relacionados.
-
-### Consultorio medico
-
-- Rol `MEDICO`.
-- Modulo de consultorio medico.
-- Registro de consultas para alumnos y personal.
-- Peso y talla en consulta.
-- Incapacidad con fecha de inicio y calculo de fecha final segun dias indicados.
-- Historial medico basado en snapshots de consulta para que los datos historicos no cambien aunque cambie la ficha del paciente.
-- Estadisticas por mes, cuatrimestre y anio.
-- Impresion/PDF de consulta con logo institucional.
-- Busqueda mejorada de pacientes ya atendidos usando historial de consultas y datos snapshot.
-
-### Espacios institucionales
-
-- Gestion de salas y espacios.
-- Solicitud de espacios por usuarios autorizados.
-- Bandeja de aprobacion.
-- Liberacion de espacios.
-- Responsables y permisos por operacion.
-
-### Catalogos y operacion academica
-
-- Catalogo de alumnos.
-- Catalogo de materias.
-- Catalogo de carreras.
-- Consulta de persona.
-- Historial de alumno.
-- Adeudos.
-- Identidad academica en reservaciones y sesiones.
-
-## Modulos Principales
-
-- Autenticacion y roles.
-- Usuarios y departamentos.
-- Laboratorios.
-- Horarios y reservaciones.
-- Sesiones de clase.
-- Inventario, prestamos y mantenimiento.
-- Espacios institucionales.
-- Comunicados institucionales.
-- Servicios Escolares.
-- Estudio socioeconomico.
-- Tutoria.
-- Consultorio medico.
-- Catalogos academicos.
-- Reportes y auditoria.
-- Notificaciones.
+| Módulo | Descripción |
+|---|---|
+| Autenticación | JWT, roles, cambio de contraseña, acceso especial a consultorio |
+| Usuarios y departamentos | CRUD, roles, asignación a departamentos |
+| Laboratorios | PCs, sesiones, horarios, reservaciones, inventario, préstamos, mantenimiento |
+| Espacios institucionales | Salas, solicitudes, bandeja de aprobación, liberación, responsables |
+| Comunicados | Destinatarios por rol/depto/usuario, adjuntos, retroalimentación, lecturas, respaldos |
+| Servicios Escolares | Alumnos, catálogo de carreras, activación de fichas socioeconómicas |
+| Estudio socioeconómico | Captura por alumno, validación, correcciones, historial |
+| Tutoría | Grupos, sesiones F-DC-07, canalizaciones F-DC-08, informe F-DC-09 |
+| Consultorio médico | Consultas, incapacidades, estadísticas, PDF institucional |
+| Catálogos académicos | Materias, carreras, consulta de persona, historial de alumno, adeudos |
+| Reportes y auditoría | Reportes por laboratorio, exportación Excel, auditoría de acciones |
+| Notificaciones | Campana en tiempo real, pendientes de comunicados |
 
 ## Roles
 
-| Rol | Uso principal |
+| Rol | Acceso principal |
 |---|---|
-| `SUPER_ADMIN` | Administracion global del sistema |
-| `LAB_ADMIN` | Gestion de laboratorios, sesiones, espacios y operacion |
-| `ADMINISTRATIVO` | Operacion de area/departamento y comunicados |
-| `DOCENTE` | Panel docente, sesiones, tutorados, espacios y comunicados |
-| `SERVICIOS_ESCOLARES` | Alumnos, carreras y estudios socioeconomicos |
-| `TUTORIA_ADMIN` | Gestion y seguimiento de tutoria |
-| `MEDICO` | Consultorio medico |
-| `ALUMNO` | Tablero del alumno y estudio socioeconomico |
+| `SUPER_ADMIN` | Administración global |
+| `LAB_ADMIN` | Laboratorios, sesiones, espacios, operación |
+| `ADMINISTRATIVO` | Operación de área/departamento y comunicados |
+| `DOCENTE` | Panel docente, sesiones, tutorados, espacios |
+| `SERVICIOS_ESCOLARES` | Alumnos, carreras, estudios socioeconómicos |
+| `TUTORIA_ADMIN` | Gestión y seguimiento de tutoría |
+| `MEDICO` | Consultorio médico |
+| `ALUMNO` | Tablero personal y estudio socioeconómico |
+
+## Cambios Recientes (mayo 2026)
+
+### UI/UX — Refactoring visual completo
+
+Se aplicó un ciclo completo de mejoras de diseño en todas las vistas del sistema:
+
+- **Tema claro y oscuro** — Cada componente detecta `themeKey` mediante `useTheme()` y aplica colores adaptativos. Todos los textos, bordes, fondos e iconos reaccionan al tema activo.
+- **Contraste y accesibilidad** — Textos secundarios elevados a `#9CA3AF`/`#D1D5DB` en oscuro y `#4B5563`/`#6B7280` en claro para cumplir estándares WCAG.
+- **Efecto fantasma en métricas** — Contadores en `0` se muestran en gris atenuado; se activan en color solo cuando tienen datos reales.
+- **Jerarquía de botones** — Acciones primarias en verde esmeralda sólido (`#10b981`), secundarias en ghost con borde, destructivas solo en rojo al hover.
+- **Title Case global** — Nombres de personas, carreras, comunicados y alumnos formateados automáticamente (`toTitleCase`) en todos los módulos.
+- **Dropdown custom `SelectDark`** — Reemplaza `<select>` nativos en formularios clave (canalizaciones, modalidades) con soporte de `sublabel` para mostrar matrícula atenuada junto al nombre.
+- **Filtros en fila horizontal** — Los selectores de categoría/prioridad/periodo en ComunicadosAdmin y MisComunicados reorganizados con `flex` para no apilar verticalmente.
+- **Badges de estado** — Estado de documentos (BORRADOR/ENVIADO/RECIBIDO) convertidos a píldoras con borde y fondo semitransparente acorde al estado.
+- **Pestañas sin emojis cuadrados** — Barra de pestañas de MisTutorados limpiada; badges numéricos compactos solo cuando hay pendientes.
+- **Modal "Reportar problema del aula"** — Categorías con selección esmeralda, botón primario verde institucional, alineación de ícono de advertencia.
+- **Catálogo de carreras** — Botón "Agregar" con verde sólido, "Desactivar" como ghost con activación roja al hover, nombres en Title Case.
+- **Formulario Registro de Sesión F-DC-07** — Nombres en Title Case, matrícula en `#9CA3AF`, inputs con borde visible, "Requiere canalización" condicional.
+
+### Bitácora de auditoría — cobertura ampliada
+
+Se extendió el sistema de auditoría para cubrir acciones institucionales críticas que antes no dejaban rastro:
+
+- **Servicios Escolares** — activar acceso SIGA a alumno, restablecer contraseña, activar/desactivar ficha socioeconómica (con nombre y matrícula del alumno en el detalle).
+- **Tutoría** — registrar sesión F-DC-07, crear canalización F-DC-08, enviar informe F-DC-09 (con grupo, periodo y tipos).
+- **Departamentos** — crear, editar y desactivar departamentos (con nombre y clave).
+- **Reportes** — exportar Excel de reporte mensual de laboratorio (con nombre del laboratorio, mes, año y nombre de archivo).
+- **Usuarios** — editar usuario ahora incluye `usuario_afectado` y `email_afectado` en el detalle JSON, eliminando la necesidad de buscar quién es el ID afectado.
+- **Frontend** — modal de detalle de bitácora muestra automáticamente `Afectado`, `Alumno` y `Grupo` cuando el registro los incluye.
+- **Constantes** — 10 nuevas acciones y 3 nuevos recursos (`DEPARTAMENTO`, `TUTORIA`, `REPORTE`) en `services/auditoria.py`.
+
+### Paginación de comunicados
+
+- **Backend** — `GET /comunicados` ahora acepta `page` y `page_size` (default 10, máx 100) y devuelve `{ items, total, page, page_size, pages }` en lugar del array plano.
+- **Frontend** — barra de paginación con rango `Mostrando X–Y de Z comunicados`, selector `10 | 25 | 50 por página` y controles `‹ 1 2 … N ›`.
+- Al cambiar cualquier filtro se resetea automáticamente a página 1. Al cambiar de página se conservan todos los filtros activos.
+
+### Corrección de zona horaria en bitácora
+
+- Los timestamps del router de auditoría se serializaban sin sufijo `Z`, haciendo que el browser los interpretara como hora local en lugar de UTC. Corregido con `isoformat() + "Z"`: la bitácora ahora muestra la hora local correcta de México.
+
+### Backend
+
+- Soporte a filtros avanzados en comunicados (seguimiento, destinatario, periodo académico).
+- Mejoras en routers de espacios, tutorías, consultorio y departamentos.
+- Nuevas migraciones Alembic para apoyo de departamento en espacios.
+- Correcciones en cálculo de métricas de sesiones y lecturas.
+- Placeholder de `input-dark` elevado de opacidad 50% a `#9CA3AF` — aplica globalmente a todos los formularios del sistema.
+
+### Corrección de bugs
+
+- `isDay is not defined` en `AdminLayout` — variable añadida al componente principal.
+- Formato de fechas con `T` en actualizaciones (`replace('T', ' ')` centralizado en `formatFecha`).
+- Plural automático `1 alumno` / `N alumnos` en modal de grupo tutorado.
+- Error ESLint por comentarios `eslint-disable-line react-hooks/exhaustive-deps` con regla no instalada — comentarios eliminados.
 
 ## Arquitectura
 
-```txt
+```
 labcontrol/
   backend/
     main.py
     database.py
     dependencies.py
     permissions.py
-    alembic/
-      versions/
-    assets/
-      tutoria/
+    alembic/versions/
+    assets/tutoria/
     models/
-      usuario.py
-      catalogo.py
-      comunicado.py
-      consultorio.py
-      ficha_socioeconomica.py
-      tutoria.py
-      espacio.py
-      horario.py
-      sesion.py
-      adeudo.py
+      usuario.py · catalogo.py · comunicado.py · consultorio.py
+      ficha_socioeconomica.py · tutoria.py · espacio.py
+      horario.py · sesion.py · adeudo.py · departamento.py
     routers/
-      auth.py
-      usuarios.py
-      catalogo.py
-      comunicados.py
-      consultorio.py
-      servicios_escolares.py
-      tutoria.py
-      espacios.py
-      horarios.py
-      sesiones.py
-      inventario.py
-      adeudos.py
+      auth.py · usuarios.py · catalogo.py · comunicados.py
+      consultorio.py · servicios_escolares.py · tutoria.py
+      espacios.py · horarios.py · sesiones.py
+      inventario.py · adeudos.py · reportes.py
 
-  frontend/
-    public/
-      icons/
-      index.html
-      manifest.json
-    src/
-      App.jsx
-      components/
-      context/
-      hooks/
-      pages/
-        admin/
-        alumno/
-        comunicados/
-        docente/
-        espacios/
-        medico/
-        servicios_escolares/
+  frontend/src/
+    components/
+      AdminLayout.jsx     ← layout global con isDay
+      SelectDark.jsx      ← dropdown custom con sublabel
+      ThemeSwitcher.jsx
+      NotificacionesBell.jsx
+    context/
+      ThemeContext.jsx · AuthContext.jsx · ToastContext.jsx
+    pages/
+      admin/              ← ComunicadosAdmin, TutoriaAdmin, Usuarios…
+      alumno/
+      comunicados/        ← MisComunicados
+      docente/            ← MisTutorados, SesionActiva, SesionClase
+      espacios/
+      medico/             ← ConsultorioMedico
+      servicios_escolares/ ← SEAlumnos
 
   docker-compose.yml
   README.md
 ```
 
-## Inicio Rapido con Docker
-
-Requisitos:
-
-- Docker Desktop instalado y corriendo.
-- Puertos `3000`, `8000` y `5432` disponibles.
-
-Levantar el sistema:
+## Inicio Rápido con Docker
 
 ```powershell
 docker compose up -d --build
 ```
-
-Ver logs del backend:
-
-```powershell
-docker compose logs -f backend
-```
-
-URLs:
 
 - Frontend: `http://localhost:3000`
 - API: `http://localhost:8000`
@@ -208,40 +152,25 @@ URLs:
 
 ## Desarrollo Local sin Docker
 
-Backend:
-
 ```powershell
+# Backend
 cd backend
 $env:DATABASE_URL="sqlite:///../data/labcontrol.db"
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
 
-Frontend:
-
-```powershell
+# Frontend
 cd frontend
-npm install
-npm start
+npm install && npm start
 ```
-
-Nota: para desarrollo completo se recomienda Docker, porque PostgreSQL y migraciones quedan alineadas con el entorno real del proyecto.
 
 ## Migraciones
-
-Con Docker, el backend ejecuta Alembic al iniciar.
-
-Manual:
 
 ```powershell
 cd backend
 alembic upgrade head
 ```
 
-Si una base SQLite local ya tenia tablas creadas antes de usar Alembic, puede requerir marcar la version actual o usar Docker/PostgreSQL para evitar conflictos de esquema.
-
 ## Variables de Entorno
-
-Ejemplo:
 
 ```env
 DATABASE_URL=postgresql://labcontrol:labcontrol@db:5432/labcontrol
@@ -257,83 +186,40 @@ COMUNICADOS_MAX_TOTAL_ADJUNTOS_MB=15
 COMUNICADOS_MAX_ADJUNTOS=5
 ```
 
-## Seguridad y Produccion
+## Seguridad y Producción
 
-Controles iniciales ya integrados:
+- `SECRET_KEY` obligatoria en `APP_ENV=production`.
+- CORS restringido a dominios autorizados en producción.
+- Adjuntos validados por cantidad, peso, MIME y firma real.
+- Cabeceras de seguridad HTTP via middleware.
+- `/health` y `/health/db` para monitoreo.
 
-- `SECRET_KEY` es obligatoria cuando `APP_ENV=production`.
-- CORS en produccion usa `CORS_ORIGINS` o `FRONTEND_URL`; no agrega `localhost` automaticamente.
-- `/health` verifica disponibilidad del backend.
-- `/health/db` verifica conexion a base de datos.
-- Docker Compose incluye healthcheck del backend.
-- Adjuntos de comunicados limitados por cantidad, peso, MIME y firma real del archivo.
-- Adjuntos permitidos: PDF, JPG, PNG y WEBP.
-- Cabeceras de seguridad HTTP mediante middleware.
+**Checklist antes de deploy:**
 
-Checklist antes de subir a servidor:
-
-```txt
+```
 [ ] APP_ENV=production
-[ ] SECRET_KEY fuerte, unica y fuera de Git
-[ ] FRONTEND_URL con dominio real HTTPS
-[ ] CORS_ORIGINS solo con dominios autorizados
-[ ] DATABASE_URL apuntando a PostgreSQL de produccion
-[ ] Backup de base de datos probado
-[ ] Backup de adjuntos y respaldos probado
+[ ] SECRET_KEY fuerte y fuera de Git
+[ ] FRONTEND_URL con dominio HTTPS
+[ ] CORS_ORIGINS solo dominios autorizados
+[ ] DATABASE_URL apuntando a PostgreSQL de producción
+[ ] Backups de base de datos y adjuntos probados
 [ ] HTTPS activo
 [ ] Migraciones Alembic probadas en staging
-[ ] Usuario admin con password cambiada
-[ ] Permisos por rol revisados en backend
-[ ] Logs sin tokens, passwords ni datos sensibles
+[ ] Password de admin cambiada
+[ ] Logs sin tokens ni datos sensibles
 ```
 
-## Verificacion
+## Convención de Commits
 
-Comandos usados durante los ultimos cambios:
-
-```powershell
-cd frontend
-npm run build
 ```
-
-Tambien se recomienda validar backend y migraciones:
-
-```powershell
-python -m compileall backend
-docker compose up -d --build
-docker compose ps
-docker compose logs -f backend
-```
-
-## Notas de Git
-
-Antes de guardar cambios:
-
-```powershell
-git status --short
-git diff --stat
-```
-
-Commit sugerido para este bloque de trabajo:
-
-```powershell
-git add README.md backend frontend docker-compose.yml
-git commit -m "feat: consolidate SIGA institutional modules"
-```
-
-No se recomienda agregar carpetas temporales como `.codex_tmp/`.
-
-## Convencion de Commits
-
-```txt
 feat:     nueva funcionalidad
-fix:      correccion de bug
-style:    cambios visuales
+fix:      corrección de bug
+style:    cambios visuales / UI
 refactor: refactor sin cambio funcional
-docs:     documentacion
+docs:     documentación
 chore:    mantenimiento
 ```
 
 ## Licencia
 
-Uso institucional para la Universidad Tecnologica de Candelaria.
+Uso institucional — Universidad Tecnológica de Candelaria (UTECAN).

@@ -20,3 +20,119 @@ body {
 }
 .animate-fadeUp { animation: fadeUp .2s ease; }
 .animate-slideInRight { animation: slideInRight .25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ─── Variables CSS globales (tema oscuro por defecto) ─────────────────────── */
+:root {
+  --input-bg:                rgba(15, 23, 42, 0.6);
+  --input-bg-open:           rgba(15, 23, 42, 0.85);
+  --input-border-color:      rgba(255, 255, 255, 0.1);
+  --input-color:             #f1f5f9;
+  --input-placeholder-color: rgba(148, 163, 184, 0.5);
+  --dropdown-bg:             #1e293b;
+  --dropdown-border:         rgba(255, 255, 255, 0.1);
+  --dropdown-chevron:        #6b7280;   /* gris neutro — no verde */
+  --dropdown-accent:         #334155;
+  --dropdown-row-border:     rgba(255, 255, 255, 0.04);
+  --dropdown-text:           #cbd5e1;
+  --dropdown-text-selected:  #f1f5f9;
+  --dropdown-text-active:    #ffffff;
+  --dropdown-text-empty:     #64748b;
+  --dropdown-selected-bg:    rgba(99, 102, 241, 0.15);
+  --dropdown-active-bg:      rgba(255, 255, 255, 0.06);
+  --accent-primary-glow:     rgba(99, 102, 241, 0.2);
+  --layout-bg:               #0f172a;
+}
+
+/* Tema claro: sobrescribe las variables */
+body.theme-day {
+  --input-bg:                #ffffff;
+  --input-bg-open:           #f9fafb;
+  --input-border-color:      #e5e7eb;
+  --input-color:             #111827;
+  --input-placeholder-color: #9ca3af;
+  --dropdown-bg:             #ffffff;
+  --dropdown-border:         #e5e7eb;
+  --dropdown-chevron:        #6b7280;   /* gris neutro en ambos temas */
+  --dropdown-accent:         #e5e7eb;
+  --dropdown-row-border:     #f3f4f6;
+  --dropdown-text:           #374151;
+  --dropdown-text-selected:  #111827;
+  --dropdown-text-active:    #111827;
+  --dropdown-text-empty:     #9ca3af;
+  --dropdown-selected-bg:    #ede9fe;
+  --dropdown-active-bg:      #f3f4f6;
+  --accent-primary-glow:     rgba(5, 150, 105, 0.15);
+  --layout-bg:               #f8fafc;
+}
+
+/* ─── Utilidades globales ───────────────────────────────────────────────────── */
+
+.glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+}
+
+.input-dark {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.input-dark:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+.input-dark::placeholder { color: #9CA3AF; }
+
+/* ─── Slots del calendario de horarios (tema oscuro) ───────────────────────── */
+
+/* Libre: borde sutil verde para invitar a interacción */
+.slot-libre {
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px dashed rgba(74, 222, 128, 0.2);
+}
+.slot-libre:hover {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(74, 222, 128, 0.4);
+}
+/* Texto de hora en celdas libres: verde menta legible */
+.slot-libre .text-slate-600 { color: #4ade80 !important; }
+
+/* Reservado: despegado del fondo con azul grisáceo más claro */
+.slot-reservado {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+.slot-reservado:hover { background: #253347; }
+
+/* Bloqueado: morado sutil con texto claro */
+.slot-bloqueado {
+  background: rgba(109, 40, 217, 0.15);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* En disputa: ámbar atenuado */
+.slot-disputa {
+  background: rgba(180, 83, 9, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+/* Inactivo: completamente apagado */
+.slot-inactivo {
+  background: rgba(255, 255, 255, 0.015);
+  opacity: 0.4;
+}
+
+/* Seleccionando (drag para crear) */
+.slot-selecting {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.5);
+}

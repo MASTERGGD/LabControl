@@ -47,13 +47,22 @@ def _center(wrap=False):
 def _left(wrap=True):
     return Alignment(horizontal="left", vertical="center", wrap_text=wrap)
 
-AZUL_OSC  = "1E3A5F"
-AZUL_MED  = "2D6A9F"
+AZUL_OSC  = "1E3A5F"   # mantenido para hojas internas
+AZUL_MED  = "2D6A9F"   # mantenido para hojas internas
 AZUL_CLR  = "BDD7EE"
-VERDE_OSC = "1B5E20"
+# ── Paleta institucional SIGA-UTECAN ──
+VERDE_HDR = "059669"   # encabezado principal  (#059669 esmeralda oscuro)
+VERDE_SUB = "10B981"   # subtítulo             (#10b981 esmeralda medio)
+VERDE_KPI = "D1FAE5"   # fondo KPI pastel      (#d1fae5)
+VERDE_TXT = "065F46"   # número KPI texto      (#065f46 esmeralda muy oscuro)
+VERDE_OSC = "1B5E20"   # hojas internas
 VERDE_CLR = "C8E6C9"
+ROJO_KPI  = "FEE2E2"   # fondo incidentes alerta
+ROJO_TXT  = "991B1B"   # número incidentes
 ROJO_CLR  = "FFCDD2"
 AMBAR_CLR = "FFF9C4"
+GRIS_LBL  = "F3F4F6"   # fila etiquetas KPI
+GRIS_TXT  = "374151"   # texto etiquetas KPI
 GRIS_CLR  = "F5F5F5"
 GRIS_ROW  = "EEF2F7"
 
@@ -311,25 +320,25 @@ def _build_excel(d: dict) -> io.BytesIO:
     ws.merge_cells("B2:H2")
     t = ws.cell(row=2, column=2, value=f"📊  {titulo}")
     t.font      = Font(bold=True, size=16, color="FFFFFF")
-    t.fill      = _fill(AZUL_OSC)
+    t.fill      = _fill(VERDE_HDR)
     t.alignment = _left(wrap=False)
 
     ws.merge_cells("B3:H3")
     s = ws.cell(row=3, column=2, value=f"Universidad Tecnológica de Candelaria  |  Generado: {fecha_gen}")
-    s.font      = Font(italic=True, size=10, color="A8C8F0")
-    s.fill      = _fill(AZUL_MED)
+    s.font      = Font(italic=True, size=10, color="FFFFFF")
+    s.fill      = _fill(VERDE_SUB)
     s.alignment = _left(wrap=False)
 
     # Tarjetas de métricas (fila 5-8)
     METRICAS = [
-        ("🗓️ Sesiones", d["sesiones"]["total"], AZUL_OSC, "FFFFFF"),
-        ("👩‍🏫 Docentes", d["docentes"]["total"], "1B4F72", "FFFFFF"),
-        ("🎓 Alumnos", d["alumnos"]["total_unicos"], VERDE_OSC, "FFFFFF"),
-        ("⏱️ Horas de uso", d["sesiones"]["horas_total"], "4A235A", "FFFFFF"),
-        ("💻 PCs operativas", f"{d['pcs']['operativas']}/{d['pcs']['total']}", "1B6B3A", "FFFFFF"),
-        ("🔧 En mantenimiento", d["pcs"]["mantenimiento"] + d["activos"]["mantenimiento"], "7D6608", "FFFFFF"),
-        ("📤 Préstamos activos", d["prestamos"]["total"], "154360", "FFFFFF"),
-        ("⚠️ Incidentes", d["incidentes"]["total"], "78281F", "FFFFFF"),
+        ("🗓️ Sesiones",         d["sesiones"]["total"],                                      VERDE_KPI, VERDE_TXT),
+        ("👩‍🏫 Docentes",         d["docentes"]["total"],                                      VERDE_KPI, VERDE_TXT),
+        ("🎓 Alumnos",           d["alumnos"]["total_unicos"],                                VERDE_KPI, VERDE_TXT),
+        ("⏱️ Horas de uso",      d["sesiones"]["horas_total"],                               VERDE_KPI, VERDE_TXT),
+        ("💻 PCs operativas",    f"{d['pcs']['operativas']}/{d['pcs']['total']}",             VERDE_KPI, VERDE_TXT),
+        ("🔧 En mantenimiento",  d["pcs"]["mantenimiento"] + d["activos"]["mantenimiento"],  VERDE_KPI, VERDE_TXT),
+        ("📤 Préstamos activos", d["prestamos"]["total"],                                     VERDE_KPI, VERDE_TXT),
+        ("⚠️ Incidentes",        d["incidentes"]["total"],                                    ROJO_KPI,  ROJO_TXT),
     ]
     ws.row_dimensions[5].height = 16
     ws.row_dimensions[6].height = 36
@@ -340,7 +349,8 @@ def _build_excel(d: dict) -> io.BytesIO:
         col = i
         ws.column_dimensions[get_column_letter(col)].width = 16
         lbl = ws.cell(row=5, column=col, value=etiq)
-        lbl.font = Font(bold=True, size=9, color="AAAAAA")
+        lbl.font      = Font(bold=True, size=9, color=GRIS_TXT)
+        lbl.fill      = _fill(GRIS_LBL)
         lbl.alignment = _center()
 
         num = ws.cell(row=6, column=col, value=val)
@@ -359,9 +369,9 @@ def _build_excel(d: dict) -> io.BytesIO:
     ws.merge_cells("B10:H10")
     h = ws.cell(row=10, column=2, value="COMPARATIVA VS MES ANTERIOR")
     h.font = Font(bold=True, size=10, color="FFFFFF")
-    h.fill = _fill(AZUL_MED)
+    h.fill = _fill(VERDE_HDR)
     h.alignment = _center()
-    h.border = _border("3A5A8A")
+    h.border = _border("047857")
 
     comp = d["comparativa"]
     ses_act   = d["sesiones"]["total"]
@@ -680,6 +690,11 @@ def reporte_mensual_excel(
     nombre_lab  = d["laboratorio"]["nombre"].replace(" ","_")[:20]
     mes_nombre  = MESES_ES[mes]
     filename    = f"Reporte_{nombre_lab}_{mes_nombre}_{anio}.xlsx"
+
+    from services.auditoria import registrar as _audit, Accion, Recurso
+    _audit(db, accion=Accion.EXPORTAR_REPORTE_EXCEL, recurso=Recurso.REPORTE,
+           usuario=current_user, recurso_id=laboratorio_id,
+           detalle={"laboratorio": d["laboratorio"]["nombre"], "mes": mes, "anio": anio, "archivo": filename})
 
     return StreamingResponse(
         buf,

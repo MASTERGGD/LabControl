@@ -6,14 +6,29 @@ import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
 const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'DOCENTE'];
+
+// SUPER_ADMIN destaca en azul; todos los demás en gris neutro para reducir ruido visual
 const ROL_COLOR = {
-  SUPER_ADMIN: 'bg-blue-900/60 text-blue-300',
-  LAB_ADMIN:   'bg-purple-900/60 text-purple-300',
-  ADMINISTRATIVO: 'bg-amber-900/60 text-amber-300',
-  TUTORIA_ADMIN: 'bg-cyan-900/60 text-cyan-300',
-  SERVICIOS_ESCOLARES: 'bg-indigo-900/60 text-indigo-300',
-  DOCENTE:     'bg-green-900/60 text-green-300',
+  SUPER_ADMIN:         'bg-blue-900/70  text-blue-200  border border-blue-700/50',
+  LAB_ADMIN:           'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  ADMINISTRATIVO:      'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  TUTORIA_ADMIN:       'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  SERVICIOS_ESCOLARES: 'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  DOCENTE:             'bg-slate-700/60 text-slate-200 border border-slate-600/40',
 };
+
+const ROL_LABEL = {
+  SUPER_ADMIN:         'Super Admin',
+  LAB_ADMIN:           'Admin Lab',
+  ADMINISTRATIVO:      'Administrativo',
+  TUTORIA_ADMIN:       'Tutoría',
+  SERVICIOS_ESCOLARES: 'Escolares',
+  DOCENTE:             'Docente',
+  ALUMNO:              'Alumno',
+};
+
+const toTitleCase = s =>
+  !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 
 // ─── Modal Crear / Editar ──────────────────────────────────────────────────────
@@ -96,7 +111,8 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                 <label className="block text-sm text-slate-400 mb-1">Email *</label>
                 <input name="email" type="email" value={form.email} onChange={handleChange} required
                   placeholder="correo@utecan.edu.mx"
-                  className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full input-dark text-white px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ textOverflow: 'ellipsis' }} />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">No. Empleado</label>
@@ -175,14 +191,15 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                   <input type="checkbox" name="acceso_consultorio"
                     checked={form.acceso_consultorio}
                     onChange={e => setForm({ ...form, acceso_consultorio: e.target.checked })}
-                    className="w-4 h-4 rounded accent-rose-500" />
-                  <span className={form.acceso_consultorio ? "text-rose-300 font-medium" : "text-slate-400"}>
-                    🏥 Acceso al Consultorio Médico
+                    className="w-4 h-4 rounded accent-blue-600" />
+                  <span className="text-slate-400">
+                    Permitir acceso al Consultorio Médico
                   </span>
                 </label>
                 {form.acceso_consultorio && (
-                  <p className="text-xs text-rose-300 bg-rose-900/20 border border-rose-700/30 rounded-lg px-3 py-1.5">
-                    Este usuario verá el módulo de consultorio en su menú aunque su rol sea DOCENTE o ADMINISTRATIVO.
+                  <p className="rounded-lg px-3 py-2"
+                    style={{ backgroundColor: '#E8F0FE', color: '#1E3A8A', border: '1px solid #BFDBFE', fontSize: '13px' }}>
+                    ℹ️ Este usuario visualizará el módulo de consultorio médico en su menú de navegación principal, aunque su rol sea docente o administrativo.
                   </p>
                 )}
               </div>
@@ -195,7 +212,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              className="flex-1 bg-slate-100 hover:bg-slate-200 rounded-lg py-2.5 text-sm font-medium transition-colors" style={{ color: '#374151' }}>
               Cancelar
             </button>
             <button type="submit" disabled={loading}
@@ -554,7 +571,9 @@ export default function Usuarios() {
         api.get('/laboratorios?solo_activos=true'),
         api.get('/departamentos?activo=true'),
       ]);
-      setUsuarios(rU.data);
+      // Alumnos se gestionan en Catálogos, no en Usuarios
+      const lista = Array.isArray(rU.data) ? rU.data : (rU.data?.items || []);
+      setUsuarios(lista.filter(u => u.rol !== 'ALUMNO'));
       setLabs(rL.data);
       setDepartamentos(Array.isArray(rD.data) ? rD.data : []);
     } catch {
@@ -736,11 +755,11 @@ export default function Usuarios() {
                     {u.nombre.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{u.nombre}</p>
+                    <p className="text-sm text-white font-medium truncate">{toTitleCase(u.nombre)}</p>
                     <p className="text-xs text-slate-400 truncate">{u.email}</p>
                   </div>
                   <span className={`ml-auto text-xs px-2 py-0.5 rounded-full shrink-0 ${ROL_COLOR[u.rol] || 'bg-gray-700 text-gray-300'}`}>
-                    {u.rol}
+                    {ROL_LABEL[u.rol] || u.rol}
                   </span>
                 </button>
               ))}
@@ -896,7 +915,7 @@ export default function Usuarios() {
                           {u.nombre.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="font-medium text-white leading-tight">{u.nombre}</p>
+                          <p className="font-medium text-white leading-tight">{toTitleCase(u.nombre)}</p>
                           <p className="text-slate-400 text-xs mt-0.5">{u.email}</p>
                           {u.numero_empleado && (
                             <p className="text-slate-600 text-xs font-mono">{u.numero_empleado}</p>
@@ -908,7 +927,7 @@ export default function Usuarios() {
                     {/* Rol */}
                     <td className="px-4 py-4">
                       <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ROL_COLOR[u.rol] || 'bg-gray-700 text-gray-300'}`}>
-                        {u.rol}
+                        {ROL_LABEL[u.rol] || u.rol}
                       </span>
                     </td>
 
@@ -917,13 +936,14 @@ export default function Usuarios() {
                       {u.laboratorio_nombre || <span className="text-slate-600">—</span>}
                     </td>
 
-                    {/* Departamento */}
-                    <td className="px-4 py-4 text-slate-300 text-sm">
-                      {u.departamento_nombre ? (
-                        <div>
-                          <p className="leading-tight">{u.departamento_nombre}</p>
-                          {u.departamento_clave && <p className="text-xs text-slate-500">{u.departamento_clave}</p>}
-                        </div>
+                    {/* Departamento — solo siglas, nombre completo en tooltip */}
+                    <td className="px-4 py-4">
+                      {u.departamento_clave ? (
+                        <span
+                          title={u.departamento_nombre || u.departamento_clave}
+                          className="cursor-default text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-300 border border-slate-600/30">
+                          {u.departamento_clave}
+                        </span>
                       ) : <span className="text-slate-600">—</span>}
                     </td>
 
@@ -941,9 +961,9 @@ export default function Usuarios() {
 
                     {/* Acciones */}
                     <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-2">
                         <button onClick={() => setUserEditar(u)}
-                          className="p-1.5 text-slate-400 hover:text-white hover:bg-white/8 rounded-lg transition-colors"
+                          className="p-2 text-slate-400 hover:text-white hover:bg-white/8 rounded-lg transition-colors"
                           title="Editar usuario">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -952,7 +972,7 @@ export default function Usuarios() {
                         </button>
                         {u.id !== yo?.id && (
                           <button onClick={() => setUserReset(u)}
-                            className="p-1.5 text-slate-400 hover:text-yellow-400 hover:bg-white/8 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 hover:text-yellow-400 hover:bg-white/8 rounded-lg transition-colors"
                             title="Resetear contraseña">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -962,7 +982,7 @@ export default function Usuarios() {
                         )}
                         {u.id !== yo?.id && u.rol !== 'SUPER_ADMIN' && (
                           <button onClick={() => setUserEliminar(u)}
-                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
                             title="Eliminar usuario">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

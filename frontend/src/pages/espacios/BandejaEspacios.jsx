@@ -102,8 +102,12 @@ function ModalLiberarRango({ espacios, onClose, onLiberado }) {
         <textarea className="input-dark resize-none" rows={2} value={form.observaciones}
           onChange={e => set('observaciones', e.target.value)} placeholder="Observaciones para infraestructura/apoyo" />
         <div className="flex gap-3">
-          <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
-          <button type="submit" disabled={saving} className="btn-blue flex-1">
+          <button type="button" onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-slate-600 text-white text-sm font-medium hover:bg-white/5 transition-colors">
+            Cancelar
+          </button>
+          <button type="submit" disabled={saving}
+            className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold transition-colors">
             {saving ? 'Liberando...' : 'Liberar horario'}
           </button>
         </div>
@@ -557,15 +561,21 @@ export default function BandejaEspacios() {
             </div>
             <p className="text-slate-400 text-sm mt-0.5">Solicitudes de espacios institucionales</p>
           </div>
-          <button onClick={() => setModalLiberar(true)} className="btn-blue self-start">
+          {/* Acción de mantenimiento → estilo secundario (no compite con Aprobar) */}
+          <button
+            onClick={() => setModalLiberar(true)}
+            className="self-start flex items-center gap-2 px-4 py-2 rounded-xl border border-emerald-600/60 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500 text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
             Liberar horario prioritario
           </button>
         </div>
 
-        {/* Filtros */}
-        <div className="flex flex-wrap gap-3">
-          {/* Estado */}
-          <div className="flex gap-1 glass rounded-xl p-1">
+        {/* Filtros — tabs a la izquierda, select de espacio a la derecha */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex gap-1 glass rounded-xl p-1 overflow-x-auto">
             {[
               { k: 'PENDIENTE',  l: 'Pendientes' },
               { k: 'APROBADA',   l: 'Aprobadas'  },
@@ -575,17 +585,18 @@ export default function BandejaEspacios() {
               { k: 'FINALIZADA', l: 'Finalizadas' },
             ].map(({ k, l }) => (
               <button key={k} onClick={() => setFiltroEstado(k)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  filtroEstado === k ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  filtroEstado === k
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-300 hover:text-white border border-transparent hover:border-white/10'
                 }`}>
                 {l}
               </button>
             ))}
           </div>
-          {/* Espacio */}
           {espacios.length > 1 && (
             <select value={filtroEspacio} onChange={e => setFiltroEspacio(e.target.value)}
-              className="input-dark text-sm py-1.5 h-auto">
+              className="input-dark text-sm py-1.5 h-auto shrink-0">
               <option value="">Todos los espacios</option>
               {espacios.map(e => (
                 <option key={e.id} value={e.id}>{e.nombre}</option>
@@ -602,7 +613,7 @@ export default function BandejaEspacios() {
         ) : solicitudes.length === 0 ? (
           <div className="glass rounded-2xl p-12 text-center">
             <div className="text-5xl mb-4">📭</div>
-            <p className="text-white font-semibold">Sin solicitudes {filtroEstado ? ESTADO_CFG[filtroEstado]?.label?.toLowerCase() : ''}</p>
+            <p className="text-white font-semibold">Sin solicitudes {filtroEstado ? ESTADO_CFG[filtroEstado]?.label?.toLowerCase() + 's' : ''}</p>
             <p className="text-slate-400 text-sm mt-1">
               {filtroEstado === 'PENDIENTE' ? 'No hay solicitudes pendientes de revisión.' : 'No hay resultados con estos filtros.'}
             </p>

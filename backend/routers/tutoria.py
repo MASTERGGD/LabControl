@@ -2009,6 +2009,18 @@ def registrar_sesion(
 
     db.commit()
     db.refresh(sesion)
+
+    from services.auditoria import registrar as _reg, Accion, Recurso
+    _reg(db, accion=Accion.REGISTRAR_SESION_TUTORIA, recurso=Recurso.TUTORIA,
+         usuario=current_user, recurso_id=sesion.id,
+         detalle={
+             "grupo": f"{g.carrera} · Grupo {g.grupo}",
+             "periodo": g.periodo,
+             "fecha": data.fecha,
+             "tipo_sesion": data.tipo_sesion,
+             "alumnos_registrados": len(data.registros),
+         })
+
     return {"id": sesion.id, "fecha": sesion.fecha.isoformat(), "tipo_sesion": sesion.tipo_sesion, "registros": len(data.registros)}
 
 
@@ -2110,6 +2122,17 @@ def crear_canalizacion(
         url="/admin/tutoria",
     )
     db.commit()
+
+    from services.auditoria import registrar as _reg, Accion, Recurso
+    _reg(db, accion=Accion.CREAR_CANALIZACION, recurso=Recurso.TUTORIA,
+         usuario=current_user, recurso_id=c.id,
+         detalle={
+             "alumno": nombre_alumno,
+             "matricula": alumno.matricula,
+             "tipos": tipos,
+             "modalidad": data.modalidad,
+         })
+
     return _ser_canalizacion(c, db)
 
 
@@ -2383,6 +2406,16 @@ def enviar_informe(
         url="/admin/tutoria",
     )
     db.commit()
+
+    from services.auditoria import registrar as _reg, Accion, Recurso
+    _reg(db, accion=Accion.ENVIAR_INFORME_TUTORIA, recurso=Recurso.TUTORIA,
+         usuario=current_user, recurso_id=informe_id,
+         detalle={
+             "grupo": grupo_txt,
+             "periodo": inf.periodo,
+             "bimestre": inf.bimestre,
+         })
+
     return {"estado": "ENVIADO", "enviado_en": inf.enviado_en.isoformat()}
 
 

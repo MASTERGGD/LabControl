@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
+import SelectDark from "../../components/SelectDark";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const SEMAFORO = {
@@ -11,8 +12,11 @@ const SEMAFORO = {
   SIN_DATOS: { emoji: "⚪", label: "Sin datos socioeconómicos", cls: "border-slate-600/50 bg-slate-800/40" },
 };
 
+const toTitleCase = s =>
+  s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
+
 const ESTADO_SEG = {
-  SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-slate-700/50 text-slate-400 border-slate-600" },
+  SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-transparent text-slate-500 border-slate-600/60" },
   EN_OBSERVACION:  { label: "En observación",  cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
   CANALIZADO:      { label: "Canalizado",      cls: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
   ATENDIDO:        { label: "Atendido",        cls: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
@@ -136,7 +140,10 @@ function ModalSesion({ grupo, alumnos, onClose, onGuardado }) {
           {registros.map((r, idx) => (
             <div key={r.alumno_id} className="bg-slate-800/60 rounded-xl p-3">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-white">{r.nombre} <span className="text-slate-500 text-xs">{r.matricula}</span></p>
+                <p className="text-sm font-medium text-white">
+                {toTitleCase(r.nombre)}
+                <span className="ml-1.5 text-xs" style={{ color: '#9CA3AF' }}>({r.matricula})</span>
+              </p>
                 <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
                   <input type="checkbox" checked={r.asistio} onChange={e => upd(idx, "asistio", e.target.checked)}
                     className="accent-blue-500" />
@@ -152,16 +159,18 @@ function ModalSesion({ grupo, alumnos, onClose, onGuardado }) {
                         {l}
                       </label>
                     ))}
-                    <label className="flex items-center gap-1 text-amber-300 cursor-pointer">
+                    <label className={`flex items-center gap-1 cursor-pointer transition-colors ${r.requiere_canalizacion ? 'text-amber-300' : 'text-slate-400'}`}>
                       <input type="checkbox" checked={r.requiere_canalizacion}
                         onChange={e => upd(idx, "requiere_canalizacion", e.target.checked)} className="accent-amber-500" />
                       Requiere canalización
                     </label>
                   </div>
                   <input value={r.tema} onChange={e => upd(idx, "tema", e.target.value)}
-                    className="input-dark w-full text-xs" placeholder="Tema tratado" />
+                    className="w-full text-xs rounded-lg px-3 py-2 bg-slate-900/60 border border-slate-600 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60"
+                    placeholder="Tema tratado" />
                   <input value={r.acciones_preventivas} onChange={e => upd(idx, "acciones_preventivas", e.target.value)}
-                    className="input-dark w-full text-xs" placeholder="Acciones preventivas" />
+                    className="w-full text-xs rounded-lg px-3 py-2 bg-slate-900/60 border border-slate-600 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60"
+                    placeholder="Acciones preventivas" />
                 </div>
               )}
             </div>
@@ -215,9 +224,15 @@ function ModalCanalizar({ alumnos, grupoId, onClose, onGuardado }) {
         <div className="space-y-3">
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Alumno *</label>
-            <select value={alumnoId} onChange={e => setAlumnoId(e.target.value)} className="input-dark w-full text-sm">
-              {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.matricula})</option>)}
-            </select>
+            <SelectDark
+              value={alumnoId}
+              onChange={setAlumnoId}
+              options={alumnos.map(a => ({
+                value: a.id,
+                label: toTitleCase(a.nombre),
+                sublabel: a.matricula,
+              }))}
+            />
           </div>
           <div>
             <label className="text-xs text-slate-400 mb-2 block">Tipo de atención</label>
@@ -237,10 +252,14 @@ function ModalCanalizar({ alumnos, grupoId, onClose, onGuardado }) {
           </div>
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Modalidad</label>
-            <select value={modalidad} onChange={e => setModalidad(e.target.value)} className="input-dark w-full text-sm">
-              <option value="INDIVIDUAL">Individual</option>
-              <option value="GRUPAL">Grupal</option>
-            </select>
+            <SelectDark
+              value={modalidad}
+              onChange={setModalidad}
+              options={[
+                { value: 'INDIVIDUAL', label: 'Individual' },
+                { value: 'GRUPAL',     label: 'Grupal'     },
+              ]}
+            />
           </div>
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Motivo de canalización *</label>
@@ -332,7 +351,13 @@ function InformeBimestral({ grupo }) {
           {informe.documento_codigo && (
             <span className="text-xs text-slate-500">{informe.documento_codigo} v{informe.documento_version}</span>
           )}
-          <span className={`text-sm font-medium ${ESTADO_COLOR[informe.estado]}`}>{informe.estado}</span>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+            informe.estado === 'BORRADOR'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+              : informe.estado === 'ENVIADO'
+              ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+          }`}>{informe.estado}</span>
           <button onClick={exportarPDF}
             className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs text-white font-medium">
             📥 Exportar F-DC-09
@@ -353,16 +378,16 @@ function InformeBimestral({ grupo }) {
         ].map(([v, l]) => (
           <div key={l} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-center">
             <p className="text-xl font-bold text-white">{v}</p>
-            <p className="text-xs text-slate-400">{l}</p>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{l}</p>
           </div>
         ))}
         <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3">
-          <p className="text-xs text-slate-400 mb-1">Sesiones por mes</p>
+          <p className="text-xs mb-1" style={{ color: '#9CA3AF' }}>Sesiones por mes</p>
           <div className="flex gap-2 justify-between">
             {[informe.sesiones_mes1, informe.sesiones_mes2, informe.sesiones_mes3, informe.sesiones_mes4].map((n, i) => (
               <div key={i} className="text-center">
-                <p className="text-lg font-bold text-white">{n}</p>
-                <p className="text-xs text-slate-500">Mes {i + 1}</p>
+                <p className={`text-lg font-bold ${n > 0 ? 'text-white' : 'text-slate-600'}`}>{n}</p>
+                <p className="text-xs" style={{ color: '#6B7280' }}>Mes {i + 1}</p>
               </div>
             ))}
           </div>
@@ -403,7 +428,7 @@ function InformeBimestral({ grupo }) {
             <textarea rows={3} value={textos[key]}
               onChange={e => setTextos(t => ({ ...t, [key]: e.target.value }))}
               disabled={informe.estado !== "BORRADOR"}
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm resize-none disabled:opacity-50"
+              className="w-full bg-slate-900/60 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm resize-none placeholder-slate-500 focus:outline-none focus:border-blue-500/60 disabled:opacity-50"
               placeholder={ph} />
           </div>
         ))}
@@ -606,8 +631,8 @@ function TabSesiones({ grupoId }) {
           [prog_futuras.length, "Próximas programadas", "text-blue-400"],
         ].map(([v, l, c]) => (
           <div key={l} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-center">
-            <p className={`text-2xl font-bold ${c}`}>{v}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{l}</p>
+            <p className={`text-2xl font-bold ${v === 0 ? 'text-slate-500' : c}`}>{v}</p>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>{l}</p>
           </div>
         ))}
       </div>
@@ -663,10 +688,12 @@ function TabSesiones({ grupoId }) {
       )}
 
       {sesiones.length === 0 && prog_vencidas.length === 0 && (
-        <p className="text-slate-500 text-sm text-center py-8">
-          No hay sesiones registradas aún.<br />
-          <span className="text-xs">Usa el botón "Registrar Sesión" del encabezado para capturar tu primera sesión F-DC-07.</span>
-        </p>
+        <div className="text-center py-8">
+          <p className="text-slate-400 text-sm">No hay sesiones registradas aún.</p>
+          <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>
+            Usa el botón "Registrar Sesión" del encabezado para capturar tu primera sesión F-DC-07.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -728,11 +755,11 @@ export default function MisTutorados() {
   );
 
   const TABS = [
-    { id: "agenda",        label: `📅 Agenda${urgentes > 0 ? ` 🔴${urgentes}` : ""}` },
-    { id: "alumnos",       label: "👥 Mi Grupo" },
-    { id: "sesiones",      label: "📋 Sesiones" },
-    { id: "informe",       label: "📊 Informe F-DC-09" },
-    { id: "canalizaciones",label: `🔔 Canalizaciones${canPend > 0 ? ` (${canPend})` : ""}` },
+    { id: "agenda",         label: "Agenda",         badge: urgentes > 0 ? urgentes : null,  badgeColor: "bg-red-500" },
+    { id: "alumnos",        label: "Mi Grupo",        badge: null },
+    { id: "sesiones",       label: "Sesiones",        badge: null },
+    { id: "informe",        label: "Informe F-DC-09", badge: null },
+    { id: "canalizaciones", label: "Canalizaciones",  badge: canPend > 0 ? canPend : null, badgeColor: "bg-amber-500" },
   ];
 
   const onRegistrarSesion = (grupoId) => {
@@ -821,10 +848,15 @@ export default function MisTutorados() {
         <div className="flex gap-1 mb-5 bg-slate-800/50 rounded-xl p-1 flex-wrap">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                tab === t.id ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:text-white"
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
+                tab === t.id ? "bg-blue-600 text-white shadow" : "text-slate-300 hover:text-white"
               }`}>
               {t.label}
+              {t.badge && (
+                <span className={`${t.badgeColor} text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none`}>
+                  {t.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -853,7 +885,7 @@ export default function MisTutorados() {
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{SEMAFORO[sem]?.emoji}</span>
                       <div>
-                        <p className="font-medium text-white">{a.nombre}</p>
+                        <p className="font-medium text-white">{toTitleCase(a.nombre)}</p>
                         <p className="text-xs text-slate-400">{a.matricula}</p>
                       </div>
                     </div>
@@ -861,7 +893,9 @@ export default function MisTutorados() {
                       <span className={`text-xs px-2 py-0.5 rounded-full border ${ESTADO_SEG[est]?.cls}`}>
                         {ESTADO_SEG[est]?.label}
                       </span>
-                      <span className="text-xs text-slate-500">{SEMAFORO[sem]?.label}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-600/60 text-slate-500">
+                        {SEMAFORO[sem]?.label}
+                      </span>
                       <span className="text-slate-500 text-sm">{isExp ? "▲" : "▼"}</span>
                     </div>
                   </div>

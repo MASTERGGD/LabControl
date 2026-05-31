@@ -269,17 +269,26 @@ function ModalCarreras({ onClose }) {
           <button onClick={onClose} className="btn-ghost px-3">Cerrar</button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[120px_1fr_auto] mb-4">
-          <input value={form.clave} onChange={e => setForm(f => ({ ...f, clave: e.target.value }))} placeholder="Clave" className="input-dark" />
-          <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre de la carrera" className="input-dark" />
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-slate-300">
-              <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))} />
-              Activa
-            </label>
-            <button onClick={guardar} className="btn-primary whitespace-nowrap">{editando ? 'Actualizar' : 'Agregar'}</button>
-            {editando && <button onClick={limpiar} className="btn-ghost">Nuevo</button>}
-          </div>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <input value={form.clave} onChange={e => setForm(f => ({ ...f, clave: e.target.value }))}
+            placeholder="Clave" className="input-dark w-28 shrink-0" />
+          <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+            placeholder="Nombre de la carrera" className="input-dark flex-1 min-w-[200px]" />
+          <label className="flex items-center gap-1.5 text-xs text-slate-300 shrink-0 cursor-pointer">
+            <input type="checkbox" checked={form.activo} onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))}
+              className="accent-emerald-500" />
+            Activa
+          </label>
+          <button onClick={guardar}
+            className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors whitespace-nowrap">
+            + {editando ? 'Actualizar' : 'Agregar'}
+          </button>
+          {editando && (
+            <button onClick={limpiar}
+              className="shrink-0 px-3 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm hover:bg-slate-50 transition-colors">
+              Nuevo
+            </button>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
@@ -303,7 +312,9 @@ function ModalCarreras({ onClose }) {
                 {carreras.map(c => (
                   <tr key={c.id} className="border-b border-white/5">
                     <td className="px-4 py-3 text-slate-300 font-mono text-xs">{c.clave}</td>
-                    <td className="px-4 py-3 text-white">{c.nombre}</td>
+                    <td className="px-4 py-3 text-white">
+                      {c.nombre ? c.nombre.toLowerCase().replace(/(?:^|\s)\S/g, x => x.toUpperCase()) : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold ${c.activo ? 'text-emerald-400' : 'text-slate-500'}`}>
                         {c.activo ? 'Activa' : 'Inactiva'}
@@ -311,9 +322,15 @@ function ModalCarreras({ onClose }) {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        <button onClick={() => editar(c)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border border-blue-500/30">Editar</button>
+                        <button onClick={() => editar(c)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors">
+                          Editar
+                        </button>
                         {c.activo && (
-                          <button onClick={() => desactivar(c)} className="text-xs px-3 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 border border-red-500/30">Desactivar</button>
+                          <button onClick={() => desactivar(c)}
+                            className="text-xs px-3 py-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                            Desactivar
+                          </button>
                         )}
                       </div>
                     </td>
@@ -371,8 +388,9 @@ export default function SEAlumnos() {
             <h1 className="text-2xl font-bold text-white">Alumnos</h1>
             <p className="text-slate-400 text-sm">{total} alumnos en catálogo</p>
           </div>
-          <button onClick={() => setModalCarreras(true)} className="btn-primary ml-auto">
-            Carreras
+          <button onClick={() => setModalCarreras(true)}
+            className="ml-auto flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-sm font-medium hover:bg-slate-50 hover:shadow-sm transition-all">
+            🎓 Carreras
           </button>
         </div>
 
@@ -397,7 +415,7 @@ export default function SEAlumnos() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-white/5 text-slate-400 text-xs uppercase tracking-wide">
+                  <tr className="border-b border-white/5 text-slate-400 text-xs tracking-wide">
                     <th className="px-4 py-3 text-left">Alumno</th>
                     <th className="px-4 py-3 text-left">Carrera / Grupo</th>
                     <th className="px-4 py-3 text-left">Acceso SIGA</th>
@@ -408,57 +426,76 @@ export default function SEAlumnos() {
                 <tbody>
                   {alumnos.map(a => (
                     <tr key={a.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
+                      {/* 1 — Nombre en formato título */}
                       <td className="px-4 py-3">
-                        <p className="text-white font-medium">{a.nombre}</p>
-                        <p className="text-slate-500 text-xs font-mono">{a.matricula} · {a.periodo}</p>
+                        <p className="text-white font-semibold">
+                          {a.nombre
+                            ? a.nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                            : '—'}
+                        </p>
+                        {/* 2 — Matrícula en gris oscuro legible */}
+                        <p className="text-slate-400 text-xs font-mono mt-0.5">
+                          {a.matricula}
+                          {a.periodo && <span className="text-slate-500"> · {a.periodo}</span>}
+                        </p>
                       </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">
-                        <p>{a.carrera}</p>
-                        <p className="text-slate-500">{a.cuatrimestre}° · Gpo {a.grupo}</p>
+                      {/* 1 — Carrera en formato título; grupo limpio */}
+                      <td className="px-4 py-3 text-xs">
+                        <p className="text-slate-300">
+                          {a.carrera
+                            ? a.carrera.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                            : '—'}
+                        </p>
+                        <p className="text-slate-500 mt-0.5">
+                          {a.cuatrimestre ? `${a.cuatrimestre}° Cuatrimestre` : ''}
+                          {a.grupo && a.grupo !== 'N/A'
+                            ? ` · Gpo ${a.grupo}`
+                            : ' · Sin grupo'}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         {a.tiene_acceso_siga ? (
-                          <span className="text-emerald-400 text-xs font-semibold">✓ Activo</span>
+                          <span className="text-emerald-600 text-xs font-semibold">✓ Activo</span>
                         ) : (
-                          <span className="text-slate-500 text-xs">Sin acceso</span>
+                          <span className="text-xs font-medium" style={{ color: '#4B5563' }}>Sin acceso</span>
                         )}
                         {a.correo_institucional && (
-                          <p className="text-xs text-slate-600 font-mono truncate max-w-[160px]">{a.correo_institucional}</p>
+                          <p className="text-xs font-mono truncate max-w-[160px] mt-0.5" style={{ color: '#6B7280' }}>{a.correo_institucional}</p>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {a.ficha ? (
                           <Badge estado={a.ficha.estado} />
                         ) : (
-                          <span className="text-xs text-slate-600">—</span>
+                          <span className="text-xs" style={{ color: '#6B7280' }}>—</span>
                         )}
                       </td>
+                      {/* 3 — Acciones con jerarquía: principal sólido, secundario ghost */}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 justify-end">
-                          {!a.tiene_acceso_siga && (
+                          {!a.tiene_acceso_siga ? (
                             <button
                               onClick={() => setModalAcceso(a)}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 border border-blue-500/30"
+                              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors"
                             >
                               Dar acceso
                             </button>
-                          )}
-                          {a.tiene_acceso_siga && (
+                          ) : (
                             <button
                               onClick={() => setModalReset(a)}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/30"
+                              className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/15 transition-colors"
                             >
                               Restablecer
                             </button>
                           )}
-                          {!a.ficha || ['RECHAZADA'].includes(a.ficha?.estado) ? (
+                          {(!a.ficha || ['RECHAZADA'].includes(a.ficha?.estado)) && (
                             <button
                               onClick={() => setModalFicha(a)}
-                              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border border-emerald-500/30"
+                              className="text-xs px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                             >
                               Activar ficha
                             </button>
-                          ) : null}
+                          )}
                         </div>
                       </td>
                     </tr>

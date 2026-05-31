@@ -459,9 +459,13 @@ def activar_acceso(
         a.correo_institucional = body.correo_institucional.strip()
     db.commit()
 
-    registrar(db, accion=Accion.CREAR_USUARIO, recurso=Recurso.USUARIO,
-              usuario=current_user,
-              detalle={"alumno_id": alumno_id, "email": email, "accion": "activar_acceso_siga"})
+    registrar(db, accion=Accion.ACTIVAR_ACCESO_ALUMNO, recurso=Recurso.ALUMNO,
+              usuario=current_user, recurso_id=alumno_id,
+              detalle={
+                  "alumno": nombre_completo,
+                  "matricula": a.matricula,
+                  "email_asignado": email,
+              })
 
     return {
         "ok": True,
@@ -495,9 +499,13 @@ def reset_password_alumno(
     u.activo = True
     db.commit()
 
-    registrar(db, accion=Accion.CAMBIAR_PASSWORD, recurso=Recurso.USUARIO,
-              usuario=current_user, recurso_id=u.id,
-              detalle={"alumno_id": alumno_id, "email": u.email, "accion": "reset_password_alumno"})
+    registrar(db, accion=Accion.RESET_PASSWORD_ALUMNO, recurso=Recurso.ALUMNO,
+              usuario=current_user, recurso_id=alumno_id,
+              detalle={
+                  "alumno": u.nombre,
+                  "matricula": a.matricula,
+                  "email": u.email,
+              })
 
     return {
         "ok": True,
@@ -520,9 +528,15 @@ def desactivar_acceso(
     if not a.usuario_id:
         raise HTTPException(400, "Este alumno no tiene cuenta SIGA")
     u = db.query(Usuario).get(a.usuario_id)
+    nombre_alumno = None
+    matricula_alumno = a.matricula
     if u:
+        nombre_alumno = u.nombre
         u.activo = False
     db.commit()
+    registrar(db, accion=Accion.DESACTIVAR_FICHA, recurso=Recurso.ALUMNO,
+              usuario=current_user, recurso_id=alumno_id,
+              detalle={"alumno": nombre_alumno, "matricula": matricula_alumno})
     return {"ok": True}
 
 
@@ -562,6 +576,17 @@ def activar_ficha(
     db.add(ficha)
     db.commit()
     db.refresh(ficha)
+
+    nombre_alumno = f"{a.apellido_paterno} {a.apellido_materno or ''} {a.nombres}".strip()
+    registrar(db, accion=Accion.ACTIVAR_FICHA, recurso=Recurso.ALUMNO,
+              usuario=current_user, recurso_id=alumno_id,
+              detalle={
+                  "alumno": nombre_alumno,
+                  "matricula": a.matricula,
+                  "periodo": periodo,
+                  "ficha_id": ficha.id,
+              })
+
     return _serializar_ficha_resumen(ficha)
 
 
