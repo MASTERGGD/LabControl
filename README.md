@@ -73,6 +73,14 @@ Se extendió el sistema de auditoría para cubrir acciones institucionales crít
 - **Frontend** — modal de detalle de bitácora muestra automáticamente `Afectado`, `Alumno` y `Grupo` cuando el registro los incluye.
 - **Constantes** — 10 nuevas acciones y 3 nuevos recursos (`DEPARTAMENTO`, `TUTORIA`, `REPORTE`) en `services/auditoria.py`.
 
+### Animaciones con Blendy
+
+Se integró [Blendy](https://blendy.tahazsh.com/) para transiciones de morfing entre elementos:
+
+- **Botón "Lecturas" → Panel lateral** — el botón verde de cada tarjeta de comunicado se transforma con animación spring hacia el panel de reporte de lecturas. Al cerrar, el panel regresa al botón con la misma fluidez.
+- Implementado con doble `requestAnimationFrame` para esperar el pintado del DOM antes de que Blendy mida las posiciones.
+- Blendy solo aplica en el drawer de lecturas; los modales con renderizado condicional de React usan `animate-fadeUp` estándar para evitar doble aparición.
+
 ### Paginación de comunicados
 
 - **Backend** — `GET /comunicados` ahora acepta `page` y `page_size` (default 10, máx 100) y devuelve `{ items, total, page, page_size, pages }` en lugar del array plano.

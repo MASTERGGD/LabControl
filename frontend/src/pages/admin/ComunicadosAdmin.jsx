@@ -6,8 +6,9 @@
  * - Acciones: publicar, archivar, eliminar
  * - Panel lateral de reporte de lecturas
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { createBlendy } from 'blendy';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
@@ -678,7 +679,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 }
 
 // ─── Panel lecturas ────────────────────────────────────────────────────────────
-function PanelLecturas({ comunicado, onClose }) {
+function PanelLecturas({ comunicado, onClose, blendyId }) {
   const { usuario } = useAuth();
   const { toast: showToast } = useToast();
   const [data, setData]     = useState(null);
@@ -755,7 +756,12 @@ function PanelLecturas({ comunicado, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col h-full overflow-hidden animate-slideInRight">
+      <div
+        data-blendy-to={blendyId}
+        className="relative w-full max-w-md bg-slate-900 border-l border-white/10 flex flex-col h-full overflow-hidden"
+      >
+        {/* Blendy requiere un único wrapper directo */}
+        <div className="flex flex-col h-full overflow-hidden">
 
         {/* Header estilo MisComunicados */}
         <div className={`px-6 py-5 border-b border-white/5 flex-shrink-0 ${isUrgente ? 'bg-gradient-to-r from-red-950/40' : 'bg-gradient-to-r from-slate-800/50'}`}>
@@ -986,6 +992,7 @@ function PanelLecturas({ comunicado, onClose }) {
             </>
           ) : <p className="text-slate-500 text-sm">No se pudo cargar el reporte.</p>}
         </div>
+        </div>{/* /blendy wrapper */}
       </div>
     </div>
   );
@@ -1217,6 +1224,12 @@ export default function ComunicadosAdmin() {
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal]       = useState(0);
   const [pages, setPages]       = useState(1);
+  const blendyRef = useRef(null);
+
+  useEffect(() => {
+    blendyRef.current = createBlendy({ animation: 'spring' });
+    return () => { blendyRef.current = null; };
+  }, []);
 
   const cargar = useCallback(async (resetPage = false) => {
     setLoading(true);
@@ -1279,6 +1292,23 @@ export default function ComunicadosAdmin() {
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, comunicados, setSearchParams]);
+
+  const abrirLecturas = (c) => {
+    setLecturas(c);
+    // Esperar dos frames: uno para que React renderice el panel,
+    // otro para que el navegador lo pinte antes de que Blendy lo mida
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      blendyRef.current?.update();
+      blendyRef.current?.toggle(`lecturas-${c.id}`);
+    }));
+  };
+
+  const cerrarLecturas = () => {
+    if (!lecturas) return;
+    blendyRef.current?.untoggle(`lecturas-${lecturas.id}`, () => {
+      setLecturas(null);
+    });
+  };
 
   const accion = async (id, endpoint, label) => {
     try {
@@ -1606,10 +1636,12 @@ export default function ComunicadosAdmin() {
 
                     {/* Acciones — ancho uniforme en todos los botones */}
                     <div className="flex flex-col gap-1.5 flex-shrink-0 w-[92px]" onClick={e => e.stopPropagation()}>
-                      {/* Lecturas — acción primaria, siempre visible */}
-                      <button onClick={() => setLecturas(c)}
+                      {/* Lecturas — acción primaria, Blendy origin */}
+                      <button
+                        data-blendy-from={`lecturas-${c.id}`}
+                        onClick={() => abrirLecturas(c)}
                         className="w-full text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-medium text-center">
-                        Lecturas
+                        <span>Lecturas</span>
                       </button>
                       {/* Editar — ghost, solo si no archivado */}
                       {c.estado !== 'ARCHIVADO' && (
@@ -1735,7 +1767,8 @@ export default function ComunicadosAdmin() {
       {lecturas && (
         <PanelLecturas
           comunicado={lecturas}
-          onClose={() => setLecturas(null)}
+          onClose={cerrarLecturas}
+          blendyId={`lecturas-${lecturas.id}`}
         />
       )}
 
