@@ -6,6 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import SelectDark from '../../components/SelectDark';
+import { dateToLocalISO } from '../../utils/timezone';
 
 // ─── Configuración de tipos, prioridades y estados ────────────────────────────
 
@@ -32,19 +33,19 @@ function iconFromDesc(desc = '') {
 
 const PRIORIDAD_BADGE = {
   ALTA: {
-    cls: 'bg-red-500/20 text-red-400 border border-red-500/30',
-    dayCls: 'bg-red-50 text-red-700 border border-red-300',
-    label: '🔴 Alta'
+    cls:    'bg-red-500/20 text-red-300 border border-red-500/30',
+    dayCls: 'bg-red-50 text-red-900 border border-red-300',       // WCAG AAA
+    label: 'Alta'
   },
   MEDIA: {
-    cls: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
-    dayCls: 'bg-amber-100 text-amber-800 border border-amber-300',
-    label: '🟡 Media'
+    cls:    'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+    dayCls: 'bg-amber-50 text-amber-900 border border-amber-300', // WCAG AAA
+    label: 'Media'
   },
   BAJA: {
-    cls: 'bg-slate-500/20 text-slate-400 border border-slate-500/30',
-    dayCls: 'bg-slate-100 text-slate-700 border border-slate-300',
-    label: '⚪ Baja'
+    cls:    'bg-slate-500/20 text-slate-300 border border-slate-500/30',
+    dayCls: 'bg-slate-100 text-slate-800 border border-slate-300',
+    label: 'Baja'
   },
 };
 
@@ -68,8 +69,10 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const tipo  = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const pri   = PRIORIDAD_BADGE[incidente.prioridad] || PRIORIDAD_BADGE.MEDIA;
   const extra = iconFromDesc(incidente.descripcion);
-  const nombre = incidente.activo_nombre
+  // Nombre limpio: quitar doble guion y formatear
+  const nombreRaw = incidente.activo_nombre
     || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '—');
+  const nombre = nombreRaw.replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
 
   // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
   const adeudoPendiente = incidente.adeudo_id &&
@@ -101,7 +104,9 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       {incidente.descripcion && (
         <div className="flex items-start gap-1.5 mb-2">
           {extra && <span className="mt-0.5 shrink-0">{extra}</span>}
-          <p className={`text-xs line-clamp-2 leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>{incidente.descripcion}</p>
+          <p className={`text-xs line-clamp-2 leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
+            {incidente.descripcion.charAt(0).toUpperCase() + incidente.descripcion.slice(1)}
+          </p>
         </div>
       )}
 
@@ -181,9 +186,9 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
       {/* Tarjetas */}
       <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
         {cards.length === 0 ? (
-          <div className={`flex flex-col items-center justify-center py-10 text-xs text-center ${isDay ? 'text-slate-600' : 'text-slate-600'}`}>
-            <div className="text-3xl mb-2 opacity-30">{col.icon}</div>
-            <p>Sin incidentes aquí</p>
+          <div className={`flex flex-col items-center justify-center py-10 text-xs text-center ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>
+            <div className="text-3xl mb-2 opacity-40">{col.icon}</div>
+            <p className="font-medium">Sin incidentes aquí.</p>
             {isDragTarget && <p className="text-slate-400 mt-1">Suelta aquí para mover</p>}
           </div>
         ) : (
@@ -528,6 +533,7 @@ function ComboboxActivo({ activos, value, onChange, placeholder = 'Buscar por no
             onFocus={() => setOpen(true)}
             placeholder={placeholder}
             className="input-dark pl-9 w-full"
+            style={{ paddingLeft: 36 }}
           />
         </div>
       )}
@@ -609,7 +615,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
         <form onSubmit={handleGuardar} className="p-6 space-y-4">
           {/* Tipo */}
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-wide mb-2">Tipo de incidente</label>
+            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">Tipo de incidente</label>
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(TIPOS_ICON).map(([val, { label, emoji }]) => (
                 <label key={val}
@@ -624,7 +630,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
           </div>
 
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1.5">Activo afectado</label>
+            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Activo afectado</label>
             <ComboboxActivo
               activos={activos}
               value={form.activo_id}
@@ -635,7 +641,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
           {esLabAdmin ? (
             /* LAB_ADMIN: muestra el nombre de su lab, no puede cambiarlo */
             <div>
-              <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1.5">Laboratorio</label>
+              <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Laboratorio</label>
               <div className="input-dark flex items-center gap-2 opacity-70 cursor-not-allowed">
                 <svg className="w-4 h-4 text-blue-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
@@ -649,35 +655,41 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
           ) : (
             /* SUPER_ADMIN: puede elegir cualquier lab */
             <div>
-              <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1.5">Laboratorio</label>
+              <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Laboratorio</label>
               <SelectDark
                 value={form.laboratorio_id}
                 onChange={v => setForm({...form, laboratorio_id: v})}
-                placeholder="— Seleccionar —"
-                options={[{ value: '', label: '— Seleccionar —' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
+                placeholder="Seleccionar laboratorio..."
+                options={[{ value: '', label: 'Seleccionar laboratorio...' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
               />
             </div>
           )}
 
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-wide mb-2">Prioridad</label>
+            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">Prioridad</label>
             <div className="flex gap-2">
-              {[['ALTA','🔴'],['MEDIA','🟡'],['BAJA','⚪']].map(([val,icon]) => (
+              {[
+                { val: 'ALTA',  label: 'Alta',  dot: 'bg-red-500',
+                  activeCls:  isDay ? 'border-red-400   bg-red-50   text-red-900'   : 'border-red-500/60   bg-red-500/10   text-red-200' },
+                { val: 'MEDIA', label: 'Media', dot: 'bg-amber-400',
+                  activeCls:  isDay ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-amber-500/60 bg-amber-500/10 text-amber-200' },
+                { val: 'BAJA',  label: 'Baja',  dot: 'bg-slate-400',
+                  activeCls:  isDay ? 'border-slate-400 bg-slate-100 text-slate-800' : 'border-slate-500/60 bg-slate-500/10 text-slate-300' },
+              ].map(({ val, label, dot, activeCls }) => (
                 <button key={val} type="button" onClick={() => setForm({...form, prioridad: val})}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex items-center justify-center gap-1.5
                     ${form.prioridad === val
-                      ? val === 'ALTA'  ? isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/60 bg-red-500/10 text-red-300'
-                      : val === 'MEDIA' ? isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/60 bg-amber-500/10 text-amber-300'
-                      :                  isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/60 bg-slate-500/10 text-slate-400'
+                      ? activeCls
                       : isDay ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white' : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
-                  {icon} {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
+                  <span className={`w-2 h-2 rounded-full ${dot}`} />
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="block text-xs text-slate-500 uppercase tracking-wide mb-1.5">Descripción del problema</label>
+            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Descripción del problema</label>
             <textarea rows={3} required placeholder="Describe el daño o problema encontrado…"
               value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})}
               className="input-dark resize-none" />
@@ -686,10 +698,20 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
           {error && <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>}
 
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-white/15 text-slate-300 hover:bg-white/8 hover:text-white text-sm font-medium transition-colors">
+              Cancelar
+            </button>
             <button type="submit" disabled={saving}
-              className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-semibold transition-all">
-              {saving ? 'Reportando…' : '📋 Reportar'}
+              className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-semibold transition-all flex items-center justify-center gap-2">
+              {saving ? 'Reportando…' : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  Reportar
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -858,7 +880,7 @@ function ModalNuevoMant({ laboratorios, activos, onClose, onCreado }) {
                     const dias = deltaMap[form.periodicidad] || 14;
                     const base = new Date(form.fecha_programada);
                     base.setDate(base.getDate() + dias);
-                    setForm({...form, fecha_limite: base.toISOString().split('T')[0]});
+                    setForm({...form, fecha_limite: dateToLocalISO(base)});
                   }}
                   className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1144,7 +1166,13 @@ function TabPreventivo({ laboratorios }) {
           placeholder="Todos los estados"
           options={[{ value: '', label: 'Todos los estados' }, ...Object.entries(ESTADOS_MP_BADGE).map(([k, v]) => ({ value: k, label: v.label }))]}
         />
-        <button onClick={cargar} className="btn-ghost px-3 py-2 text-sm">↻ Actualizar</button>
+        <button onClick={cargar}
+          className="p-2 rounded-xl border border-white/12 text-slate-400 hover:text-white hover:bg-white/8 transition-colors"
+          title="Actualizar">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
         <button onClick={() => setModalNuevo(true)}
           className="ml-auto btn-blue px-4 py-2.5 text-sm font-semibold">
           + Programar mantenimiento
@@ -1165,7 +1193,7 @@ function TabPreventivo({ laboratorios }) {
             <thead>
               <tr style={{ borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
                 {['Tipo','Equipo / Lab','Programado','Límite','Periodicidad','Estado',''].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1190,18 +1218,45 @@ function TabPreventivo({ laboratorios }) {
                       <span className="mr-1.5">{tipoInfo.emoji}</span>
                       <span className="text-slate-200 font-medium">{tipoInfo.label}</span>
                     </td>
+                    {/* Equipo / Lab — sin guión vacío si no hay activo específico */}
                     <td className="px-4 py-3">
-                      <p className="text-slate-200 truncate max-w-[180px]">{m.activo_nombre || '—'}</p>
-                      {m.laboratorio_nombre && <p className="text-xs text-slate-500 truncate">{m.laboratorio_nombre}</p>}
+                      {m.activo_nombre && (
+                        <p className="text-slate-200 truncate max-w-[180px]">
+                          {m.activo_nombre.replace(/--+/g, '-')}
+                        </p>
+                      )}
+                      {m.laboratorio_nombre && (
+                        <p className={`text-xs text-slate-400 truncate ${!m.activo_nombre ? 'font-medium' : ''}`}>
+                          {m.laboratorio_nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())}
+                        </p>
+                      )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-blue-400">{formatFecha(m.fecha_programada)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{formatFecha(m.fecha_programada)}</td>
                     <td className="px-4 py-3">
-                      {m.fecha_limite ? (
-                        <span className={`font-mono text-xs font-semibold ${vencido ? 'text-red-400' : urgente ? 'text-amber-400' : 'text-slate-400'}`}>
-                          {vencido ? '⚠️ ' : urgente ? '🔔 ' : ''}{formatFecha(m.fecha_limite)}
-                          {dias !== null && <span className="ml-1 opacity-70">({dias > 0 ? `${dias}d` : dias === 0 ? 'hoy' : `${Math.abs(dias)}d tarde`})</span>}
-                        </span>
-                      ) : <span className="text-slate-600">—</span>}
+                      {m.fecha_limite ? (() => {
+                        const completado = m.estado === 'COMPLETADO';
+                        // Rojo solo si está pendiente y vencido; gris neutro si ya se completó
+                        const colorCls = completado
+                          ? 'text-slate-500'
+                          : vencido  ? 'text-red-400'
+                          : urgente  ? 'text-amber-400'
+                          : 'text-slate-400';
+                        return (
+                          <span className={`font-mono text-xs font-medium ${colorCls}`}>
+                            {!completado && vencido  ? '⚠️ ' : ''}
+                            {!completado && urgente  ? '🔔 ' : ''}
+                            {formatFecha(m.fecha_limite)}
+                            {dias !== null && (
+                              <span className="ml-1 opacity-70 font-normal">
+                                ({dias > 0 ? `${dias}d restantes`
+                                  : dias === 0 ? 'hoy'
+                                  : completado ? `${Math.abs(dias)}d de retraso`
+                                  : `${Math.abs(dias)}d tarde`})
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })() : <span className="text-slate-600">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs text-slate-400">{PERIODOS_MP.find(p=>p.key===m.periodicidad)?.label || m.periodicidad}</span>
@@ -1304,10 +1359,10 @@ function TabHistorial({ laboratorios }) {
 
   return (
     <div>
-      {/* Selector de equipo */}
-      <div className="glass rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end">
+      {/* Selector de equipo — ancho máximo para evitar que los selects se estiren en toda la pantalla */}
+      <div className="glass rounded-2xl p-5 mb-6 flex flex-wrap gap-4 items-end max-w-3xl">
         <div className="flex-1 min-w-40">
-          <label className="block text-xs text-slate-400 mb-1.5">Laboratorio</label>
+          <label className="block text-xs text-slate-300 font-medium mb-1.5">Laboratorio</label>
           <SelectDark
             value={filtroLab}
             onChange={v => { setFiltroLab(v); setActivoSel(''); setHistorial(null); }}
@@ -1316,12 +1371,14 @@ function TabHistorial({ laboratorios }) {
           />
         </div>
         <div className="flex-1 min-w-52">
-          <label className="block text-xs text-slate-400 mb-1.5">Equipo *</label>
+          <label className="block text-xs text-slate-300 font-medium mb-1.5">
+            Equipo <span className="text-red-400/80 ml-0.5">*</span>
+          </label>
           <SelectDark
             value={activoSel}
             onChange={v => { setActivoSel(v); cargarHistorial(v); }}
-            placeholder="— Selecciona un equipo —"
-            options={[{ value: '', label: '— Selecciona un equipo —' }, ...activosFiltrados.map(a => ({ value: a.id, label: `${a.nombre} · ${a.codigo_inventario}` }))]}
+            placeholder="Selecciona un equipo..."
+            options={[{ value: '', label: 'Selecciona un equipo...' }, ...activosFiltrados.map(a => ({ value: a.id, label: `${a.nombre} · ${a.codigo_inventario}` }))]}
           />
         </div>
         {historial && (
@@ -1337,10 +1394,10 @@ function TabHistorial({ laboratorios }) {
       </div>
 
       {!activoSel && (
-        <div className="text-center py-20 text-slate-500">
-          <p className="text-5xl mb-4">🖥️</p>
-          <p className="font-medium text-slate-400">Selecciona un equipo para ver su historial</p>
-          <p className="text-sm mt-1">Verás todos los incidentes, préstamos y mantenimientos</p>
+        <div className="text-center py-20">
+          <p className="text-5xl mb-4 opacity-70">🖥️</p>
+          <p className="font-semibold text-slate-300 text-base">Selecciona un equipo para ver su historial</p>
+          <p className="text-sm text-slate-500 mt-1.5">Verás todos los incidentes, préstamos y mantenimientos.</p>
         </div>
       )}
 
@@ -1361,7 +1418,7 @@ function TabHistorial({ laboratorios }) {
             <div className="flex flex-wrap gap-3">
               {[
                 { label:'Estado', value: activoHistorial.estado || '—', color: activoHistorial.estado==='OPERATIVO' ? 'text-emerald-400' : activoHistorial.estado==='MANTENIMIENTO' ? 'text-amber-400' : 'text-red-400' },
-                { label:'Resguardante', value: activoHistorial.resguardo_nombre || 'Sin resguardante', color:'text-slate-300' },
+                { label:'Resguardante', value: activoHistorial.resguardante_externo_nombre || activoHistorial.responsable_nombre || 'Sin resguardante', color:'text-slate-300' },
                 { label:'Total eventos', value: historial.total_eventos ?? eventos.length, color:'text-blue-400' },
               ].map(s => (
                 <div key={s.label} className="glass rounded-xl px-4 py-3 text-center min-w-24">
@@ -1656,20 +1713,8 @@ export default function Mantenimiento() {
             </div>
           )}
 
-          {/* Stats + filtros */}
+          {/* Filtros — los contadores viven en los encabezados de columna */}
           <div className="flex flex-wrap items-center gap-3 mb-5">
-            {[
-              { label:'Pendientes',  value: stats.pendientes  ?? '—', color: isDay ? 'text-amber-800' : 'text-amber-400' },
-              { label:'En revisión', value: stats.en_revision ?? '—', color:'text-blue-400'  },
-              { label:'Reparados',   value: stats.reparados   ?? '—', color:'text-emerald-400' },
-              { label:'Alta prioridad', value: stats.alta_prioridad ?? '—', color:'text-red-400' },
-            ].map(s => (
-              <div key={s.label} className={`glass-sm rounded-xl px-4 py-2.5 flex items-center gap-2.5 ${isDay ? 'bg-white border border-slate-200' : ''}`}>
-                <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-                <p className={`${isDay ? 'text-slate-600' : 'text-slate-500'} text-xs`}>{s.label}</p>
-              </div>
-            ))}
-
             <div className="flex-1 min-w-48">
               <input type="text" placeholder="Buscar equipo, descripción, lab…"
                 value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)}

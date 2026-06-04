@@ -4,6 +4,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 import { useTheme } from '../../context/ThemeContext';
+import ExpedienteActivo from '../../components/ExpedienteActivo';
 
 const CATEGORIA_ICONO = {
   COMPUTADORA:    { emoji: '🖥️', color: 'bg-blue-900/50 border-blue-700' },
@@ -261,7 +262,7 @@ function ModalActivo({ activo, labs, departamentos, ubicaciones, onClose, onSave
     estado:            activo?.estado            ?? 'OPERATIVO',
     especificaciones:  activo?.especificaciones  ?? '',
     observaciones:     activo?.observaciones     ?? '',
-    resguardo_nombre:  activo?.resguardo_nombre  ?? '',
+    resguardante_externo_nombre: activo?.resguardante_externo_nombre ?? '',
     activo:            activo?.activo            ?? true,
   });
   const [error, setError]     = useState('');
@@ -287,7 +288,7 @@ function ModalActivo({ activo, labs, departamentos, ubicaciones, onClose, onSave
       payload.cantidad = 1;
       payload.unidad_medida = 'PIEZA';
       delete payload.stock_minimo;
-      ['laboratorio_id','departamento_id','ubicacion_id','responsable_id','marca','modelo','numero_serie','especificaciones','observaciones','resguardo_nombre','ubicacion_nombre'].forEach(k => {
+      ['laboratorio_id','departamento_id','ubicacion_id','responsable_id','marca','modelo','numero_serie','especificaciones','observaciones','resguardante_externo_nombre','ubicacion_nombre'].forEach(k => {
         if (!payload[k]) delete payload[k];
       });
       if (esEdicion) {
@@ -399,7 +400,7 @@ function ModalActivo({ activo, labs, departamentos, ubicaciones, onClose, onSave
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Resguardante</label>
-              <input name="resguardo_nombre" value={form.resguardo_nombre} onChange={handleChange}
+              <input name="resguardante_externo_nombre" value={form.resguardante_externo_nombre} onChange={handleChange}
                 placeholder="Nombre del responsable"
                 className="w-full input-dark text-white  px-3 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500"/>
             </div>
@@ -526,7 +527,7 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
     departamento_destino_id: activo?.departamento_id ?? '',
     ubicacion_destino_id: activo?.ubicacion_id ?? '',
     ubicacion_destino_nombre: '',
-    resguardante_destino_nombre: activo?.resguardo_nombre ?? '',
+    resguardante_destino_nombre: activo?.resguardante_externo_nombre ?? activo?.responsable_nombre ?? '',
     observaciones: '',
   });
   const [error, setError] = useState('');
@@ -737,83 +738,7 @@ function ModalBaja({ activo, onClose, onSave }) {
   );
 }
 
-function ModalExpediente({ activo, onClose }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    api.get(`/inventario/activos/${activo.id}/expediente`)
-      .then(r => setData(r.data))
-      .finally(() => setLoading(false));
-  }, [activo.id]);
-
-  const count = (key) => data?.[key]?.length || 0;
-
-  return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-gray-800">
-          <div>
-            <h3 className="font-semibold text-white">Expediente del bien</h3>
-            <p className="text-xs text-slate-400 mt-0.5">{activo.codigo_inventario} · {activo.nombre}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-        <div className="p-6">
-          {loading ? (
-            <p className="text-slate-400 text-sm">Cargando expediente...</p>
-          ) : (
-            <div className="space-y-5">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {[
-                  ['Movimientos', count('movimientos')],
-                  ['Bajas', count('bajas')],
-                  ['Levantamientos', count('levantamientos')],
-                  ['Préstamos', count('prestamos')],
-                  ['Incidentes', count('incidentes')],
-                ].map(([label, val]) => (
-                  <div key={label} className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
-                    <p className="text-xl font-bold text-white">{val}</p>
-                    <p className="text-xs text-slate-400">{label}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  ['Últimos movimientos', data.movimientos],
-                  ['Bajas patrimoniales', data.bajas],
-                  ['Levantamientos físicos', data.levantamientos],
-                  ['Incidentes', data.incidentes],
-                ].map(([title, items]) => (
-                  <div key={title} className="bg-white/5 border border-white/10 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-white mb-3">{title}</h4>
-                    {items?.length ? (
-                      <div className="space-y-2 max-h-56 overflow-y-auto">
-                        {items.slice(0, 8).map(item => (
-                          <div key={`${title}-${item.id}`} className="text-xs border-b border-white/5 pb-2">
-                            <p className="text-slate-200 font-medium">{item.tipo || item.estado || item.motivo}</p>
-                            <p className="text-slate-500">{item.fecha_solicitud || item.fecha_revision || item.fecha_reporte || item.fecha_autorizacion || 'Sin fecha'}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">Sin registros</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+// ModalExpediente reemplazado por <ExpedienteActivo mode="drawer"> (componente compartido)
 
 export default function Inventario() {
   const { themeKey } = useTheme();
@@ -889,7 +814,8 @@ export default function Inventario() {
       || (a.modelo || '').toLowerCase().includes(q)
       || (a.departamento_nombre || '').toLowerCase().includes(q)
       || (a.ubicacion_label || '').toLowerCase().includes(q)
-      || (a.resguardo_nombre || '').toLowerCase().includes(q);
+      || (a.resguardante_externo_nombre || '').toLowerCase().includes(q)
+      || (a.responsable_nombre || '').toLowerCase().includes(q);
   });
 
   return (
@@ -1218,8 +1144,8 @@ export default function Inventario() {
                   </td>
                   <td className="px-4 py-3 text-gray-300 text-xs">
                     <p>{a.departamento_nombre || a.laboratorio_nombre || <span className="text-slate-600">Sin responsable</span>}</p>
-                    {(a.responsable_nombre || a.resguardo_nombre) && (
-                      <p className="text-slate-500 mt-0.5">{a.responsable_nombre || a.resguardo_nombre}</p>
+                    {(a.responsable_nombre || a.resguardante_externo_nombre) && (
+                      <p className="text-slate-500 mt-0.5">{a.responsable_nombre || a.resguardante_externo_nombre}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-300 text-xs">
@@ -1335,8 +1261,10 @@ export default function Inventario() {
         />
       )}
       {activoExpediente && (
-        <ModalExpediente
+        <ExpedienteActivo
+          activoId={activoExpediente.id}
           activo={activoExpediente}
+          mode="drawer"
           onClose={() => setActivoExpediente(null)}
         />
       )}

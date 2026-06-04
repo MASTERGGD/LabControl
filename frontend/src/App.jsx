@@ -20,6 +20,8 @@ import Departamentos from './pages/admin/Departamentos';
 import Horarios from './pages/admin/Horarios';
 import Reservaciones from './pages/admin/Reservaciones';
 import Inventario from './pages/admin/Inventario';
+import InventarioBajas from './pages/admin/InventarioBajas';
+import InventarioLevantamientos from './pages/admin/InventarioLevantamientos';
 import Prestamos from './pages/admin/Prestamos';
 import Mantenimiento from './pages/admin/Mantenimiento';
 import Catalogo from './pages/admin/Catalogo';
@@ -50,7 +52,7 @@ import AutoAsignacion from './pages/AutoAsignacion';
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
 // También acepta rolesPermitidos explícito para casos especiales.
 
-function RutaProtegida({ children, rolesPermitidos, path }) {
+function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) {
   const { usuario } = useAuth();
 
   if (!usuario) {
@@ -60,7 +62,10 @@ function RutaProtegida({ children, rolesPermitidos, path }) {
   // Determinar roles permitidos: parámetro explícito > ROUTE_PERMISSIONS > libre
   const allowed = rolesPermitidos ?? (path ? ROUTE_PERMISSIONS[path] : null);
 
-  if (allowed && !allowed.includes(usuario.rol)) {
+  const permisos = Array.isArray(permisosPermitidos) ? permisosPermitidos : (permisosPermitidos ? [permisosPermitidos] : []);
+  const tienePermiso = permisos.length > 0 && permisos.some(p => usuario.permisos?.includes(p));
+
+  if (allowed && !allowed.includes(usuario.rol) && !tienePermiso) {
     // Excepción: usuarios con acceso_consultorio pueden entrar al consultorio
     if (usuario.acceso_consultorio && allowed.includes('MEDICO')) {
       return children;
@@ -106,7 +111,7 @@ function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN','SERVICIOS_ESCOLARES']}>
             <DashboardSuperAdmin />
           </RutaProtegida>
         }
@@ -200,6 +205,16 @@ function AppRoutes() {
           <Inventario />
         </RutaProtegida>
       }/>
+      <Route path="/admin/inventario/bajas" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+          <InventarioBajas />
+        </RutaProtegida>
+      }/>
+      <Route path="/admin/inventario/levantamientos" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+          <InventarioLevantamientos />
+        </RutaProtegida>
+      }/>
       <Route path="/admin/prestamos" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
           <Prestamos />
@@ -270,7 +285,7 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/admin/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN']} permisosPermitidos="comunicados:write">
           <ComunicadosAdmin />
         </RutaProtegida>
       }/>

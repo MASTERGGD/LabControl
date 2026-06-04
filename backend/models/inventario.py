@@ -51,8 +51,8 @@ class Activo(Base):
     especificaciones = Column(String, nullable=True)
     foto_url = Column(String, nullable=True)
     observaciones = Column(String, nullable=True)
-    resguardo_nombre = Column(String, nullable=True)   # Responsable del bien
-    area = Column(String, nullable=True)               # Área/departamento físico
+    resguardante_externo_nombre = Column(String, nullable=True)  # Resguardante sin cuenta SIGA
+    area = Column(String, nullable=True)                        # Texto libre para importación/histórico
     ubicacion_tipo = Column(String, nullable=True)
     ubicacion_nombre = Column(String, nullable=True)
     activo = Column(Boolean, default=True)
@@ -124,20 +124,25 @@ class SolicitudBajaInventario(Base):
     evidencia_url = Column(String, nullable=True)
     destino_final = Column(String, nullable=True)
     observaciones = Column(String, nullable=True)
-    solicitado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    revisado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    validado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    ejecutado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
-    fecha_solicitud = Column(DateTime, default=_utcnow, nullable=False)
-    fecha_revision = Column(DateTime, nullable=True)
-    fecha_validacion = Column(DateTime, nullable=True)
-    fecha_ejecucion = Column(DateTime, nullable=True)
+    solicitado_por_id   = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    revisado_por_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    validado_por_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    autorizado_por_id   = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    ejecutado_por_id    = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    fecha_solicitud     = Column(DateTime, default=_utcnow, nullable=False)
+    fecha_revision      = Column(DateTime, nullable=True)
+    fecha_validacion    = Column(DateTime, nullable=True)
+    fecha_autorizacion  = Column(DateTime, nullable=True)
+    fecha_ejecucion     = Column(DateTime, nullable=True)
+    # Trazabilidad de versión: registros anteriores a v1.3 no tienen autorizador
+    migrado_version     = Column(String(20), nullable=True)
 
-    activo = relationship("Activo")
-    solicitado_por = relationship("Usuario", foreign_keys=[solicitado_por_id])
-    revisado_por = relationship("Usuario", foreign_keys=[revisado_por_id])
-    validado_por = relationship("Usuario", foreign_keys=[validado_por_id])
-    ejecutado_por = relationship("Usuario", foreign_keys=[ejecutado_por_id])
+    activo          = relationship("Activo")
+    solicitado_por  = relationship("Usuario", foreign_keys=[solicitado_por_id])
+    revisado_por    = relationship("Usuario", foreign_keys=[revisado_por_id])
+    validado_por    = relationship("Usuario", foreign_keys=[validado_por_id])
+    autorizado_por  = relationship("Usuario", foreign_keys=[autorizado_por_id])
+    ejecutado_por   = relationship("Usuario", foreign_keys=[ejecutado_por_id])
 
 
 class LevantamientoInventario(Base):
@@ -154,8 +159,10 @@ class LevantamientoInventario(Base):
     observaciones = Column(String, nullable=True)
 
     departamento = relationship("Departamento")
-    laboratorio = relationship("Laboratorio")
-    creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
+    laboratorio  = relationship("Laboratorio")
+    creado_por   = relationship("Usuario", foreign_keys=[creado_por_id])
+    revisiones   = relationship("RevisionLevantamientoInventario", back_populates="levantamiento",
+                                order_by="RevisionLevantamientoInventario.fecha_revision")
 
 
 class RevisionLevantamientoInventario(Base):
@@ -172,9 +179,9 @@ class RevisionLevantamientoInventario(Base):
     revisado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     fecha_revision = Column(DateTime, default=_utcnow, nullable=False)
 
-    levantamiento = relationship("LevantamientoInventario")
-    activo = relationship("Activo")
-    revisado_por = relationship("Usuario", foreign_keys=[revisado_por_id])
+    levantamiento = relationship("LevantamientoInventario", back_populates="revisiones")
+    activo        = relationship("Activo")
+    revisado_por  = relationship("Usuario", foreign_keys=[revisado_por_id])
 
 class Prestamo(Base):
     __tablename__ = "prestamos"

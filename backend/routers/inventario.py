@@ -80,41 +80,40 @@ class ActivoCreate(BaseModel):
     modelo: Optional[str]            = None
     numero_serie: Optional[str]      = None
     valor: Optional[float]           = Field(None, ge=0)
-    cantidad: float                  = Field(default=1, gt=0)
-    unidad_medida: str               = "PIEZA"
-    stock_minimo: Optional[float]    = Field(None, ge=0)
-    estado: str                      = "OPERATIVO"
-    especificaciones: Optional[str]  = None
-    observaciones: Optional[str]     = None
-    resguardo_nombre: Optional[str]  = None
-    ubicacion_tipo: Optional[str]    = None
-    ubicacion_nombre: Optional[str]  = None
+    # Patrimonial: siempre cantidad=1, PIEZA, sin stock mínimo
+    cantidad: float                          = Field(default=1.0, ge=1.0, le=1.0)
+    unidad_medida: str                       = Field(default="PIEZA", pattern="^PIEZA$")
+    stock_minimo: Optional[float]            = Field(None, ge=0)
+    estado: str                              = "OPERATIVO"
+    especificaciones: Optional[str]          = None
+    observaciones: Optional[str]             = None
+    resguardante_externo_nombre: Optional[str] = None   # cuando no es usuario del sistema
+    ubicacion_tipo: Optional[str]            = None
+    ubicacion_nombre: Optional[str]          = None
 
 class ActivoUpdate(BaseModel):
-    laboratorio_id: Optional[int]    = None
-    departamento_id: Optional[int]   = None
-    ubicacion_id: Optional[int]      = None
-    responsable_id: Optional[int]    = None
-    alcance: Optional[str]           = None
-    tipo_inventario: Optional[str]   = None
-    estado_admin: Optional[str]      = None
-    nombre: Optional[str]           = Field(None, min_length=2, max_length=100)
-    categoria: Optional[str]        = None
-    area: Optional[str]             = None
-    marca: Optional[str]            = None
-    modelo: Optional[str]           = None
-    numero_serie: Optional[str]     = None
-    valor: Optional[float]          = Field(None, ge=0)
-    cantidad: Optional[float]       = Field(None, gt=0)
-    unidad_medida: Optional[str]    = None
-    stock_minimo: Optional[float]   = Field(None, ge=0)
-    estado: Optional[str]           = None
-    especificaciones: Optional[str] = None
-    observaciones: Optional[str]    = None
-    resguardo_nombre: Optional[str] = None
-    ubicacion_tipo: Optional[str]   = None
-    ubicacion_nombre: Optional[str] = None
-    activo: Optional[bool]          = None
+    laboratorio_id: Optional[int]            = None
+    departamento_id: Optional[int]           = None
+    ubicacion_id: Optional[int]              = None
+    responsable_id: Optional[int]            = None
+    alcance: Optional[str]                   = None
+    tipo_inventario: Optional[str]           = None
+    estado_admin: Optional[str]              = None
+    nombre: Optional[str]                    = Field(None, min_length=2, max_length=100)
+    categoria: Optional[str]                 = None
+    area: Optional[str]                      = None
+    marca: Optional[str]                     = None
+    modelo: Optional[str]                    = None
+    numero_serie: Optional[str]              = None
+    valor: Optional[float]                   = Field(None, ge=0)
+    # cantidad y unidad_medida no se exponen en edición — siempre son 1/PIEZA
+    estado: Optional[str]                    = None
+    especificaciones: Optional[str]          = None
+    observaciones: Optional[str]             = None
+    resguardante_externo_nombre: Optional[str] = None
+    ubicacion_tipo: Optional[str]            = None
+    ubicacion_nombre: Optional[str]          = None
+    activo: Optional[bool]                   = None
 
 
 class UbicacionInventarioIn(BaseModel):
@@ -317,7 +316,7 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
         "especificaciones": a.especificaciones,
         "observaciones": a.observaciones,
         "area": a.area,
-        "resguardo_nombre": a.resguardo_nombre,
+        "resguardante_externo_nombre": a.resguardante_externo_nombre,
         "activo": a.activo,
         "prestado": prestamo_activo is not None,
         "prestamo_estado": prestamo_activo.estado if prestamo_activo else None,
@@ -385,11 +384,18 @@ def _serializar_movimiento(m: MovimientoInventario, db: Session) -> dict:
 
 
 def _serializar_solicitud_baja(s: SolicitudBajaInventario, db: Session) -> dict:
-    activo = db.query(Activo).filter(Activo.id == s.activo_id).first()
-    solicitado = db.query(Usuario).filter(Usuario.id == s.solicitado_por_id).first() if s.solicitado_por_id else None
-    revisado = db.query(Usuario).filter(Usuario.id == s.revisado_por_id).first() if s.revisado_por_id else None
-    validado = db.query(Usuario).filter(Usuario.id == s.validado_por_id).first() if s.validado_por_id else None
-    ejecutado = db.query(Usuario).filter(Usuario.id == s.ejecutado_por_id).first() if s.ejecutado_por_id else None
+    activo     = db.query(Activo).filter(Activo.id == s.activo_id).first()
+    solicitado = db.query(Usuario).filter(Usuario.id == s.solicitado_por_id).first()  if s.solicitado_por_id  else None
+    revisado   = db.query(Usuario).filter(Usuario.id == s.revisado_por_id).first()    if s.revisado_por_id    else None
+    validado   = db.query(Usuario).filter(Usuario.id == s.validado_por_id).first()    if s.validado_por_id    else None
+    autorizado = db.query(Usuario).filter(Usuario.id == s.autorizado_por_id).first()  if s.autorizado_por_id  else None
+    ejecutado  = db.query(Usuario).filter(Usuario.id == s.ejecutado_por_id).first()   if s.ejecutado_por_id   else None
+
+    # Cuando no hay autorizador y el registro es anterior a v1.3, mostrar etiqueta informativa
+    autorizado_label = (
+        autorizado.nombre if autorizado
+        else ("Previo a trazabilidad v1.3" if s.migrado_version else None)
+    )
     return {
         "id": s.id,
         "activo_id": s.activo_id,
@@ -404,11 +410,14 @@ def _serializar_solicitud_baja(s: SolicitudBajaInventario, db: Session) -> dict:
         "solicitado_por": solicitado.nombre if solicitado else None,
         "revisado_por": revisado.nombre if revisado else None,
         "validado_por": validado.nombre if validado else None,
+        "autorizado_por": autorizado_label,
         "ejecutado_por": ejecutado.nombre if ejecutado else None,
-        "fecha_solicitud": s.fecha_solicitud.isoformat() if s.fecha_solicitud else None,
-        "fecha_revision": s.fecha_revision.isoformat() if s.fecha_revision else None,
-        "fecha_validacion": s.fecha_validacion.isoformat() if s.fecha_validacion else None,
-        "fecha_ejecucion": s.fecha_ejecucion.isoformat() if s.fecha_ejecucion else None,
+        "fecha_solicitud":    s.fecha_solicitud.isoformat()    + "Z" if s.fecha_solicitud    else None,
+        "fecha_revision":     s.fecha_revision.isoformat()     + "Z" if s.fecha_revision     else None,
+        "fecha_validacion":   s.fecha_validacion.isoformat()   + "Z" if s.fecha_validacion   else None,
+        "fecha_autorizacion": s.fecha_autorizacion.isoformat() + "Z" if s.fecha_autorizacion else None,
+        "fecha_ejecucion":    s.fecha_ejecucion.isoformat()    + "Z" if s.fecha_ejecucion    else None,
+        "migrado_version": s.migrado_version,
     }
 
 
@@ -485,9 +494,13 @@ def _aplicar_movimiento_recibido(activo: Activo, mov: MovimientoInventario):
             activo.ubicacion_id = None
             activo.ubicacion_nombre = mov.ubicacion_destino_nombre
         if mov.resguardante_destino_id is not None:
+            # Resguardante con cuenta SIGA: usar FK, limpiar texto libre
             activo.responsable_id = mov.resguardante_destino_id
-        if mov.resguardante_destino_nombre:
-            activo.resguardo_nombre = mov.resguardante_destino_nombre
+            activo.resguardante_externo_nombre = None
+        elif mov.resguardante_destino_nombre:
+            # Resguardante externo sin cuenta: usar texto libre, limpiar FK
+            activo.resguardante_externo_nombre = mov.resguardante_destino_nombre
+            activo.responsable_id = None
 
 def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
     activo   = db.query(Activo).filter(Activo.id == p.activo_id).first()
@@ -797,9 +810,15 @@ def crear_activo(
     payload["tipo_inventario"] = tipo_inventario
     payload["estado_admin"] = estado_admin
     payload["unidad_medida"] = unidad_medida
-    if tipo_inventario == "ACTIVO":
-        payload["cantidad"] = 1
-        payload["stock_minimo"] = None
+    # Patrimonial siempre: cantidad=1, PIEZA, sin stock mínimo (blindado también en schema)
+    payload["cantidad"] = 1.0
+    payload["unidad_medida"] = "PIEZA"
+    payload["stock_minimo"] = None
+    # Resguardante: si viene responsable_id, limpiar texto libre y viceversa
+    if payload.get("responsable_id"):
+        payload["resguardante_externo_nombre"] = None
+    elif payload.get("resguardante_externo_nombre"):
+        payload["responsable_id"] = None
     if payload.get("ubicacion_tipo"):
         payload["ubicacion_tipo"] = payload["ubicacion_tipo"].upper()
     a = Activo(**payload, codigo_inventario=codigo, fecha_adquisicion=_utcnow())
@@ -979,7 +998,7 @@ def solicitar_movimiento(
         resguardante_destino_id=data.resguardante_destino_id,
         ubicacion_origen_nombre=activo.ubicacion_nombre,
         ubicacion_destino_nombre=data.ubicacion_destino_nombre.strip() if data.ubicacion_destino_nombre else None,
-        resguardante_origen_nombre=activo.resguardo_nombre,
+        resguardante_origen_nombre=activo.resguardante_externo_nombre,
         resguardante_destino_nombre=data.resguardante_destino_nombre.strip() if data.resguardante_destino_nombre else None,
         cantidad=cantidad,
         solicitado_por_id=current_user.id,
@@ -994,6 +1013,15 @@ def solicitar_movimiento(
               detalle={"movimiento_id": mov.id, "tipo": mov.tipo, "estado": mov.estado},
               request=request)
     return _serializar_movimiento(mov, db)
+
+
+def _es_movimiento_institucional(mov: MovimientoInventario, activo: Activo) -> bool:
+    """True si el movimiento cruza laboratorios, departamentos distintos o involucra activo institucional."""
+    if activo.alcance == "INSTITUCIONAL":
+        return True
+    if mov.departamento_destino_id and mov.departamento_origen_id != mov.departamento_destino_id:
+        return True
+    return False
 
 
 @router.post("/movimientos/{movimiento_id}/{accion}", summary="Actualizar estado de movimiento")
@@ -1012,22 +1040,36 @@ def actualizar_movimiento(
     assert_resource_access(activo, current_user)
     accion = accion.lower()
     ahora = _utcnow()
+    es_institucional = _es_movimiento_institucional(mov, activo)
 
     if accion == "autorizar":
         if mov.estado != "SOLICITADO":
             raise HTTPException(status_code=409, detail="Solo se pueden autorizar movimientos solicitados")
+        # Movimientos institucionales/inter-departamentales solo los autoriza SUPER_ADMIN
+        if es_institucional and current_user.rol != RolUsuario.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=403,
+                detail="Los movimientos institucionales o entre departamentos requieren autorización de administración central"
+            )
         mov.estado = "AUTORIZADO"
         mov.autorizado_por_id = current_user.id
         mov.fecha_autorizacion = ahora
     elif accion == "rechazar":
         if mov.estado not in ("SOLICITADO", "AUTORIZADO"):
             raise HTTPException(status_code=409, detail="El movimiento ya no puede rechazarse")
+        if es_institucional and current_user.rol != RolUsuario.SUPER_ADMIN:
+            raise HTTPException(status_code=403, detail="Solo administración central puede rechazar movimientos institucionales")
         mov.estado = "RECHAZADO"
         mov.autorizado_por_id = current_user.id
         mov.fecha_autorizacion = ahora
     elif accion == "entregar":
         if mov.estado != "AUTORIZADO":
             raise HTTPException(status_code=409, detail="Solo se pueden entregar movimientos autorizados")
+        # Entrega: el LAB_ADMIN del laboratorio de origen o SUPER_ADMIN
+        if current_user.rol == RolUsuario.LAB_ADMIN:
+            lab_origen = activo.laboratorio_id
+            if lab_origen and current_user.laboratorio_id != lab_origen:
+                raise HTTPException(status_code=403, detail="Solo el responsable del laboratorio de origen puede registrar la entrega")
         mov.estado = "ENTREGADO"
         mov.entregado_por_id = current_user.id
         mov.fecha_entrega = ahora
@@ -1144,9 +1186,12 @@ def actualizar_baja(
     elif accion == "autorizar":
         if baja.estado != "VALIDADA_FISICAMENTE":
             raise HTTPException(status_code=409, detail="La baja requiere validacion fisica previa")
+        # Solo SUPER_ADMIN puede autorizar bajas patrimoniales
+        if current_user.rol != RolUsuario.SUPER_ADMIN:
+            raise HTTPException(status_code=403, detail="Solo administracion central puede autorizar bajas patrimoniales")
         baja.estado = "AUTORIZADA"
-        baja.revisado_por_id = current_user.id
-        baja.fecha_revision = baja.fecha_revision or ahora
+        baja.autorizado_por_id = current_user.id   # campo correcto — no revisado_por_id
+        baja.fecha_autorizacion = ahora
     elif accion == "rechazar":
         if baja.estado in ("EJECUTADA", "CANCELADA"):
             raise HTTPException(status_code=409, detail="La baja ya no puede rechazarse")
@@ -1572,6 +1617,13 @@ def crear_incidente(
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
+    # Validar: debe referenciar al menos un activo o una computadora
+    if not data.activo_id and not data.computadora_id:
+        raise HTTPException(
+            status_code=422,
+            detail="El incidente debe referenciar un activo de inventario (activo_id) o una computadora de laboratorio (computadora_id)"
+        )
+
     # Si viene activo_id, extraer laboratorio_id automáticamente
     lab_id = data.laboratorio_id
     if data.activo_id and not lab_id:
@@ -1933,7 +1985,7 @@ async def importar_activos(
             especificaciones  = specs,
             valor             = valor,
             estado            = estado,
-            resguardo_nombre  = resguardo,
+            resguardante_externo_nombre = resguardo,
             observaciones     = obs,
         ))
         # Flush para que _generar_codigo en la siguiente fila vea este código
@@ -2235,7 +2287,8 @@ def historial_activo(
             "marca": activo.marca,
             "modelo": activo.modelo,
             "estado": activo.estado,
-            "resguardo_nombre": activo.resguardo_nombre,
+            "resguardante_externo_nombre": activo.resguardante_externo_nombre,
+            "responsable_nombre": activo.responsable.nombre if activo.responsable else None,
             "laboratorio_id": activo.laboratorio_id,
         },
         "total_eventos": len(eventos),

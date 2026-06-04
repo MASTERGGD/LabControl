@@ -52,7 +52,7 @@ class TestActivos:
                 "area": "RECTORIA",
                 "ubicacion_tipo": "OFICINA",
                 "ubicacion_nombre": "Edificio Administrativo / Rectoría",
-                "resguardo_nombre": "Rectoría",
+                "resguardante_externo_nombre": "Rectoría",
                 "estado": "OPERATIVO",
             },
             headers=auth_headers(token),
@@ -87,22 +87,37 @@ class TestActivos:
     def test_no_se_permite_registrar_consumible_en_inventario(self, client, admin_user, lab):
         """El inventario institucional solo permite activos patrimoniales individuales."""
         token = get_token(client, "admin@test.com", "AdminPass123")
-        resp = client.post(
+        consumible = client.post(
             "/inventario/activos",
             json={
                 "laboratorio_id": lab.id,
                 "nombre": "Cables HDMI",
                 "categoria": "AUDIOVISUAL",
                 "tipo_inventario": "CONSUMIBLE",
-                "cantidad": 10,
+                "cantidad": 1,
                 "unidad_medida": "PIEZA",
-                "stock_minimo": 3,
                 "estado": "OPERATIVO",
             },
             headers=auth_headers(token),
         )
-        assert resp.status_code == 422
-        assert "Tipo de inventario invalido" in resp.text
+        assert consumible.status_code == 422
+        assert "Tipo de inventario invalido" in consumible.text
+
+        lote = client.post(
+            "/inventario/activos",
+            json={
+                "laboratorio_id": lab.id,
+                "nombre": "Cables HDMI",
+                "categoria": "AUDIOVISUAL",
+                "tipo_inventario": "ACTIVO",
+                "cantidad": 10,
+                "unidad_medida": "PIEZA",
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token),
+        )
+        assert lote.status_code == 422
+        assert "less than or equal to 1" in lote.text
 
     def test_flujo_baja_requiere_validacion_y_autorizacion(self, client, admin_user, lab):
         """La baja patrimonial se solicita, valida, autoriza y hasta entonces se ejecuta."""

@@ -539,7 +539,7 @@ def _build_excel(d: dict) -> io.BytesIO:
             r-9, a.codigo_inventario, a.nombre, a.categoria.replace("_"," "),
             f"{a.marca or ''} {a.modelo or ''}".strip(),
             a.estado,
-            a.resguardo_nombre or "—"
+            a.resguardante_externo_nombre or "—"
         ], bg=fill_bg)
         # Color por estado
         estado_colors = {"OPERATIVO": "E8F5E9", "MANTENIMIENTO": "FFF9C4",
