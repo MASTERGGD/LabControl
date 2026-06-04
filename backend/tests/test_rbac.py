@@ -65,5 +65,6 @@ class TestRBAC:
                 "password": "Pass123456",
                 "rol": "DOCENTE",
             },
+            headers=auth_headers(token),
         )
         assert resp.status_code == 403

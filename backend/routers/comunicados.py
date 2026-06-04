@@ -33,8 +33,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import false, or_
+from sqlalchemy.orm import Session, object_session
 
 from database import get_db
 from dependencies import get_current_user, require_roles
@@ -49,10 +49,21 @@ from models.usuario import RolUsuario, Usuario
 from services.auditoria import registrar
 from services.email import enviar_notificacion
 from routers.notificaciones import crear_notificacion
+from services.user_permissions import (
+    PERM_COMUNICADOS_WRITE,
+    departamentos_con_permiso,
+    puede_emitir_comunicados,
+)
 
 router = APIRouter(prefix="/comunicados", tags=["Comunicados"])
 
-ROLES_ADMIN = [RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.ADMINISTRATIVO, RolUsuario.TUTORIA_ADMIN]
+ROLES_ADMIN = [
+    RolUsuario.SUPER_ADMIN,
+    RolUsuario.LAB_ADMIN,
+    RolUsuario.ADMINISTRATIVO,
+    RolUsuario.TUTORIA_ADMIN,
+    RolUsuario.SERVICIOS_ESCOLARES,
+]
 RESPALDOS_DIR = Path(os.getenv("COMUNICADOS_RESPALDOS_DIR", "data/comunicados_respaldos"))
 ADJUNTOS_DIR = Path(os.getenv("COMUNICADOS_ADJUNTOS_DIR", "data/comunicados_adjuntos"))
 MAX_ADJUNTO_BYTES = int(os.getenv("COMUNICADOS_MAX_ADJUNTO_MB", "5")) * 1024 * 1024
@@ -587,19 +598,45 @@ def _es_emisor_limitado(usuario: Usuario) -> bool:
 
 def _puede_emitir_comunicados(db: Session, usuario: Usuario) -> bool:
     """True si el usuario tiene permiso para crear/publicar comunicados."""
-    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
-        return True
-    if usuario.rol in (RolUsuario.ADMINISTRATIVO, RolUsuario.TUTORIA_ADMIN):
-        return True
     # Responsable designado de algún departamento
-    return _dep_responsable(db, usuario) is not None
+    return puede_emitir_comunicados(db, usuario)
+
+
+def _departamentos_gestionables(db: Session, usuario: Usuario) -> list[int] | None:
+    """None significa acceso global; lista vacia significa sin acceso de gestion."""
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        return None
+    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
+        return []
+    return departamentos_con_permiso(db, usuario, PERM_COMUNICADOS_WRITE)
+
+
+def _filtrar_comunicados_gestionables(q, db: Session, usuario: Usuario):
+    departamentos = _departamentos_gestionables(db, usuario)
+    if departamentos is None:
+        return q
+    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
+        return q.filter(Comunicado.autor_id == usuario.id)
+    if not departamentos:
+        return q.filter(false())
+    return q.filter(Comunicado.departamento_emisor_id.in_(departamentos))
+
+
+def _asegurar_puede_gestionar_comunicados(db: Session, usuario: Usuario, departamento_id: int | None = None) -> None:
+    if not puede_emitir_comunicados(db, usuario, departamento_id):
+        raise HTTPException(403, "No tienes permiso para enviar comunicados de este departamento")
 
 
 def _validar_acceso_gestion(c: Comunicado, usuario: Usuario, accion: str = "gestionar") -> None:
-    if usuario.rol == RolUsuario.ADMINISTRATIVO and c.departamento_emisor_id != usuario.departamento_id:
-        raise HTTPException(403, f"No puedes {accion} comunicados de otro departamento")
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        return
     if usuario.rol == RolUsuario.TUTORIA_ADMIN and c.autor_id != usuario.id:
         raise HTTPException(403, f"No puedes {accion} comunicados de otro responsable")
+    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
+        return
+    db = object_session(c)
+    if db is None or not puede_emitir_comunicados(db, usuario, c.departamento_emisor_id):
+        raise HTTPException(403, f"No puedes {accion} comunicados de este departamento")
 
 
 def _usuario_puede_ver(c: Comunicado, usuario: Usuario) -> bool:
@@ -767,13 +804,7 @@ def estado_respaldos(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
-    q = db.query(Comunicado)
-    if usuario.rol == RolUsuario.ADMINISTRATIVO:
-        if not usuario.departamento_id:
-            return {"total_comunicados": 0, "archivados": 0, "tamano_estimado_bytes": 0}
-        q = q.filter(Comunicado.departamento_emisor_id == usuario.departamento_id)
-    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
-        q = q.filter(Comunicado.autor_id == usuario.id)
+    q = _filtrar_comunicados_gestionables(db.query(Comunicado), db, usuario)
 
     comunicados = q.all()
     manifest = json.dumps(_manifest_comunicados(comunicados), ensure_ascii=False).encode("utf-8")
@@ -1005,13 +1036,7 @@ def listar_comunicados(
     db:        Session = Depends(get_db),
     usuario:   Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
-    q = db.query(Comunicado)
-    if usuario.rol == RolUsuario.ADMINISTRATIVO:
-        if not usuario.departamento_id:
-            return []
-        q = q.filter(Comunicado.departamento_emisor_id == usuario.departamento_id)
-    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
-        q = q.filter(Comunicado.autor_id == usuario.id)
+    q = _filtrar_comunicados_gestionables(db.query(Comunicado), db, usuario)
     if estado:
         q = q.filter(Comunicado.estado == estado)
     if categoria == "URGENTE" and not prioridad:
@@ -1121,17 +1146,18 @@ def crear_comunicado(
     usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
     departamento_emisor_id = body.departamento_emisor_id
-    if usuario.rol == RolUsuario.ADMINISTRATIVO:
-        if not usuario.departamento_id:
-            raise HTTPException(403, "Tu usuario administrativo no tiene departamento asignado")
-        departamento_emisor_id = usuario.departamento_id
     if usuario.rol == RolUsuario.TUTORIA_ADMIN:
         _validar_destinatarios_tutoria(db, body.destinatarios)
         departamento_emisor_id = None
+    elif usuario.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        departamento_emisor_id = departamento_emisor_id or usuario.departamento_id
+        if not departamento_emisor_id:
+            raise HTTPException(403, "Tu usuario no tiene departamento emisor asignado")
     if departamento_emisor_id:
         dep = db.query(Departamento).filter(Departamento.id == departamento_emisor_id, Departamento.activo == True).first()
         if not dep:
             raise HTTPException(404, "Departamento emisor no encontrado o inactivo")
+    _asegurar_puede_gestionar_comunicados(db, usuario, departamento_emisor_id)
     _validar_categoria_comunicado(db, usuario, body.categoria, departamento_emisor_id)
 
     c = Comunicado(
@@ -1238,13 +1264,7 @@ def generar_respaldo(
     db: Session = Depends(get_db),
     usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
 ):
-    q = db.query(Comunicado)
-    if usuario.rol == RolUsuario.ADMINISTRATIVO:
-        if not usuario.departamento_id:
-            raise HTTPException(403, "Tu usuario administrativo no tiene departamento asignado")
-        q = q.filter(Comunicado.departamento_emisor_id == usuario.departamento_id)
-    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
-        q = q.filter(Comunicado.autor_id == usuario.id)
+    q = _filtrar_comunicados_gestionables(db.query(Comunicado), db, usuario)
     if body.estado:
         q = q.filter(Comunicado.estado == body.estado)
     if body.antiguedad_dias:
@@ -1527,20 +1547,21 @@ def editar_comunicado(
             )
     categoria_final = datos_update.get("categoria", c.categoria)
     departamento_final = datos_update.get("departamento_emisor_id", c.departamento_emisor_id)
-    if usuario.rol == RolUsuario.ADMINISTRATIVO:
-        departamento_final = usuario.departamento_id
-    elif usuario.rol == RolUsuario.TUTORIA_ADMIN:
+    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
         departamento_final = None
+    elif usuario.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        departamento_final = c.departamento_emisor_id
+        _asegurar_puede_gestionar_comunicados(db, usuario, departamento_final)
     _validar_categoria_comunicado(db, usuario, categoria_final, departamento_final)
 
     for field, val in datos_update.items():
         if field == "destinatarios":
             continue
         if field == "departamento_emisor_id":
-            if usuario.rol == RolUsuario.ADMINISTRATIVO:
-                val = usuario.departamento_id
-            elif usuario.rol == RolUsuario.TUTORIA_ADMIN:
+            if usuario.rol == RolUsuario.TUTORIA_ADMIN:
                 val = None
+            elif usuario.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+                val = c.departamento_emisor_id
             elif val and not db.query(Departamento).filter(Departamento.id == val, Departamento.activo == True).first():
                 raise HTTPException(404, "Departamento emisor no encontrado o inactivo")
         if field == "area_emisora" and usuario.rol == RolUsuario.TUTORIA_ADMIN:

@@ -1,9 +1,14 @@
 from .usuario import Usuario, RolUsuario
+from .usuario_permiso import UsuarioPermiso
 from .departamento import Departamento
 from .laboratorio import Laboratorio, Computadora
 from .horario import HorarioDisponible, Reservacion, SolicitudConflicto
 from .sesion import SesionClase, AsignacionPC, ObservacionPC
-from .inventario import Activo, Prestamo, Incidente, MantenimientoPreventivo
+from .inventario import (
+    Activo, Prestamo, Incidente, MantenimientoPreventivo, UbicacionInventario,
+    MovimientoInventario, SolicitudBajaInventario, LevantamientoInventario,
+    RevisionLevantamientoInventario,
+)
 from .adeudo import Adeudo
 from .notificacion import Notificacion
 from .catalogo import CatalogoAlumno, CatalogoMateria, CatalogoCarrera

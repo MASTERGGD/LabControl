@@ -28,6 +28,6 @@ class Usuario(Base):
     acceso_consultorio   = Column(Boolean, default=False)
 
     laboratorio = relationship("Laboratorio", back_populates="admin")
-    departamento = relationship("Departamento", back_populates="usuarios")
+    departamento = relationship("Departamento", back_populates="usuarios", foreign_keys=[departamento_id])
     reservaciones = relationship("Reservacion", back_populates="docente", foreign_keys="Reservacion.docente_id")
     sesiones = relationship("SesionClase", back_populates="docente")

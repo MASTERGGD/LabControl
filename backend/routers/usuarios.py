@@ -250,7 +250,11 @@ def editar_usuario(
     db.refresh(u)
     registrar(db, accion=Accion.EDITAR_USUARIO, recurso=Recurso.USUARIO,
               usuario=current_user, recurso_id=u.id,
-              detalle={"campos_modificados": list(campos.keys())},
+              detalle={
+                  "usuario_afectado": u.nombre,
+                  "email_afectado":   u.email,
+                  "campos_modificados": list(campos.keys()),
+              },
               request=request)
     return _serializar(u, db)
 
@@ -271,6 +275,9 @@ def eliminar_usuario(
     from models.sesion import Sesion
     from models.inventario import Activo
     from models.notificacion import Notificacion
+    from models.catalogo import CatalogoAlumno
+    from models.adeudo import Adeudo
+    from models.cumplimiento import EventoCumplimiento
 
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
@@ -282,7 +289,7 @@ def eliminar_usuario(
     if u.rol == RolUsuario.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="No se puede eliminar al Super Administrador")
 
-    # Verificar dependencias críticas (relaciones sin CASCADE)
+    # Verificar dependencias críticas (relaciones sin CASCADE ni SET NULL)
     bloqueos = []
     if db.query(HorarioDisponible).filter(HorarioDisponible.docente_id == usuario_id).count():
         bloqueos.append("tiene horarios de clase asignados")
@@ -300,8 +307,32 @@ def eliminar_usuario(
                    f"Desactívalo en su lugar para conservar el historial."
         )
 
-    # Sin dependencias críticas → eliminar notificaciones y borrar
+    # Limpiar referencias nullable antes de borrar (SET NULL manual)
     db.query(Notificacion).filter(Notificacion.usuario_id == usuario_id).delete()
+    db.query(Departamento).filter(Departamento.responsable_id == usuario_id).update(
+        {"responsable_id": None}, synchronize_session=False
+    )
+    # Desvincular del catálogo de alumnos (conserva el registro del alumno)
+    db.query(CatalogoAlumno).filter(CatalogoAlumno.usuario_id == usuario_id).update(
+        {"usuario_id": None}, synchronize_session=False
+    )
+    # Desvincular de adeudos y registros de cumplimiento
+    try:
+        db.query(Adeudo).filter(Adeudo.reportado_por_id == usuario_id).update(
+            {"reportado_por_id": None}, synchronize_session=False
+        )
+        db.query(Adeudo).filter(Adeudo.resuelto_por_id == usuario_id).update(
+            {"resuelto_por_id": None}, synchronize_session=False
+        )
+    except Exception:
+        pass
+    try:
+        db.query(EventoCumplimiento).filter(
+            EventoCumplimiento.registrado_por_id == usuario_id
+        ).update({"registrado_por_id": None}, synchronize_session=False)
+    except Exception:
+        pass
+
     nombre_guardado = u.nombre
     email_guardado  = u.email
     db.delete(u)

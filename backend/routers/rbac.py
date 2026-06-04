@@ -14,6 +14,9 @@ from models.usuario import Usuario
 from dependencies import get_current_user, require_roles
 from models.usuario import RolUsuario
 from permissions import PERMISSIONS, get_permission_matrix, can
+from database import get_db
+from services.user_permissions import permisos_efectivos
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/rbac", tags=["RBAC"])
 
@@ -34,17 +37,19 @@ def listar_permisos(
 
 @router.get("/my-permissions", summary="Permisos del usuario autenticado")
 def mis_permisos(
-    current_user: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Devuelve todos los permisos que tiene el usuario actual.
     El frontend lo usa para mostrar/ocultar elementos de la UI.
     """
-    mis = [
+    mis = set([
         permiso
         for permiso, roles in PERMISSIONS.items()
         if current_user.rol in roles
-    ]
+    ])
+    mis.update(permisos_efectivos(db, current_user))
     return {
         "rol":         current_user.rol.value,
         "permissions": sorted(mis),
@@ -55,13 +60,14 @@ def mis_permisos(
 @router.get("/check/{permiso}", summary="Verificar un permiso específico")
 def verificar_permiso(
     permiso: str,
-    current_user: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Verifica si el usuario actual tiene un permiso específico.
     Retorna { "allowed": true/false }.
     """
-    tiene = can(current_user.rol, permiso)
+    tiene = can(current_user.rol, permiso) or permiso in permisos_efectivos(db, current_user)
     return {
         "permiso":  permiso,
         "rol":      current_user.rol.value,

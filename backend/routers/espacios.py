@@ -140,13 +140,27 @@ def _notificar_responsables_y_apoyos(
     exclude_usuario_id: Optional[int] = None,
 ):
     vistos = set()
-    for rel in list(espacio.responsables or []) + list(espacio.apoyos or []):
-        if exclude_usuario_id and rel.usuario_id == exclude_usuario_id:
+    # Notificar responsables directos (usuario_id)
+    for rel in list(espacio.responsables or []):
+        uid = rel.usuario_id
+        if exclude_usuario_id and uid == exclude_usuario_id:
             continue
-        if rel.usuario_id in vistos:
+        if uid in vistos:
             continue
-        vistos.add(rel.usuario_id)
-        _notificar(db, rel.usuario_id, tipo, titulo, mensaje, url)
+        vistos.add(uid)
+        _notificar(db, uid, tipo, titulo, mensaje, url)
+    # Notificar al responsable del departamento de apoyo
+    for rel in list(espacio.apoyos or []):
+        depto = rel.departamento
+        if not depto or not depto.responsable_id:
+            continue
+        uid = depto.responsable_id
+        if exclude_usuario_id and uid == exclude_usuario_id:
+            continue
+        if uid in vistos:
+            continue
+        vistos.add(uid)
+        _notificar(db, uid, tipo, titulo, mensaje, url)
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -187,8 +201,7 @@ class ResponsableAsignar(BaseModel):
 
 
 class ApoyoAsignar(BaseModel):
-    usuario_id: int
-    rol_apoyo: Optional[str] = None
+    departamento_id: int
 
 
 class RequerimientoIn(BaseModel):
@@ -264,14 +277,16 @@ def _ser_responsable(r: EspacioResponsable) -> dict:
 
 
 def _ser_apoyo(r: EspacioApoyo) -> dict:
+    depto = r.departamento
+    resp  = depto.responsable if depto else None
     return {
-        "id":          r.id,
-        "espacio_id":  r.espacio_id,
-        "usuario_id":  r.usuario_id,
-        "nombre":      r.usuario.nombre,
-        "email":       r.usuario.email,
-        "rol_apoyo":   r.rol_apoyo,
-        "asignado_en": r.asignado_en.isoformat() if r.asignado_en else None,
+        "id":                    r.id,
+        "espacio_id":            r.espacio_id,
+        "departamento_id":       r.departamento_id,
+        "departamento_nombre":   depto.nombre if depto else None,
+        "responsable_nombre":    resp.nombre  if resp  else "Sin responsable",
+        "responsable_email":     resp.email   if resp  else None,
+        "asignado_en":           r.asignado_en.isoformat() if r.asignado_en else None,
     }
 
 
@@ -540,25 +555,30 @@ def asignar_apoyo(
     db:         Session  = Depends(get_db),
     user:       Usuario  = Depends(require_roles(RolUsuario.SUPER_ADMIN)),
 ):
+    from models.departamento import Departamento
     espacio = db.query(EspacioInstitucional).filter(EspacioInstitucional.id == espacio_id).first()
     if not espacio:
         raise HTTPException(404, "Espacio no encontrado")
 
-    usuario_obj = db.query(Usuario).filter(Usuario.id == data.usuario_id, Usuario.activo == True).first()
-    if not usuario_obj:
-        raise HTTPException(404, "Usuario no encontrado")
+    depto = db.query(Departamento).filter(Departamento.id == data.departamento_id, Departamento.activo == True).first()
+    if not depto:
+        raise HTTPException(404, "Departamento no encontrado")
+    if not depto.responsable_id:
+        raise HTTPException(
+            422,
+            "El departamento necesita un responsable asignado para recibir notificaciones de apoyo",
+        )
 
     existe = db.query(EspacioApoyo).filter(
         EspacioApoyo.espacio_id == espacio_id,
-        EspacioApoyo.usuario_id == data.usuario_id,
+        EspacioApoyo.departamento_id == data.departamento_id,
     ).first()
     if existe:
-        raise HTTPException(409, "El usuario ya esta asignado como apoyo de este espacio")
+        raise HTTPException(409, "El departamento ya esta asignado como area de apoyo de este espacio")
 
     rel = EspacioApoyo(
         espacio_id=espacio_id,
-        usuario_id=data.usuario_id,
-        rol_apoyo=data.rol_apoyo,
+        departamento_id=data.departamento_id,
         asignado_en=_utcnow(),
     )
     db.add(rel)
@@ -566,7 +586,7 @@ def asignar_apoyo(
     db.refresh(rel)
 
     registrar(db, "ASIGNAR_APOYO_ESPACIO", "ESPACIO", usuario=user, recurso_id=espacio_id,
-              detalle={"usuario_id": data.usuario_id, "rol_apoyo": data.rol_apoyo}, request=request)
+              detalle={"departamento_id": data.departamento_id}, request=request)
     return _ser_apoyo(rel)
 
 

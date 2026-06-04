@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -20,8 +20,19 @@ class Departamento(Base):
     clave = Column(String(30), nullable=False, unique=True, index=True)
     descripcion = Column(String(300), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
+    responsable_id = Column(
+        Integer,
+        ForeignKey(
+            "usuarios.id",
+            name="fk_departamentos_responsable_id",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
     creado_en = Column(DateTime, default=_utcnow, nullable=False)
     actualizado_en = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
-    usuarios = relationship("Usuario", back_populates="departamento")
+    usuarios = relationship("Usuario", back_populates="departamento", foreign_keys="Usuario.departamento_id")
+    responsable = relationship("Usuario", foreign_keys=[responsable_id])
     comunicados_emitidos = relationship("Comunicado", back_populates="departamento_emisor")

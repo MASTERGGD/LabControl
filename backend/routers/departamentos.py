@@ -11,11 +11,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
-from dependencies import require_roles
+from dependencies import get_current_user, require_roles
 from models.departamento import Departamento
 from models.usuario import Usuario
+from models.usuario_permiso import UsuarioPermiso
 from services.auditoria import registrar as _audit, Accion, Recurso
 from models.usuario import RolUsuario, Usuario
+from services.user_permissions import PERM_COMUNICADOS_WRITE, es_responsable_departamento
 
 router = APIRouter(prefix="/departamentos", tags=["Departamentos"])
 
@@ -168,6 +170,33 @@ class ResponsableIn(BaseModel):
     responsable_id: Optional[int] = None   # None = quitar responsable
 
 
+class PermisoComunicadosIn(BaseModel):
+    usuario_id: int
+    activo: bool
+
+
+def _puede_administrar_permisos_departamento(dep: Departamento, usuario: Usuario) -> bool:
+    return usuario.rol == RolUsuario.SUPER_ADMIN or dep.responsable_id == usuario.id
+
+
+def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: int) -> dict:
+    permiso = db.query(UsuarioPermiso).filter(
+        UsuarioPermiso.usuario_id == u.id,
+        UsuarioPermiso.departamento_id == departamento_id,
+        UsuarioPermiso.permiso == PERM_COMUNICADOS_WRITE,
+        UsuarioPermiso.activo == True,
+    ).first()
+    return {
+        "id": u.id,
+        "nombre": u.nombre,
+        "email": u.email,
+        "rol": u.rol.value,
+        "departamento_id": u.departamento_id,
+        "es_responsable": es_responsable_departamento(db, u, departamento_id),
+        "puede_enviar_comunicados": bool(permiso) or es_responsable_departamento(db, u, departamento_id),
+    }
+
+
 @router.patch("/{departamento_id}/responsable", summary="Asignar o quitar responsable del departamento")
 def asignar_responsable(
     departamento_id: int,
@@ -193,19 +222,66 @@ def asignar_responsable(
 def usuarios_departamento(
     departamento_id: int,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)),
+    current_user: Usuario = Depends(get_current_user),
 ):
     dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
     if not dep:
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    if current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN) and dep.responsable_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No puedes consultar usuarios de este departamento")
     usuarios = db.query(Usuario).filter(
         Usuario.departamento_id == departamento_id,
         Usuario.activo == True,
     ).order_by(Usuario.nombre).all()
-    return [
-        {"id": u.id, "nombre": u.nombre, "email": u.email, "rol": u.rol.value}
-        for u in usuarios
-    ]
+    return [_serializar_usuario_departamento(db, u, departamento_id) for u in usuarios]
+
+
+@router.patch("/{departamento_id}/permisos/comunicados", summary="Activar permiso para enviar comunicados")
+def actualizar_permiso_comunicados(
+    departamento_id: int,
+    data: PermisoComunicadosIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    dep = db.query(Departamento).filter(Departamento.id == departamento_id, Departamento.activo == True).first()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    if not _puede_administrar_permisos_departamento(dep, current_user):
+        raise HTTPException(status_code=403, detail="Solo el responsable del departamento o Super Admin puede cambiar permisos")
+
+    usuario = db.query(Usuario).filter(
+        Usuario.id == data.usuario_id,
+        Usuario.departamento_id == departamento_id,
+        Usuario.activo == True,
+    ).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado en este departamento")
+    if dep.responsable_id == usuario.id and not data.activo:
+        raise HTTPException(status_code=400, detail="El responsable del departamento siempre puede enviar comunicados")
+
+    permiso = db.query(UsuarioPermiso).filter(
+        UsuarioPermiso.usuario_id == usuario.id,
+        UsuarioPermiso.departamento_id == departamento_id,
+        UsuarioPermiso.permiso == PERM_COMUNICADOS_WRITE,
+    ).first()
+    now = _utcnow()
+    if permiso:
+        permiso.activo = data.activo
+        permiso.otorgado_por_id = current_user.id if data.activo else permiso.otorgado_por_id
+        permiso.actualizado_en = now
+    else:
+        permiso = UsuarioPermiso(
+            usuario_id=usuario.id,
+            permiso=PERM_COMUNICADOS_WRITE,
+            departamento_id=departamento_id,
+            activo=data.activo,
+            otorgado_por_id=current_user.id if data.activo else None,
+            creado_en=now,
+            actualizado_en=now,
+        )
+        db.add(permiso)
+    db.commit()
+    return _serializar_usuario_departamento(db, usuario, departamento_id)
 
 
 _ROLES_RESPONSABLE = (

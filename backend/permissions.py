@@ -111,7 +111,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "departamentos:read":       frozenset({SA, LA, AD, TA, DO}),
     "departamentos:write":      frozenset({SA}),
     "comunicados:own":          frozenset({SA, LA, AD, TA, DO}),
-    "comunicados:write":        frozenset({SA, LA, AD, TA}),
+    "comunicados:write":        frozenset({SA, LA, TA}),
 
     # Tutoria
     "tutoria:admin":            frozenset({SA, LA, TA}),
@@ -126,7 +126,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "notificaciones:own":       frozenset({SA, LA, AD, TA, SE, DO}),
     "departamentos:read":       frozenset({SA, LA, AD, TA, SE, DO}),
     "comunicados:own":          frozenset({SA, LA, AD, TA, SE, DO}),
-    "comunicados:write":        frozenset({SA, LA, AD, TA, SE}),
+    "comunicados:write":        frozenset({SA, LA, TA}),
 }
 
 

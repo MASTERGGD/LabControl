@@ -142,22 +142,22 @@ class EspacioResponsable(Base):
 
 class EspacioApoyo(Base):
     """
-    Usuarios o areas de apoyo que reciben avisos operativos cuando una sala
+    Departamentos de apoyo que reciben avisos operativos cuando una sala
     se aprueba, cambia, requiere preparacion o queda pendiente de cierre.
+    Se notifica al responsable asignado del departamento.
     """
     __tablename__ = "espacios_apoyos"
     __table_args__ = (
-        UniqueConstraint("espacio_id", "usuario_id", name="uq_espacio_apoyo"),
+        UniqueConstraint("espacio_id", "departamento_id", name="uq_espacio_apoyo_depto"),
     )
 
-    id          = Column(Integer, primary_key=True, index=True)
-    espacio_id  = Column(Integer, ForeignKey("espacios_institucionales.id", ondelete="CASCADE"), nullable=False, index=True)
-    usuario_id  = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
-    rol_apoyo   = Column(String(120), nullable=True)
-    asignado_en = Column(DateTime, default=_utcnow)
+    id               = Column(Integer, primary_key=True, index=True)
+    espacio_id       = Column(Integer, ForeignKey("espacios_institucionales.id", ondelete="CASCADE"), nullable=False, index=True)
+    departamento_id  = Column(Integer, ForeignKey("departamentos.id", ondelete="CASCADE"), nullable=False, index=True)
+    asignado_en      = Column(DateTime, default=_utcnow)
 
-    espacio = relationship("EspacioInstitucional", back_populates="apoyos")
-    usuario = relationship("Usuario")
+    espacio      = relationship("EspacioInstitucional", back_populates="apoyos")
+    departamento = relationship("Departamento")
 
 
 class SolicitudEspacio(Base):

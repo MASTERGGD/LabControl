@@ -7,7 +7,9 @@ from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, crear_access_token, verificar_password
 from services.auditoria import registrar, Accion, Recurso
+from services.active_sessions import end_session, list_user_sessions, register_session
 from services.rate_limit import clear_login_failures, ensure_login_not_locked, register_login_failure
+from services.user_permissions import permisos_efectivos
 import datetime
 import os
 
@@ -37,9 +39,15 @@ class UsuarioResponse(BaseModel):
     departamento_id: int | None = None
     departamento_nombre: str | None = None
     departamento_clave: str | None = None
+    permisos: list[str] = []
     activo: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SessionHeartbeatIn(BaseModel):
+    session_id: str
+    path: str | None = None
 
 
 def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
@@ -55,6 +63,7 @@ def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
         "departamento_id": usuario.departamento_id,
         "departamento_nombre": dep.nombre if dep else None,
         "departamento_clave": dep.clave if dep else None,
+        "permisos": permisos_efectivos(db, usuario),
         "activo": usuario.activo,
         "acceso_consultorio": bool(usuario.acceso_consultorio),
     }
@@ -127,3 +136,36 @@ def login(
 def me(current_user: Usuario = Depends(get_current_user), db: Session = Depends(get_db)):
     """Devuelve los datos del usuario autenticado (requiere token Bearer valido)."""
     return _serializar_usuario(current_user, db)
+
+
+@router.post("/sessions/heartbeat", summary="Registrar sesion activa del navegador")
+def session_heartbeat(
+    data: SessionHeartbeatIn,
+    request: Request,
+    current_user: Usuario = Depends(get_current_user),
+):
+    sessions = register_session(
+        usuario_id=current_user.id,
+        session_id=data.session_id,
+        user_agent=request.headers.get("user-agent", ""),
+        path=data.path,
+    )
+    return {"active_sessions": sessions, "active_count": len(sessions)}
+
+
+@router.post("/sessions/logout", summary="Cerrar registro de sesion activa")
+def session_logout(
+    data: SessionHeartbeatIn,
+    current_user: Usuario = Depends(get_current_user),
+):
+    end_session(data.session_id)
+    return {"ok": True}
+
+
+@router.get("/sessions", summary="Listar sesiones activas propias")
+def my_sessions(
+    session_id: str | None = None,
+    current_user: Usuario = Depends(get_current_user),
+):
+    sessions = list_user_sessions(current_user.id, current_session_id=session_id)
+    return {"active_sessions": sessions, "active_count": len(sessions)}
