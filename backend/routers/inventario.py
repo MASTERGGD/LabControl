@@ -5,7 +5,12 @@ from services.auditoria import registrar, Accion, Recurso
 import openpyxl, io, unicodedata
 from typing import Optional, List
 from database import get_db
-from models.inventario import Activo, Prestamo, Incidente, MantenimientoPreventivo
+from models.departamento import Departamento
+from models.inventario import (
+    Activo, Prestamo, Incidente, MantenimientoPreventivo, UbicacionInventario,
+    MovimientoInventario, SolicitudBajaInventario, LevantamientoInventario,
+    RevisionLevantamientoInventario,
+)
 from models.laboratorio import Laboratorio
 from models.usuario import Usuario, RolUsuario
 from models.adeudo import Adeudo
@@ -19,8 +24,22 @@ def _utcnow() -> datetime.datetime:
 
 router = APIRouter(prefix="/inventario", tags=["Inventario y Préstamos"])
 
-CATEGORIAS = ["COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT", "HERRAMIENTA", "MOBILIARIO", "OTRO"]
+CATEGORIAS = [
+    "COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT",
+    "HERRAMIENTA", "MOBILIARIO", "AUDIOVISUAL", "REDES", "MEDICO",
+    "OFICINA", "VEHICULO", "OTRO",
+]
 ESTADOS_ACTIVO = ["OPERATIVO", "MANTENIMIENTO", "DAÑADO", "BAJA"]
+ALCANCES_ACTIVO = ["LABORATORIO", "INSTITUCIONAL"]
+TIPOS_INVENTARIO = ["ACTIVO"]
+ESTADOS_ADMIN_ACTIVO = ["BORRADOR", "EN_REVISION", "OBSERVADO", "VALIDADO", "RECHAZADO", "BAJA_SOLICITADA", "BAJA_EJECUTADA"]
+ESTADOS_BAJA = ["SOLICITADA", "EN_REVISION", "VALIDADA_FISICAMENTE", "AUTORIZADA", "RECHAZADA", "EJECUTADA", "CANCELADA"]
+ESTADOS_LEVANTAMIENTO = ["ABIERTO", "CERRADO", "CANCELADO"]
+ESTADOS_REVISION_LEVANTAMIENTO = ["LOCALIZADO", "NO_LOCALIZADO", "OTRA_UBICACION", "DANADO", "PROPUESTO_BAJA", "DATOS_INCOMPLETOS"]
+UNIDADES_MEDIDA = ["PIEZA", "CAJA", "PAQUETE", "JUEGO", "METRO", "LITRO", "KILO", "SERVICIO", "OTRO"]
+TIPOS_UBICACION = ["EDIFICIO", "OFICINA", "AULA", "LABORATORIO", "ALMACEN", "BIBLIOTECA", "CONSULTORIO", "TALLER", "EXTERIOR", "OTRO"]
+TIPOS_MOVIMIENTO = ["TRANSFERENCIA_DEPARTAMENTO", "CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE", "PRESTAMO_TEMPORAL", "RETORNO", "BAJA", "MANTENIMIENTO", "AJUSTE_INVENTARIO"]
+ESTADOS_MOVIMIENTO = ["SOLICITADO", "AUTORIZADO", "RECHAZADO", "ENTREGADO", "RECIBIDO", "CANCELADO"]
 ESTADOS_PRESTAMO = ["ACTIVO", "DEVUELTO", "VENCIDO"]
 CONDICIONES = ["EXCELENTE", "BUENO", "REGULAR", "DAÑADO"]
 
@@ -33,6 +52,11 @@ TIPO_CODIGO = {
     "IOT":            "IOT",
     "HERRAMIENTA":    "HER",
     "MOBILIARIO":     "MOB",
+    "AUDIOVISUAL":    "AUD",
+    "REDES":          "RED",
+    "MEDICO":         "MED",
+    "OFICINA":        "OFI",
+    "VEHICULO":       "VEH",
     "OTRO":           "OTR",
 }
 
@@ -40,7 +64,13 @@ TIPO_CODIGO = {
 # ─── Schemas ───────────────────────────────────────────────────────────────────
 
 class ActivoCreate(BaseModel):
-    laboratorio_id: int
+    laboratorio_id: Optional[int] = None
+    departamento_id: Optional[int] = None
+    ubicacion_id: Optional[int] = None
+    responsable_id: Optional[int] = None
+    alcance: str = Field(default="LABORATORIO", description=f"Uno de: {ALCANCES_ACTIVO}")
+    tipo_inventario: str = Field(default="ACTIVO", description=f"Uno de: {TIPOS_INVENTARIO}")
+    estado_admin: str = Field(default="VALIDADO", description=f"Uno de: {ESTADOS_ADMIN_ACTIVO}")
     # Opcional: si no se envía, el sistema genera el código automáticamente
     codigo_inventario: Optional[str] = Field(None, min_length=2, max_length=50)
     nombre: str                      = Field(..., min_length=2, max_length=100)
@@ -50,12 +80,24 @@ class ActivoCreate(BaseModel):
     modelo: Optional[str]            = None
     numero_serie: Optional[str]      = None
     valor: Optional[float]           = Field(None, ge=0)
+    cantidad: float                  = Field(default=1, gt=0)
+    unidad_medida: str               = "PIEZA"
+    stock_minimo: Optional[float]    = Field(None, ge=0)
     estado: str                      = "OPERATIVO"
     especificaciones: Optional[str]  = None
     observaciones: Optional[str]     = None
     resguardo_nombre: Optional[str]  = None
+    ubicacion_tipo: Optional[str]    = None
+    ubicacion_nombre: Optional[str]  = None
 
 class ActivoUpdate(BaseModel):
+    laboratorio_id: Optional[int]    = None
+    departamento_id: Optional[int]   = None
+    ubicacion_id: Optional[int]      = None
+    responsable_id: Optional[int]    = None
+    alcance: Optional[str]           = None
+    tipo_inventario: Optional[str]   = None
+    estado_admin: Optional[str]      = None
     nombre: Optional[str]           = Field(None, min_length=2, max_length=100)
     categoria: Optional[str]        = None
     area: Optional[str]             = None
@@ -63,11 +105,70 @@ class ActivoUpdate(BaseModel):
     modelo: Optional[str]           = None
     numero_serie: Optional[str]     = None
     valor: Optional[float]          = Field(None, ge=0)
+    cantidad: Optional[float]       = Field(None, gt=0)
+    unidad_medida: Optional[str]    = None
+    stock_minimo: Optional[float]   = Field(None, ge=0)
     estado: Optional[str]           = None
     especificaciones: Optional[str] = None
     observaciones: Optional[str]    = None
     resguardo_nombre: Optional[str] = None
+    ubicacion_tipo: Optional[str]   = None
+    ubicacion_nombre: Optional[str] = None
     activo: Optional[bool]          = None
+
+
+class UbicacionInventarioIn(BaseModel):
+    nombre: str = Field(..., min_length=2, max_length=150)
+    tipo: str = Field(default="OFICINA")
+    edificio: Optional[str] = Field(None, max_length=120)
+    piso: Optional[str] = Field(None, max_length=40)
+    referencia: Optional[str] = Field(None, max_length=250)
+    departamento_id: Optional[int] = None
+    activo: bool = True
+
+
+class MovimientoInventarioCreate(BaseModel):
+    tipo: str = Field(..., description=f"Uno de: {TIPOS_MOVIMIENTO}")
+    departamento_destino_id: Optional[int] = None
+    ubicacion_destino_id: Optional[int] = None
+    resguardante_destino_id: Optional[int] = None
+    ubicacion_destino_nombre: Optional[str] = None
+    resguardante_destino_nombre: Optional[str] = None
+    cantidad: Optional[float] = Field(None, gt=0)
+    observaciones: Optional[str] = None
+
+
+class MovimientoInventarioEstado(BaseModel):
+    observaciones: Optional[str] = None
+
+
+class SolicitudBajaCreate(BaseModel):
+    motivo: str = Field(..., min_length=4)
+    diagnostico: Optional[str] = None
+    evidencia_url: Optional[str] = None
+    destino_final: Optional[str] = None
+    observaciones: Optional[str] = None
+
+
+class SolicitudBajaAccion(BaseModel):
+    observaciones: Optional[str] = None
+    destino_final: Optional[str] = None
+
+
+class LevantamientoCreate(BaseModel):
+    nombre: str = Field(..., min_length=3, max_length=150)
+    departamento_id: Optional[int] = None
+    laboratorio_id: Optional[int] = None
+    observaciones: Optional[str] = None
+
+
+class RevisionLevantamientoIn(BaseModel):
+    activo_id: int
+    estado: str = Field(..., description=f"Uno de: {ESTADOS_REVISION_LEVANTAMIENTO}")
+    ubicacion_reportada: Optional[str] = None
+    resguardante_reportado: Optional[str] = None
+    observaciones: Optional[str] = None
+    evidencia_url: Optional[str] = None
 
 class PrestamoCreate(BaseModel):
     activo_id: int
@@ -172,15 +273,35 @@ def _actualizar_estado_prestamos(db: Session):
         db.commit()
 
 def _serializar_activo(a: Activo, db: Session) -> dict:
-    lab = db.query(Laboratorio).filter(Laboratorio.id == a.laboratorio_id).first()
+    lab = db.query(Laboratorio).filter(Laboratorio.id == a.laboratorio_id).first() if a.laboratorio_id else None
+    dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first() if a.departamento_id else None
+    ubicacion = db.query(UbicacionInventario).filter(UbicacionInventario.id == a.ubicacion_id).first() if a.ubicacion_id else None
+    responsable = db.query(Usuario).filter(Usuario.id == a.responsable_id).first() if a.responsable_id else None
     prestamo_activo = db.query(Prestamo).filter(
         Prestamo.activo_id == a.id,
         Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
     ).first()
+    ubicacion_label = None
+    if ubicacion:
+        ubicacion_label = " / ".join([p for p in [ubicacion.edificio, ubicacion.nombre] if p])
+    elif a.ubicacion_nombre:
+        ubicacion_label = a.ubicacion_nombre
     return {
         "id": a.id,
+        "alcance": a.alcance or ("LABORATORIO" if a.laboratorio_id else "INSTITUCIONAL"),
+        "tipo_inventario": a.tipo_inventario or "ACTIVO",
+        "estado_admin": a.estado_admin or "VALIDADO",
         "laboratorio_id": a.laboratorio_id,
         "laboratorio_nombre": lab.nombre if lab else None,
+        "departamento_id": a.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "departamento_clave": dep.clave if dep else None,
+        "ubicacion_id": a.ubicacion_id,
+        "ubicacion_tipo": a.ubicacion_tipo or (ubicacion.tipo if ubicacion else None),
+        "ubicacion_nombre": a.ubicacion_nombre,
+        "ubicacion_label": ubicacion_label,
+        "responsable_id": a.responsable_id,
+        "responsable_nombre": responsable.nombre if responsable else None,
         "codigo_inventario": a.codigo_inventario,
         "nombre": a.nombre,
         "categoria": a.categoria,
@@ -189,6 +310,9 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
         "numero_serie": a.numero_serie,
         "fecha_adquisicion": a.fecha_adquisicion.isoformat() if a.fecha_adquisicion else None,
         "valor": a.valor,
+        "cantidad": a.cantidad,
+        "unidad_medida": a.unidad_medida,
+        "stock_minimo": a.stock_minimo,
         "estado": a.estado,
         "especificaciones": a.especificaciones,
         "observaciones": a.observaciones,
@@ -198,6 +322,172 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
         "prestado": prestamo_activo is not None,
         "prestamo_estado": prestamo_activo.estado if prestamo_activo else None,
     }
+
+
+def _serializar_ubicacion(u: UbicacionInventario, db: Session) -> dict:
+    dep = db.query(Departamento).filter(Departamento.id == u.departamento_id).first() if u.departamento_id else None
+    return {
+        "id": u.id,
+        "nombre": u.nombre,
+        "tipo": u.tipo,
+        "edificio": u.edificio,
+        "piso": u.piso,
+        "referencia": u.referencia,
+        "departamento_id": u.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "activo": u.activo,
+        "creado_en": u.creado_en.isoformat() if u.creado_en else None,
+        "label": " / ".join([p for p in [u.edificio, u.nombre] if p]),
+    }
+
+
+def _serializar_movimiento(m: MovimientoInventario, db: Session) -> dict:
+    activo = db.query(Activo).filter(Activo.id == m.activo_id).first()
+    dep_o = db.query(Departamento).filter(Departamento.id == m.departamento_origen_id).first() if m.departamento_origen_id else None
+    dep_d = db.query(Departamento).filter(Departamento.id == m.departamento_destino_id).first() if m.departamento_destino_id else None
+    ubi_o = db.query(UbicacionInventario).filter(UbicacionInventario.id == m.ubicacion_origen_id).first() if m.ubicacion_origen_id else None
+    ubi_d = db.query(UbicacionInventario).filter(UbicacionInventario.id == m.ubicacion_destino_id).first() if m.ubicacion_destino_id else None
+    solicitado = db.query(Usuario).filter(Usuario.id == m.solicitado_por_id).first() if m.solicitado_por_id else None
+    autorizado = db.query(Usuario).filter(Usuario.id == m.autorizado_por_id).first() if m.autorizado_por_id else None
+    entregado = db.query(Usuario).filter(Usuario.id == m.entregado_por_id).first() if m.entregado_por_id else None
+    recibido = db.query(Usuario).filter(Usuario.id == m.recibido_por_id).first() if m.recibido_por_id else None
+    return {
+        "id": m.id,
+        "activo_id": m.activo_id,
+        "activo_nombre": activo.nombre if activo else None,
+        "activo_codigo": activo.codigo_inventario if activo else None,
+        "tipo": m.tipo,
+        "estado": m.estado,
+        "departamento_origen_id": m.departamento_origen_id,
+        "departamento_origen_nombre": dep_o.nombre if dep_o else None,
+        "departamento_destino_id": m.departamento_destino_id,
+        "departamento_destino_nombre": dep_d.nombre if dep_d else None,
+        "ubicacion_origen_id": m.ubicacion_origen_id,
+        "ubicacion_origen_nombre": m.ubicacion_origen_nombre or (ubi_o.nombre if ubi_o else None),
+        "ubicacion_destino_id": m.ubicacion_destino_id,
+        "ubicacion_destino_nombre": m.ubicacion_destino_nombre or (ubi_d.nombre if ubi_d else None),
+        "resguardante_origen_id": m.resguardante_origen_id,
+        "resguardante_origen_nombre": m.resguardante_origen_nombre,
+        "resguardante_destino_id": m.resguardante_destino_id,
+        "resguardante_destino_nombre": m.resguardante_destino_nombre,
+        "cantidad": m.cantidad,
+        "solicitado_por": solicitado.nombre if solicitado else None,
+        "autorizado_por": autorizado.nombre if autorizado else None,
+        "entregado_por": entregado.nombre if entregado else None,
+        "recibido_por": recibido.nombre if recibido else None,
+        "fecha_solicitud": m.fecha_solicitud.isoformat() if m.fecha_solicitud else None,
+        "fecha_autorizacion": m.fecha_autorizacion.isoformat() if m.fecha_autorizacion else None,
+        "fecha_entrega": m.fecha_entrega.isoformat() if m.fecha_entrega else None,
+        "fecha_recepcion": m.fecha_recepcion.isoformat() if m.fecha_recepcion else None,
+        "observaciones": m.observaciones,
+        "evidencia_url": m.evidencia_url,
+    }
+
+
+def _serializar_solicitud_baja(s: SolicitudBajaInventario, db: Session) -> dict:
+    activo = db.query(Activo).filter(Activo.id == s.activo_id).first()
+    solicitado = db.query(Usuario).filter(Usuario.id == s.solicitado_por_id).first() if s.solicitado_por_id else None
+    revisado = db.query(Usuario).filter(Usuario.id == s.revisado_por_id).first() if s.revisado_por_id else None
+    validado = db.query(Usuario).filter(Usuario.id == s.validado_por_id).first() if s.validado_por_id else None
+    ejecutado = db.query(Usuario).filter(Usuario.id == s.ejecutado_por_id).first() if s.ejecutado_por_id else None
+    return {
+        "id": s.id,
+        "activo_id": s.activo_id,
+        "activo_nombre": activo.nombre if activo else None,
+        "activo_codigo": activo.codigo_inventario if activo else None,
+        "estado": s.estado,
+        "motivo": s.motivo,
+        "diagnostico": s.diagnostico,
+        "evidencia_url": s.evidencia_url,
+        "destino_final": s.destino_final,
+        "observaciones": s.observaciones,
+        "solicitado_por": solicitado.nombre if solicitado else None,
+        "revisado_por": revisado.nombre if revisado else None,
+        "validado_por": validado.nombre if validado else None,
+        "ejecutado_por": ejecutado.nombre if ejecutado else None,
+        "fecha_solicitud": s.fecha_solicitud.isoformat() if s.fecha_solicitud else None,
+        "fecha_revision": s.fecha_revision.isoformat() if s.fecha_revision else None,
+        "fecha_validacion": s.fecha_validacion.isoformat() if s.fecha_validacion else None,
+        "fecha_ejecucion": s.fecha_ejecucion.isoformat() if s.fecha_ejecucion else None,
+    }
+
+
+def _serializar_levantamiento(l: LevantamientoInventario, db: Session) -> dict:
+    dep = db.query(Departamento).filter(Departamento.id == l.departamento_id).first() if l.departamento_id else None
+    lab = db.query(Laboratorio).filter(Laboratorio.id == l.laboratorio_id).first() if l.laboratorio_id else None
+    creado = db.query(Usuario).filter(Usuario.id == l.creado_por_id).first() if l.creado_por_id else None
+    revisiones = db.query(RevisionLevantamientoInventario).filter(RevisionLevantamientoInventario.levantamiento_id == l.id).all()
+    return {
+        "id": l.id,
+        "nombre": l.nombre,
+        "estado": l.estado,
+        "departamento_id": l.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "laboratorio_id": l.laboratorio_id,
+        "laboratorio_nombre": lab.nombre if lab else None,
+        "creado_por": creado.nombre if creado else None,
+        "fecha_inicio": l.fecha_inicio.isoformat() if l.fecha_inicio else None,
+        "fecha_cierre": l.fecha_cierre.isoformat() if l.fecha_cierre else None,
+        "observaciones": l.observaciones,
+        "revisados": len(revisiones),
+        "no_localizados": sum(1 for r in revisiones if r.estado == "NO_LOCALIZADO"),
+        "propuestos_baja": sum(1 for r in revisiones if r.estado == "PROPUESTO_BAJA"),
+    }
+
+
+def _serializar_revision(r: RevisionLevantamientoInventario, db: Session) -> dict:
+    activo = db.query(Activo).filter(Activo.id == r.activo_id).first()
+    usuario = db.query(Usuario).filter(Usuario.id == r.revisado_por_id).first() if r.revisado_por_id else None
+    return {
+        "id": r.id,
+        "levantamiento_id": r.levantamiento_id,
+        "activo_id": r.activo_id,
+        "activo_nombre": activo.nombre if activo else None,
+        "activo_codigo": activo.codigo_inventario if activo else None,
+        "estado": r.estado,
+        "ubicacion_reportada": r.ubicacion_reportada,
+        "resguardante_reportado": r.resguardante_reportado,
+        "observaciones": r.observaciones,
+        "evidencia_url": r.evidencia_url,
+        "revisado_por": usuario.nombre if usuario else None,
+        "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
+    }
+
+
+def _validar_destinos_movimiento(data: MovimientoInventarioCreate, db: Session):
+    if data.tipo.upper() not in TIPOS_MOVIMIENTO:
+        raise HTTPException(status_code=422, detail=f"Tipo de movimiento invalido. Use: {TIPOS_MOVIMIENTO}")
+    if data.departamento_destino_id and not db.query(Departamento).filter(Departamento.id == data.departamento_destino_id).first():
+        raise HTTPException(status_code=404, detail="Departamento destino no encontrado")
+    if data.ubicacion_destino_id and not db.query(UbicacionInventario).filter(UbicacionInventario.id == data.ubicacion_destino_id, UbicacionInventario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Ubicacion destino no encontrada")
+    if data.resguardante_destino_id and not db.query(Usuario).filter(Usuario.id == data.resguardante_destino_id, Usuario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Resguardante destino no encontrado")
+
+
+def _aplicar_movimiento_recibido(activo: Activo, mov: MovimientoInventario):
+    tipo = (mov.tipo or "").upper()
+    if tipo == "BAJA":
+        activo.estado_admin = "BAJA_SOLICITADA"
+        activo.estado = "BAJA"
+        activo.activo = False
+        return
+    if tipo == "MANTENIMIENTO":
+        activo.estado = "MANTENIMIENTO"
+        return
+    if tipo in ("TRANSFERENCIA_DEPARTAMENTO", "CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE", "PRESTAMO_TEMPORAL", "RETORNO", "AJUSTE_INVENTARIO"):
+        if mov.departamento_destino_id is not None:
+            activo.departamento_id = mov.departamento_destino_id
+        if mov.ubicacion_destino_id is not None:
+            activo.ubicacion_id = mov.ubicacion_destino_id
+            activo.ubicacion_nombre = None
+        elif mov.ubicacion_destino_nombre:
+            activo.ubicacion_id = None
+            activo.ubicacion_nombre = mov.ubicacion_destino_nombre
+        if mov.resguardante_destino_id is not None:
+            activo.responsable_id = mov.resguardante_destino_id
+        if mov.resguardante_destino_nombre:
+            activo.resguardo_nombre = mov.resguardante_destino_nombre
 
 def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
     activo   = db.query(Activo).filter(Activo.id == p.activo_id).first()
@@ -360,9 +650,59 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
 
 # ─── Activos ───────────────────────────────────────────────────────────────────
 
+@router.get("/ubicaciones", summary="Listar ubicaciones de inventario")
+def listar_ubicaciones(
+    activo: Optional[bool] = True,
+    tipo: Optional[str] = None,
+    departamento_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_current_user),
+):
+    q = db.query(UbicacionInventario)
+    if activo is not None:
+        q = q.filter(UbicacionInventario.activo == activo)
+    if tipo:
+        q = q.filter(UbicacionInventario.tipo == tipo.upper())
+    if departamento_id:
+        q = q.filter(UbicacionInventario.departamento_id == departamento_id)
+    return [_serializar_ubicacion(u, db) for u in q.order_by(UbicacionInventario.edificio, UbicacionInventario.nombre).all()]
+
+
+@router.post("/ubicaciones", status_code=status.HTTP_201_CREATED, summary="Crear ubicacion de inventario")
+def crear_ubicacion(
+    data: UbicacionInventarioIn,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN)),
+):
+    tipo = data.tipo.upper()
+    if tipo not in TIPOS_UBICACION:
+        raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {TIPOS_UBICACION}")
+    if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    ubicacion = UbicacionInventario(
+        nombre=data.nombre.strip(),
+        tipo=tipo,
+        edificio=data.edificio.strip() if data.edificio else None,
+        piso=data.piso.strip() if data.piso else None,
+        referencia=data.referencia.strip() if data.referencia else None,
+        departamento_id=data.departamento_id,
+        activo=data.activo,
+        creado_en=_utcnow(),
+    )
+    db.add(ubicacion)
+    db.commit()
+    db.refresh(ubicacion)
+    return _serializar_ubicacion(ubicacion, db)
+
+
 @router.get("/activos", summary="Listar activos")
 def listar_activos(
     laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str]         = None,
+    tipo_inventario: Optional[str] = None,
+    estado_admin: Optional[str]    = None,
     categoria: Optional[str]      = None,
     estado: Optional[str]         = None,
     solo_activos: bool             = True,
@@ -378,6 +718,16 @@ def listar_activos(
         q = q.filter(Activo.laboratorio_id == laboratorio_id)
     elif current_user.rol == RolUsuario.LAB_ADMIN:
         q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    if departamento_id:
+        q = q.filter(Activo.departamento_id == departamento_id)
+    if ubicacion_id:
+        q = q.filter(Activo.ubicacion_id == ubicacion_id)
+    if alcance:
+        q = q.filter(Activo.alcance == alcance.upper())
+    if tipo_inventario:
+        q = q.filter(Activo.tipo_inventario == tipo_inventario.upper())
+    if estado_admin:
+        q = q.filter(Activo.estado_admin == estado_admin.upper())
     if categoria:
         q = q.filter(Activo.categoria == categoria.upper())
     if estado:
@@ -399,21 +749,59 @@ def crear_activo(
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     # RLS: LAB_ADMIN solo puede crear activos en su propio laboratorio
-    assert_lab_write(data.laboratorio_id, current_user)
+    alcance = (data.alcance or "LABORATORIO").upper()
+    if alcance not in ALCANCES_ACTIVO:
+        raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {ALCANCES_ACTIVO}")
+    if current_user.rol == RolUsuario.LAB_ADMIN and alcance != "LABORATORIO":
+        raise HTTPException(status_code=403, detail="Solo Super Admin puede crear activos institucionales")
+    tipo_inventario = (data.tipo_inventario or "ACTIVO").upper()
+    if tipo_inventario not in TIPOS_INVENTARIO:
+        raise HTTPException(status_code=422, detail=f"Tipo de inventario invalido. Use: {TIPOS_INVENTARIO}")
+    estado_admin = (data.estado_admin or "VALIDADO").upper()
+    if estado_admin not in ESTADOS_ADMIN_ACTIVO:
+        raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
+    unidad_medida = (data.unidad_medida or "PIEZA").upper()
+    if unidad_medida not in UNIDADES_MEDIDA:
+        raise HTTPException(status_code=422, detail=f"Unidad de medida invalida. Use: {UNIDADES_MEDIDA}")
 
     if data.categoria.upper() not in CATEGORIAS:
         raise HTTPException(status_code=422, detail=f"Categoría inválida. Use: {CATEGORIAS}")
-    if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
-        raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    if alcance == "LABORATORIO":
+        if not data.laboratorio_id:
+            raise HTTPException(status_code=422, detail="laboratorio_id es requerido para activos de laboratorio")
+        assert_lab_write(data.laboratorio_id, current_user)
+        if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
+            raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    elif data.laboratorio_id:
+        assert_lab_write(data.laboratorio_id, current_user)
+    if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    if data.ubicacion_id and not db.query(UbicacionInventario).filter(UbicacionInventario.id == data.ubicacion_id, UbicacionInventario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
+    if data.responsable_id and not db.query(Usuario).filter(Usuario.id == data.responsable_id, Usuario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Responsable no encontrado")
 
     # Auto-generar código si no se proporcionó
-    codigo = data.codigo_inventario or _generar_codigo(db, data.categoria, data.area)
+    area_codigo = data.area
+    if not area_codigo and data.departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == data.departamento_id).first()
+        area_codigo = dep.clave if dep else None
+    codigo = data.codigo_inventario or _generar_codigo(db, data.categoria, area_codigo)
 
     if db.query(Activo).filter(Activo.codigo_inventario == codigo).first():
         raise HTTPException(status_code=409, detail=f"Ya existe un activo con código '{codigo}'")
 
     payload = data.model_dump(exclude={"codigo_inventario"})
     payload["categoria"] = payload["categoria"].upper()
+    payload["alcance"] = alcance
+    payload["tipo_inventario"] = tipo_inventario
+    payload["estado_admin"] = estado_admin
+    payload["unidad_medida"] = unidad_medida
+    if tipo_inventario == "ACTIVO":
+        payload["cantidad"] = 1
+        payload["stock_minimo"] = None
+    if payload.get("ubicacion_tipo"):
+        payload["ubicacion_tipo"] = payload["ubicacion_tipo"].upper()
     a = Activo(**payload, codigo_inventario=codigo, fecha_adquisicion=_utcnow())
     db.add(a)
     db.commit()
@@ -456,6 +844,46 @@ def editar_activo(
     campos = data.model_dump(exclude_none=True)
     if "categoria" in campos:
         campos["categoria"] = campos["categoria"].upper()
+        if campos["categoria"] not in CATEGORIAS:
+            raise HTTPException(status_code=422, detail=f"Categoria invalida. Use: {CATEGORIAS}")
+    if "alcance" in campos:
+        campos["alcance"] = campos["alcance"].upper()
+        if campos["alcance"] not in ALCANCES_ACTIVO:
+            raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {ALCANCES_ACTIVO}")
+        if current_user.rol == RolUsuario.LAB_ADMIN and campos["alcance"] != "LABORATORIO":
+            raise HTTPException(status_code=403, detail="Solo Super Admin puede convertir activos a institucionales")
+    if "tipo_inventario" in campos:
+        campos["tipo_inventario"] = campos["tipo_inventario"].upper()
+        if campos["tipo_inventario"] not in TIPOS_INVENTARIO:
+            raise HTTPException(status_code=422, detail=f"Tipo de inventario invalido. Use: {TIPOS_INVENTARIO}")
+    if "estado_admin" in campos:
+        campos["estado_admin"] = campos["estado_admin"].upper()
+        if campos["estado_admin"] not in ESTADOS_ADMIN_ACTIVO:
+            raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
+    if "unidad_medida" in campos:
+        campos["unidad_medida"] = campos["unidad_medida"].upper()
+        if campos["unidad_medida"] not in UNIDADES_MEDIDA:
+            raise HTTPException(status_code=422, detail=f"Unidad de medida invalida. Use: {UNIDADES_MEDIDA}")
+    destino_lab = campos.get("laboratorio_id", a.laboratorio_id)
+    destino_alcance = campos.get("alcance", a.alcance or "LABORATORIO")
+    if destino_alcance == "LABORATORIO":
+        if not destino_lab:
+            raise HTTPException(status_code=422, detail="laboratorio_id es requerido para activos de laboratorio")
+        assert_lab_write(destino_lab, current_user)
+        if not db.query(Laboratorio).filter(Laboratorio.id == destino_lab, Laboratorio.activo == True).first():
+            raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    if "departamento_id" in campos and campos["departamento_id"] and not db.query(Departamento).filter(Departamento.id == campos["departamento_id"]).first():
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    if "ubicacion_id" in campos and campos["ubicacion_id"] and not db.query(UbicacionInventario).filter(UbicacionInventario.id == campos["ubicacion_id"], UbicacionInventario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
+    if "responsable_id" in campos and campos["responsable_id"] and not db.query(Usuario).filter(Usuario.id == campos["responsable_id"], Usuario.activo == True).first():
+        raise HTTPException(status_code=404, detail="Responsable no encontrado")
+    if "ubicacion_tipo" in campos and campos["ubicacion_tipo"]:
+        campos["ubicacion_tipo"] = campos["ubicacion_tipo"].upper()
+    tipo_final = campos.get("tipo_inventario", a.tipo_inventario or "ACTIVO")
+    if tipo_final == "ACTIVO":
+        campos["cantidad"] = 1
+        campos["stock_minimo"] = None
     for campo, valor in campos.items():
         setattr(a, campo, valor)
     db.commit()
@@ -494,6 +922,392 @@ def dar_baja_activo(
 
 
 # ─── Préstamos ─────────────────────────────────────────────────────────────────
+
+@router.get("/movimientos", summary="Listar movimientos de inventario")
+def listar_movimientos(
+    activo_id: Optional[int] = None,
+    estado: Optional[str] = None,
+    tipo: Optional[str] = None,
+    departamento_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    q = db.query(MovimientoInventario).join(Activo, MovimientoInventario.activo_id == Activo.id)
+    if current_user.rol == RolUsuario.LAB_ADMIN:
+        q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    if activo_id:
+        q = q.filter(MovimientoInventario.activo_id == activo_id)
+    if estado:
+        q = q.filter(MovimientoInventario.estado == estado.upper())
+    if tipo:
+        q = q.filter(MovimientoInventario.tipo == tipo.upper())
+    if departamento_id:
+        q = q.filter(
+            (MovimientoInventario.departamento_origen_id == departamento_id) |
+            (MovimientoInventario.departamento_destino_id == departamento_id)
+        )
+    movimientos = q.order_by(MovimientoInventario.fecha_solicitud.desc()).limit(250).all()
+    return [_serializar_movimiento(m, db) for m in movimientos]
+
+
+@router.post("/activos/{activo_id}/movimientos", status_code=status.HTTP_201_CREATED, summary="Solicitar movimiento de inventario")
+def solicitar_movimiento(
+    request: Request,
+    activo_id: int,
+    data: MovimientoInventarioCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    assert_resource_access(activo, current_user)
+    _validar_destinos_movimiento(data, db)
+    tipo = data.tipo.upper()
+    cantidad = data.cantidad or (1 if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" else activo.cantidad or 1)
+
+    if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" and cantidad != 1:
+        raise HTTPException(status_code=422, detail="Los activos individuales solo pueden moverse con cantidad 1")
+
+    mov = MovimientoInventario(
+        activo_id=activo.id,
+        tipo=tipo,
+        estado="SOLICITADO",
+        departamento_origen_id=activo.departamento_id,
+        departamento_destino_id=data.departamento_destino_id,
+        ubicacion_origen_id=activo.ubicacion_id,
+        ubicacion_destino_id=data.ubicacion_destino_id,
+        resguardante_origen_id=activo.responsable_id,
+        resguardante_destino_id=data.resguardante_destino_id,
+        ubicacion_origen_nombre=activo.ubicacion_nombre,
+        ubicacion_destino_nombre=data.ubicacion_destino_nombre.strip() if data.ubicacion_destino_nombre else None,
+        resguardante_origen_nombre=activo.resguardo_nombre,
+        resguardante_destino_nombre=data.resguardante_destino_nombre.strip() if data.resguardante_destino_nombre else None,
+        cantidad=cantidad,
+        solicitado_por_id=current_user.id,
+        fecha_solicitud=_utcnow(),
+        observaciones=data.observaciones,
+    )
+    db.add(mov)
+    db.commit()
+    db.refresh(mov)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=activo.id,
+              detalle={"movimiento_id": mov.id, "tipo": mov.tipo, "estado": mov.estado},
+              request=request)
+    return _serializar_movimiento(mov, db)
+
+
+@router.post("/movimientos/{movimiento_id}/{accion}", summary="Actualizar estado de movimiento")
+def actualizar_movimiento(
+    request: Request,
+    movimiento_id: int,
+    accion: str,
+    data: MovimientoInventarioEstado = MovimientoInventarioEstado(),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    mov = db.query(MovimientoInventario).filter(MovimientoInventario.id == movimiento_id).first()
+    if not mov:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    activo = db.query(Activo).filter(Activo.id == mov.activo_id).first()
+    assert_resource_access(activo, current_user)
+    accion = accion.lower()
+    ahora = _utcnow()
+
+    if accion == "autorizar":
+        if mov.estado != "SOLICITADO":
+            raise HTTPException(status_code=409, detail="Solo se pueden autorizar movimientos solicitados")
+        mov.estado = "AUTORIZADO"
+        mov.autorizado_por_id = current_user.id
+        mov.fecha_autorizacion = ahora
+    elif accion == "rechazar":
+        if mov.estado not in ("SOLICITADO", "AUTORIZADO"):
+            raise HTTPException(status_code=409, detail="El movimiento ya no puede rechazarse")
+        mov.estado = "RECHAZADO"
+        mov.autorizado_por_id = current_user.id
+        mov.fecha_autorizacion = ahora
+    elif accion == "entregar":
+        if mov.estado != "AUTORIZADO":
+            raise HTTPException(status_code=409, detail="Solo se pueden entregar movimientos autorizados")
+        mov.estado = "ENTREGADO"
+        mov.entregado_por_id = current_user.id
+        mov.fecha_entrega = ahora
+    elif accion == "recibir":
+        if mov.estado not in ("AUTORIZADO", "ENTREGADO"):
+            raise HTTPException(status_code=409, detail="Solo se pueden recibir movimientos autorizados o entregados")
+        _aplicar_movimiento_recibido(activo, mov)
+        mov.estado = "RECIBIDO"
+        mov.recibido_por_id = current_user.id
+        mov.fecha_recepcion = ahora
+    elif accion == "cancelar":
+        if mov.estado in ("RECIBIDO", "RECHAZADO"):
+            raise HTTPException(status_code=409, detail="El movimiento ya no puede cancelarse")
+        mov.estado = "CANCELADO"
+    else:
+        raise HTTPException(status_code=422, detail="Accion invalida. Use: autorizar, rechazar, entregar, recibir o cancelar")
+
+    if data.observaciones:
+        mov.observaciones = ((mov.observaciones or "") + "\n" + data.observaciones).strip()
+    db.commit()
+    db.refresh(mov)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=activo.id,
+              detalle={"movimiento_id": mov.id, "accion": accion, "estado": mov.estado},
+              request=request)
+    return _serializar_movimiento(mov, db)
+
+
+@router.get("/bajas", summary="Listar solicitudes de baja patrimonial")
+def listar_bajas(
+    estado: Optional[str] = None,
+    activo_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    q = db.query(SolicitudBajaInventario).join(Activo, SolicitudBajaInventario.activo_id == Activo.id)
+    if current_user.rol == RolUsuario.LAB_ADMIN:
+        q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    if estado:
+        q = q.filter(SolicitudBajaInventario.estado == estado.upper())
+    if activo_id:
+        q = q.filter(SolicitudBajaInventario.activo_id == activo_id)
+    bajas = q.order_by(SolicitudBajaInventario.fecha_solicitud.desc()).limit(250).all()
+    return [_serializar_solicitud_baja(b, db) for b in bajas]
+
+
+@router.post("/activos/{activo_id}/baja", status_code=status.HTTP_201_CREATED, summary="Solicitar baja patrimonial")
+def solicitar_baja(
+    request: Request,
+    activo_id: int,
+    data: SolicitudBajaCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    assert_resource_access(activo, current_user)
+    abierta = db.query(SolicitudBajaInventario).filter(
+        SolicitudBajaInventario.activo_id == activo_id,
+        SolicitudBajaInventario.estado.in_(["SOLICITADA", "EN_REVISION", "VALIDADA_FISICAMENTE", "AUTORIZADA"]),
+    ).first()
+    if abierta:
+        raise HTTPException(status_code=409, detail="El activo ya tiene una solicitud de baja abierta")
+    baja = SolicitudBajaInventario(
+        activo_id=activo.id,
+        estado="SOLICITADA",
+        motivo=data.motivo,
+        diagnostico=data.diagnostico,
+        evidencia_url=data.evidencia_url,
+        destino_final=data.destino_final,
+        observaciones=data.observaciones,
+        solicitado_por_id=current_user.id,
+        fecha_solicitud=_utcnow(),
+    )
+    activo.estado_admin = "BAJA_SOLICITADA"
+    db.add(baja)
+    db.commit()
+    db.refresh(baja)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=activo.id,
+              detalle={"solicitud_baja_id": baja.id, "estado": baja.estado},
+              request=request)
+    return _serializar_solicitud_baja(baja, db)
+
+
+@router.post("/bajas/{baja_id}/{accion}", summary="Actualizar tramite de baja patrimonial")
+def actualizar_baja(
+    request: Request,
+    baja_id: int,
+    accion: str,
+    data: SolicitudBajaAccion = SolicitudBajaAccion(),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    baja = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.id == baja_id).first()
+    if not baja:
+        raise HTTPException(status_code=404, detail="Solicitud de baja no encontrada")
+    activo = db.query(Activo).filter(Activo.id == baja.activo_id).first()
+    assert_resource_access(activo, current_user)
+    accion = accion.lower()
+    ahora = _utcnow()
+
+    if accion == "revisar":
+        if baja.estado != "SOLICITADA":
+            raise HTTPException(status_code=409, detail="Solo se pueden revisar bajas solicitadas")
+        baja.estado = "EN_REVISION"
+        baja.revisado_por_id = current_user.id
+        baja.fecha_revision = ahora
+    elif accion == "validar":
+        if baja.estado not in ("SOLICITADA", "EN_REVISION"):
+            raise HTTPException(status_code=409, detail="La baja no esta lista para validacion fisica")
+        baja.estado = "VALIDADA_FISICAMENTE"
+        baja.validado_por_id = current_user.id
+        baja.fecha_validacion = ahora
+    elif accion == "autorizar":
+        if baja.estado != "VALIDADA_FISICAMENTE":
+            raise HTTPException(status_code=409, detail="La baja requiere validacion fisica previa")
+        baja.estado = "AUTORIZADA"
+        baja.revisado_por_id = current_user.id
+        baja.fecha_revision = baja.fecha_revision or ahora
+    elif accion == "rechazar":
+        if baja.estado in ("EJECUTADA", "CANCELADA"):
+            raise HTTPException(status_code=409, detail="La baja ya no puede rechazarse")
+        baja.estado = "RECHAZADA"
+        activo.estado_admin = "OBSERVADO"
+    elif accion == "ejecutar":
+        if baja.estado != "AUTORIZADA":
+            raise HTTPException(status_code=409, detail="Solo se pueden ejecutar bajas autorizadas")
+        baja.estado = "EJECUTADA"
+        baja.ejecutado_por_id = current_user.id
+        baja.fecha_ejecucion = ahora
+        activo.estado_admin = "BAJA_EJECUTADA"
+        activo.estado = "BAJA"
+        activo.activo = False
+    elif accion == "cancelar":
+        if baja.estado == "EJECUTADA":
+            raise HTTPException(status_code=409, detail="Una baja ejecutada no puede cancelarse")
+        baja.estado = "CANCELADA"
+        activo.estado_admin = "VALIDADO"
+    else:
+        raise HTTPException(status_code=422, detail="Accion invalida. Use: revisar, validar, autorizar, rechazar, ejecutar o cancelar")
+
+    if data.destino_final:
+        baja.destino_final = data.destino_final
+    if data.observaciones:
+        baja.observaciones = ((baja.observaciones or "") + "\n" + data.observaciones).strip()
+    db.commit()
+    db.refresh(baja)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=activo.id,
+              detalle={"solicitud_baja_id": baja.id, "accion": accion, "estado": baja.estado},
+              request=request)
+    return _serializar_solicitud_baja(baja, db)
+
+
+@router.get("/levantamientos", summary="Listar levantamientos fisicos")
+def listar_levantamientos(
+    estado: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    q = db.query(LevantamientoInventario)
+    if current_user.rol == RolUsuario.LAB_ADMIN:
+        q = q.filter(LevantamientoInventario.laboratorio_id == current_user.laboratorio_id)
+    if estado:
+        q = q.filter(LevantamientoInventario.estado == estado.upper())
+    return [_serializar_levantamiento(l, db) for l in q.order_by(LevantamientoInventario.fecha_inicio.desc()).all()]
+
+
+@router.post("/levantamientos", status_code=status.HTTP_201_CREATED, summary="Crear campana de levantamiento fisico")
+def crear_levantamiento(
+    data: LevantamientoCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    lab_id = data.laboratorio_id
+    if lab_id:
+        assert_lab_write(lab_id, current_user)
+        if not db.query(Laboratorio).filter(Laboratorio.id == lab_id, Laboratorio.activo == True).first():
+            raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+    elif current_user.rol == RolUsuario.LAB_ADMIN:
+        lab_id = current_user.laboratorio_id
+    l = LevantamientoInventario(
+        nombre=data.nombre,
+        departamento_id=data.departamento_id,
+        laboratorio_id=lab_id,
+        observaciones=data.observaciones,
+        creado_por_id=current_user.id,
+        fecha_inicio=_utcnow(),
+    )
+    db.add(l)
+    db.commit()
+    db.refresh(l)
+    return _serializar_levantamiento(l, db)
+
+
+@router.post("/levantamientos/{levantamiento_id}/revisiones", status_code=status.HTTP_201_CREATED, summary="Registrar revision fisica de un bien")
+def registrar_revision_levantamiento(
+    levantamiento_id: int,
+    data: RevisionLevantamientoIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    l = db.query(LevantamientoInventario).filter(LevantamientoInventario.id == levantamiento_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="Levantamiento no encontrado")
+    if l.estado != "ABIERTO":
+        raise HTTPException(status_code=409, detail="El levantamiento no esta abierto")
+    activo = db.query(Activo).filter(Activo.id == data.activo_id).first()
+    assert_resource_access(activo, current_user)
+    estado = data.estado.upper()
+    if estado not in ESTADOS_REVISION_LEVANTAMIENTO:
+        raise HTTPException(status_code=422, detail=f"Estado de revision invalido. Use: {ESTADOS_REVISION_LEVANTAMIENTO}")
+    revision = db.query(RevisionLevantamientoInventario).filter(
+        RevisionLevantamientoInventario.levantamiento_id == levantamiento_id,
+        RevisionLevantamientoInventario.activo_id == data.activo_id,
+    ).first()
+    if not revision:
+        revision = RevisionLevantamientoInventario(
+            levantamiento_id=levantamiento_id,
+            activo_id=data.activo_id,
+            revisado_por_id=current_user.id,
+        )
+        db.add(revision)
+    revision.estado = estado
+    revision.ubicacion_reportada = data.ubicacion_reportada
+    revision.resguardante_reportado = data.resguardante_reportado
+    revision.observaciones = data.observaciones
+    revision.evidencia_url = data.evidencia_url
+    revision.fecha_revision = _utcnow()
+    if estado == "NO_LOCALIZADO":
+        activo.estado_admin = "OBSERVADO"
+    elif estado == "PROPUESTO_BAJA":
+        activo.estado_admin = "BAJA_SOLICITADA"
+    db.commit()
+    db.refresh(revision)
+    return _serializar_revision(revision, db)
+
+
+@router.post("/levantamientos/{levantamiento_id}/cerrar", summary="Cerrar levantamiento fisico")
+def cerrar_levantamiento(
+    levantamiento_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+):
+    l = db.query(LevantamientoInventario).filter(LevantamientoInventario.id == levantamiento_id).first()
+    if not l:
+        raise HTTPException(status_code=404, detail="Levantamiento no encontrado")
+    if current_user.rol == RolUsuario.LAB_ADMIN and l.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(status_code=403, detail="No puedes cerrar levantamientos de otro laboratorio")
+    l.estado = "CERRADO"
+    l.fecha_cierre = _utcnow()
+    db.commit()
+    db.refresh(l)
+    return _serializar_levantamiento(l, db)
+
+
+@router.get("/activos/{activo_id}/expediente", summary="Expediente digital del bien")
+def expediente_activo(
+    activo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    assert_resource_access(activo, current_user)
+    movimientos = db.query(MovimientoInventario).filter(MovimientoInventario.activo_id == activo_id).order_by(MovimientoInventario.fecha_solicitud.desc()).all()
+    bajas = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.activo_id == activo_id).order_by(SolicitudBajaInventario.fecha_solicitud.desc()).all()
+    revisiones = db.query(RevisionLevantamientoInventario).filter(RevisionLevantamientoInventario.activo_id == activo_id).order_by(RevisionLevantamientoInventario.fecha_revision.desc()).all()
+    prestamos = db.query(Prestamo).filter(Prestamo.activo_id == activo_id).order_by(Prestamo.fecha_salida.desc()).all()
+    incidentes = db.query(Incidente).filter(Incidente.activo_id == activo_id).order_by(Incidente.fecha_reporte.desc()).all()
+    return {
+        "activo": _serializar_activo(activo, db),
+        "movimientos": [_serializar_movimiento(m, db) for m in movimientos],
+        "bajas": [_serializar_solicitud_baja(b, db) for b in bajas],
+        "levantamientos": [_serializar_revision(r, db) for r in revisiones],
+        "prestamos": [_serializar_prestamo(p, db) for p in prestamos],
+        "incidentes": [_serializar_incidente(i, db) for i in incidentes],
+    }
+
 
 @router.get("/prestamos", summary="Listar préstamos")
 def listar_prestamos(
@@ -921,7 +1735,20 @@ def estadisticas_incidentes(
 
 @router.get("/categorias", summary="Categorías disponibles")
 def listar_categorias(_: Usuario = Depends(get_current_user)):
-    return {"categorias": CATEGORIAS, "estados": ESTADOS_ACTIVO, "condiciones": CONDICIONES}
+    return {
+        "categorias": CATEGORIAS,
+        "estados": ESTADOS_ACTIVO,
+        "condiciones": CONDICIONES,
+        "alcances": ALCANCES_ACTIVO,
+        "tipos_inventario": TIPOS_INVENTARIO,
+        "estados_admin": ESTADOS_ADMIN_ACTIVO,
+        "tipos_ubicacion": TIPOS_UBICACION,
+        "tipos_movimiento": TIPOS_MOVIMIENTO,
+        "estados_movimiento": ESTADOS_MOVIMIENTO,
+        "estados_baja": ESTADOS_BAJA,
+        "estados_levantamiento": ESTADOS_LEVANTAMIENTO,
+        "estados_revision_levantamiento": ESTADOS_REVISION_LEVANTAMIENTO,
+    }
 
 
 @router.get("/labs-nombres", summary="Nombres exactos de laboratorios activos")
@@ -937,6 +1764,11 @@ def labs_nombres(
 @router.get("/estadisticas", summary="Resumen del inventario")
 def estadisticas(
     laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str] = None,
+    tipo_inventario: Optional[str] = None,
+    estado_admin: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -948,14 +1780,29 @@ def estadisticas(
         q_a = q_a.filter(Activo.laboratorio_id == laboratorio_id)
     elif current_user.rol == RolUsuario.LAB_ADMIN:
         q_a = q_a.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    if departamento_id:
+        q_a = q_a.filter(Activo.departamento_id == departamento_id)
+    if ubicacion_id:
+        q_a = q_a.filter(Activo.ubicacion_id == ubicacion_id)
+    if alcance:
+        q_a = q_a.filter(Activo.alcance == alcance.upper())
+    if tipo_inventario:
+        q_a = q_a.filter(Activo.tipo_inventario == tipo_inventario.upper())
+    if estado_admin:
+        q_a = q_a.filter(Activo.estado_admin == estado_admin.upper())
 
     activos = q_a.all()
     ids = [a.id for a in activos]
     prestamos = db.query(Prestamo).filter(Prestamo.activo_id.in_(ids)).all() if ids else []
+    bajas = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.activo_id.in_(ids)).all() if ids else []
+    revisiones = db.query(RevisionLevantamientoInventario).filter(RevisionLevantamientoInventario.activo_id.in_(ids)).all() if ids else []
 
     por_categoria = {}
+    por_departamento = {}
     for a in activos:
         por_categoria[a.categoria] = por_categoria.get(a.categoria, 0) + 1
+        key = a.departamento_id or 0
+        por_departamento[key] = por_departamento.get(key, 0) + 1
 
     return {
         "total_activos": len(activos),
@@ -967,6 +1814,14 @@ def estadisticas(
         "prestamos_vencidos": sum(1 for p in prestamos if p.estado == "VENCIDO"),
         "prestamos_devueltos": sum(1 for p in prestamos if p.estado == "DEVUELTO"),
         "por_categoria": por_categoria,
+        "institucionales": sum(1 for a in activos if (a.alcance or "").upper() == "INSTITUCIONAL"),
+        "de_laboratorio": sum(1 for a in activos if (a.alcance or "LABORATORIO").upper() == "LABORATORIO"),
+        "activos_individuales": sum(1 for a in activos if (a.tipo_inventario or "ACTIVO").upper() == "ACTIVO"),
+        "bajas_pendientes": sum(1 for b in bajas if b.estado in ("SOLICITADA", "EN_REVISION", "VALIDADA_FISICAMENTE", "AUTORIZADA")),
+        "bajas_ejecutadas": sum(1 for b in bajas if b.estado == "EJECUTADA"),
+        "no_localizados": sum(1 for r in revisiones if r.estado == "NO_LOCALIZADO"),
+        "propuestos_baja": sum(1 for r in revisiones if r.estado == "PROPUESTO_BAJA"),
+        "por_departamento": por_departamento,
     }
 
 

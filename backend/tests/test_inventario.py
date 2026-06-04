@@ -40,6 +40,33 @@ class TestActivos:
         assert body["estado"] == "OPERATIVO"
         assert "codigo_inventario" in body
 
+    def test_admin_puede_crear_activo_institucional_sin_laboratorio(self, client, admin_user):
+        """SUPER_ADMIN puede registrar un activo institucional sin laboratorio."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        resp = client.post(
+            "/inventario/activos",
+            json={
+                "alcance": "INSTITUCIONAL",
+                "nombre": "Escritorio Rectoría",
+                "categoria": "MOBILIARIO",
+                "area": "RECTORIA",
+                "ubicacion_tipo": "OFICINA",
+                "ubicacion_nombre": "Edificio Administrativo / Rectoría",
+                "resguardo_nombre": "Rectoría",
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["alcance"] == "INSTITUCIONAL"
+        assert body["laboratorio_id"] is None
+        assert body["ubicacion_label"] == "Edificio Administrativo / Rectoría"
+
+        listado = client.get("/inventario/activos?alcance=INSTITUCIONAL", headers=auth_headers(token))
+        assert listado.status_code == 200
+        assert any(a["id"] == body["id"] for a in listado.json())
+
     def test_docente_no_puede_crear_activo(self, client, admin_user, docente_user, lab):
         """DOCENTE no tiene permiso para crear activos → 403."""
         token = get_token(client, "docente@test.com", "DocentePass123")
@@ -55,6 +82,89 @@ class TestActivos:
         resp = client.get("/inventario/activos", headers=auth_headers(token_doc))
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+
+    def test_no_se_permite_registrar_consumible_en_inventario(self, client, admin_user, lab):
+        """El inventario institucional solo permite activos patrimoniales individuales."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        resp = client.post(
+            "/inventario/activos",
+            json={
+                "laboratorio_id": lab.id,
+                "nombre": "Cables HDMI",
+                "categoria": "AUDIOVISUAL",
+                "tipo_inventario": "CONSUMIBLE",
+                "cantidad": 10,
+                "unidad_medida": "PIEZA",
+                "stock_minimo": 3,
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token),
+        )
+        assert resp.status_code == 422
+        assert "Tipo de inventario invalido" in resp.text
+
+    def test_flujo_baja_requiere_validacion_y_autorizacion(self, client, admin_user, lab):
+        """La baja patrimonial se solicita, valida, autoriza y hasta entonces se ejecuta."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo = self._crear_activo(client, token, lab.id, nombre="Silla rota")
+        assert activo.status_code == 201, activo.text
+        activo_id = activo.json()["id"]
+
+        baja = client.post(
+            f"/inventario/activos/{activo_id}/baja",
+            json={"motivo": "Respaldo quebrado", "diagnostico": "No reparable"},
+            headers=auth_headers(token),
+        )
+        assert baja.status_code == 201, baja.text
+        baja_id = baja.json()["id"]
+        assert baja.json()["estado"] == "SOLICITADA"
+
+        ejecutar_antes = client.post(f"/inventario/bajas/{baja_id}/ejecutar", json={}, headers=auth_headers(token))
+        assert ejecutar_antes.status_code == 409
+
+        validar = client.post(f"/inventario/bajas/{baja_id}/validar", json={}, headers=auth_headers(token))
+        assert validar.status_code == 200, validar.text
+        autorizar = client.post(f"/inventario/bajas/{baja_id}/autorizar", json={}, headers=auth_headers(token))
+        assert autorizar.status_code == 200, autorizar.text
+        ejecutar = client.post(
+            f"/inventario/bajas/{baja_id}/ejecutar",
+            json={"destino_final": "Desecho autorizado"},
+            headers=auth_headers(token),
+        )
+        assert ejecutar.status_code == 200, ejecutar.text
+        assert ejecutar.json()["estado"] == "EJECUTADA"
+
+        detalle = client.get(f"/inventario/activos/{activo_id}", headers=auth_headers(token))
+        assert detalle.status_code == 200
+        assert detalle.json()["estado_admin"] == "BAJA_EJECUTADA"
+        assert detalle.json()["activo"] is False
+
+    def test_levantamiento_registra_no_localizado_en_expediente(self, client, admin_user, lab):
+        """Un levantamiento puede marcar un bien como no localizado y aparece en expediente."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo = self._crear_activo(client, token, lab.id, nombre="Proyector revision")
+        assert activo.status_code == 201, activo.text
+        activo_id = activo.json()["id"]
+
+        levantamiento = client.post(
+            "/inventario/levantamientos",
+            json={"nombre": "Levantamiento 2026-A", "laboratorio_id": lab.id},
+            headers=auth_headers(token),
+        )
+        assert levantamiento.status_code == 201, levantamiento.text
+        levantamiento_id = levantamiento.json()["id"]
+
+        revision = client.post(
+            f"/inventario/levantamientos/{levantamiento_id}/revisiones",
+            json={"activo_id": activo_id, "estado": "NO_LOCALIZADO", "observaciones": "No se encontro fisicamente"},
+            headers=auth_headers(token),
+        )
+        assert revision.status_code == 201, revision.text
+
+        expediente = client.get(f"/inventario/activos/{activo_id}/expediente", headers=auth_headers(token))
+        assert expediente.status_code == 200, expediente.text
+        assert expediente.json()["levantamientos"][0]["estado"] == "NO_LOCALIZADO"
 
 
 class TestPrestamos:
@@ -238,4 +348,4 @@ class TestPrestamos:
         adeudos = resp_adeudos.json()
         assert len(adeudos) == 1
         assert adeudos[0]["persona_tipo"] == "DOCENTE"
-        assert adeudos[0]["tipo"] == "PRESTAMO"
+        assert adeudos[0]["tipo"] == "PRESTAMO_VENCIDO"

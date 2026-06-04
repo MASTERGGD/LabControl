@@ -122,7 +122,7 @@ def assert_resource_access(resource, current_user: Usuario,
 
     if current_user.rol == RolUsuario.LAB_ADMIN:
         lab_id = getattr(resource, lab_id_attr, None)
-        if lab_id is not None and lab_id != current_user.laboratorio_id:
+        if lab_id != current_user.laboratorio_id:
             raise _404()  # 404 para no revelar que el recurso existe
 
 

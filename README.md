@@ -29,6 +29,89 @@ En desarrollo activo. Stack principal:
 | Reportes y auditoría | Reportes por laboratorio, exportación Excel, auditoría de acciones |
 | Notificaciones | Campana en tiempo real, pendientes de comunicados |
 
+## Inventario Patrimonial Institucional
+
+El modulo de inventario evoluciono de un control de equipos de laboratorio a un flujo patrimonial institucional. La vista principal ahora prioriza una tabla operativa para auditoria, revision masiva y trazabilidad, en lugar de tarjetas visuales pensadas para pocos equipos.
+
+### Criterio Administrativo
+
+- El inventario patrimonial registra bienes individualizados: mobiliario, equipo de computo, equipo audiovisual, herramientas, equipo medico, vehiculos y bienes similares.
+- No se maneja el concepto de consumibles dentro de inventario patrimonial.
+- Materiales como tintas, etiquetas, papeleria o insumos por cantidad deben manejarse en un modulo separado de almacen/existencias.
+- Cada bien puede pertenecer a un laboratorio o ser institucional/sin laboratorio.
+- Los bienes pueden asignarse a departamento, ubicacion fisica y resguardante.
+
+### Datos Capturados Por Bien
+
+- Numero de inventario generado por sistema.
+- Nombre, categoria, marca, modelo, numero de serie y valor historico.
+- Alcance: laboratorio o institucional.
+- Departamento responsable, ubicacion registrada, ubicacion fisica libre y resguardante.
+- Estado fisico: operativo, mantenimiento, danado o baja.
+- Estado administrativo: borrador, en revision, observado, validado, rechazado, baja solicitada o baja ejecutada.
+
+### Movimientos Patrimoniales
+
+Los cambios de departamento, ubicacion o resguardante no se editan como dato suelto: se registran como movimientos con trazabilidad.
+
+Flujo de movimiento:
+
+1. Solicitado.
+2. Autorizado.
+3. Entregado.
+4. Recibido.
+5. Rechazado o cancelado cuando aplique.
+
+Cada movimiento conserva origen, destino, usuario solicitante/autorizador/receptor, fechas y observaciones.
+
+### Baja Patrimonial Formal
+
+La baja de un bien no equivale a borrarlo del sistema. Se implemento un expediente de baja con validacion fisica.
+
+Flujo de baja:
+
+1. Solicitud de baja con motivo, diagnostico, evidencia y destino final propuesto.
+2. Revision administrativa.
+3. Validacion fisica del bien.
+4. Autorizacion.
+5. Ejecucion de baja.
+
+El sistema impide ejecutar una baja si no fue validada y autorizada. Al ejecutarse, el bien queda inactivo, en estado fisico `BAJA` y estado administrativo `BAJA_EJECUTADA`.
+
+### Levantamientos Fisicos
+
+Se agrego soporte para campanas de levantamiento fisico por laboratorio o departamento.
+
+Estados posibles por bien revisado:
+
+- Localizado.
+- No localizado.
+- Otra ubicacion.
+- Danado.
+- Propuesto para baja.
+- Datos incompletos.
+
+Si un bien queda como no localizado, pasa a estado administrativo observado. Si queda propuesto para baja, pasa a baja solicitada.
+
+### Expediente Digital Del Bien
+
+Cada activo cuenta con expediente digital que concentra:
+
+- Datos generales del bien.
+- Movimientos.
+- Solicitudes y tramites de baja.
+- Levantamientos fisicos.
+- Prestamos.
+- Incidentes.
+
+### Reportes Oficiales Base
+
+La estructura queda alineada para exportar posteriormente los formatos minimos usados por gobierno:
+
+- E-R27 Inventario de Bienes Muebles.
+- E-R28 Inventario del Parque Vehicular y Equipo de Transporte.
+- E-R29 Inventario de Existencias en Almacen, como modulo futuro de almacen y no como inventario patrimonial.
+
 ## Roles
 
 | Rol | Acceso principal |
