@@ -15,11 +15,13 @@ router = APIRouter(prefix="/laboratorios", tags=["Laboratorios"])
 
 class LaboratorioCreate(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=100)
+    categoria: Optional[str] = Field(None, max_length=80)
     ubicacion: Optional[str] = None
     capacidad: int = Field(default=25, ge=1, le=200)
 
 class LaboratorioUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=100)
+    categoria: Optional[str] = Field(None, max_length=80)
     ubicacion: Optional[str] = None
     capacidad: Optional[int] = Field(None, ge=1, le=200)
     activo: Optional[bool] = None
@@ -27,6 +29,7 @@ class LaboratorioUpdate(BaseModel):
 class LaboratorioResponse(BaseModel):
     id: int
     nombre: str
+    categoria: Optional[str]
     ubicacion: Optional[str]
     capacidad: int
     activo: bool
@@ -76,6 +79,7 @@ def _enriquecer_lab(lab: Laboratorio) -> dict:
     return {
         "id": lab.id,
         "nombre": lab.nombre,
+        "categoria": lab.categoria,
         "ubicacion": lab.ubicacion,
         "capacidad": lab.capacidad,
         "activo": lab.activo,
@@ -88,7 +92,7 @@ def _get_lab_autorizado(lab_id: int, db: Session, user: Usuario) -> Laboratorio:
     lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
     if not lab:
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
-    if user.rol == RolUsuario.LAB_ADMIN and user.laboratorio_id != lab_id:
+    if user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB) and user.laboratorio_id != lab_id:
         raise HTTPException(status_code=403, detail="No tienes acceso a este laboratorio")
     return lab
 
@@ -309,4 +313,8 @@ def bulk_computadoras(
             activa  = True,
         )
         db.add(pc)
-        nueva
+        nuevas.append(pc)
+    db.commit()
+    for pc in nuevas:
+        db.refresh(pc)
+    return nuevas

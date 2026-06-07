@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -17,7 +18,11 @@ from models.usuario import Usuario
 from models.usuario_permiso import UsuarioPermiso
 from services.auditoria import registrar as _audit, Accion, Recurso
 from models.usuario import RolUsuario, Usuario
-from services.user_permissions import PERM_COMUNICADOS_WRITE, es_responsable_departamento
+from services.user_permissions import (
+    PERM_COMUNICADOS_WRITE,
+    PERM_INVENTARIO_WRITE,
+    es_responsable_departamento,
+)
 
 router = APIRouter(prefix="/departamentos", tags=["Departamentos"])
 
@@ -115,7 +120,11 @@ def crear_departamento(
         actualizado_en=_utcnow(),
     )
     db.add(dep)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un departamento con ese nombre o clave")
     db.refresh(dep)
     _audit(db, accion=Accion.CREAR_DEPARTAMENTO, recurso=Recurso.DEPARTAMENTO,
            usuario=current_user, recurso_id=dep.id,
@@ -140,7 +149,11 @@ def editar_departamento(
     dep.descripcion = data.descripcion.strip() if data.descripcion else None
     dep.activo = data.activo
     dep.actualizado_en = _utcnow()
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe un departamento con ese nombre o clave")
     db.refresh(dep)
     _audit(db, accion=Accion.EDITAR_DEPARTAMENTO, recurso=Recurso.DEPARTAMENTO,
            usuario=current_user, recurso_id=dep.id,
@@ -170,8 +183,15 @@ class ResponsableIn(BaseModel):
     responsable_id: Optional[int] = None   # None = quitar responsable
 
 
-class PermisoComunicadosIn(BaseModel):
+PERMISOS_DEPARTAMENTO = {
+    PERM_COMUNICADOS_WRITE,
+    PERM_INVENTARIO_WRITE,
+}
+
+
+class PermisoDepartamentoIn(BaseModel):
     usuario_id: int
+    permiso: str = PERM_COMUNICADOS_WRITE
     activo: bool
 
 
@@ -180,21 +200,64 @@ def _puede_administrar_permisos_departamento(dep: Departamento, usuario: Usuario
 
 
 def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: int) -> dict:
-    permiso = db.query(UsuarioPermiso).filter(
-        UsuarioPermiso.usuario_id == u.id,
-        UsuarioPermiso.departamento_id == departamento_id,
-        UsuarioPermiso.permiso == PERM_COMUNICADOS_WRITE,
-        UsuarioPermiso.activo == True,
-    ).first()
+    permisos_activos = {
+        row[0]
+        for row in db.query(UsuarioPermiso.permiso).filter(
+            UsuarioPermiso.usuario_id == u.id,
+            UsuarioPermiso.departamento_id == departamento_id,
+            UsuarioPermiso.permiso.in_(PERMISOS_DEPARTAMENTO),
+            UsuarioPermiso.activo == True,
+        ).all()
+    }
+    es_responsable = es_responsable_departamento(db, u, departamento_id)
+    puede_comunicados = PERM_COMUNICADOS_WRITE in permisos_activos or es_responsable
+    puede_inventario = PERM_INVENTARIO_WRITE in permisos_activos or es_responsable
     return {
         "id": u.id,
         "nombre": u.nombre,
         "email": u.email,
         "rol": u.rol.value,
         "departamento_id": u.departamento_id,
-        "es_responsable": es_responsable_departamento(db, u, departamento_id),
-        "puede_enviar_comunicados": bool(permiso) or es_responsable_departamento(db, u, departamento_id),
+        "es_responsable": es_responsable,
+        "permisos_departamento": {
+            PERM_COMUNICADOS_WRITE: puede_comunicados,
+            PERM_INVENTARIO_WRITE: puede_inventario,
+        },
+        "puede_enviar_comunicados": puede_comunicados,
+        "puede_gestionar_inventario": puede_inventario,
     }
+
+
+def _upsert_permiso_departamento(
+    db: Session,
+    usuario: Usuario,
+    departamento_id: int,
+    permiso_nombre: str,
+    activo: bool,
+    otorgado_por_id: int,
+):
+    permiso = db.query(UsuarioPermiso).filter(
+        UsuarioPermiso.usuario_id == usuario.id,
+        UsuarioPermiso.departamento_id == departamento_id,
+        UsuarioPermiso.permiso == permiso_nombre,
+    ).first()
+    now = _utcnow()
+    if permiso:
+        permiso.activo = activo
+        permiso.otorgado_por_id = otorgado_por_id if activo else permiso.otorgado_por_id
+        permiso.actualizado_en = now
+        return permiso
+    permiso = UsuarioPermiso(
+        usuario_id=usuario.id,
+        permiso=permiso_nombre,
+        departamento_id=departamento_id,
+        activo=activo,
+        otorgado_por_id=otorgado_por_id if activo else None,
+        creado_en=now,
+        actualizado_en=now,
+    )
+    db.add(permiso)
+    return permiso
 
 
 @router.patch("/{departamento_id}/responsable", summary="Asignar o quitar responsable del departamento")
@@ -236,10 +299,10 @@ def usuarios_departamento(
     return [_serializar_usuario_departamento(db, u, departamento_id) for u in usuarios]
 
 
-@router.patch("/{departamento_id}/permisos/comunicados", summary="Activar permiso para enviar comunicados")
-def actualizar_permiso_comunicados(
+@router.patch("/{departamento_id}/permisos", summary="Activar permisos departamentales")
+def actualizar_permiso_departamental(
     departamento_id: int,
-    data: PermisoComunicadosIn,
+    data: PermisoDepartamentoIn,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -248,6 +311,8 @@ def actualizar_permiso_comunicados(
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
     if not _puede_administrar_permisos_departamento(dep, current_user):
         raise HTTPException(status_code=403, detail="Solo el responsable del departamento o Super Admin puede cambiar permisos")
+    if data.permiso not in PERMISOS_DEPARTAMENTO:
+        raise HTTPException(status_code=422, detail="Permiso departamental invalido")
 
     usuario = db.query(Usuario).filter(
         Usuario.id == data.usuario_id,
@@ -257,31 +322,29 @@ def actualizar_permiso_comunicados(
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado en este departamento")
     if dep.responsable_id == usuario.id and not data.activo:
-        raise HTTPException(status_code=400, detail="El responsable del departamento siempre puede enviar comunicados")
+        raise HTTPException(status_code=400, detail="El responsable del departamento siempre conserva sus permisos")
 
-    permiso = db.query(UsuarioPermiso).filter(
-        UsuarioPermiso.usuario_id == usuario.id,
-        UsuarioPermiso.departamento_id == departamento_id,
-        UsuarioPermiso.permiso == PERM_COMUNICADOS_WRITE,
-    ).first()
-    now = _utcnow()
-    if permiso:
-        permiso.activo = data.activo
-        permiso.otorgado_por_id = current_user.id if data.activo else permiso.otorgado_por_id
-        permiso.actualizado_en = now
-    else:
-        permiso = UsuarioPermiso(
-            usuario_id=usuario.id,
-            permiso=PERM_COMUNICADOS_WRITE,
-            departamento_id=departamento_id,
-            activo=data.activo,
-            otorgado_por_id=current_user.id if data.activo else None,
-            creado_en=now,
-            actualizado_en=now,
-        )
-        db.add(permiso)
+    _upsert_permiso_departamento(
+        db,
+        usuario,
+        departamento_id,
+        data.permiso,
+        data.activo,
+        current_user.id,
+    )
     db.commit()
     return _serializar_usuario_departamento(db, usuario, departamento_id)
+
+
+@router.patch("/{departamento_id}/permisos/comunicados", summary="Activar permiso para enviar comunicados")
+def actualizar_permiso_comunicados(
+    departamento_id: int,
+    data: PermisoDepartamentoIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    data.permiso = PERM_COMUNICADOS_WRITE
+    return actualizar_permiso_departamental(departamento_id, data, db, current_user)
 
 
 _ROLES_RESPONSABLE = (

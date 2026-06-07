@@ -271,13 +271,7 @@ def eliminar_usuario(
     Bloquea si tiene horarios, sesiones, reservaciones o activos asociados.
     En ese caso usa desactivar (activo=False) en su lugar.
     """
-    from models.horario import HorarioDisponible, Reservacion
-    from models.sesion import Sesion
-    from models.inventario import Activo
-    from models.notificacion import Notificacion
-    from models.catalogo import CatalogoAlumno
-    from models.adeudo import Adeudo
-    from models.cumplimiento import EventoCumplimiento
+
 
     u = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not u:
@@ -289,61 +283,16 @@ def eliminar_usuario(
     if u.rol == RolUsuario.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="No se puede eliminar al Super Administrador")
 
-    # Verificar dependencias críticas (relaciones sin CASCADE ni SET NULL)
-    bloqueos = []
-    if db.query(HorarioDisponible).filter(HorarioDisponible.docente_id == usuario_id).count():
-        bloqueos.append("tiene horarios de clase asignados")
-    if db.query(Sesion).filter(Sesion.docente_id == usuario_id).count():
-        bloqueos.append("tiene sesiones de clase registradas")
-    if db.query(Reservacion).filter(Reservacion.solicitante_id == usuario_id).count():
-        bloqueos.append("tiene reservaciones")
-    if db.query(Activo).filter(Activo.autorizado_por == usuario_id).count():
-        bloqueos.append("autorizó activos de inventario")
-
-    if bloqueos:
-        raise HTTPException(
-            status_code=409,
-            detail=f"No se puede eliminar: el usuario {', '.join(bloqueos)}. "
-                   f"Desactívalo en su lugar para conservar el historial."
-        )
-
-    # Limpiar referencias nullable antes de borrar (SET NULL manual)
-    db.query(Notificacion).filter(Notificacion.usuario_id == usuario_id).delete()
-    db.query(Departamento).filter(Departamento.responsable_id == usuario_id).update(
-        {"responsable_id": None}, synchronize_session=False
-    )
-    # Desvincular del catálogo de alumnos (conserva el registro del alumno)
-    db.query(CatalogoAlumno).filter(CatalogoAlumno.usuario_id == usuario_id).update(
-        {"usuario_id": None}, synchronize_session=False
-    )
-    # Desvincular de adeudos y registros de cumplimiento
-    try:
-        db.query(Adeudo).filter(Adeudo.reportado_por_id == usuario_id).update(
-            {"reportado_por_id": None}, synchronize_session=False
-        )
-        db.query(Adeudo).filter(Adeudo.resuelto_por_id == usuario_id).update(
-            {"resuelto_por_id": None}, synchronize_session=False
-        )
-    except Exception:
-        pass
-    try:
-        db.query(EventoCumplimiento).filter(
-            EventoCumplimiento.registrado_por_id == usuario_id
-        ).update({"registrado_por_id": None}, synchronize_session=False)
-    except Exception:
-        pass
-
-    nombre_guardado = u.nombre
-    email_guardado  = u.email
-    db.delete(u)
+    # Desactivación lógica (soft delete): conserva historial e integridad referencial
+    u.activo = False
     db.commit()
 
     registrar(db, accion=Accion.ELIMINAR_USUARIO, recurso=Recurso.USUARIO,
               usuario=current_user, recurso_id=usuario_id,
-              detalle={"nombre": nombre_guardado, "email": email_guardado},
+              detalle={"nombre": u.nombre, "email": u.email},
               request=request)
 
-    return {"ok": True, "mensaje": f"Usuario '{nombre_guardado}' eliminado permanentemente"}
+    return {"ok": True, "mensaje": f"Usuario '{u.nombre}' desactivado"}
 
 
 @router.post("/{usuario_id}/reset-password", response_model=ResetPasswordResponse, summary="Resetear contraseña (admin)")
