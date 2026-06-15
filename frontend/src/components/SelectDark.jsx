@@ -205,7 +205,12 @@ export default function SelectDark({
                   }}
                   className="px-4 py-2.5 cursor-pointer select-none transition-colors duration-100 flex items-center justify-between gap-2 text-sm"
                 >
-                  <span className="truncate">{opt.label}</span>
+                  <span className="truncate min-w-0">
+                    {opt.label}
+                    {opt.sublabel && (
+                      <span className="ml-2 text-[11px] opacity-50">{opt.sublabel}</span>
+                    )}
+                  </span>
                   {isSelected && (
                     <svg className="w-3.5 h-3.5 shrink-0" style={{color:'var(--dropdown-accent)'}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />

@@ -41,6 +41,12 @@ body {
   --dropdown-active-bg:      rgba(255, 255, 255, 0.06);
   --accent-primary-glow:     rgba(99, 102, 241, 0.2);
   --layout-bg:               #0f172a;
+  --surface-panel:           rgba(15, 23, 42, 0.92);
+  --surface-panel-soft:      rgba(30, 41, 59, 0.62);
+  --surface-border:          rgba(255, 255, 255, 0.10);
+  --text-primary:            #f8fafc;
+  --text-secondary:          #cbd5e1;
+  --text-muted:              #94a3b8;
 }
 
 /* Tema claro: sobrescribe las variables */
@@ -63,6 +69,12 @@ body.theme-day {
   --dropdown-active-bg:      #f3f4f6;
   --accent-primary-glow:     rgba(5, 150, 105, 0.15);
   --layout-bg:               #f8fafc;
+  --surface-panel:           #ffffff;
+  --surface-panel-soft:      #f8fafc;
+  --surface-border:          #cbd5e1;
+  --text-primary:            #0f172a;
+  --text-secondary:          #334155;
+  --text-muted:              #64748b;
 }
 
 /* ─── Utilidades globales ───────────────────────────────────────────────────── */
@@ -75,10 +87,10 @@ body.theme-day {
 }
 
 .input-dark {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border-color);
   border-radius: 8px;
-  color: #f1f5f9;
+  color: var(--input-color);
   padding: 8px 12px;
   font-size: 14px;
   font-family: inherit;
@@ -90,7 +102,38 @@ body.theme-day {
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
-.input-dark::placeholder { color: #9CA3AF; }
+.input-dark::placeholder { color: var(--input-placeholder-color); }
+
+.theme-title { color: var(--text-primary); }
+.theme-text { color: var(--text-secondary); }
+.theme-muted { color: var(--text-muted); }
+.theme-divider { border-color: var(--surface-border); }
+
+/* Las acciones verdes solidas siempre usan texto blanco en ambos temas. */
+button[class~="bg-emerald-500"],
+button[class~="bg-emerald-600"],
+button[class~="bg-emerald-700"],
+button[class~="bg-emerald-800"],
+button[class~="bg-green-500"],
+button[class~="bg-green-600"],
+button[class~="bg-green-700"],
+button[class~="bg-green-800"],
+.btn-blue,
+.btn-emerald,
+.solid-green-action,
+button[class~="bg-emerald-500"] *,
+button[class~="bg-emerald-600"] *,
+button[class~="bg-emerald-700"] *,
+button[class~="bg-emerald-800"] *,
+button[class~="bg-green-500"] *,
+button[class~="bg-green-600"] *,
+button[class~="bg-green-700"] *,
+button[class~="bg-green-800"] *,
+.btn-blue *,
+.btn-emerald *,
+.solid-green-action * {
+  color: #ffffff !important;
+}
 
 /* ─── Slots del calendario de horarios (tema oscuro) ───────────────────────── */
 
@@ -135,4 +178,95 @@ body.theme-day {
 .slot-selecting {
   background: rgba(59, 130, 246, 0.2);
   border: 1px solid rgba(59, 130, 246, 0.5);
+}
+
+/* Reservaciones de espacios: aisladas de las reglas globales de color. */
+.space-booking-approved {
+  background: rgba(5, 150, 105, 0.26) !important;
+  border-color: rgba(52, 211, 153, 0.55) !important;
+}
+.space-booking-approved.space-booking-own {
+  background: rgba(79, 70, 229, 0.32) !important;
+  border-color: rgba(167, 139, 250, 0.65) !important;
+}
+.space-booking-pending {
+  background: rgba(217, 119, 6, 0.22) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+}
+.space-booking-pending.space-booking-own {
+  background: rgba(234, 88, 12, 0.25) !important;
+  border-color: rgba(251, 146, 60, 0.55) !important;
+}
+.space-booking-approved .space-booking-badge,
+.space-booking-approved .space-booking-person {
+  color: #a7f3d0 !important;
+}
+.space-booking-approved .space-booking-title {
+  color: #d1fae5 !important;
+}
+.space-booking-approved.space-booking-own .space-booking-badge,
+.space-booking-approved.space-booking-own .space-booking-person {
+  color: #c4b5fd !important;
+}
+.space-booking-approved.space-booking-own .space-booking-title {
+  color: #ede9fe !important;
+}
+.space-booking-pending .space-booking-title {
+  color: #fef3c7 !important;
+}
+.space-booking-pending .space-booking-reason,
+.space-booking-pending .space-booking-person {
+  color: #fde68a !important;
+}
+.space-booking-pending.space-booking-own .space-booking-title {
+  color: #ffedd5 !important;
+}
+.space-booking-pending.space-booking-own .space-booking-reason,
+.space-booking-pending.space-booking-own .space-booking-person {
+  color: #fed7aa !important;
+}
+
+body.theme-day .space-booking-approved {
+  background: #dcfce7 !important;
+  border-color: #22c55e !important;
+}
+body.theme-day .space-booking-approved .space-booking-badge,
+body.theme-day .space-booking-approved .space-booking-person {
+  color: #166534 !important;
+}
+body.theme-day .space-booking-approved .space-booking-title {
+  color: #14532d !important;
+}
+body.theme-day .space-booking-approved.space-booking-own {
+  background: #ede9fe !important;
+  border-color: #8b5cf6 !important;
+}
+body.theme-day .space-booking-approved.space-booking-own .space-booking-badge,
+body.theme-day .space-booking-approved.space-booking-own .space-booking-person {
+  color: #5b21b6 !important;
+}
+body.theme-day .space-booking-approved.space-booking-own .space-booking-title {
+  color: #4c1d95 !important;
+}
+body.theme-day .space-booking-pending {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+}
+body.theme-day .space-booking-pending .space-booking-title {
+  color: #78350f !important;
+}
+body.theme-day .space-booking-pending .space-booking-reason,
+body.theme-day .space-booking-pending .space-booking-person {
+  color: #92400e !important;
+}
+body.theme-day .space-booking-pending.space-booking-own {
+  background: #ffedd5 !important;
+  border-color: #f97316 !important;
+}
+body.theme-day .space-booking-pending.space-booking-own .space-booking-title {
+  color: #7c2d12 !important;
+}
+body.theme-day .space-booking-pending.space-booking-own .space-booking-reason,
+body.theme-day .space-booking-pending.space-booking-own .space-booking-person {
+  color: #9a3412 !important;
 }

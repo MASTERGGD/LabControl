@@ -311,13 +311,47 @@
       body.theme-day main .text-emerald-300,
       body.theme-day main .text-emerald-400 { color: #047857 !important; }
       body.theme-day main .text-amber-300,
-      body.theme-day main .text-amber-400 { color: #B45309 !important; }
+      body.theme-day main .text-amber-400 { color: #78350F !important; }
       body.theme-day main .text-red-300,
       body.theme-day main .text-red-400 { color: #DC2626 !important; }
       body.theme-day main .text-purple-300,
       body.theme-day main .text-purple-400 { color: #7C3AED !important; }
       body.theme-day main .text-white\/75 { color: #475569 !important; }
       body.theme-day main .text-white\/55 { color: #64748B !important; }
+
+      /* Tonos *-200 (casi blancos en dark) → legibles en claro */
+      body.theme-day main .text-red-200    { color: #b91c1c !important; }
+      body.theme-day main .text-amber-200  { color: #78350F !important; }
+      body.theme-day main .text-emerald-200{ color: #065f46 !important; }
+      body.theme-day main .text-blue-200   { color: #1e40af !important; }
+      body.theme-day main .text-slate-200  { color: #334155 !important; }
+      body.theme-day main .text-purple-200 { color: #5b21b6 !important; }
+
+      /* Fondos oscuros de alerta (bg-*-950/x) → tono suave claro */
+      body.theme-day main [class*="bg-red-950"]    { background-color: #fef2f2 !important; }
+      body.theme-day main [class*="bg-amber-950"]  { background-color: #fffbeb !important; }
+      body.theme-day main [class*="bg-emerald-950"]{ background-color: #f0fdf4 !important; }
+      body.theme-day main [class*="bg-blue-950"]   { background-color: #eff6ff !important; }
+      body.theme-day main [class*="bg-purple-950"] { background-color: #faf5ff !important; }
+
+      /* Botones de acción inline (bg-slate-700 / bg-slate-600) en tarjetas */
+      body.theme-day main [class*="bg-slate-700"],
+      body.theme-day main [class*="bg-slate-600"] {
+        background-color: #f1f5f9 !important;
+        color: #374151 !important;
+      }
+      body.theme-day main [class*="hover:bg-slate-600"]:hover,
+      body.theme-day main [class*="hover:bg-slate-700"]:hover {
+        background-color: #e2e8f0 !important;
+      }
+      /* Chips bg-*-500/20 con borde → fondos suaves */
+      body.theme-day main [class*="bg-red-500/20"]    { background-color: #fee2e2 !important; }
+      body.theme-day main [class*="bg-amber-500/20"]  { background-color: #fef3c7 !important; }
+      body.theme-day main [class*="bg-emerald-500/20"]{ background-color: #d1fae5 !important; }
+      body.theme-day main [class*="bg-purple-500/20"] { background-color: #ede9fe !important; }
+      body.theme-day main [class*="bg-blue-600/80"],
+      body.theme-day main [class*="bg-blue-600"]     { background-color: #007A53 !important; color: #ffffff !important; }
+      body.theme-day main [class*="bg-purple-600"]   { background-color: #7c3aed !important; color: #ffffff !important; }
 
       body.theme-day .fixed.inset-0 .glass,
       body.theme-day .fixed.inset-0 .glass-dark,
@@ -715,6 +749,80 @@
       .btn-emerald:active { transform: scale(.97); }
       .btn-emerald:disabled { opacity: .5; cursor: not-allowed; }
 
+      /* Contraste consistente para botones de accion verdes solidos.
+         Incluye modales del tema claro, cuyas reglas generales convierten
+         .text-white en texto oscuro si no se sobrescriben aqui. */
+      button.bg-emerald-500,
+      button.bg-emerald-600,
+      button.bg-emerald-700,
+      button.bg-emerald-800,
+      button.bg-emerald-600\/80,
+      button.bg-green-500,
+      button.bg-green-600,
+      button.bg-green-700,
+      button.bg-green-800,
+      a.bg-emerald-500,
+      a.bg-emerald-600,
+      a.bg-emerald-700,
+      a.bg-emerald-800,
+      a.bg-green-500,
+      a.bg-green-600,
+      a.bg-green-700,
+      a.bg-green-800,
+      .btn-blue,
+      .btn-emerald {
+        color: #FFFFFF !important;
+      }
+
+      button.bg-emerald-500 *,
+      button.bg-emerald-600 *,
+      button.bg-emerald-700 *,
+      button.bg-emerald-800 *,
+      button.bg-emerald-600\/80 *,
+      button.bg-green-500 *,
+      button.bg-green-600 *,
+      button.bg-green-700 *,
+      button.bg-green-800 *,
+      a.bg-emerald-500 *,
+      a.bg-emerald-600 *,
+      a.bg-emerald-700 *,
+      a.bg-emerald-800 *,
+      a.bg-green-500 *,
+      a.bg-green-600 *,
+      a.bg-green-700 *,
+      a.bg-green-800 *,
+      .btn-blue *,
+      .btn-emerald * {
+        color: #FFFFFF !important;
+      }
+
+      /* La especificidad adicional evita que el tema claro de los modales
+         vuelva negro el texto de botones verdes activos. */
+      body.theme-day .fixed.inset-0 button.bg-emerald-500,
+      body.theme-day .fixed.inset-0 button.bg-emerald-600,
+      body.theme-day .fixed.inset-0 button.bg-emerald-700,
+      body.theme-day .fixed.inset-0 button.bg-emerald-800,
+      body.theme-day .fixed.inset-0 button.bg-emerald-600\/80,
+      body.theme-day .fixed.inset-0 button.bg-green-500,
+      body.theme-day .fixed.inset-0 button.bg-green-600,
+      body.theme-day .fixed.inset-0 button.bg-green-700,
+      body.theme-day .fixed.inset-0 button.bg-green-800,
+      body.theme-day .fixed.inset-0 .btn-blue,
+      body.theme-day .fixed.inset-0 .btn-emerald,
+      body.theme-day .fixed.inset-0 button.bg-emerald-500 *,
+      body.theme-day .fixed.inset-0 button.bg-emerald-600 *,
+      body.theme-day .fixed.inset-0 button.bg-emerald-700 *,
+      body.theme-day .fixed.inset-0 button.bg-emerald-800 *,
+      body.theme-day .fixed.inset-0 button.bg-emerald-600\/80 *,
+      body.theme-day .fixed.inset-0 button.bg-green-500 *,
+      body.theme-day .fixed.inset-0 button.bg-green-600 *,
+      body.theme-day .fixed.inset-0 button.bg-green-700 *,
+      body.theme-day .fixed.inset-0 button.bg-green-800 *,
+      body.theme-day .fixed.inset-0 .btn-blue *,
+      body.theme-day .fixed.inset-0 .btn-emerald * {
+        color: #FFFFFF !important;
+      }
+
       .btn-ghost {
         background: rgba(255,255,255,0.05);
         color: var(--text-muted);
@@ -873,6 +981,5 @@
     </script>
   </body>
 </html>
-
 
 

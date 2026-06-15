@@ -4,6 +4,7 @@ import SelectDark      from '../../components/SelectDark';
 import DatePickerDark from '../../components/DatePickerDark';
 import api         from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
+import { todayISOInMexico } from '../../utils/timezone';
 
 // ── Colores por tipo de accion ─────────────────────────────────────────────
 const BADGE = {
@@ -99,8 +100,15 @@ function DetalleModal({ log, onClose }) {
                 {JSON.stringify(log.detalle, null, 2)
                   .split('\n')
                   .map((line, i) => {
-                    // Colorear llaves, strings, números y booleanos
-                    const html = line
+                    // Seguridad: escapar HTML ANTES de inyectar (el detalle del log
+                    // puede contener datos controlados por el atacante, p. ej. el
+                    // email de un login fallido). Evita XSS almacenado.
+                    const safe = line
+                      .replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;');
+                    // Colorear llaves, strings, números y booleanos (sobre texto ya escapado)
+                    const html = safe
                       .replace(/("[\w_]+")\s*:/g, '<span style="color:#93c5fd">$1</span>:')
                       .replace(/:\s*(".*?")/g, ': <span style="color:#86efac">$1</span>')
                       .replace(/:\s*(\d+\.?\d*)/g, ': <span style="color:#fca5a5">$1</span>')
@@ -189,7 +197,7 @@ export default function Auditoria() {
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bitacora_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.download = `bitacora_${todayISOInMexico()}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
