@@ -50,3 +50,11 @@ desktop.ini
 
 # ── Temporales ───────────────────────────────────────────────────────────────
 *.tmp
+.codex_tmp/
+
+# Artefactos auxiliares usados para generar manuales y auditorias visuales
+/screenshots/
+/outputs/manual_assets/
+/outputs/manual_work/
+/outputs/paquete_plantillas_siga_2026/_previews/
+/outputs/~$*.docx
