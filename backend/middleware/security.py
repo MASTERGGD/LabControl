@@ -125,15 +125,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             except KeyError:
                 pass
 
+        # Ruta autoritativa desde el scope ASGI (no manipulable por Host header).
+        path = str(request.scope.get("path") or "")
+
         # ── Cache-Control especial para endpoints de auth ──────────────────────
         # Los tokens JWT y datos de sesión nunca deben cachearse
-        if request.url.path.startswith("/auth"):
+        if path.startswith("/auth"):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
 
         # ── Recursos estáticos pueden cachearse (imágenes, iconos, etc.) ───────
         # No aplica al backend puro, pero por si se sirven assets algún día
-        path = request.url.path
         if path.startswith("/static") or path.endswith((".ico", ".png", ".svg")):
             response.headers["Cache-Control"] = "public, max-age=86400"
             try:

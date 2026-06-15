@@ -129,3 +129,45 @@ class TestMe:
         token = get_token(client, "admin@test.com", "AdminPass123")
         resp = client.get("/auth/me", headers={"Authorization": token.replace("Bearer ", "")})
         assert resp.status_code == 401
+
+
+class TestCambioPasswordObligatorio:
+
+    def test_bloquea_endpoints_hasta_cambiar_password(self, client, password_change_user):
+        token = get_token(client, "cambio@test.com", "TemporalPass123")
+
+        me = client.get("/auth/me", headers=auth_headers(token))
+        bloqueado = client.get("/usuarios", headers=auth_headers(token))
+
+        assert me.status_code == 200
+        assert me.json()["debe_cambiar_password"] is True
+        assert bloqueado.status_code == 403
+        assert bloqueado.headers["X-Password-Change-Required"] == "true"
+
+    def test_host_malformado_no_evita_el_bloqueo(self, client, password_change_user):
+        token = get_token(client, "cambio@test.com", "TemporalPass123")
+        headers = {
+            **auth_headers(token),
+            "Host": "example.com/auth/me?x=",
+        }
+
+        resp = client.get("/usuarios", headers=headers)
+
+        assert resp.status_code == 403
+        assert resp.headers["X-Password-Change-Required"] == "true"
+
+    def test_cambio_password_desbloquea_la_cuenta(self, client, password_change_user):
+        token = get_token(client, "cambio@test.com", "TemporalPass123")
+
+        cambiado = client.put(
+            "/usuarios/me/password",
+            headers=auth_headers(token),
+            json={
+                "password_actual": "TemporalPass123",
+                "password_nuevo": "NuevaSegura123",
+            },
+        )
+        desbloqueado = client.get("/usuarios", headers=auth_headers(token))
+
+        assert cambiado.status_code == 200
+        assert desbloqueado.status_code == 200

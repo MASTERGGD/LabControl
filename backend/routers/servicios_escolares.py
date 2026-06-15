@@ -450,6 +450,7 @@ def activar_acceso(
         password_hash=hashear_password(pwd),
         rol=RolUsuario.ALUMNO,
         activo=True,
+        debe_cambiar_password=True,  # contraseña temporal: forzar cambio
     )
     db.add(u)
     db.flush()
@@ -497,6 +498,7 @@ def reset_password_alumno(
     nueva = _gen_password()
     u.password_hash = hashear_password(nueva)
     u.activo = True
+    u.debe_cambiar_password = True  # contraseña temporal: forzar cambio al entrar
     db.commit()
 
     registrar(db, accion=Accion.RESET_PASSWORD_ALUMNO, recurso=Recurso.ALUMNO,

@@ -16,6 +16,15 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _scope_path(request: Request) -> str:
+    """Ruta autoritativa desde el scope ASGI (la que usa el enrutador).
+
+    No se deriva de request.url, que en versiones afectadas de Starlette podia
+    manipularse con una cabecera Host malformada (GHSA-86qp-5c8j-p5mr).
+    """
+    return str(request.scope.get("path") or "")
+
+
 def get_client_ip(request: Request) -> str:
     """Return a stable client IP, respecting proxy headers only when enabled."""
     trust_proxy = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in ("1", "true", "yes")
@@ -122,7 +131,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         if not self.enabled or request.method == "OPTIONS":
             return await call_next(request)
-        if request.url.path.startswith(("/health", "/docs", "/openapi.json")):
+        # Ruta desde el scope ASGI (la misma que usa el router), no desde
+        # request.url, para que no se pueda evadir el rate limit de /auth/login
+        # manipulando la cabecera Host.
+        if _scope_path(request).startswith(("/health", "/docs", "/openapi.json")):
             return await call_next(request)
 
         rule = self._match_rule(request)
@@ -139,7 +151,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
     def _match_rule(self, request: Request) -> RateLimitRule | None:
-        path = request.url.path
+        path = _scope_path(request)
         for rule in self.rules:
             if request.method in rule.methods and path.startswith(rule.prefix):
                 return rule

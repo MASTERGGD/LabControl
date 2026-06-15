@@ -41,6 +41,7 @@ class UsuarioResponse(BaseModel):
     departamento_clave: str | None = None
     permisos: list[str] = []
     activo: bool
+    debe_cambiar_password: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -66,6 +67,7 @@ def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
         "permisos": permisos_efectivos(db, usuario),
         "activo": usuario.activo,
         "acceso_consultorio": bool(usuario.acceso_consultorio),
+        "debe_cambiar_password": bool(getattr(usuario, "debe_cambiar_password", False)),
     }
 
 

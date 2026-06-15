@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -54,7 +54,19 @@ def decodificar_token(token: str) -> dict:
 
 # ─── Dependency: usuario autenticado ──────────────────────────────────────────
 
+# Operaciones exactas permitidas mientras el usuario tiene cambio pendiente.
+# La ruta sale del scope ASGI, no de request.url ni de headers manipulables.
+_OPERACIONES_PERMITIDAS_CAMBIO_PENDIENTE = frozenset({
+    ("GET", "/auth/me"),
+    ("PUT", "/usuarios/me/password"),
+    ("POST", "/auth/sessions/heartbeat"),
+    ("POST", "/auth/sessions/logout"),
+    ("GET", "/auth/sessions"),
+})
+
+
 def get_current_user(
+    request: Request,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> Usuario:
@@ -78,6 +90,20 @@ def get_current_user(
 
     if usuario is None:
         raise credencial_exception
+
+    # Cambio de contraseña obligatorio: bloquear todo excepto la allowlist.
+    if bool(getattr(usuario, "debe_cambiar_password", False)):
+        operation = (
+            request.method.upper(),
+            str(request.scope.get("path") or ""),
+        )
+        if operation not in _OPERACIONES_PERMITIDAS_CAMBIO_PENDIENTE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debes cambiar tu contraseña antes de continuar.",
+                headers={"X-Password-Change-Required": "true"},
+            )
+
     return usuario
 
 

@@ -6,6 +6,7 @@ import enum
 class RolUsuario(str, enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
     LAB_ADMIN = "LAB_ADMIN"
+    RESPONSABLE_LAB = "RESPONSABLE_LAB"
     DOCENTE = "DOCENTE"
     ADMINISTRATIVO = "ADMINISTRATIVO"
     TUTORIA_ADMIN = "TUTORIA_ADMIN"
@@ -26,6 +27,8 @@ class Usuario(Base):
     departamento_id = Column(Integer, ForeignKey("departamentos.id"), nullable=True)
     activo               = Column(Boolean, default=True)
     acceso_consultorio   = Column(Boolean, default=False)
+    # Obliga a cambiar la contraseña en el próximo login (p. ej. admin sembrado)
+    debe_cambiar_password = Column(Boolean, nullable=False, default=False, server_default="0")
 
     laboratorio = relationship("Laboratorio", back_populates="admin")
     departamento = relationship("Departamento", back_populates="usuarios", foreign_keys=[departamento_id])

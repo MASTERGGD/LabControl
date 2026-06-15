@@ -312,6 +312,7 @@ def reset_password(
 
     nueva = _generar_password()
     u.password_hash = hashear_password(nueva)
+    u.debe_cambiar_password = True  # contraseña temporal: forzar cambio al entrar
     db.commit()
 
     registrar(db, accion=Accion.CAMBIAR_PASSWORD, recurso=Recurso.USUARIO,
@@ -344,6 +345,7 @@ def cambiar_mi_password(
 
     u = db.query(Usuario).filter(Usuario.id == current_user.id).first()
     u.password_hash = hashear_password(data.password_nuevo)
+    u.debe_cambiar_password = False  # ya cumplió el cambio obligatorio
     db.commit()
 
     return {"mensaje": "Contraseña actualizada correctamente"}
@@ -466,6 +468,7 @@ async def bulk_excel(
             laboratorio_id=lab_id_int,
             departamento_id=dep_id_int,
             activo=True,
+            debe_cambiar_password=True,  # contraseña temporal: forzar cambio
         )
         db.add(usuario)
         creados.append({"fila": fila, "nombre": nombre, "email": email, "rol": rol_str, "password_temporal": password_tmp})
@@ -556,6 +559,7 @@ async def importar_docentes(
                 password_hash = hashear_password(password_final),
                 rol           = RolUsuario.DOCENTE,
                 activo        = True,
+                debe_cambiar_password = True,  # contraseña temporal: forzar cambio
             ))
             creados.append({
                 "fila":              row_idx,

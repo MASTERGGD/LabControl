@@ -87,6 +87,11 @@ from routers import (
     asistencia as asistencia_router,
     historial as historial_router,
     adeudos as adeudos_router,
+    comunicados as comunicados_router,
+    departamentos as departamentos_router,
+    espacios as espacios_router,
+    tutoria as tutoria_router,
+    system as system_router,
 )
 
 test_app = FastAPI(title="LabControl-Test", docs_url=None)
@@ -105,6 +110,11 @@ test_app.include_router(rbac_router.router)
 test_app.include_router(asistencia_router.router)
 test_app.include_router(historial_router.router)
 test_app.include_router(adeudos_router.router)
+test_app.include_router(comunicados_router.router)
+test_app.include_router(departamentos_router.router)
+test_app.include_router(espacios_router.router)
+test_app.include_router(tutoria_router.router)
+test_app.include_router(system_router.router)
 
 test_app.dependency_overrides[get_db] = override_get_db
 
@@ -163,6 +173,22 @@ def docente_user(db):
         password_hash=hashear_password("DocentePass123"),
         rol=RolUsuario.DOCENTE,
         activo=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture()
+def password_change_user(db):
+    user = Usuario(
+        nombre="Cambio Pendiente",
+        email="cambio@test.com",
+        password_hash=hashear_password("TemporalPass123"),
+        rol=RolUsuario.SUPER_ADMIN,
+        activo=True,
+        debe_cambiar_password=True,
     )
     db.add(user)
     db.commit()
