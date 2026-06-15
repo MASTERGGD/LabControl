@@ -6,6 +6,9 @@ import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/Cuat
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 
+const toTitleCase = s =>
+  !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+
 // ── Badges ────────────────────────────────────────────────────────────────────
 const ESTADO_CLS = {
   PENDIENTE:   'bg-red-500/15    text-red-400    border-red-500/30',
@@ -13,19 +16,27 @@ const ESTADO_CLS = {
   RESUELTO:    'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
   EXONERADO:   'bg-slate-500/15  text-slate-400  border-slate-500/30',
 };
+// Texto muy oscuro (≥7:1 WCAG AAA) sobre fondos pastel
 const TIPO_CLS = {
-  DAÑO:                 'bg-orange-500/15  text-orange-400  border-orange-500/30',
-  PERDIDA:              'bg-red-500/15     text-red-400     border-red-500/30',
-  ROBO:                 'bg-rose-500/15    text-rose-400    border-rose-500/30',
-  PRESTAMO_VENCIDO:     'bg-amber-500/15   text-amber-400   border-amber-500/30',
-  PRESTAMO_NO_DEVUELTO: 'bg-red-700/15     text-red-300     border-red-700/30',
-  OTRO:                 'bg-slate-500/15   text-slate-400   border-slate-500/30',
+  DAÑO:                 'bg-orange-500/20  text-orange-900  border-orange-500/40',
+  PERDIDA:              'bg-red-500/20     text-red-900     border-red-500/40',
+  ROBO:                 'bg-rose-500/20    text-rose-900    border-rose-500/40',
+  PRESTAMO_VENCIDO:     'bg-amber-500/20   text-amber-900   border-amber-500/40',
+  PRESTAMO_NO_DEVUELTO: 'bg-red-700/20     text-red-900     border-red-700/40',
+  OTRO:                 'bg-slate-500/15   text-slate-600   border-slate-500/30',
 };
+
+const PERSONA_TIPO_LABEL = {
+  ALUMNO:  'Alumno',
+  DOCENTE: 'Docente',
+  OTRO:    'Otro',
+};
+// Origen = metadato informativo → color neutro para no competir con estados reales
 const ORIGEN_CLS = {
-  MANUAL:                 'bg-slate-500/10   text-slate-400',
-  PRESTAMO:               'bg-blue-500/10    text-blue-400',
-  INCIDENTE_PRESENCIADO:  'bg-orange-500/10  text-orange-400',
-  REVISION_ENTRADA:       'bg-violet-500/10  text-violet-400',
+  MANUAL:                 'bg-slate-500/15 text-slate-400',
+  PRESTAMO:               'bg-slate-500/15 text-slate-400',
+  INCIDENTE_PRESENCIADO:  'bg-slate-500/15 text-slate-400',
+  REVISION_ENTRADA:       'bg-slate-500/15 text-slate-400',
 };
 const ORIGEN_LABEL = {
   MANUAL:                 'Manual',
@@ -669,14 +680,14 @@ export default function Adeudos() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
-          {label:'Total',       val:stats.total,     color:'text-white',      bg:'bg-slate-800'},
-          {label:'Pendientes',  val:stats.pendiente, color:'text-red-400',    bg:'bg-red-900/20'},
-          {label:'En revisión', val:stats.revision,  color:'text-amber-400',  bg:'bg-amber-900/20'},
-          {label:'Resueltos',   val:stats.resuelto,  color:'text-emerald-400',bg:'bg-emerald-900/20'},
-          {label:'Exonerados',  val:stats.exonerado, color:'text-slate-400',  bg:'bg-slate-800/50'},
+          {label:'Total',       val:stats.total,     num:'text-white',        border:'border-slate-700/50'},
+          {label:'Pendientes',  val:stats.pendiente, num:'text-red-400',      border:'border-red-800/40'},
+          {label:'En revisión', val:stats.revision,  num:'text-amber-400',    border:'border-amber-800/40'},
+          {label:'Resueltos',   val:stats.resuelto,  num:'text-emerald-400',  border:'border-emerald-800/40'},
+          {label:'Exonerados',  val:stats.exonerado, num:'text-slate-400',    border:'border-slate-700/50'},
         ].map(s => (
-          <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center border border-slate-700/50`}>
-            <div className={`text-2xl font-bold ${s.color}`}>{s.val}</div>
+          <div key={s.label} className={`bg-slate-800/60 rounded-xl p-3 text-center border ${s.border}`}>
+            <div className={`text-2xl font-bold ${s.num}`}>{s.val}</div>
             <div className="text-slate-500 text-xs mt-0.5">{s.label}</div>
           </div>
         ))}
@@ -695,9 +706,11 @@ export default function Adeudos() {
             options={[{value:'',label:'Todos los estados'},{value:'PENDIENTE',label:'🔴 Pendiente'},{value:'EN_REVISION',label:'🟡 En revisión'},{value:'RESUELTO',label:'🟢 Resuelto'},{value:'EXONERADO',label:'⚪ Exonerado'}]} />
           <CuatrimestreSelect value={filtroCuatri} onChange={setFiltroCuatri} />
         </div>
-        <div className="flex justify-end mt-2">
+        <div className="flex justify-end mt-3">
           <button onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroTipo(''); setFiltroCuatri(''); setFiltroLab(''); }}
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Limpiar filtros</button>
+            className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700/60 hover:border-slate-500 bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
+            ✕ Limpiar filtros
+          </button>
         </div>
       </div>
 
@@ -724,36 +737,43 @@ export default function Adeudos() {
               <tbody className="divide-y divide-slate-800/50">
                 {adeudos.map((a, i) => (
                   <tr key={a.id} className={`hover:bg-slate-800/30 transition-colors ${i%2===0?'':'bg-slate-800/10'}`}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-base">{PERSONA_ICON[a.persona_tipo]}</span>
-                        <span className="text-white font-medium text-xs max-w-[130px] truncate" title={a.persona_nombre}>{a.persona_nombre}</span>
+                    {/* Persona — columna ancha, nombre en Title Case sin truncar */}
+                    <td className="px-4 py-3 min-w-[200px]">
+                      <div className="flex items-start gap-2">
+                        <span className="text-base shrink-0 mt-0.5">{PERSONA_ICON[a.persona_tipo]}</span>
+                        <div>
+                          <span className="text-white font-medium text-sm leading-snug block">
+                            {toTitleCase(a.persona_nombre)}
+                          </span>
+                          <div className="mt-1"><TipoBadge tipo={a.tipo} /></div>
+                        </div>
                       </div>
-                      <div className="mt-0.5 ml-6"><TipoBadge tipo={a.tipo} /></div>
                     </td>
                     <td className="px-4 py-3 font-mono text-slate-300 text-xs">{a.persona_identificador}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs">{a.persona_tipo}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs">{PERSONA_TIPO_LABEL[a.persona_tipo] || a.persona_tipo}</td>
                     <td className="px-4 py-3"><OrigenBadge origen={a.origen_tipo} /></td>
-                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{a.laboratorio_nombre || '—'}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{a.cuatrimestre || '—'}</td>
-                    <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap">
-                      {a.monto_estimado != null ? `$${a.monto_estimado.toFixed(2)}` : '—'}
+                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{a.laboratorio_nombre || <span className="text-slate-700">—</span>}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{a.cuatrimestre || <span className="text-slate-700">—</span>}</td>
+                    <td className="px-4 py-3 text-right text-xs whitespace-nowrap">
+                      {a.monto_estimado != null
+                        ? <span className="text-slate-200 font-semibold">${a.monto_estimado.toFixed(2)}</span>
+                        : <span className="text-slate-700">—</span>}
                     </td>
                     <td className="px-4 py-3"><EstadoBadge estado={a.estado} /></td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-2">
                         <button onClick={() => { setSeleccionado(a); setModoModal('detalle'); }} title="Ver detalle"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                          className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
                         {!['RESUELTO','EXONERADO'].includes(a.estado) && (
                           <button onClick={() => { setSeleccionado(a); setModoModal('resolver'); }} title="Actualizar estado"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors">
+                            className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                           </button>
                         )}
                         <button onClick={() => handleEliminar(a.id)} title="Eliminar"
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+                          className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                       </div>

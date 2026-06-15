@@ -2,6 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import SelectDark from '../../components/SelectDark';
+import { useAuth } from '../../context/AuthContext';
+
+const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+const CATEGORIAS_LAB = ['COMPUTO','QUIMICA','AGROINDUSTRIA','PARAMEDICO','MECATRONICA','ENFERMERIA','IDIOMAS','GENERAL','OTRO'];
+const esLabComputo = categoria => (categoria || '').toUpperCase() === 'COMPUTO';
+const categoriaLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : 'Sin clasificar';
+const capacidadUnidad = c => esLabComputo(c) ? 'equipos' : 'personas/puestos';
 
 // ─── Ring Progress Chart ───────────────────────────────────────────────────────
 // SVG donut que cambia de color según disponibilidad
@@ -73,12 +81,40 @@ function StatusBadge({ activas, total }) {
 }
 
 // ─── Tarjeta de Laboratorio ───────────────────────────────────────────────────
-function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
-  const pct = lab.total_computadoras > 0 ? lab.computadoras_activas / lab.total_computadoras : 0;
+function CapacityBadge({ capacidad }) {
+  return (
+    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
+      {capacidad || 0} puestos
+    </span>
+  );
+}
+
+function CapacityCircle({ capacidad, size = 72 }) {
+  return (
+    <div
+      className="relative shrink-0 rounded-full flex flex-col items-center justify-center"
+      style={{
+        width: size,
+        height: size,
+        background: 'rgba(37,99,235,0.12)',
+        border: '1px solid rgba(96,165,250,0.28)',
+        boxShadow: '0 0 18px rgba(37,99,235,0.12)',
+      }}
+    >
+      <span className="font-bold text-base leading-none text-blue-200">{capacidad || 0}</span>
+      <span className="text-[9px] text-slate-500 mt-0.5 leading-none">puestos</span>
+    </div>
+  );
+}
+
+function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canManage }) {
+  const esComputo = esLabComputo(lab.categoria);
+  const pct = esComputo && lab.total_computadoras > 0 ? lab.computadoras_activas / lab.total_computadoras : 0;
 
   // Color de glow para el hover basado en disponibilidad
   const glowColor =
-    lab.total_computadoras === 0 ? 'rgba(100,116,139,0.3)'
+    !esComputo                 ? 'rgba(37,99,235,0.22)'
+    : lab.total_computadoras === 0 ? 'rgba(100,116,139,0.3)'
     : pct >= 0.70               ? 'rgba(16,185,129,0.25)'
     : pct >= 0.40               ? 'rgba(245,158,11,0.25)'
     :                             'rgba(239,68,68,0.25)';
@@ -86,8 +122,7 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
   return (
     <div
       className={`group relative glass rounded-xl p-5 flex flex-col gap-4
-                  transition-all duration-300 ease-out cursor-pointer select-none
-                  ${lab.activo ? '' : 'opacity-50'}`}
+                  transition-all duration-300 ease-out cursor-pointer select-none`}
       style={{
         '--glow': glowColor,
         transition: 'transform .25s ease, box-shadow .25s ease, border-color .25s ease',
@@ -103,52 +138,65 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
     >
       {/* Badge estado — esquina superior derecha */}
       <div className="absolute top-3.5 right-3.5">
-        <StatusBadge activas={lab.computadoras_activas} total={lab.total_computadoras} />
+        {esComputo
+          ? <StatusBadge activas={lab.computadoras_activas} total={lab.total_computadoras} />
+          : <CapacityBadge capacidad={lab.capacidad} />}
       </div>
 
       {/* Cuerpo principal: ring + info */}
       <div className="flex items-center gap-4">
-        <RingChart activas={lab.computadoras_activas} total={lab.total_computadoras} size={72} />
+        {esComputo
+          ? <RingChart activas={lab.computadoras_activas} total={lab.total_computadoras} size={72} />
+          : <CapacityCircle capacidad={lab.capacidad} size={72} />}
 
         <div className="flex-1 min-w-0 pr-12">
-          <h3 className="font-bold text-white text-base leading-tight truncate group-hover:text-blue-200 transition-colors duration-200">
-            {lab.nombre}
+          <h3 className="font-bold text-white text-base leading-tight truncate group-hover:text-emerald-200 transition-colors duration-200">
+            {toTitleCase(lab.nombre)}
           </h3>
+          <span className="inline-flex mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+            {categoriaLabel(lab.categoria)}
+          </span>
           {lab.ubicacion ? (
-            <p className="text-xs text-slate-500 mt-1 flex items-center gap-1 truncate">
+            <p className="text-xs mt-1 flex items-center gap-1 truncate" style={{ color: '#94a3b8' }}>
               <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
               </svg>
-              {lab.ubicacion}
+              {toTitleCase(lab.ubicacion)}
             </p>
           ) : (
-            <p className="text-xs text-slate-600 mt-1 italic">Sin ubicación</p>
+            <p className="text-xs mt-1 italic" style={{ color: '#64748b' }}>Sin ubicación</p>
           )}
 
           {/* Barra de progreso lineal */}
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-500">PCs activas</span>
+              <span className="text-[10px] text-slate-500">{esComputo ? 'PCs activas' : 'Capacidad registrada'}</span>
               <span className="text-[10px] text-slate-400 font-medium">
-                {lab.computadoras_activas} / {lab.total_computadoras}
-                {lab.total_computadoras > 0 && (
-                  <span className="text-slate-600"> ({Math.round(pct * 100)}%)</span>
-                )}
+                {esComputo ? (
+                  <>
+                    {lab.computadoras_activas} / {lab.total_computadoras}
+                    {lab.total_computadoras > 0 && (
+                      <span className="text-slate-600"> ({Math.round(pct * 100)}%)</span>
+                    )}
+                  </>
+                ) : `${lab.capacidad || 0} ${capacidadUnidad(lab.categoria)}`}
               </span>
             </div>
             <div className="h-1.5 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.07)'}}>
               <div
                 className="h-full rounded-full transition-all duration-700"
                 style={{
-                  width: `${Math.round(pct * 100)}%`,
+                  width: esComputo ? `${Math.round(pct * 100)}%` : '100%',
                   background:
-                    pct >= 0.70 ? 'linear-gradient(90deg,#059669,#10b981)'
+                    !esComputo ? 'linear-gradient(90deg,#2563eb,#38bdf8)'
+                    : pct >= 0.70 ? 'linear-gradient(90deg,#059669,#10b981)'
                     : pct >= 0.40 ? 'linear-gradient(90deg,#d97706,#f59e0b)'
                     : 'linear-gradient(90deg,#dc2626,#ef4444)',
                   boxShadow:
-                    pct >= 0.70 ? '0 0 6px #10b98166'
+                    !esComputo ? '0 0 6px #38bdf866'
+                    : pct >= 0.70 ? '0 0 6px #10b98166'
                     : pct >= 0.40 ? '0 0 6px #f59e0b66'
                     : '0 0 6px #ef444466',
                 }}
@@ -158,7 +206,7 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
 
           {/* Capacidad */}
           <p className="text-[10px] text-slate-600 mt-1.5">
-            Capacidad: {lab.capacidad} equipos
+            Capacidad: {lab.capacidad} {capacidadUnidad(lab.categoria)}
             {!lab.activo && <span className="ml-2 text-slate-500">(Inactivo)</span>}
           </p>
         </div>
@@ -169,44 +217,50 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
         <button
           onClick={() => onVerPCs(lab.id)}
           className="flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold
-                     py-2 rounded-xl transition-all duration-200
-                     bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white
-                     border border-blue-500/20 hover:border-blue-500
-                     hover:shadow-[0_0_16px_rgba(59,130,246,.4)]"
+                     py-2 rounded-xl transition-all duration-200 text-white
+                     hover:shadow-[0_0_16px_rgba(5,150,105,.35)]"
+          style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           </svg>
-          Ver PCs
+          {esComputo ? 'Ver PCs' : 'Ver laboratorio'}
         </button>
 
-        <button
-          onClick={() => onEditar(lab)}
-          className="px-3 py-2 rounded-xl transition-all duration-200
-                     bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white
-                     border border-white/5 hover:border-white/15"
-          title="Editar"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-          </svg>
-        </button>
-
-        {lab.activo && (
+        {canManage && (
           <button
-            onClick={() => onDesactivar(lab)}
-            className="px-3 py-2 rounded-xl transition-all duration-200
-                       bg-white/5 hover:bg-red-900/40 text-slate-400 hover:text-red-400
-                       border border-white/5 hover:border-red-700/40"
-            title="Desactivar"
+            onClick={() => onEditar(lab)}
+            className="px-3 py-2 rounded-xl transition-all duration-200 text-slate-500 hover:text-white hover:bg-white/10"
+            title="Editar"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
             </svg>
           </button>
+        )}
+
+        {canManage && (lab.activo ? (
+            <button
+              onClick={() => onDesactivar(lab)}
+              className="px-3 py-2 rounded-xl transition-all duration-200 text-slate-500 hover:text-red-400 hover:bg-red-900/30"
+              title="Desactivar"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={() => onActivar(lab)}
+              className="px-3 py-2 rounded-xl transition-all duration-200 text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-200 text-xs font-semibold"
+              title="Activar laboratorio"
+            >
+              Activar
+            </button>
+          )
         )}
       </div>
     </div>
@@ -217,6 +271,7 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar }) {
 function ModalLab({ lab, onClose, onSave }) {
   const [form, setForm]       = useState({
     nombre: lab?.nombre || '',
+    categoria: lab?.categoria || '',
     ubicacion: lab?.ubicacion || '',
     capacidad: lab?.capacidad ?? 25,
     activo: lab?.activo ?? true,
@@ -234,8 +289,17 @@ function ModalLab({ lab, onClose, onSave }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      if (lab) await api.put(`/laboratorios/${lab.id}`, form);
-      else     await api.post('/laboratorios', form);
+      const payload = {
+        ...form,
+        categoria: form.categoria || null,
+      };
+      const { data } = lab
+        ? await api.put(`/laboratorios/${lab.id}`, payload)
+        : await api.post('/laboratorios', payload);
+      if (payload.categoria && data?.categoria !== payload.categoria) {
+        setError('El backend no devolvio el tipo de laboratorio. Aplica la migracion y reinicia el backend.');
+        return;
+      }
       onSave();
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al guardar');
@@ -260,12 +324,26 @@ function ModalLab({ lab, onClose, onSave }) {
               placeholder="Ej: Lab de Cómputo 1" className="input-dark" />
           </div>
           <div>
+            <label className="block text-sm text-slate-400 mb-1.5">Tipo de laboratorio</label>
+            <SelectDark
+              value={form.categoria}
+              onChange={v => setForm({ ...form, categoria: v })}
+              placeholder="Sin clasificar"
+              options={[
+                { value: '', label: 'Sin clasificar' },
+                ...CATEGORIAS_LAB.map(c => ({ value: c, label: categoriaLabel(c) })),
+              ]}
+            />
+          </div>
+          <div>
             <label className="block text-sm text-slate-400 mb-1.5">Ubicación</label>
             <input name="ubicacion" value={form.ubicacion} onChange={handleChange}
               placeholder="Ej: Edificio A, Planta Baja" className="input-dark" />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1.5">Capacidad (equipos)</label>
+            <label className="block text-sm text-slate-400 mb-1.5">
+              Capacidad ({capacidadUnidad(form.categoria)})
+            </label>
             <input name="capacidad" type="number" min="1" max="200" value={form.capacidad}
               onChange={handleChange} className="input-dark" />
           </div>
@@ -339,22 +417,28 @@ function ModalConfirmar({ lab, onClose, onConfirm }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function Laboratorios() {
   const navigate = useNavigate();
+  const { usuario } = useAuth();
+  const puedeAdministrar = usuario?.rol === 'SUPER_ADMIN';
+  const esResponsable = usuario?.rol === 'RESPONSABLE_LAB';
   const [labs, setLabs]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [modalCrear, setModalCrear]   = useState(false);
   const [labEditar, setLabEditar]     = useState(null);
   const [labDesactivar, setLabDesactivar] = useState(null);
-  const [soloActivos, setSoloActivos] = useState(true);
+  const [soloActivos, setSoloActivos] = useState(false);
 
   const cargarLabs = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const { data } = await api.get(`/laboratorios?solo_activos=${soloActivos}`);
-      setLabs(data);
+      const labsVisibles = esResponsable
+        ? data.filter(lab => Number(lab.id) === Number(usuario?.laboratorio_id))
+        : data;
+      setLabs(labsVisibles);
     } catch { setError('No se pudieron cargar los laboratorios'); }
     finally  { setLoading(false); }
-  }, [soloActivos]);
+  }, [esResponsable, soloActivos, usuario?.laboratorio_id]);
 
   useEffect(() => { cargarLabs(); }, [cargarLabs]);
 
@@ -365,9 +449,25 @@ export default function Laboratorios() {
     } catch (err) { alert(err.response?.data?.detail || 'Error al desactivar'); }
   };
 
+  const handleActivar = async (lab) => {
+    try {
+      await api.put(`/laboratorios/${lab.id}`, { activo: true });
+      cargarLabs();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al activar');
+    }
+  };
+
   // Resumen rápido
-  const totPCs     = labs.reduce((s, l) => s + l.total_computadoras, 0);
-  const activasPCs = labs.reduce((s, l) => s + l.computadoras_activas, 0);
+  const labsComputo = labs.filter(l => esLabComputo(l.categoria));
+  const totPCs     = labsComputo.reduce((s, l) => s + l.total_computadoras, 0);
+  const activasPCs = labsComputo.reduce((s, l) => s + l.computadoras_activas, 0);
+  const gruposLabs = Object.entries(labs.reduce((acc, lab) => {
+    const key = lab.categoria || 'SIN_CLASIFICAR';
+    acc[key] = acc[key] || [];
+    acc[key].push(lab);
+    return acc;
+  }, {})).sort(([a], [b]) => categoriaLabel(a).localeCompare(categoriaLabel(b), 'es'));
 
   return (
     <AdminLayout>
@@ -375,18 +475,24 @@ export default function Laboratorios() {
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Laboratorios</h1>
-          <p className="text-slate-400 text-sm mt-0.5">Gestión de laboratorios y equipos de cómputo</p>
+          <h1 className="text-2xl font-bold text-white">{esResponsable ? 'Mi laboratorio' : 'Laboratorios'}</h1>
+          <p className="text-slate-400 text-sm mt-0.5">
+            {esResponsable
+              ? 'Consulta el laboratorio institucional que tienes asignado'
+              : 'Gestión de laboratorios institucionales y sus recursos'}
+          </p>
         </div>
-        <button
-          onClick={() => setModalCrear(true)}
-          className="btn-blue flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-          </svg>
-          Nuevo laboratorio
-        </button>
+        {puedeAdministrar && (
+          <button
+            onClick={() => setModalCrear(true)}
+            className="btn-blue flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
+            </svg>
+            Nuevo laboratorio
+          </button>
+        )}
       </div>
 
       {/* ── Resumen ── */}
@@ -409,14 +515,14 @@ export default function Laboratorios() {
       )}
 
       {/* ── Filtro ── */}
-      <div className="flex items-center gap-3 mb-5">
-        <label className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer select-none">
+      <div className="flex items-center gap-3 my-4">
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: '#cbd5e1' }}>
           <input type="checkbox" checked={soloActivos} onChange={e => setSoloActivos(e.target.checked)}
-            className="w-4 h-4 rounded accent-blue-500" />
+            className="w-4 h-4 rounded accent-emerald-500" />
           Solo activos
         </label>
-        <span className="text-slate-700">|</span>
-        <span className="text-sm text-slate-500">{labs.length} laboratorio{labs.length !== 1 ? 's' : ''}</span>
+        <span className="text-slate-600">|</span>
+        <span className="text-sm" style={{ color: '#94a3b8' }}>{labs.length} laboratorio{labs.length !== 1 ? 's' : ''}</span>
       </div>
 
       {/* ── Error ── */}
@@ -435,35 +541,57 @@ export default function Laboratorios() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           </svg>
-          <p className="font-medium">No hay laboratorios registrados</p>
-          <button onClick={() => setModalCrear(true)}
-            className="mt-3 text-blue-400 hover:text-blue-300 text-sm underline transition-colors">
-            Crear el primero →
-          </button>
+          <p className="font-medium">
+            {esResponsable ? 'No tienes un laboratorio asignado' : 'No hay laboratorios registrados'}
+          </p>
+          {esResponsable && (
+            <p className="text-sm mt-2">Solicita a un administrador que revise tu asignación.</p>
+          )}
+          {puedeAdministrar && (
+            <button onClick={() => setModalCrear(true)}
+              className="mt-3 text-blue-400 hover:text-blue-300 text-sm underline transition-colors">
+              Crear el primero →
+            </button>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {labs.map(lab => (
-            <LaboratoryCard
-              key={lab.id}
-              lab={lab}
-              onVerPCs={id => navigate(`/admin/laboratorios/${id}`)}
-              onEditar={setLabEditar}
-              onDesactivar={setLabDesactivar}
-            />
+        <div className="space-y-7">
+          {gruposLabs.map(([categoria, labsGrupo]) => (
+            <section key={categoria}>
+              <div className="flex items-center gap-3 mb-3">
+                <h2 className="text-sm font-semibold text-white">{categoriaLabel(categoria)}</h2>
+                <span className="text-xs text-slate-500 px-2 py-0.5 rounded-full bg-white/5">
+                  {labsGrupo.length} laboratorio{labsGrupo.length !== 1 ? 's' : ''}
+                </span>
+                <div className="h-px bg-white/10 flex-1" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {labsGrupo.map(lab => (
+                  <LaboratoryCard
+                    key={lab.id}
+                    lab={lab}
+                    onVerPCs={id => navigate(`/admin/laboratorios/${id}`)}
+                    onEditar={setLabEditar}
+                    onDesactivar={setLabDesactivar}
+                    onActivar={handleActivar}
+                    canManage={puedeAdministrar}
+                  />
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       )}
 
       {/* ── Modales ── */}
-      {(modalCrear || labEditar) && (
+      {puedeAdministrar && (modalCrear || labEditar) && (
         <ModalLab
           lab={labEditar}
           onClose={() => { setModalCrear(false); setLabEditar(null); }}
           onSave={()  => { setModalCrear(false); setLabEditar(null); cargarLabs(); }}
         />
       )}
-      {labDesactivar && (
+      {puedeAdministrar && labDesactivar && (
         <ModalConfirmar
           lab={labDesactivar}
           onClose={()  => setLabDesactivar(null)}

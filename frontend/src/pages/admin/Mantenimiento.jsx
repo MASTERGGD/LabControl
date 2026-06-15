@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
@@ -54,6 +54,7 @@ const COLUMNAS = [
   { key: 'EN_REVISION', label: 'En Revisión', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)',  border: 'rgba(59,130,246,0.3)', icon: '🔍' },
   { key: 'REPARADO',    label: 'Reparados',   color: '#10b981', bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.3)', icon: '✅' },
 ];
+const ESTADOS_CERRADOS = ['REPARADO', 'DADO_DE_BAJA', 'CERRADO_SIN_ADEUDO'];
 
 function formatFecha(iso) {
   if (!iso) return '—';
@@ -71,21 +72,22 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const extra = iconFromDesc(incidente.descripcion);
   // Nombre limpio: quitar doble guion y formatear
   const nombreRaw = incidente.activo_nombre
-    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '—');
+    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general del laboratorio');
   const nombre = nombreRaw.replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
 
   // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
   const adeudoPendiente = incidente.adeudo_id &&
     incidente.adeudo_estado !== 'RESUELTO' && incidente.adeudo_estado !== 'CANCELADO';
+  const cerrado = ESTADOS_CERRADOS.includes(incidente.estado);
 
   return (
     <div
-      draggable={!adeudoPendiente}
-      onDragStart={adeudoPendiente ? undefined : e => onDragStart(e, incidente)}
+      draggable={!adeudoPendiente && !cerrado}
+      onDragStart={adeudoPendiente || cerrado ? undefined : e => onDragStart(e, incidente)}
       onClick={() => onClick(incidente)}
       className={`glass-sm rounded-xl p-3.5 transition-all duration-150 select-none group
                   ${isDay ? 'bg-white border border-slate-200 hover:border-slate-300' : 'hover:brightness-110'}
-                  ${adeudoPendiente ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}
+                  ${adeudoPendiente || cerrado ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}
                   ${isDragOver ? 'ring-2 ring-blue-500/50' : ''}`}
       style={{ borderLeft: `3px solid ${incidente.prioridad === 'ALTA' ? '#ef4444' : incidente.prioridad === 'MEDIA' ? '#f59e0b' : '#475569'}` }}
     >
@@ -218,25 +220,84 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const navigate = useNavigate();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
+  const vinculoFijo = Boolean(incidente.computadora_id || incidente.activo_id);
+  const estaCerrado = ESTADOS_CERRADOS.includes(incidente.estado);
   const [form, setForm] = useState({
     estado:            incidente.estado,
     prioridad:         incidente.prioridad,
-    notas_seguimiento: incidente.notas_seguimiento || '',
     costo_reparacion:  incidente.costo_reparacion  || '',
   });
+  const [asignacion, setAsignacion] = useState(
+    incidente.computadora_id
+      ? `PC:${incidente.computadora_id}`
+      : incidente.activo_id
+        ? `ACTIVO:${incidente.activo_id}`
+        : 'GENERAL'
+  );
+  const [pcsLaboratorio, setPcsLaboratorio] = useState([]);
+  const [activosLaboratorio, setActivosLaboratorio] = useState([]);
+  const [cargandoEquipos, setCargandoEquipos] = useState(false);
+  const [identificandoEquipo, setIdentificandoEquipo] = useState(false);
+  const [motivoVinculacion, setMotivoVinculacion] = useState('');
+  const [seguimientos, setSeguimientos] = useState(incidente.seguimientos || []);
+  const [nuevoSeguimiento, setNuevoSeguimiento] = useState('');
+  const [guardandoSeguimiento, setGuardandoSeguimiento] = useState(false);
+  const [mostrarReapertura, setMostrarReapertura] = useState(false);
+  const [motivoReapertura, setMotivoReapertura] = useState('');
+  const [reabriendo, setReabriendo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (vinculoFijo || !identificandoEquipo || !incidente.laboratorio_id) return;
+    let mounted = true;
+    setCargandoEquipos(true);
+    Promise.all([
+      api.get(`/laboratorios/${incidente.laboratorio_id}/computadoras`),
+      api.get(`/inventario/activos?laboratorio_id=${incidente.laboratorio_id}&estado_admin=VALIDADO`),
+    ])
+      .then(([pcsRes, activosRes]) => {
+        if (!mounted) return;
+        setPcsLaboratorio(Array.isArray(pcsRes.data) ? pcsRes.data : []);
+        setActivosLaboratorio(Array.isArray(activosRes.data) ? activosRes.data : []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setPcsLaboratorio([]);
+        setActivosLaboratorio([]);
+      })
+      .finally(() => {
+        if (mounted) setCargandoEquipos(false);
+      });
+    return () => { mounted = false; };
+  }, [incidente.laboratorio_id, vinculoFijo, identificandoEquipo]);
+
   const handleGuardar = async () => {
     setSaving(true); setError('');
     try {
-      await api.put(`/inventario/incidentes/${incidente.id}`, {
+      const [tipoAsignacion, idAsignacion] = asignacion.split(':');
+      const payload = {
         estado:    form.estado,
         prioridad: form.prioridad,
-        notas_seguimiento: form.notas_seguimiento || null,
         costo_reparacion:  form.costo_reparacion ? parseFloat(form.costo_reparacion) : null,
-      });
+      };
+      if (!vinculoFijo && identificandoEquipo) {
+        if (asignacion === 'GENERAL') {
+          setError('Selecciona la PC o el activo identificado durante la revisión.');
+          setSaving(false);
+          return;
+        }
+        if (motivoVinculacion.trim().length < 5) {
+          setError('Describe brevemente cómo se identificó el equipo relacionado.');
+          setSaving(false);
+          return;
+        }
+        payload.activo_id = tipoAsignacion === 'ACTIVO' ? Number(idAsignacion) : null;
+        payload.computadora_id = tipoAsignacion === 'PC' ? Number(idAsignacion) : null;
+        payload.motivo_vinculacion = motivoVinculacion.trim();
+      }
+      await api.put(`/inventario/incidentes/${incidente.id}`, payload);
       toast('Incidente actualizado correctamente', 'success', { title: 'Guardado' });
       onActualizado();
       onClose();
@@ -245,8 +306,50 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
     } finally { setSaving(false); }
   };
 
+  const handleAgregarSeguimiento = async () => {
+    const texto = nuevoSeguimiento.trim();
+    if (texto.length < 2) {
+      setError('Escribe el seguimiento realizado.');
+      return;
+    }
+    setGuardandoSeguimiento(true); setError('');
+    try {
+      const { data } = await api.post(
+        `/inventario/incidentes/${incidente.id}/seguimientos`,
+        { texto }
+      );
+      setSeguimientos(data.seguimientos || []);
+      setNuevoSeguimiento('');
+      toast('Seguimiento agregado al historial', 'success');
+      onActualizado();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al agregar el seguimiento');
+    } finally {
+      setGuardandoSeguimiento(false);
+    }
+  };
+
+  const handleReabrir = async () => {
+    const motivo = motivoReapertura.trim();
+    if (motivo.length < 5) {
+      setError('Explica brevemente por que debe reabrirse la incidencia.');
+      return;
+    }
+    setReabriendo(true); setError('');
+    try {
+      await api.post(`/inventario/incidentes/${incidente.id}/reabrir`, { motivo });
+      toast('Incidencia reabierta y enviada a revision', 'success');
+      onActualizado();
+      onClose();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al reabrir la incidencia');
+    } finally {
+      setReabriendo(false);
+    }
+  };
+
   const tipo = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
-  const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Equipo');
+  const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general');
 
   return (
     <>
@@ -286,6 +389,20 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
 
         <div className="p-5 space-y-5">
 
+          {estaCerrado && (
+            <div className={`rounded-xl border px-4 py-3 ${
+              isDay
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100'
+            }`}>
+              <p className="text-sm font-bold">Expediente cerrado</p>
+              <p className="text-xs mt-1">
+                Los datos del reporte ya no se modifican. Puedes agregar seguimiento al historial
+                o reabrir la incidencia indicando el motivo.
+              </p>
+            </div>
+          )}
+
           {/* Info */}
           <div className={`glass-sm rounded-xl p-4 space-y-3 text-sm ${isDay ? 'bg-white border border-slate-200' : ''}`}>
             <div className="flex items-center justify-between">
@@ -308,6 +425,142 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             )}
           </div>
 
+          {/* Asociacion tecnica: fija si el reporte ya identifico el equipo */}
+          <div>
+            <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
+              Equipo relacionado
+            </label>
+            {vinculoFijo ? (
+              <div
+                className="rounded-xl border px-4 py-3"
+                style={{
+                  background: isDay ? '#eff6ff' : 'rgba(37,99,235,0.12)',
+                  borderColor: isDay ? '#93c5fd' : 'rgba(96,165,250,0.35)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className={`text-sm font-semibold ${isDay ? 'text-blue-950' : 'text-blue-100'}`}>
+                      {incidente.computadora_id
+                        ? `Puesto ${incidente.pc_codigo || `#${incidente.computadora_id}`}`
+                        : `${incidente.activo_codigo || `Activo #${incidente.activo_id}`} · ${incidente.activo_nombre || 'Activo de inventario'}`}
+                    </p>
+                    <p className={`text-xs mt-1 ${isDay ? 'text-blue-800' : 'text-blue-300'}`}>
+                      {incidente.origen === 'SESION' || incidente.origen === 'RECEPCION'
+                        ? 'Vinculado automáticamente con la evidencia de la sesión.'
+                        : 'Equipo identificado y vinculado por el responsable.'}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${
+                    isDay ? 'bg-blue-100 text-blue-800' : 'bg-blue-500/20 text-blue-200'
+                  }`}>
+                    Fijo
+                  </span>
+                </div>
+                {incidente.alumno_responsable && (
+                  <p className={`text-xs mt-2 pt-2 border-t ${
+                    isDay ? 'border-blue-200 text-slate-700' : 'border-blue-500/20 text-slate-300'
+                  }`}>
+                    Usuario registrado: {incidente.alumno_responsable.nombre}
+                    {incidente.alumno_responsable.matricula
+                      ? ` · ${incidente.alumno_responsable.matricula}`
+                      : ''}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div
+                className="rounded-xl border p-3"
+                style={{
+                  background: isDay ? '#f8fafc' : 'rgba(30,41,59,0.45)',
+                  borderColor: isDay ? '#cbd5e1' : 'rgba(255,255,255,0.10)',
+                }}
+              >
+                {!identificandoEquipo ? (
+                  <>
+                    <p className={`text-sm font-semibold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>
+                      Observación general del laboratorio
+                    </p>
+                    <p className={`text-xs mt-1 leading-relaxed ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                      No está asociada a una PC ni a un activo. Puede atenderse y cerrarse así,
+                      por ejemplo en limpieza, iluminación o seguridad.
+                    </p>
+                    {!estaCerrado && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdentificandoEquipo(true);
+                          setError('');
+                        }}
+                        className={`mt-3 w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                          isDay
+                            ? 'border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100'
+                            : 'border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
+                        }`}
+                      >
+                        Identificar equipo después de revisar
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-3">
+                    <SelectDark
+                      value={asignacion}
+                      onChange={setAsignacion}
+                      disabled={cargandoEquipos}
+                      options={[
+                        {
+                          value: 'GENERAL',
+                          label: cargandoEquipos
+                            ? 'Cargando equipos...'
+                            : 'Selecciona el equipo identificado...',
+                        },
+                        ...pcsLaboratorio.map(pc => ({
+                          value: `PC:${pc.id}`,
+                          label: `Puesto ${pc.codigo}${pc.fila ? ` · Fila ${pc.fila}` : ''}`,
+                        })),
+                        ...activosLaboratorio.map(activo => ({
+                          value: `ACTIVO:${activo.id}`,
+                          label: `${activo.codigo_inventario} · ${activo.nombre}`,
+                        })),
+                      ]}
+                    />
+                    <textarea
+                      rows={2}
+                      value={motivoVinculacion}
+                      onChange={e => setMotivoVinculacion(e.target.value)}
+                      placeholder="Ej. Durante la revisión se confirmó que la falla corresponde al proyector..."
+                      className="input-dark resize-none text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdentificandoEquipo(false);
+                          setAsignacion('GENERAL');
+                          setMotivoVinculacion('');
+                          setError('');
+                        }}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+                          isDay
+                            ? 'border-slate-300 bg-white text-slate-700'
+                            : 'border-slate-600 bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        Mantener general
+                      </button>
+                      <span className={`flex-1 px-2 py-2 text-center text-[11px] ${
+                        isDay ? 'text-slate-500' : 'text-slate-400'
+                      }`}>
+                        Se vinculará al guardar
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Estado */}
           <div>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Estado</p>
@@ -317,10 +570,12 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 ['EN_REVISION', '🔍', isDay ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-blue-500/50 bg-blue-500/10 text-blue-300'],
                 ['REPARADO',    '✅', isDay ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'],
                 ['DADO_DE_BAJA','📦', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400'],
-              ].map(([val, icon, cls]) => (
-                <label key={val} className={`flex items-center gap-2 p-2.5 rounded-xl border-2 cursor-pointer text-sm transition-all
+              ].filter(([val]) => val !== 'DADO_DE_BAJA' || vinculoFijo).map(([val, icon, cls]) => (
+                <label key={val} className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm transition-all
+                  ${estaCerrado ? 'cursor-default opacity-80' : 'cursor-pointer'}
                   ${form.estado === val ? `${cls} border-opacity-100` : isDay ? 'border-slate-200 hover:border-slate-300 text-slate-600 bg-white' : 'border-white/5 hover:border-white/10 text-slate-400'}`}>
                   <input type="radio" name="estado" value={val} className="sr-only"
+                    disabled={estaCerrado}
                     checked={form.estado === val}
                     onChange={() => setForm({...form, estado: val})} />
                   <span>{icon}</span>
@@ -340,8 +595,10 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 ['MEDIA','🟡', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
                 ['BAJA','⚪', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,icon,cls]) => (
                 <button key={val} type="button"
+                  disabled={estaCerrado}
                   onClick={() => setForm({...form, prioridad: val})}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex items-center justify-center gap-1.5
+                    ${estaCerrado ? 'cursor-default opacity-80' : ''}
                     ${form.prioridad === val ? `${cls}` : isDay ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white' : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
                   {icon} {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
                 </button>
@@ -355,19 +612,76 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
               <input type="number" min="0" step="0.01" placeholder="0.00"
+                disabled={estaCerrado}
                 value={form.costo_reparacion}
                 onChange={e => setForm({...form, costo_reparacion: e.target.value})}
-                className="input-dark pl-7" />
+                className={`input-dark pl-7 ${estaCerrado ? 'cursor-default opacity-75' : ''}`} />
             </div>
           </div>
 
-          {/* Notas */}
+          {/* Historial inmutable */}
+          <div className={`rounded-xl border p-4 ${
+            isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+          }`}>
+            <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-3">
+              Historial de seguimiento
+            </p>
+            {seguimientos.length === 0 ? (
+              <p className={`text-sm ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                Todavía no hay seguimientos registrados.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {[...seguimientos].reverse().map(seg => (
+                  <div key={seg.id} className={`border-l-2 pl-3 ${
+                    seg.tipo === 'REAPERTURA'
+                      ? 'border-amber-500'
+                      : seg.tipo === 'CAMBIO_ESTADO'
+                        ? 'border-blue-500'
+                        : 'border-emerald-500'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-xs font-semibold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {seg.usuario_nombre || 'Sistema'}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {seg.creado_en
+                          ? new Date(seg.creado_en).toLocaleString('es-MX', {
+                              day: '2-digit', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit'
+                            })
+                          : ''}
+                      </span>
+                    </div>
+                    <p className={`text-sm mt-1 whitespace-pre-wrap ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>
+                      {seg.texto}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Nuevo seguimiento: disponible incluso con el expediente cerrado */}
           <div>
-            <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Notas de seguimiento</label>
-            <textarea rows={4} placeholder="Describe qué se revisó, reparó o quién atendió…"
-              value={form.notas_seguimiento}
-              onChange={e => setForm({...form, notas_seguimiento: e.target.value})}
-              className="input-dark resize-none leading-relaxed" />
+            <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
+              Agregar seguimiento
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Describe la llamada, revisión, reparación o acción realizada..."
+              value={nuevoSeguimiento}
+              onChange={e => setNuevoSeguimiento(e.target.value)}
+              className="input-dark resize-none leading-relaxed"
+            />
+            <button
+              type="button"
+              onClick={handleAgregarSeguimiento}
+              disabled={guardandoSeguimiento}
+              className="btn-blue w-full mt-2"
+            >
+              {guardandoSeguimiento ? 'Agregando...' : 'Agregar al historial'}
+            </button>
           </div>
 
           {/* Adeudo vinculado o botón crear */}
@@ -430,13 +744,73 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             </div>
           )}
 
+          {estaCerrado && mostrarReapertura && (
+            <div className={`rounded-xl border p-4 ${
+              isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-500/10 border-amber-500/30'
+            }`}>
+              <label className={`block text-sm font-semibold mb-2 ${
+                isDay ? 'text-amber-950' : 'text-amber-100'
+              }`}>
+                Motivo de reapertura
+              </label>
+              <textarea
+                rows={3}
+                value={motivoReapertura}
+                onChange={e => setMotivoReapertura(e.target.value)}
+                placeholder="Ej. La falla reapareció durante la siguiente sesión..."
+                className="input-dark resize-none"
+              />
+              <p className={`text-xs mt-2 ${isDay ? 'text-amber-900' : 'text-amber-200'}`}>
+                La incidencia volverá a En revisión y el equipo quedará en mantenimiento.
+              </p>
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarReapertura(false);
+                    setMotivoReapertura('');
+                    setError('');
+                  }}
+                  className="btn-ghost flex-1"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReabrir}
+                  disabled={reabriendo}
+                  className="btn-blue flex-1"
+                >
+                  {reabriendo ? 'Reabriendo...' : 'Confirmar reapertura'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>}
 
           <div className="flex gap-3 pb-4">
-            <button onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
-            <button onClick={handleGuardar} disabled={saving} className="btn-blue flex-1">
-              {saving ? 'Guardando…' : '💾 Guardar'}
+            <button onClick={onClose} className="btn-ghost flex-1">
+              {estaCerrado ? 'Cerrar' : 'Cancelar'}
             </button>
+            {estaCerrado ? (
+              !mostrarReapertura && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarReapertura(true);
+                    setError('');
+                  }}
+                  className="btn-blue flex-1"
+                >
+                  Reabrir incidencia
+                </button>
+              )
+            ) : (
+              <button onClick={handleGuardar} disabled={saving} className="btn-blue flex-1">
+                {saving ? 'Guardando…' : '💾 Guardar'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -760,14 +1134,19 @@ function diasParaVencer(fechaStr) {
 
 // ─── Modal: Programar mantenimiento preventivo ─────────────────────────────
 
-function ModalNuevoMant({ laboratorios, activos, onClose, onCreado }) {
+function ModalNuevoMant({ laboratorios, activos, activoInicialId, onClose, onCreado }) {
   const { toast } = useToast();
   const { usuario } = useAuth();
   const esLabAdmin = usuario?.rol === 'LAB_ADMIN';
   const labIdFijo  = esLabAdmin ? String(usuario.laboratorio_id) : '';
+  const activoInicial = activoInicialId
+    ? activos.find(a => String(a.id) === String(activoInicialId))
+    : null;
 
   const [form, setForm] = useState({
-    laboratorio_id: labIdFijo, activo_id: '', tipo: 'LIMPIEZA_FISICA',
+    laboratorio_id: activoInicial?.laboratorio_id ? String(activoInicial.laboratorio_id) : labIdFijo,
+    activo_id: activoInicialId ? String(activoInicialId) : '',
+    tipo: 'LIMPIEZA_FISICA',
     periodicidad: 'TRIMESTRAL', fecha_programada: '', fecha_limite: '',
     descripcion: '', checklist: '',
   });
@@ -1088,7 +1467,7 @@ function DrawerCompletarMant({ mant, onClose, onActualizado }) {
 
 // ─── Tab: Preventivo ───────────────────────────────────────────────────────
 
-function TabPreventivo({ laboratorios }) {
+function TabPreventivo({ laboratorios, activoInicialId, abrirNuevoInicial }) {
   const { toast } = useToast();
   const [mantenimientos, setMantenimientos] = useState([]);
   const [activos,   setActivos]   = useState([]);
@@ -1098,6 +1477,7 @@ function TabPreventivo({ laboratorios }) {
   const [modalNuevo,    setModalNuevo]    = useState(false);
   const [drawerMant,    setDrawerMant]    = useState(null);
   const [confirmElim,   setConfirmElim]   = useState(null); // { id, nombre }
+  const autoOpenRef = useRef(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -1107,13 +1487,17 @@ function TabPreventivo({ laboratorios }) {
       if (filtroEst) params.append('estado', filtroEst);
       const [mRes, aRes] = await Promise.all([
         api.get(`/inventario/mantenimientos-preventivos?${params}`),
-        api.get('/inventario/activos?solo_activos=true'),
+        api.get('/inventario/activos?solo_activos=true&estado_admin=VALIDADO'),
       ]);
       setMantenimientos(mRes.data);
       setActivos(aRes.data);
+      if (abrirNuevoInicial && activoInicialId && !autoOpenRef.current) {
+        autoOpenRef.current = true;
+        setModalNuevo(true);
+      }
     } catch { toast('Error al cargar mantenimientos', 'error'); }
     finally { setLoading(false); }
-  }, [filtroLab, filtroEst]);
+  }, [filtroLab, filtroEst, abrirNuevoInicial, activoInicialId]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -1283,6 +1667,7 @@ function TabPreventivo({ laboratorios }) {
 
       {modalNuevo && (
         <ModalNuevoMant laboratorios={laboratorios} activos={activos}
+          activoInicialId={activoInicialId}
           onClose={() => setModalNuevo(false)} onCreado={cargar} />
       )}
       {drawerMant && (
@@ -1329,7 +1714,7 @@ function TabHistorial({ laboratorios }) {
   const [filtroTipo, setFiltroTipo] = useState('');
 
   useEffect(() => {
-    api.get('/inventario/activos?solo_activos=true')
+    api.get('/inventario/activos?solo_activos=true&estado_admin=VALIDADO')
       .then(r => setActivos(r.data)).catch(() => {});
   }, []);
 
@@ -1530,7 +1915,11 @@ function TabHistorial({ laboratorios }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function Mantenimiento() {
-  const [tab,          setTab]          = useState('kanban');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabInicial = ['kanban', 'preventivo', 'historial'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'kanban';
+  const activoInicialId = searchParams.get('activo_id') || '';
+  const abrirNuevoInicial = searchParams.get('nuevo') === '1';
+  const [tab,          setTab]          = useState(tabInicial);
   const [incidentes,   setIncidentes]   = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
   const [activos,      setActivos]      = useState([]);
@@ -1567,7 +1956,7 @@ export default function Mantenimiento() {
   useEffect(() => { cargarTodo(); }, [cargarTodo]);
 
   const abrirModalNuevo = async () => {
-    try { const r = await api.get('/inventario/activos?solo_activos=true'); setActivos(r.data); }
+    try { const r = await api.get('/inventario/activos?solo_activos=true&estado_admin=VALIDADO'); setActivos(r.data); }
     catch { setActivos([]); }
     setModalNuevo(true);
   };
@@ -1673,7 +2062,10 @@ export default function Mantenimiento() {
         {TABS.map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setTab(t.key);
+              setSearchParams(t.key === 'kanban' ? {} : { tab: t.key });
+            }}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm font-medium transition-all duration-200
               ${tab === t.key
                 ? isDay ? 'bg-emerald-50 text-slate-950 shadow border border-emerald-100' : 'bg-slate-700/80 text-white shadow-lg'
@@ -1785,7 +2177,11 @@ export default function Mantenimiento() {
 
       {/* ── Pestaña: Mantenimiento Preventivo ──────────────────────────────── */}
       {tab === 'preventivo' && (
-        <TabPreventivo laboratorios={laboratorios} />
+        <TabPreventivo
+          laboratorios={laboratorios}
+          activoInicialId={activoInicialId}
+          abrirNuevoInicial={abrirNuevoInicial}
+        />
       )}
 
       {/* ── Pestaña: Historial por equipo ──────────────────────────────────── */}

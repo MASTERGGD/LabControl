@@ -698,7 +698,13 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-2xl">
+      <div
+        className="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
+        style={{
+          background: isDay ? '#ffffff' : '#0f172a',
+          border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.10)'}`,
+        }}
+      >
 
         {guardado ? (
           <div className="text-center py-10 px-6">
@@ -714,12 +720,14 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
         ) : pc ? (
           /* ── Formulario PC específica ────────────────────────────── */
           <>
-            <div className="px-5 pt-5 pb-4 border-b border-white/5 flex items-center justify-between">
+            <div className={`px-5 pt-5 pb-4 border-b flex items-center justify-between ${
+              isDay ? 'border-slate-200' : 'border-white/5'
+            }`}>
               <div>
                 <h3 className="font-semibold text-white">⚠️ Observación — {pc.codigo.replace('--', '-')}</h3>
                 {pc.fila && <p className="text-xs text-slate-400 mt-0.5">Fila {pc.fila}</p>}
               </div>
-              <button onClick={onClose} className="text-slate-400 hover:text-white">
+              <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -759,7 +767,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                   Cancelar
                 </button>
                 <button type="submit" disabled={loading}
-                  className="flex-1 rounded-lg py-2.5 text-sm font-semibold text-white transition-colors"
+                  className="solid-green-action flex-1 rounded-lg py-2.5 text-sm font-semibold transition-colors"
                   style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(135deg,#047857,#059669)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(135deg,#059669,#10b981)'}>
@@ -772,14 +780,16 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
         ) : (
           /* ── Formulario Aula / Instalaciones ─────────────────────── */
           <>
-            <div className="px-5 pt-5 pb-4 border-b border-white/5 flex items-center justify-between">
+            <div className={`px-5 pt-5 pb-4 border-b flex items-center justify-between ${
+              isDay ? 'border-slate-200' : 'border-white/5'
+            }`}>
               <div>
                 <h3 className={`font-semibold flex items-center gap-2 ${isDay ? 'text-slate-900' : 'text-white'}`}>
                   <span>⚠️</span> Reportar problema del aula
                 </h3>
                 <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>El reporte llegará al responsable del laboratorio</p>
               </div>
-              <button onClick={onClose} className="text-slate-400 hover:text-white">
+              <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -787,7 +797,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
             </div>
             <form onSubmit={handleSubmitAula} className="px-5 pb-5 pt-4 space-y-4">
               <div>
-                <p className="text-xs text-slate-400 mb-2">¿Qué tipo de problema tienes?</p>
+                <p className={`text-xs mb-2 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>¿Qué tipo de problema tienes?</p>
                 <div className="grid grid-cols-3 gap-2">
                   {CATEGORIAS_AULA.map(cat => (
                     <button key={cat.id} type="button"
@@ -813,30 +823,46 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
               {categoriaSeleccionada && (
                 <>
                   <div>
-                    <p className="text-xs text-slate-400 mb-2">Prioridad</p>
+                    <p className={`text-xs mb-2 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Prioridad</p>
                     <div className="flex gap-2">
                       {[['ALTA','🔴 Alta'],['MEDIA','🟡 Media'],['BAJA','🟢 Baja']].map(([v, l]) => (
                         <button key={v} type="button" onClick={() => setAulaPri(v)}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition
                             ${aulaPri === v
-                              ? 'border-yellow-500 bg-yellow-900/40 text-yellow-300'
-                              : 'border-gray-600 text-slate-400 hover:border-gray-500'}`}>
+                              ? isDay
+                                ? 'border-amber-500 bg-amber-100 text-amber-950'
+                                : 'border-amber-400 bg-amber-900/50 text-amber-100'
+                              : isDay
+                                ? 'border-slate-300 bg-white text-slate-700 hover:border-slate-500'
+                                : 'border-slate-600 text-slate-300 hover:border-slate-400'}`}>
                           {l}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Descripción (opcional)</label>
+                    <label className={`block text-xs mb-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Descripción (opcional)</label>
                     <textarea value={aulaDesc} onChange={e => setAulaDesc(e.target.value)}
                       placeholder={`Detalles sobre ${categoriaSeleccionada.label.toLowerCase()}...`}
                       rows={2}
-                      className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none text-sm"/>
+                      className="w-full input-dark px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none text-sm"/>
+                    <p className={`text-[11px] mt-1.5 leading-relaxed ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                      No necesitas identificar un activo. El responsable del laboratorio revisará el reporte
+                      y asociará una PC o equipo únicamente cuando corresponda.
+                    </p>
                   </div>
                 </>
               )}
 
-              {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
+              {error && (
+                <p className={`text-sm rounded-lg border px-3 py-2 leading-relaxed ${
+                  isDay
+                    ? 'text-red-900 bg-red-50 border-red-300'
+                    : 'text-red-100 bg-red-950/60 border-red-500/50'
+                }`}>
+                  {error}
+                </p>
+              )}
 
               <div className="flex gap-3 pt-1">
                 <button type="button" onClick={onClose}
@@ -848,7 +874,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                   Cancelar
                 </button>
                 <button type="submit" disabled={loading || !categoriaSeleccionada}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+                  className="solid-green-action flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg py-2.5 text-sm font-semibold transition-colors">
                   {loading ? 'Enviando...' : '📋 Enviar reporte'}
                 </button>
               </div>

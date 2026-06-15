@@ -45,14 +45,32 @@ function fmt(iso) {
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function fmtDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('es-MX', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function label(val) {
+  return val ? String(val).replace(/_/g, ' ') : '—';
+}
+
 function SectionCard({ title, items, renderItem, emptyMsg = 'Sin registros' }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-      <h4 className="text-sm font-semibold text-white mb-3">{title}</h4>
+    <div className={`border rounded-xl p-4 ${isDay ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+      <h4 className={`text-sm font-semibold mb-3 ${isDay ? 'text-slate-950' : 'text-white'}`}>{title}</h4>
       {items?.length ? (
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {items.map((item, i) => (
-            <div key={item.id ?? i} className="text-xs border-b border-white/5 pb-2 last:border-0">
+            <div key={item.id ?? i} className={`text-xs border-b pb-2 last:border-0 ${isDay ? 'border-slate-100' : 'border-white/5'}`}>
               {renderItem(item)}
             </div>
           ))}
@@ -65,17 +83,20 @@ function SectionCard({ title, items, renderItem, emptyMsg = 'Sin registros' }) {
 }
 
 function KpiRow({ data }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const kpis = [
     ['Movimientos',    data?.movimientos?.length  ?? 0, 'text-blue-300'],
     ['Bajas',          data?.bajas?.length         ?? 0, 'text-red-300'],
     ['Levantamientos', data?.levantamientos?.length ?? 0, 'text-amber-300'],
     ['Préstamos',      data?.prestamos?.length      ?? 0, 'text-emerald-300'],
+    ['Auditoria',      data?.auditoria?.length      ?? 0, 'text-violet-300'],
     ['Incidentes',     data?.incidentes?.length     ?? 0, 'text-orange-300'],
   ];
   return (
-    <div className="grid grid-cols-5 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {kpis.map(([label, val, cls]) => (
-        <div key={label} className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+        <div key={label} className={`border rounded-lg p-3 text-center ${isDay ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
           <p className={`text-2xl font-bold ${val === 0 ? 'text-slate-600' : cls}`}>{val}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">{label}</p>
         </div>
@@ -84,7 +105,60 @@ function KpiRow({ data }) {
   );
 }
 
+function Field({ label: title, value }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-wide text-slate-500">{title}</p>
+      <p className="text-xs text-slate-300 mt-0.5">{value || '—'}</p>
+    </div>
+  );
+}
+
+function Timeline({ items }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  return (
+    <div className={`border rounded-xl p-4 ${isDay ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Linea de tiempo</h4>
+        <span className="text-[10px] text-slate-500">{items?.length || 0} evento(s)</span>
+      </div>
+      {items?.length ? (
+        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+          {items.slice(0, 30).map((item, i) => (
+            <div key={`${item.tipo}-${item.fecha}-${i}`} className="flex gap-3 text-xs">
+              <div className="flex flex-col items-center">
+                <span className={`w-2.5 h-2.5 rounded-full mt-1 ${
+                  item.tipo === 'AUDITORIA' ? 'bg-violet-400'
+                    : item.tipo === 'MOVIMIENTO' ? 'bg-blue-400'
+                    : item.tipo === 'BAJA' ? 'bg-red-400'
+                    : 'bg-emerald-400'
+                }`} />
+                {i < Math.min(items.length, 30) - 1 && <span className="w-px flex-1 bg-slate-700/40 mt-1" />}
+              </div>
+              <div className="min-w-0 pb-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className={`font-semibold ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{item.titulo}</p>
+                  {item.estado && badge(item.estado)}
+                </div>
+                {item.descripcion && <p className="text-slate-400 mt-0.5">{item.descripcion}</p>}
+                <p className="text-slate-500 mt-0.5">
+                  {fmtDateTime(item.fecha)}{item.actor ? ` · ${item.actor}` : ''}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">Sin eventos registrados.</p>
+      )}
+    </div>
+  );
+}
+
 function ExpedienteContent({ activoId, activo: activoProp }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -101,6 +175,7 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const bien = data?.activo || activoProp;
+  const resumen = data?.resumen || {};
 
   if (loading) return (
     <div className="flex items-center justify-center h-40">
@@ -116,8 +191,50 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
 
   return (
     <div className="space-y-5">
-      {/* Header del bien */}
       {bien && (
+        <div className={`border rounded-xl p-4 ${isDay ? 'bg-white border-slate-200' : 'bg-white/5 border-white/10'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <p className={`font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{bien.nombre}</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {bien.codigo_inventario} · {label(bien.categoria)}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              {badge(bien.estado_admin || 'VALIDADO')}
+              {badge(bien.estado || 'OPERATIVO')}
+            </div>
+          </div>
+
+          {resumen.alertas?.length > 0 && (
+            <div className={`mt-4 rounded-lg border px-3 py-2 ${isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-500/10 border-amber-500/30'}`}>
+              <p className={`text-xs font-semibold ${isDay ? 'text-amber-900' : 'text-amber-200'}`}>Pendientes de control</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {resumen.alertas.map((a, i) => (
+                  <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full border ${isDay ? 'text-amber-900 border-amber-300 bg-white' : 'text-amber-200 border-amber-500/30 bg-amber-500/10'}`}>
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+            <Field label="No. oficial" value={bien.numero_oficial} />
+            <Field label="Departamento" value={bien.departamento_nombre || bien.laboratorio_nombre} />
+            <Field label="Ubicacion" value={bien.ubicacion_label || bien.ubicacion_nombre} />
+            <Field label="Resguardante" value={bien.responsable_nombre || bien.resguardante_externo_nombre} />
+            <Field label="Marca / modelo" value={[bien.marca, bien.modelo].filter(Boolean).join(' / ')} />
+            <Field label="Serie" value={bien.numero_serie} />
+            <Field label="Valor" value={bien.valor != null ? `$${Number(bien.valor).toLocaleString('es-MX')}` : null} />
+            <Field label="Alcance" value={label(bien.alcance)} />
+            <Field label="Ultimo evento" value={fmtDateTime(resumen.ultima_actualizacion)} />
+          </div>
+        </div>
+      )}
+
+      {/* Header del bien */}
+      {false && bien && (
         <div className="flex items-start gap-3 pb-4 border-b border-white/10">
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-white truncate">{bien.nombre}</p>
@@ -140,6 +257,8 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
 
       {/* KPIs */}
       <KpiRow data={data} />
+
+      <Timeline items={data?.timeline || []} />
 
       {/* Grilla de secciones */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -230,6 +349,29 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           )}
         />
 
+        <SectionCard
+          title="Auditoria administrativa"
+          items={data?.auditoria}
+          renderItem={a => (
+            <>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-slate-200 font-medium">{label(a.accion)}</span>
+                {a.exito ? badge('OK') : badge('ERROR')}
+              </div>
+              <p className="text-slate-400">{a.usuario_nombre || 'Sistema'}</p>
+              {a.detalle?.estado_nuevo && (
+                <p className="text-slate-500 mt-0.5">
+                  {a.detalle.estado_anterior || '—'} → {a.detalle.estado_nuevo}
+                </p>
+              )}
+              {a.detalle?.observaciones && (
+                <p className="text-slate-400 mt-0.5">{a.detalle.observaciones}</p>
+              )}
+              <p className="text-slate-500 mt-0.5">{fmtDateTime(a.fecha)}</p>
+            </>
+          )}
+        />
+
       </div>
     </div>
   );
@@ -254,8 +396,8 @@ export default function ExpedienteActivo({ activoId, activo, mode = 'drawer', on
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={e => e.target === e.currentTarget && onClose?.()}>
         <div className="glass w-full max-w-4xl shadow-2xl max-h-[90vh] flex flex-col">
           <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0">
-            <h3 className="font-semibold text-white">Expediente del bien</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>Expediente del bien</h3>
+            <button onClick={onClose} className={`${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-950'} transition-colors`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -280,10 +422,10 @@ export default function ExpedienteActivo({ activoId, activo, mode = 'drawer', on
         <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between shrink-0"
              style={{ background: isDark ? 'rgba(30,41,59,0.95)' : '#f8fafc' }}>
           <div>
-            <h3 className="font-semibold text-white">Expediente del bien</h3>
+            <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-slate-950'}`}>Expediente del bien</h3>
             {activo && <p className="text-xs text-slate-400 mt-0.5">{activo.codigo_inventario} · {activo.nombre}</p>}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors p-1">
+          <button onClick={onClose} className={`${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-950'} transition-colors p-1`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>

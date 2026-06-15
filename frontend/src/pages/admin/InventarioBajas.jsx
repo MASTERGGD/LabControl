@@ -53,10 +53,9 @@ const ACCION_LABEL = {
   cancelar:  { label: 'Cancelar',  cls: 'btn-ghost text-slate-400'                     },
 };
 
-export default function InventarioBajas() {
-  const { addToast } = useToast();
-  const { themeKey } = useTheme();
-  const navigate = useNavigate();
+export function PanelBajas() {
+  const { toast } = useToast();
+  const { themeKey } = useTheme(); // eslint-disable-line no-unused-vars
 
   const [bajas, setBajas]           = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -71,7 +70,7 @@ export default function InventarioBajas() {
       const params = filtroEstado ? `?estado=${filtroEstado}` : '';
       const r = await api.get(`/inventario/bajas${params}`);
       setBajas(r.data);
-    } catch { addToast('Error al cargar solicitudes de baja', 'error'); }
+    } catch { toast('Error al cargar solicitudes de baja', 'error'); }
     finally { setLoading(false); }
   }, [filtroEstado]); // eslint-disable-line
 
@@ -82,30 +81,24 @@ export default function InventarioBajas() {
     try {
       await api.post(`/inventario/bajas/${accionando.bajaId}/${accionando.accion}`,
         obs ? { observaciones: obs } : {});
-      addToast(`Acción "${accionando.accion}" registrada correctamente`, 'success');
+      toast(`Acción "${accionando.accion}" registrada correctamente`, 'success');
       setAccionando(null);
       setObs('');
       cargar();
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Error al procesar la acción', 'error');
+      toast(e.response?.data?.detail || 'Error al procesar la acción', 'error');
     }
   };
 
   const bajasFiltradas = filtroEstado ? bajas.filter(b => b.estado === filtroEstado) : bajas;
 
   return (
-    <AdminLayout>
-      <div className="p-6 space-y-6">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <button onClick={() => navigate('/admin/inventario')}
-                className="text-slate-400 hover:text-white transition-colors text-sm">
-                ← Inventario
-              </button>
-            </div>
-            <h1 className="text-2xl font-bold text-white">Bajas Patrimoniales</h1>
+            <h2 className="text-xl font-bold text-white">Bajas Patrimoniales</h2>
             <p className="text-slate-400 text-sm mt-0.5">Trámites de baja de bienes institucionales</p>
           </div>
           <div className="flex items-center gap-3">
@@ -222,6 +215,23 @@ export default function InventarioBajas() {
           onClose={() => setExpedienteActivo(null)}
         />
       )}
+    </>
+  );
+}
+
+export default function InventarioBajas() {
+  const navigate = useNavigate();
+  return (
+    <AdminLayout>
+      <div className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <button onClick={() => navigate('/admin/inventario?tab=bajas')}
+            className="text-slate-400 hover:text-white transition-colors text-sm">
+            ← Inventario
+          </button>
+        </div>
+        <PanelBajas />
+      </div>
     </AdminLayout>
   );
 }

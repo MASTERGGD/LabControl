@@ -8,6 +8,7 @@ import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
 import AdminLayout from '../../components/AdminLayout';
 import { useTheme } from '../../context/ThemeContext';
+import { dateToLocalISO } from '../../utils/timezone';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ function addDaysEspacios(date, n) {
 }
 
 function fmtDateEspacios(date) {
-  return date.toISOString().slice(0, 10);
+  return dateToLocalISO(date);
 }
 
 function fmtDisplayEspacios(date) {
@@ -280,11 +281,11 @@ function RequerimientoStatusPanel({ req }) {
 
 // Requerimientos rápidos
 const CHECKS_REQ = [
-  { key: 'proyector',   label: 'Proyector / pantalla',   icon: '📽️' },
-  { key: 'internet',    label: 'Acceso a internet',       icon: '🌐' },
-  { key: 'software',    label: 'Software específico',     icon: '💿' },
-  { key: 'audio',       label: 'Micrófono / bocinas',     icon: '🔊' },
-  { key: 'extensiones', label: 'Extensiones / contactos', icon: '🔌' },
+  { key: 'proyector',   label: 'Proyector / pantalla'   },
+  { key: 'internet',    label: 'Acceso a internet'       },
+  { key: 'software',    label: 'Software específico'     },
+  { key: 'audio',       label: 'Micrófono / bocinas'     },
+  { key: 'extensiones', label: 'Extensiones / contactos' },
 ];
 
 function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
@@ -356,7 +357,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           <div>
             <label className="block text-sm text-slate-400 mb-1">
               Materia *
-              <span className="text-slate-500 font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
+              <span style={{ color: '#9ca3af' }} className="font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
             </label>
             <div className="[&_input]:bg-gray-700 [&_input]:text-white [&_input]:border-gray-600
                             [&_input:focus]:ring-green-500 [&_ul]:bg-gray-800 [&_ul]:border-gray-600
@@ -416,25 +417,27 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.6)', border:'1px solid rgba(255,255,255,0.07)' }}>
             <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold flex items-center gap-1.5">
               <span>📋</span> Requerimientos para la clase
-              <span className="text-slate-600 normal-case font-normal">(opcional)</span>
+              <span style={{ color: '#9ca3af' }} className="normal-case font-normal">(opcional)</span>
             </p>
             <div className="grid grid-cols-2 gap-2">
               {CHECKS_REQ.map(c => (
                 <label key={c.key}
                   className="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition-colors select-none"
                   style={{
-                    background: checks[c.key] ? 'rgba(34,197,94,0.15)' : 'rgba(15,23,42,0.5)',
-                    border: `1px solid ${checks[c.key] ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                    background: checks[c.key] ? 'rgba(59,130,246,0.12)' : 'rgba(15,23,42,0.5)',
+                    border: `1px solid ${checks[c.key] ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.06)'}`,
                   }}
                 >
                   <input
                     type="checkbox"
                     checked={!!checks[c.key]}
                     onChange={() => toggleCheck(c.key)}
-                    className="accent-green-500 w-3.5 h-3.5 shrink-0"
+                    className="accent-blue-500 w-3.5 h-3.5 shrink-0"
                   />
-                  <span className="text-xs">{c.icon}</span>
-                  <span className="text-xs text-slate-300 leading-tight">{c.label}</span>
+                  <span className="text-xs leading-tight"
+                    style={{ color: checks[c.key] ? '#1e3a8a' : '#cbd5e1' }}>
+                    {c.label}
+                  </span>
                 </label>
               ))}
             </div>
@@ -449,10 +452,10 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
             {/* Toggle instalador — solo cuando Software específico está marcado */}
             {checks.software && (
-              <label className="flex items-center gap-3 cursor-pointer rounded-xl px-4 py-3 transition-colors select-none"
+              <label className="flex items-start gap-3 cursor-pointer rounded-xl px-4 py-3 transition-colors select-none"
                 style={{ background: tieneInstalador ? 'rgba(234,179,8,0.12)' : 'rgba(15,23,42,0.5)', border: `1px solid ${tieneInstalador ? 'rgba(234,179,8,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
                 <input type="checkbox" checked={tieneInstalador} onChange={() => setTieneInstalador(v => !v)}
-                  className="accent-yellow-400 w-4 h-4 shrink-0" />
+                  className="accent-yellow-400 w-4 h-4 shrink-0" style={{ marginTop: '3px' }} />
                 <div>
                   <p className="text-sm text-slate-200 font-medium">💾 Tengo el instalador disponible</p>
                   <p className="text-xs text-slate-500 leading-tight mt-0.5">Puedo compartirlo con el administrador del laboratorio</p>
@@ -462,16 +465,21 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
             {/* Aviso urgencia */}
             {hayReqs && (
-              <p className="text-xs text-amber-400/80 flex items-center gap-1.5 px-1">
-                <span>⏰</span> Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.
-              </p>
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2"
+                style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <span className="text-sm shrink-0">⏰</span>
+                <p className="text-xs leading-snug" style={{ color: '#c2410c' }}>
+                  Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.
+                </p>
+              </div>
             )}
           </div>
 
           {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2 text-sm">Cancelar</button>
+              className="flex-1 bg-gray-700 hover:bg-gray-600 rounded-lg py-2 text-sm"
+              style={{ color: '#e5e7eb' }}>Cancelar</button>
             <button type="submit" disabled={saving}
               className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg py-2 text-sm font-semibold">
               {saving ? 'Reservando…' : '✓ Reservar'}
@@ -1043,7 +1051,7 @@ function detectarGruposConsecutivos(slots) {
 
 // ─── Gradientes para celdas del docente ───────────────────────────────────────
 const GRAD_DOC = {
-  LIBRE:       'linear-gradient(135deg, rgba(16,185,129,0.13) 0%, rgba(5,150,105,0.07) 100%)',
+  LIBRE:       'linear-gradient(135deg, rgba(16,185,129,0.16) 0%, rgba(5,150,105,0.09) 100%)',
   MIO:         'linear-gradient(135deg, rgba(79,70,229,0.55) 0%, rgba(99,102,241,0.35) 100%)',
   OCUPADO:     'linear-gradient(135deg, rgba(30,64,175,0.35) 0%, rgba(37,99,235,0.18) 100%)',
   EN_DISPUTA:  'linear-gradient(135deg, rgba(180,83,9,0.45)  0%, rgba(217,119,6,0.25) 100%)',
@@ -1095,11 +1103,13 @@ function GridSemanal({ slots, onSlotClick }) {
     const txtColor = {
       LIBRE:       '#6ee7b7',
       MIO:         '#e0e7ff',
-      OCUPADO:     '#93c5fd',
+      OCUPADO:     '#bfdbfe',   // azul claro legible sobre fondo azul oscuro
       EN_DISPUTA:  '#fcd34d',
       YO_SOLICITE: '#fdba74',
       BLOQUEADO:   '#c4b5fd',
     }[slot.estado_vista] || '#94a3b8';
+    // Texto principal de materia en celdas OCUPADO: blanco para máximo contraste
+    const materiaColor = slot.estado_vista === 'OCUPADO' ? '#ffffff' : txtColor;
 
     const isClickable = ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
 
@@ -1144,24 +1154,30 @@ function GridSemanal({ slots, onSlotClick }) {
             </>
           ) : (
             <>
-              {/* ★ Mi reserva — solo para MIO */}
+              {/* ★ Mi reserva — badge compacto */}
               {slot.estado_vista === 'MIO' && (
-                <p style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(224,231,255,0.6)', lineHeight: 1.2, marginBottom: '2px', letterSpacing: '0.03em' }}>
-                  ★ Mi reserva
-                </p>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px',
+                  fontSize: '8px', fontWeight: 700, color: 'rgba(165,180,252,0.9)',
+                  background: 'rgba(99,102,241,0.25)', borderRadius: '3px',
+                  padding: '1px 5px', marginBottom: '3px', letterSpacing: '0.04em' }}>
+                  ★ MI RESERVA
+                </span>
               )}
 
-              {/* Nombre de la materia */}
-              <p style={{ fontSize: '11px', fontWeight: 700, color: txtColor, lineHeight: 1.3, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                {slot.reservacion?.materia || '—'}
-              </p>
-
-              {/* Grupo */}
-              {slot.reservacion?.grupo && (
-                <p style={{ fontSize: '10px', color: `${txtColor}99`, lineHeight: 1.2, marginTop: '1px' }}>
-                  {slot.reservacion.grupo}
+              {/* Nombre de la materia + grupo badge */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '4px' }}>
+                <p style={{ fontSize: '11px', fontWeight: 700, color: materiaColor, lineHeight: 1.3, overflow: 'hidden', flex: 1,
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {slot.reservacion?.materia || '—'}
                 </p>
-              )}
+                {slot.reservacion?.grupo && (
+                  <span style={{ fontSize: '9px', color: `${materiaColor}bb`, background: 'rgba(255,255,255,0.08)',
+                    border: `1px solid ${materiaColor}33`, borderRadius: '4px', padding: '1px 4px',
+                    whiteSpace: 'nowrap', flexShrink: 0, marginTop: '1px' }}>
+                    {slot.reservacion.grupo}
+                  </span>
+                )}
+              </div>
 
               {/* Badges de acción */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '5px' }}>
@@ -1186,7 +1202,7 @@ function GridSemanal({ slots, onSlotClick }) {
                   </span>
                 )}
                 {slot.estado_vista === 'OCUPADO' && (
-                  <span style={{ fontSize: '10px', color: `${txtColor}99`, padding: '1px 2px' }}>Solicitar</span>
+                  <span style={{ fontSize: '10px', color: `${txtColor}66`, padding: '1px 2px' }}>↗</span>
                 )}
                 {slot.estado_vista === 'YO_SOLICITE' && (
                   <span style={{ fontSize: '10px', background: 'rgba(124,45,18,0.6)', color: '#fdba74', borderRadius: '999px', padding: '1px 6px', fontWeight: 600 }}>
@@ -1336,7 +1352,7 @@ function GridMobile({ slots, onSlotClick }) {
                     </span>
                   )}
                   {slot.estado_vista === 'OCUPADO' && (
-                    <span style={{ fontSize: '11px', color: '#93c5fd', opacity: 0.8 }}>Solicitar</span>
+                    <span style={{ fontSize: '11px', color: '#93c5fd', opacity: 0.6 }}>↗</span>
                   )}
                   {slot.estado_vista === 'YO_SOLICITE' && (
                     <span style={{ fontSize: '11px', background: 'rgba(124,45,18,0.7)', color: '#fdba74', borderRadius: '999px', padding: '2px 8px' }}>Pendiente</span>
@@ -1354,9 +1370,18 @@ function GridMobile({ slots, onSlotClick }) {
                 </p>
               )}
               {slot.reservacion?.materia ? (
-                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: c.txt, lineHeight: 1.3 }}>
-                  {slot.reservacion.materia}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
+                  <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: c.txt, lineHeight: 1.3, flex: 1 }}>
+                    {slot.reservacion.materia}
+                  </p>
+                  {slot.reservacion?.grupo && (
+                    <span style={{ fontSize: '11px', color: `${c.txt}bb`, background: 'rgba(255,255,255,0.08)',
+                      border: `1px solid ${c.txt}33`, borderRadius: '6px', padding: '2px 7px',
+                      whiteSpace: 'nowrap', flexShrink: 0, marginTop: '2px' }}>
+                      {slot.reservacion.grupo}
+                    </span>
+                  )}
+                </div>
               ) : slot.estado_vista === 'LIBRE' ? (
                 <p style={{ margin: 0, fontSize: '14px', color: '#6ee7b7', opacity: 0.8 }}>Disponible para reservar</p>
               ) : slot.estado_vista === 'BLOQUEADO' ? (
@@ -1365,12 +1390,7 @@ function GridMobile({ slots, onSlotClick }) {
                 </p>
               ) : null}
 
-              {/* Grupo */}
-              {slot.reservacion?.grupo && (
-                <p style={{ margin: '3px 0 0', fontSize: '12px', color: `${c.txt}99` }}>
-                  {slot.reservacion.grupo}
-                </p>
-              )}
+              {/* Grupo ya se muestra como badge junto al nombre de materia */}
 
               {/* Duración total si hay grupo consecutivo */}
               {grupo && grupo.total > 1 && grupo.esInicio && (
@@ -1413,7 +1433,7 @@ function Leyenda() {
       {items.map(item => (
         <div key={item.label} className="flex items-center gap-1.5">
           <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color, display: 'inline-block', flexShrink: 0 }} />
-          <span className="text-xs text-slate-400">{item.label}</span>
+          <span className="text-xs" style={{ color: '#94a3b8' }}>{item.label}</span>
         </div>
       ))}
     </div>
@@ -1925,7 +1945,7 @@ export default function SesionClase() {
             options={laboratorios.map(l => ({ value: l.id, label: l.nombre }))}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" style={{ marginLeft: '16px' }}>
           <span className="text-sm text-slate-500">Cuatrimestre</span>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
             style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>

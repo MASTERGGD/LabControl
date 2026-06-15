@@ -111,11 +111,139 @@ class TestResponsableLab:
                 "nombre": "Cristalería QA",
                 "categoria": "CRISTALERIA",
                 "estado": "OPERATIVO",
+                "estado_admin": "VALIDADO",
             },
             headers=auth_headers(token),
         )
         assert r.status_code == 201, r.text
         assert r.json()["laboratorio_id"] == lab.id
+        assert r.json()["estado_admin"] == "BORRADOR"
+
+    def test_no_puede_autovalidar_activo(self, client, db, admin_user):
+        lab = _lab(db, "Lab Revision Resp", "COMPUTO")
+        _usuario(db, "Resp Revision", "resp.revision@lab.test", RolUsuario.RESPONSABLE_LAB, lab_id=lab.id)
+        token = get_token(client, "resp.revision@lab.test", "Test1234!")
+        activo = _activo_laboratorio(client, token, lab.id, "PC pendiente")
+
+        r = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={"estado_admin": "VALIDADO"},
+            headers=auth_headers(token),
+        )
+        assert r.status_code == 403, r.text
+
+        r = client.put(
+            f"/inventario/activos/{activo['id']}",
+            json={"estado_admin": "VALIDADO"},
+            headers=auth_headers(token),
+        )
+        assert r.status_code == 403, r.text
+
+    def test_super_admin_puede_validar_activo(self, client, db, admin_user):
+        lab = _lab(db, "Lab Revision Admin", "COMPUTO")
+        _usuario(db, "Resp Alta", "resp.alta@lab.test", RolUsuario.RESPONSABLE_LAB, lab_id=lab.id)
+        responsable_token = get_token(client, "resp.alta@lab.test", "Test1234!")
+        activo = _activo_laboratorio(client, responsable_token, lab.id, "PC por validar")
+        assert activo["estado_admin"] == "BORRADOR"
+
+        admin_token = get_token(client, "admin@test.com", "AdminPass123")
+        r = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={"estado_admin": "VALIDADO", "observaciones": "Alta revisada"},
+            headers=auth_headers(admin_token),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["estado_admin"] == "VALIDADO"
+        assert r.json()["validacion_revisor"] == admin_user.nombre
+
+        notificaciones = client.get(
+            "/notificaciones",
+            headers=auth_headers(responsable_token),
+        )
+        assert notificaciones.status_code == 200, notificaciones.text
+        assert any(
+            n["tipo"] == "INVENTARIO_VALIDACION" and "validado oficialmente" in n["mensaje"]
+            for n in notificaciones.json()
+        )
+
+    def test_rechazo_exige_y_expone_motivo(self, client, db, admin_user):
+        lab = _lab(db, "Lab Motivo Revision", "QUIMICA")
+        _usuario(db, "Resp Motivo", "resp.motivo@lab.test", RolUsuario.RESPONSABLE_LAB, lab_id=lab.id)
+        responsable_token = get_token(client, "resp.motivo@lab.test", "Test1234!")
+        activo = _activo_laboratorio(client, responsable_token, lab.id, "Equipo sin evidencia")
+        admin_token = get_token(client, "admin@test.com", "AdminPass123")
+
+        sin_motivo = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={"estado_admin": "RECHAZADO"},
+            headers=auth_headers(admin_token),
+        )
+        assert sin_motivo.status_code == 422, sin_motivo.text
+
+        rechazado = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={"estado_admin": "RECHAZADO", "observaciones": "Falta numero de serie"},
+            headers=auth_headers(admin_token),
+        )
+        assert rechazado.status_code == 200, rechazado.text
+        assert rechazado.json()["validacion_motivo"] == "Falta numero de serie"
+        assert rechazado.json()["validacion_revisor"] == admin_user.nombre
+
+        bloqueado = client.put(
+            f"/inventario/activos/{activo['id']}",
+            json={"numero_serie": "SERIE-CORREGIDA"},
+            headers=auth_headers(responsable_token),
+        )
+        assert bloqueado.status_code == 409, bloqueado.text
+        assert "Super Admin debe reabrirlo" in bloqueado.text
+
+        reabierto = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={"estado_admin": "BORRADOR", "observaciones": "Se autoriza una nueva correccion"},
+            headers=auth_headers(admin_token),
+        )
+        assert reabierto.status_code == 200, reabierto.text
+
+        corregido = client.put(
+            f"/inventario/activos/{activo['id']}",
+            json={"numero_serie": "SERIE-CORREGIDA"},
+            headers=auth_headers(responsable_token),
+        )
+        assert corregido.status_code == 200, corregido.text
+        assert corregido.json()["numero_serie"] == "SERIE-CORREGIDA"
+
+    def test_observado_permite_correccion_del_responsable(self, client, db, admin_user):
+        lab = _lab(db, "Lab Observacion Corregible", "COMPUTO")
+        _usuario(
+            db,
+            "Resp Observacion",
+            "resp.observacion@lab.test",
+            RolUsuario.RESPONSABLE_LAB,
+            lab_id=lab.id,
+        )
+        responsable_token = get_token(client, "resp.observacion@lab.test", "Test1234!")
+        activo = _activo_laboratorio(client, responsable_token, lab.id, "PC con dato incompleto")
+        admin_token = get_token(client, "admin@test.com", "AdminPass123")
+
+        observado = client.post(
+            f"/inventario/activos/{activo['id']}/validacion",
+            json={
+                "estado_admin": "OBSERVADO",
+                "observaciones": "Captura el numero de serie fisico",
+            },
+            headers=auth_headers(admin_token),
+        )
+        assert observado.status_code == 200, observado.text
+        assert observado.json()["estado_admin"] == "OBSERVADO"
+
+        corregido = client.put(
+            f"/inventario/activos/{activo['id']}",
+            json={"numero_serie": "SERIE-OBS-001"},
+            headers=auth_headers(responsable_token),
+        )
+        assert corregido.status_code == 200, corregido.text
+        assert corregido.json()["numero_serie"] == "SERIE-OBS-001"
+        assert corregido.json()["estado_admin"] == "OBSERVADO"
 
     def test_no_puede_crear_activo_en_lab_ajeno(self, client, db, admin_user):
         lab_propio = _lab(db, "Lab Propio", "QUIMICA")
@@ -206,6 +334,147 @@ class TestResponsableLab:
         )
         assert r.status_code == 201, r.text
         assert r.json()["estado"] == "SOLICITADA"
+
+
+# ─── BLOQUEO DE ACTIVOS PENDIENTES ────────────────────────────────────────────
+
+class TestActivoPendienteValidacion:
+    def test_borrador_no_habilita_operaciones_hasta_validacion(self, client, db, admin_user):
+        lab = _lab(db, "Lab Flujo Borrador", "COMPUTO")
+        _usuario(
+            db,
+            "Responsable Flujo Borrador",
+            "responsable.borrador@test.com",
+            RolUsuario.RESPONSABLE_LAB,
+            lab_id=lab.id,
+        )
+        responsable_token = get_token(
+            client,
+            "responsable.borrador@test.com",
+            "Test1234!",
+        )
+        activo = _activo_laboratorio(
+            client,
+            responsable_token,
+            lab.id,
+            "Equipo pendiente de validacion",
+            "COMPUTADORA",
+        )
+        activo_id = activo["id"]
+        assert activo["estado_admin"] == "BORRADOR"
+
+        manana = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+        operaciones_bloqueadas = [
+            client.get(
+                f"/inventario/activos/{activo_id}/etiqueta",
+                headers=auth_headers(responsable_token),
+            ),
+            client.get(
+                f"/inventario/activos/{activo_id}/resguardo",
+                headers=auth_headers(responsable_token),
+            ),
+            client.get(
+                f"/inventario/activos/etiquetas?ids={activo_id}",
+                headers=auth_headers(responsable_token),
+            ),
+            client.post(
+                f"/inventario/activos/{activo_id}/movimientos",
+                json={
+                    "tipo": "CAMBIO_UBICACION",
+                    "ubicacion_destino_nombre": "Area de pruebas",
+                },
+                headers=auth_headers(responsable_token),
+            ),
+            client.post(
+                f"/inventario/activos/{activo_id}/baja",
+                json={"motivo": "Prueba de bloqueo"},
+                headers=auth_headers(responsable_token),
+            ),
+            client.post(
+                "/inventario/prestamos",
+                json={
+                    "activo_id": activo_id,
+                    "receptor_nombre": "Persona de prueba",
+                    "receptor_tipo": "DOCENTE",
+                    "fecha_devolucion_esperada": manana,
+                },
+                headers=auth_headers(responsable_token),
+            ),
+            client.post(
+                "/inventario/mantenimientos-preventivos",
+                json={
+                    "activo_id": activo_id,
+                    "tipo": "INSPECCION",
+                    "periodicidad": "UNICO",
+                    "fecha_programada": manana,
+                },
+                headers=auth_headers(responsable_token),
+            ),
+            client.post(
+                "/inventario/incidentes",
+                json={
+                    "activo_id": activo_id,
+                    "tipo": "MANTENIMIENTO",
+                    "descripcion": "Prueba de bloqueo",
+                },
+                headers=auth_headers(responsable_token),
+            ),
+            client.delete(
+                f"/inventario/activos/{activo_id}",
+                headers=auth_headers(responsable_token),
+            ),
+        ]
+        assert all(r.status_code == 409 for r in operaciones_bloqueadas), [
+            (r.status_code, r.text) for r in operaciones_bloqueadas
+        ]
+        assert all("Solo puede consultarse o corregirse" in r.text for r in operaciones_bloqueadas)
+
+        disponibles = client.get(
+            f"/inventario/activos?laboratorio_id={lab.id}&solo_disponibles=true",
+            headers=auth_headers(responsable_token),
+        )
+        assert disponibles.status_code == 200
+        assert all(item["id"] != activo_id for item in disponibles.json())
+
+        levantamiento = client.post(
+            "/inventario/levantamientos",
+            json={"nombre": "Levantamiento sin borradores", "laboratorio_id": lab.id},
+            headers=auth_headers(responsable_token),
+        )
+        assert levantamiento.status_code == 201, levantamiento.text
+        detalle = client.get(
+            f"/inventario/levantamientos/{levantamiento.json()['id']}/detalle",
+            headers=auth_headers(responsable_token),
+        )
+        assert detalle.status_code == 200
+        assert detalle.json()["resumen"]["total_esperado"] == 0
+
+        estadisticas_pendientes = client.get(
+            f"/inventario/estadisticas?laboratorio_id={lab.id}",
+            headers=auth_headers(responsable_token),
+        )
+        assert estadisticas_pendientes.status_code == 200
+        assert estadisticas_pendientes.json()["total_activos"] == 0
+        assert estadisticas_pendientes.json()["por_estado_admin"]["BORRADOR"] == 1
+
+        admin_token = get_token(client, "admin@test.com", "AdminPass123")
+        validacion = client.post(
+            f"/inventario/activos/{activo_id}/validacion",
+            json={"estado_admin": "VALIDADO", "observaciones": "Alta comprobada"},
+            headers=auth_headers(admin_token),
+        )
+        assert validacion.status_code == 200, validacion.text
+
+        etiqueta = client.get(
+            f"/inventario/activos/{activo_id}/etiqueta",
+            headers=auth_headers(responsable_token),
+        )
+        assert etiqueta.status_code == 200, etiqueta.text
+        estadisticas_validadas = client.get(
+            f"/inventario/estadisticas?laboratorio_id={lab.id}",
+            headers=auth_headers(responsable_token),
+        )
+        assert estadisticas_validadas.json()["total_activos"] == 1
 
 
 # ─── LAB_ADMIN ────────────────────────────────────────────────────────────────
@@ -419,6 +688,26 @@ class TestValidacionesCreacion:
         )
         assert r.status_code == 404, r.text
 
+    def test_activo_de_laboratorio_no_conserva_departamento(self, client, db, admin_user):
+        lab = _lab(db, "Lab sin departamento", "QUIMICA")
+        dep = _dep(db, "Depto no aplicable", "DNA")
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        r = client.post(
+            "/inventario/activos",
+            json={
+                "alcance": "LABORATORIO",
+                "laboratorio_id": lab.id,
+                "departamento_id": dep.id,
+                "nombre": "Activo exclusivo del laboratorio",
+                "categoria": "EQUIPO_LABORATORIO",
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token),
+        )
+        assert r.status_code == 201, r.text
+        assert r.json()["laboratorio_id"] == lab.id
+        assert r.json()["departamento_id"] is None
+
     def test_activo_institucional_sin_departamento_se_permite_para_super_admin(self, client, db, admin_user):
         """SUPER_ADMIN puede crear activo institucional sin departamento (queda con departamento_id=null)."""
         token = get_token(client, "admin@test.com", "AdminPass123")
@@ -557,6 +846,78 @@ class TestPrestamos:
         )
         assert r.status_code == 201, r.text
         assert r.json()["estado"] == "ACTIVO"
+        assert r.json()["folio"].startswith("PRE-")
+
+    def test_crear_prestamo_con_varios_activos(self, client, db, admin_user):
+        dep = _dep(db, "Depto Prestamo Grupo", "DPGRP")
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo_uno = _activo_institucional(client, token, dep.id, "Proyector grupo")
+        activo_dos = _activo_institucional(client, token, dep.id, "Bocina grupo")
+        manana = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+
+        r = client.post(
+            "/inventario/prestamos",
+            json={
+                # El frontend conserva los ids como strings en el combobox.
+                "activo_ids": [str(activo_uno["id"]), str(activo_dos["id"])],
+                "receptor_nombre": "María López",
+                "receptor_tipo": "DOCENTE",
+                "proposito": "Evento institucional",
+                "fecha_devolucion_esperada": manana,
+            },
+            headers=auth_headers(token),
+        )
+
+        assert r.status_code == 201, r.text
+        data = r.json()
+        assert data["total_activos"] == 2
+        assert len(data["prestamos"]) == 2
+        assert {p["folio"] for p in data["prestamos"]} == {data["folio"]}
+
+    def test_devolucion_parcial_y_total_por_folio(self, client, db, admin_user):
+        dep = _dep(db, "Depto Devolucion Grupo", "DPDVG")
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        activo_uno = _activo_institucional(client, token, dep.id, "Cámara grupo")
+        activo_dos = _activo_institucional(client, token, dep.id, "Trípode grupo")
+        manana = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+        creado = client.post(
+            "/inventario/prestamos",
+            json={
+                "activo_ids": [activo_uno["id"], activo_dos["id"]],
+                "receptor_nombre": "Pedro Martínez",
+                "receptor_tipo": "DOCENTE",
+                "fecha_devolucion_esperada": manana,
+            },
+            headers=auth_headers(token),
+        ).json()
+
+        primer_id = creado["prestamos"][0]["id"]
+        parcial = client.post(
+            f"/inventario/prestamos/grupos/{creado['folio']}/devolver",
+            json={
+                "prestamo_ids": [primer_id],
+                "condicion_devolucion": "BUENO",
+                "notas_devolucion": "Entrega parcial",
+            },
+            headers=auth_headers(token),
+        )
+        assert parcial.status_code == 200, parcial.text
+        assert parcial.json()["devueltos"] == 1
+
+        pendientes = client.get(
+            "/inventario/prestamos?estado=ACTIVO",
+            headers=auth_headers(token),
+        ).json()
+        pendientes_grupo = [p for p in pendientes if p["folio"] == creado["folio"]]
+        assert len(pendientes_grupo) == 1
+
+        total = client.post(
+            f"/inventario/prestamos/grupos/{creado['folio']}/devolver",
+            json={"condicion_devolucion": "BUENO", "notas_devolucion": "Entrega final"},
+            headers=auth_headers(token),
+        )
+        assert total.status_code == 200, total.text
+        assert total.json()["devueltos"] == 1
 
     def test_no_se_puede_prestar_dos_veces_el_mismo_activo(self, client, db, admin_user):
         token, activo = self._activo_prestable(client, db, admin_user)

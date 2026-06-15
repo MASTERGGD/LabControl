@@ -1,11 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
+import re
+import datetime
 from database import get_db
-from models.laboratorio import Laboratorio, Computadora
+from sqlalchemy.exc import IntegrityError
+from models.laboratorio import Laboratorio, Computadora, HistorialAsignacionActivoPC
+from models.inventario import Activo
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
+from services.auditoria import registrar, Accion, Recurso
 from ws.mapa import manager
 
 router = APIRouter(prefix="/laboratorios", tags=["Laboratorios"])
@@ -39,6 +44,8 @@ class LaboratorioResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class ComputadoraCreate(BaseModel):
+    activo_id: Optional[int] = None
+    motivo_asignacion: Optional[str] = Field(None, max_length=250)
     numero: int = Field(..., ge=1)
     codigo: str = Field(..., min_length=1, max_length=20)
     fila: Optional[str] = None
@@ -46,6 +53,8 @@ class ComputadoraCreate(BaseModel):
     estado: str = "OPERATIVO"
 
 class ComputadoraUpdate(BaseModel):
+    activo_id: Optional[int] = None
+    motivo_asignacion: Optional[str] = Field(None, max_length=250)
     numero: Optional[int] = Field(None, ge=1)
     codigo: Optional[str] = Field(None, min_length=1, max_length=20)
     fila: Optional[str] = None
@@ -56,6 +65,7 @@ class ComputadoraUpdate(BaseModel):
 class ComputadoraResponse(BaseModel):
     id: int
     laboratorio_id: int
+    activo_id: Optional[int]
     numero: int
     codigo: str
     fila: Optional[str]
@@ -97,6 +107,113 @@ def _get_lab_autorizado(lab_id: int, db: Session, user: Usuario) -> Laboratorio:
     return lab
 
 
+def _normalizar_codigo_pc(codigo: str) -> str:
+    return re.sub(r"-+", "-", codigo.strip().upper())
+
+
+def _serializar_pc(pc: Computadora) -> dict:
+    activo = pc.activo
+    return {
+        "id": pc.id,
+        "laboratorio_id": pc.laboratorio_id,
+        "activo_id": pc.activo_id,
+        "numero": pc.numero,
+        "codigo": pc.codigo,
+        "fila": pc.fila,
+        "specs": pc.specs,
+        "estado": pc.estado,
+        "activa": pc.activa,
+        "activo": {
+            "id": activo.id,
+            "codigo_inventario": activo.codigo_inventario,
+            "numero_oficial": activo.numero_oficial,
+            "nombre": activo.nombre,
+            "marca": activo.marca,
+            "modelo": activo.modelo,
+            "numero_serie": activo.numero_serie,
+            "estado": activo.estado,
+            "estado_admin": activo.estado_admin,
+            "especificaciones": activo.especificaciones,
+        } if activo else None,
+    }
+
+
+def _validar_activo_para_pc(
+    db: Session,
+    lab_id: int,
+    activo_id: Optional[int],
+    pc_id: Optional[int] = None,
+) -> Optional[Activo]:
+    if activo_id is None:
+        return None
+    activo = db.query(Activo).filter(Activo.id == activo_id, Activo.activo == True).first()
+    if not activo:
+        raise HTTPException(status_code=404, detail="Activo de inventario no encontrado")
+    if (activo.categoria or "").upper() != "COMPUTADORA":
+        raise HTTPException(status_code=422, detail="Solo se puede vincular un activo de categoría Computadora")
+    if activo.laboratorio_id != lab_id:
+        raise HTTPException(status_code=422, detail="El activo debe pertenecer al mismo laboratorio")
+    if (activo.estado_admin or "VALIDADO").upper() != "VALIDADO":
+        raise HTTPException(status_code=409, detail="El activo debe estar validado antes de vincularlo")
+    vinculada = db.query(Computadora).filter(Computadora.activo_id == activo_id)
+    if pc_id is not None:
+        vinculada = vinculada.filter(Computadora.id != pc_id)
+    if vinculada.first():
+        raise HTTPException(status_code=409, detail="Este activo ya está vinculado con otra PC")
+    return activo
+
+
+def _actualizar_vinculo_activo(
+    db: Session,
+    pc: Computadora,
+    nuevo_activo_id: Optional[int],
+    usuario: Usuario,
+    motivo: Optional[str],
+) -> None:
+    if pc.activo_id == nuevo_activo_id:
+        return
+
+    ahora = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    if pc.activo_id:
+        vigente = db.query(HistorialAsignacionActivoPC).filter(
+            HistorialAsignacionActivoPC.computadora_id == pc.id,
+            HistorialAsignacionActivoPC.activo_id == pc.activo_id,
+            HistorialAsignacionActivoPC.fecha_fin.is_(None),
+        ).order_by(HistorialAsignacionActivoPC.fecha_inicio.desc()).first()
+        if vigente:
+            vigente.fecha_fin = ahora
+
+    pc.activo_id = nuevo_activo_id
+    if nuevo_activo_id:
+        db.add(HistorialAsignacionActivoPC(
+            computadora_id=pc.id,
+            activo_id=nuevo_activo_id,
+            asignado_por_id=usuario.id,
+            fecha_inicio=ahora,
+            motivo=motivo or "Asignación de equipo físico al puesto operativo",
+        ))
+
+
+def _buscar_duplicado_pc(
+    db: Session,
+    lab_id: int,
+    numero: int,
+    codigo: str,
+    excluir_id: Optional[int] = None,
+) -> tuple[Optional[Computadora], Optional[str]]:
+    query = db.query(Computadora).filter(Computadora.laboratorio_id == lab_id)
+    if excluir_id is not None:
+        query = query.filter(Computadora.id != excluir_id)
+
+    codigo_normalizado = _normalizar_codigo_pc(codigo)
+    for existente in query.all():
+        if existente.numero == numero:
+            return existente, "numero"
+        if _normalizar_codigo_pc(existente.codigo) == codigo_normalizado:
+            return existente, "codigo"
+    return None, None
+
+
 # ─── Laboratorios ──────────────────────────────────────────────────────────────
 
 @router.get("", summary="Listar laboratorios")
@@ -105,11 +222,11 @@ def listar_laboratorios(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    """SUPER_ADMIN ve todos. LAB_ADMIN solo ve el suyo."""
+    """SUPER_ADMIN ve todos; administradores y responsables solo el asignado."""
     query = db.query(Laboratorio)
     if solo_activos:
         query = query.filter(Laboratorio.activo == True)
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         query = query.filter(Laboratorio.id == current_user.laboratorio_id)
     labs = query.order_by(Laboratorio.nombre).all()
     return [_enriquecer_lab(lab) for lab in labs]
@@ -189,31 +306,75 @@ def listar_computadoras(
     if solo_activas:
         query = query.filter(Computadora.activa == True)
     pcs = query.order_by(Computadora.numero).all()
-    return pcs
+    return [_serializar_pc(pc) for pc in pcs]
 
 
 @router.post("/{lab_id}/computadoras", status_code=status.HTTP_201_CREATED, summary="Agregar computadora")
 def agregar_computadora(
     lab_id: int,
     data: ComputadoraCreate,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.LAB_ADMIN,
+        RolUsuario.RESPONSABLE_LAB,
+    ))
 ):
-    # Validar que el LAB_ADMIN solo pueda agregar PCs a su propio laboratorio
+    # Administradores y responsables solo pueden operar su laboratorio asignado.
     lab = _get_lab_autorizado(lab_id, db, current_user)
 
-    duplicado = db.query(Computadora).filter(
-        Computadora.laboratorio_id == lab_id,
-        Computadora.codigo == data.codigo
-    ).first()
+    codigo = _normalizar_codigo_pc(data.codigo)
+    duplicado, campo_duplicado = _buscar_duplicado_pc(
+        db, lab_id, data.numero, codigo
+    )
     if duplicado:
-        raise HTTPException(status_code=409, detail=f"Ya existe una PC con código '{data.codigo}' en este lab")
+        valor = data.numero if campo_duplicado == "numero" else codigo
+        etiqueta = "número" if campo_duplicado == "numero" else "código"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe una PC con {etiqueta} '{valor}' en este laboratorio",
+        )
 
-    pc = Computadora(laboratorio_id=lab_id, **data.model_dump())
+    _validar_activo_para_pc(db, lab_id, data.activo_id)
+    payload = data.model_dump(exclude={"activo_id", "motivo_asignacion"})
+    pc = Computadora(
+        laboratorio_id=lab_id,
+        **{**payload, "codigo": codigo},
+    )
     db.add(pc)
-    db.commit()
+    try:
+        db.flush()
+        _actualizar_vinculo_activo(
+            db,
+            pc,
+            data.activo_id,
+            current_user,
+            data.motivo_asignacion,
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe una PC con ese número o código en este laboratorio",
+        )
     db.refresh(pc)
-    return pc
+    registrar(
+        db,
+        accion=Accion.AGREGAR_PC,
+        recurso=Recurso.COMPUTADORA,
+        usuario=current_user,
+        recurso_id=pc.id,
+        detalle={
+            "laboratorio_id": lab.id,
+            "codigo": pc.codigo,
+            "numero": pc.numero,
+        },
+        request=request,
+    )
+    db.refresh(pc)
+    return _serializar_pc(pc)
 
 
 @router.put("/{lab_id}/computadoras/{pc_id}", summary="Editar computadora")
@@ -221,10 +382,15 @@ async def editar_computadora(
     lab_id: int,
     pc_id: int,
     data: ComputadoraUpdate,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.LAB_ADMIN,
+        RolUsuario.RESPONSABLE_LAB,
+    ))
 ):
-    # Validar que el LAB_ADMIN solo pueda editar PCs de su propio laboratorio
+    # Administradores y responsables solo pueden operar su laboratorio asignado.
     _get_lab_autorizado(lab_id, db, current_user)
     pc = db.query(Computadora).filter(
         Computadora.id == pc_id,
@@ -233,10 +399,66 @@ async def editar_computadora(
     if not pc:
         raise HTTPException(status_code=404, detail="Computadora no encontrada en este laboratorio")
 
-    for campo, valor in data.model_dump(exclude_none=True).items():
-        setattr(pc, campo, valor)
+    cambios = data.model_dump(exclude_none=True, exclude={"activo_id", "motivo_asignacion"})
+    numero_final = cambios.get("numero", pc.numero)
+    codigo_final = _normalizar_codigo_pc(cambios.get("codigo", pc.codigo))
+    duplicado, campo_duplicado = _buscar_duplicado_pc(
+        db,
+        lab_id,
+        numero_final,
+        codigo_final,
+        excluir_id=pc.id,
+    )
+    if duplicado:
+        valor = numero_final if campo_duplicado == "numero" else codigo_final
+        etiqueta = "número" if campo_duplicado == "numero" else "código"
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya existe una PC con {etiqueta} '{valor}' en este laboratorio",
+        )
+    if "codigo" in cambios:
+        cambios["codigo"] = codigo_final
 
-    db.commit()
+    cambiar_activo = "activo_id" in data.model_fields_set
+    nuevo_activo_id = data.activo_id if cambiar_activo else pc.activo_id
+    if cambiar_activo:
+        _validar_activo_para_pc(db, lab_id, nuevo_activo_id, pc.id)
+
+    for campo, valor in cambios.items():
+        setattr(pc, campo, valor)
+    if cambiar_activo:
+        _actualizar_vinculo_activo(
+            db,
+            pc,
+            nuevo_activo_id,
+            current_user,
+            data.motivo_asignacion,
+        )
+    if "estado" in cambios and pc.activo:
+        pc.activo.estado = cambios["estado"]
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe una PC con ese número o código en este laboratorio",
+        )
+    db.refresh(pc)
+    registrar(
+        db,
+        accion=Accion.EDITAR_PC,
+        recurso=Recurso.COMPUTADORA,
+        usuario=current_user,
+        recurso_id=pc.id,
+        detalle={
+            "laboratorio_id": lab_id,
+            "codigo": pc.codigo,
+            "cambios": cambios,
+        },
+        request=request,
+    )
     db.refresh(pc)
 
     # Calcular el estado WebSocket correcto:
@@ -272,13 +494,48 @@ async def editar_computadora(
         }
     })
 
-    return pc
+    return _serializar_pc(pc)
+
+
+@router.get("/{lab_id}/computadoras/{pc_id}/historial-activos", summary="Historial patrimonial de la PC")
+def historial_activos_computadora(
+    lab_id: int,
+    pc_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _get_lab_autorizado(lab_id, db, current_user)
+    pc = db.query(Computadora).filter(
+        Computadora.id == pc_id,
+        Computadora.laboratorio_id == lab_id,
+    ).first()
+    if not pc:
+        raise HTTPException(status_code=404, detail="Computadora no encontrada en este laboratorio")
+
+    historial = db.query(HistorialAsignacionActivoPC).filter(
+        HistorialAsignacionActivoPC.computadora_id == pc.id,
+    ).order_by(HistorialAsignacionActivoPC.fecha_inicio.desc()).all()
+    return [{
+        "id": item.id,
+        "activo_id": item.activo_id,
+        "codigo_inventario": item.activo.codigo_inventario if item.activo else None,
+        "numero_oficial": item.activo.numero_oficial if item.activo else None,
+        "nombre": item.activo.nombre if item.activo else None,
+        "marca": item.activo.marca if item.activo else None,
+        "modelo": item.activo.modelo if item.activo else None,
+        "numero_serie": item.activo.numero_serie if item.activo else None,
+        "fecha_inicio": item.fecha_inicio.isoformat() if item.fecha_inicio else None,
+        "fecha_fin": item.fecha_fin.isoformat() if item.fecha_fin else None,
+        "motivo": item.motivo,
+        "asignado_por": item.asignado_por.nombre if item.asignado_por else None,
+    } for item in historial]
 
 
 @router.post("/{lab_id}/computadoras/bulk", status_code=status.HTTP_201_CREATED, summary="Carga masiva de PCs")
 def bulk_computadoras(
     lab_id: int,
     data: BulkComputadorasCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
@@ -317,4 +574,18 @@ def bulk_computadoras(
     db.commit()
     for pc in nuevas:
         db.refresh(pc)
-    return nuevas
+    registrar(
+        db,
+        accion=Accion.CARGA_MASIVA_PC,
+        recurso=Recurso.LABORATORIO,
+        usuario=current_user,
+        recurso_id=lab.id,
+        detalle={
+            "cantidad": len(nuevas),
+            "prefijo_codigo": data.prefijo_codigo,
+        },
+        request=request,
+    )
+    for pc in nuevas:
+        db.refresh(pc)
+    return [_serializar_pc(pc) for pc in nuevas]

@@ -358,7 +358,9 @@ function RankingDocentes({ docentes, cuatrimestre }) {
           {/* Nombre + horas + barra */}
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: c.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {d.nombre}
+              {d.nombre
+                ? d.nombre.toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase())
+                : '—'}
             </p>
             <p style={{ margin: '2px 0 5px', fontSize: 11, color: c.muted }}>
               {d.horas}h de uso
@@ -460,7 +462,7 @@ function ComputadorasCriticas({ pcs }) {
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {pc.codigo || `PC-${pc.numero}`}
+                {(pc.codigo || `PC-${pc.numero}`).replace(/--+/g, '-')}
               </p>
               {pc.pendientes > 0 && (
                 <span style={{
@@ -477,9 +479,10 @@ function ComputadorasCriticas({ pcs }) {
             <div style={{ marginTop: 5, height: 3, background: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{
                 width: `${(pc.total / max) * 100}%`, height: '100%', borderRadius: 2,
+                /* Rojo vino suavizado — indicador de métrica, no alarma */
                 background: i < 3
-                  ? 'linear-gradient(90deg, #b91c1c, #f87171)'
-                  : 'linear-gradient(90deg, #7f1d1d, #ef4444)',
+                  ? 'linear-gradient(90deg, #7f1d1d, #be3a3a)'
+                  : 'linear-gradient(90deg, #4c1111, #7f1d1d)',
                 transition: 'width 0.7s cubic-bezier(.4,0,.2,1)',
               }}/>
             </div>
@@ -530,7 +533,7 @@ function SummaryCard({ label, value, color = '#3b82f6', sub }) {
       <p style={{ fontSize: 28, fontWeight: 800, color, margin: 0, lineHeight: 1, fontVariantNumeric: 'tabular-nums', position: 'relative' }}>
         {value}
       </p>
-      {sub && <p style={{ fontSize: 11, color: '#64748b', marginTop: 8, position: 'relative' }}>{sub}</p>}
+      {sub && <p style={{ fontSize: 11, color: isDay ? '#4B5563' : '#94a3b8', marginTop: 8, position: 'relative' }}>{sub}</p>}
     </div>
   );
 }
@@ -538,19 +541,24 @@ function SummaryCard({ label, value, color = '#3b82f6', sub }) {
 function MiniMetric({ label, value, sub, tone = 'blue' }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
-  const tones = {
-    blue:   isDay ? ['#EFF6FF', '#BFDBFE', '#1D4ED8'] : ['rgba(59,130,246,0.08)', 'rgba(59,130,246,0.22)', '#93c5fd'],
-    green:  isDay ? ['#ECFDF5', '#A7F3D0', '#047857'] : ['rgba(16,185,129,0.08)', 'rgba(16,185,129,0.22)', '#6ee7b7'],
-    amber:  isDay ? ['#FFFBEB', '#FCD34D', '#B45309'] : ['rgba(245,158,11,0.10)', 'rgba(245,158,11,0.26)', '#fcd34d'],
-    red:    isDay ? ['#FEF2F2', '#FCA5A5', '#B91C1C'] : ['rgba(239,68,68,0.10)', 'rgba(239,68,68,0.26)', '#fca5a5'],
-    slate:  isDay ? ['#F8FAFC', '#CBD5E1', '#334155'] : ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.10)', '#cbd5e1'],
+  // Fondo neutro idéntico para todas — solo el número adopta el color del tono
+  const numColors = {
+    blue:  isDay ? '#1D4ED8' : '#93c5fd',
+    green: isDay ? '#047857' : '#6ee7b7',
+    amber: isDay ? '#B45309' : '#fbbf24',
+    red:   isDay ? '#B91C1C' : '#fca5a5',
+    slate: isDay ? '#334155' : '#94a3b8',
   };
-  const [bg, border, text] = tones[tone] || tones.blue;
+  const numColor = numColors[tone] || numColors.blue;
+  const cardBg   = isDay ? '#FFFFFF' : 'rgba(30,41,59,0.55)';
+  const cardBdr  = isDay ? '#E2E8F0' : 'rgba(255,255,255,0.07)';
+  // Label en formato título (no ALL-CAPS)
+  const labelFmt = label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
   return (
-    <div className="card-lift rounded-xl border px-4 py-3" style={{ background: bg, borderColor: border }}>
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: isDay ? '#64748B' : '#64748B' }}>{label}</p>
-      <p className="mt-1 text-2xl font-extrabold tabular-nums" style={{ color: text }}>{value}</p>
-      {sub && <p className="mt-1 text-xs" style={{ color: isDay ? '#475569' : '#94a3b8' }}>{sub}</p>}
+    <div className="card-lift rounded-xl border px-4 py-3" style={{ background: cardBg, borderColor: cardBdr }}>
+      <p className="text-[10px] font-semibold tracking-wide" style={{ color: isDay ? '#64748B' : '#64748B' }}>{labelFmt}</p>
+      <p className="mt-1 text-2xl font-extrabold tabular-nums" style={{ color: numColor }}>{value}</p>
+      {sub && <p className="mt-1 text-xs" style={{ color: isDay ? '#4B5563' : '#94a3b8' }}>{sub}</p>}
     </div>
   );
 }
@@ -638,36 +646,38 @@ function TabMensual() {
 
   return (
     <div className="space-y-5">
-      {/* Filtros + descarga */}
-      <div className="flex flex-wrap gap-3 items-end justify-between">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Laboratorio</label>
-            <SelectDark value={labId} onChange={v => setLabId(Number(v))} className="min-w-[200px]"
-              options={labs.map(l => ({ value: l.id, label: l.nombre }))}/>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Mes</label>
-            <SelectDark value={mes} onChange={v => setMes(Number(v))} className="w-36"
-              options={MESES.slice(1).map((m, i) => ({ value: i + 1, label: m }))}/>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Año</label>
-            <SelectDark value={anio} onChange={v => setAnio(Number(v))} className="w-28"
-              options={anios.map(y => ({ value: y, label: String(y) }))}/>
-          </div>
-          <button onClick={cargar} disabled={cargando}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            {cargando
-              ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-              : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>}
-            Actualizar
+      {/* Filtros + descarga — todo en una sola fila */}
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Laboratorio</label>
+          <SelectDark value={labId} onChange={v => setLabId(Number(v))} className="min-w-[200px]"
+            options={labs.map(l => ({ value: l.id, label: l.nombre }))}/>
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Mes</label>
+          <SelectDark value={mes} onChange={v => setMes(Number(v))} className="w-36"
+            options={MESES.slice(1).map((m, i) => ({ value: i + 1, label: m }))}/>
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Año</label>
+          <SelectDark value={anio} onChange={v => setAnio(Number(v))} className="w-28"
+            options={anios.map(y => ({ value: y, label: String(y) }))}/>
+        </div>
+        <button onClick={cargar} disabled={cargando}
+          className="flex items-center gap-2 border border-white/15 text-slate-300 hover:bg-white/8 hover:text-white disabled:opacity-50 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
+          title="Actualizar">
+          {cargando
+            ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+            : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>}
+        </button>
+        {/* Descargar Excel en la misma fila — extremo derecho */}
+        <div className="ml-auto">
+          <button onClick={descargar} disabled={descargando || !datos}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+            {descargando ? 'Generando…' : 'Descargar Excel'}
           </button>
         </div>
-        <button onClick={descargar} disabled={descargando || !datos}
-          className="flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors">
-          {descargando ? 'Generando…' : '⬇️  Descargar Excel'}
-        </button>
       </div>
 
       {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
@@ -742,17 +752,24 @@ function TabMensual() {
               <div className="mt-3 space-y-2">
                 {[
                   datos.prestamos.vencidos > 0 && ['Préstamos vencidos', `${datos.prestamos.vencidos} requieren seguimiento`, 'red'],
-                  datos.pcs.mantenimiento > 0 && ['Equipos en mantenimiento', `${datos.pcs.mantenimiento} PC pendiente(s)`, 'amber'],
+                  datos.pcs.mantenimiento > 0 && ['Equipos en mantenimiento', `${datos.pcs.mantenimiento} PC pendiente`, 'amber'],
                   datos.incidentes.pendientes > 0 && ['Incidentes pendientes', `${datos.incidentes.pendientes} sin resolver`, 'amber'],
-                  (datos.activos.mantenimiento + datos.activos.danados) > 0 && ['Activos dañados/mant.', `${datos.activos.mantenimiento + datos.activos.danados} activo(s)`, 'amber'],
+                  (datos.activos.mantenimiento + datos.activos.danados) > 0 && ['Activos dañados / mantenimiento', `${datos.activos.mantenimiento + datos.activos.danados} activo(s)`, 'amber'],
                 ].filter(Boolean).map(([title, detail, tone]) => (
                   <div key={title} className={`rounded-xl border px-3 py-2 ${
                     tone === 'red'
-                      ? isDay ? 'bg-red-50 border-red-200 text-red-800' : 'bg-red-950/25 border-red-700/40 text-red-200'
-                      : isDay ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-amber-950/25 border-amber-700/40 text-amber-200'
+                      ? isDay ? 'bg-red-50 border-red-300'   : 'bg-red-950/25 border-red-700/40'
+                      : isDay ? 'bg-amber-50 border-amber-300' : 'bg-amber-950/25 border-amber-700/40'
                   }`}>
-                    <p className="text-sm font-semibold">{title}</p>
-                    <p className="text-xs opacity-80">{detail}</p>
+                    {/* Texto quemado oscuro en modo día para WCAG — texto suave en modo noche */}
+                    <p className={`text-sm font-semibold ${
+                      tone === 'red'   ? (isDay ? 'text-red-900'   : 'text-red-200')
+                                       : (isDay ? 'text-amber-900' : 'text-amber-200')
+                    }`}>{title}</p>
+                    <p className={`text-xs mt-0.5 ${
+                      tone === 'red'   ? (isDay ? 'text-red-800/70'   : 'text-red-300/70')
+                                       : (isDay ? 'text-amber-800/70' : 'text-amber-300/70')
+                    }`}>{detail}</p>
                   </div>
                 ))}
                 {datos.prestamos.vencidos === 0 && datos.pcs.mantenimiento === 0 && datos.incidentes.pendientes === 0 && (datos.activos.mantenimiento + datos.activos.danados) === 0 && (
@@ -864,27 +881,24 @@ function TabComparativo() {
 
   return (
     <div className="space-y-5">
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-end justify-between">
-        <div className="flex flex-wrap gap-3 items-end">
-          {labs.length > 1 && (
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Laboratorio</label>
-              <SelectDark value={labId} onChange={v => setLabId(Number(v) || '')} className="min-w-[200px]"
-                options={[{ value: '', label: 'Todos los labs' }, ...labs.map(l => ({ value: l.id, label: l.nombre }))]}/>
-            </div>
-          )}
-          <button onClick={cargar} disabled={cargando}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-            {cargando
-              ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-              : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>}
-            Actualizar
-          </button>
-        </div>
-
+      {/* Filtros — fila compacta */}
+      <div className="flex flex-wrap items-end gap-3">
+        {labs.length > 1 && (
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Laboratorio</label>
+            <SelectDark value={labId} onChange={v => setLabId(Number(v) || '')} className="min-w-[200px]"
+              options={[{ value: '', label: 'Todos los labs' }, ...labs.map(l => ({ value: l.id, label: l.nombre }))]}/>
+          </div>
+        )}
+        <button onClick={cargar} disabled={cargando}
+          className="p-2 rounded-xl border border-white/15 text-slate-400 hover:text-white hover:bg-white/8 disabled:opacity-50 transition-colors"
+          title="Actualizar">
+          {cargando
+            ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+            : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>}
+        </button>
         {datos && (
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-slate-400 ml-2">
             <span className="px-2.5 py-1 rounded-full border border-blue-700 bg-blue-900/30 text-blue-300 font-semibold">
               {datos.cuatrimestre_actual.nombre}
             </span>

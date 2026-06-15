@@ -2,7 +2,7 @@
 test_siga_adeudos.py -- Tests de integración para el módulo de adeudos.
 
 Cubre:
-- Crear adeudo manual (SUPER_ADMIN / LAB_ADMIN)
+- Crear adeudo manual (SUPER_ADMIN)
 - Listar adeudos con filtros
 - Ver resumen por persona
 - Actualizar estado de adeudo
@@ -223,5 +223,33 @@ class TestPermisosAdeudos:
             "descripcion": "Y",
             "tipo": "DAÑO",
             "origen_tipo": "MANUAL",
+        }, headers=auth_headers(tok))
+        assert r.status_code == 403
+
+    def test_lab_admin_no_puede_crear_adeudo(self, client, db):
+        lab = _lab(db, "Lab sin gestion de adeudos")
+        _usuario(
+            db,
+            "Admin Lab",
+            "labadmin.adeudo@test.mx",
+            RolUsuario.LAB_ADMIN,
+            lab_id=lab.id,
+        )
+        tok = get_token(client, "labadmin.adeudo@test.mx", "Test1234!")
+        r = _crear_adeudo(client, tok, lab.id)
+        assert r.status_code == 403
+
+    def test_lab_admin_no_puede_administrar_catalogo(self, client, db):
+        _usuario(db, "Admin Lab Catalogo", "labadmin.catalogo@test.mx", RolUsuario.LAB_ADMIN)
+        tok = get_token(client, "labadmin.catalogo@test.mx", "Test1234!")
+        r = client.post("/catalogo/alumnos", json={
+            "matricula": "CAT-LAB-001",
+            "apellido_paterno": "Prueba",
+            "apellido_materno": "Seguridad",
+            "nombres": "Usuario",
+            "carrera": "TI",
+            "cuatrimestre": 1,
+            "grupo": "A",
+            "periodo": "ENE-ABR-2026",
         }, headers=auth_headers(tok))
         assert r.status_code == 403

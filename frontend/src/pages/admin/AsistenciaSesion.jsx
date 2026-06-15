@@ -251,6 +251,7 @@ export default function AsistenciaSesion() {
                 onChange={e => setBusqueda(e.target.value)}
                 placeholder="Buscar alumno, matrícula, PC…"
                 className="input-dark pl-9 text-sm h-9 w-full"
+                style={{ paddingLeft: 36 }}
               />
             </div>
           </div>

@@ -29,7 +29,7 @@ from dependencies import get_current_user, require_roles
 from services.auditoria import registrar, Accion, Recurso
 
 router = APIRouter(prefix="/adeudos", tags=["Adeudos"])
-_admin = require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
+_admin = require_roles(RolUsuario.SUPER_ADMIN)
 
 
 def _utcnow() -> datetime.datetime:

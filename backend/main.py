@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import engine, Base, SessionLocal, DATABASE_URL
@@ -14,7 +14,9 @@ from alembic import command as alembic_command
 
 # Middleware de seguridad
 from middleware.security import SecurityHeadersMiddleware
+from middleware.error_handling import ErrorHandlingMiddleware
 from services.rate_limit import RateLimitMiddleware
+from services.system_health import get_system_health
 
 # Routers
 from routers import auth as auth_router
@@ -37,6 +39,7 @@ from routers import departamentos as departamentos_router
 from routers import tutoria as tutoria_router
 from routers import consultorio as consultorio_router
 from routers import servicios_escolares as servicios_escolares_router
+from routers import system as system_router
 
 from ws.mapa import websocket_mapa
 
@@ -47,7 +50,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "p2q3r4s5t6u7"
+_ALEMBIC_HEAD = "i7j8k9l0m1n2"
 
 
 def _current_db_version() -> str | None:
@@ -163,10 +166,11 @@ app.add_middleware(
     allow_credentials=not _CORS_ALL,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"] if _CORS_ALL else ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-Request-ID"],
     max_age=600,
 )
 
+app.add_middleware(ErrorHandlingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
@@ -192,6 +196,7 @@ app.include_router(departamentos_router.router)
 app.include_router(tutoria_router.router)
 app.include_router(consultorio_router.router)
 app.include_router(servicios_escolares_router.router)
+app.include_router(system_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 
@@ -202,8 +207,11 @@ def root():
     return {"sistema": "SIGA UTECAN", "version": "1.0.0", "estado": "ok"}
 
 @app.get("/health", tags=["Sistema"])
-def health():
-    return {"status": "healthy"}
+def health(response: Response):
+    result = get_system_health()
+    if result["status"] == "unhealthy":
+        response.status_code = 503
+    return result
 
 @app.get("/health/db", tags=["Sistema"])
 def health_db():

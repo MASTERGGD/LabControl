@@ -5,6 +5,8 @@ import SelectDark     from '../../components/SelectDark';
 import DatePickerDark from '../../components/DatePickerDark';
 import AutocompleteInput from '../../components/AutocompleteInput';
 import { useTheme } from '../../context/ThemeContext';
+import { todayISOInMexico } from '../../utils/timezone';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // ─── Combobox de búsqueda de activos ─────────────────────────────────────────
 function ActivoCombobox({ activos, value, onChange }) {
@@ -16,42 +18,38 @@ function ActivoCombobox({ activos, value, onChange }) {
   const inputRef  = useRef(null);
   const listaRef  = useRef(null);
 
-  // Texto que muestra el input cuando hay un valor seleccionado
-  const seleccionado = activos.find(a => String(a.id) === String(value));
-  const labelSeleccionado = seleccionado
-    ? `${seleccionado.codigo_inventario ? seleccionado.codigo_inventario + ' — ' : ''}${seleccionado.nombre} (${seleccionado.laboratorio_nombre || 'Sin lab'})`
-    : '';
+  const idsSeleccionados = new Set((value || []).map(String));
+  const seleccionados = activos.filter(a => idsSeleccionados.has(String(a.id)));
 
   const filtrados = query.trim() === ''
-    ? activos
+    ? activos.filter(a => !idsSeleccionados.has(String(a.id)))
     : activos.filter(a => {
         const q = query.toLowerCase();
-        return (
-          a.nombre?.toLowerCase().includes(q) ||
-          a.codigo_inventario?.toLowerCase().includes(q) ||
-          a.numero_serie?.toLowerCase().includes(q) ||
-          a.laboratorio_nombre?.toLowerCase().includes(q) ||
-          a.categoria?.toLowerCase().includes(q)
+        return !idsSeleccionados.has(String(a.id)) && (
+          (a.nombre || '').toLowerCase().includes(q) ||
+          (a.codigo_inventario || '').toLowerCase().includes(q) ||
+          (a.numero_serie || '').toLowerCase().includes(q) ||
+          (a.laboratorio_nombre || '').toLowerCase().includes(q) ||
+          (a.categoria || '').toLowerCase().includes(q)
         );
       });
 
   const seleccionar = (a) => {
-    onChange(String(a.id));
+    onChange([...(value || []), String(a.id)]);
     setQuery('');
-    setAbierto(false);
     setDestacado(-1);
+    inputRef.current?.focus();
   };
 
-  const limpiar = () => {
-    onChange('');
-    setQuery('');
+  const quitar = (activoId) => {
+    onChange((value || []).filter(id => String(id) !== String(activoId)));
     inputRef.current?.focus();
   };
 
   // Cerrar al hacer click fuera
   useEffect(() => {
     const handler = (e) => {
-      if (!inputRef.current?.closest('.activo-combobox')?.contains(e.target)) {
+      if (inputRef.current && !inputRef.current.closest('.activo-combobox')?.contains(e.target)) {
         setAbierto(false);
       }
     };
@@ -79,12 +77,16 @@ function ActivoCombobox({ activos, value, onChange }) {
     <div className="activo-combobox relative">
       <div className="flex items-center rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/60"
         style={{ background: isDay ? '#FFFFFF' : 'rgba(15,23,42,0.7)', border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.12)'}` }}>
-        <span className="pl-3 text-slate-500 text-sm select-none">🔍</span>
+        <span className="pl-3 text-slate-500 select-none">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+          </svg>
+        </span>
         <input
           ref={inputRef}
           type="text"
-          placeholder={value ? labelSeleccionado : 'Buscar por nombre, No. inventario, serie o laboratorio…'}
-          value={value && !abierto ? '' : query}
+          placeholder="Buscar y agregar por nombre, No. inventario, serie o laboratorio..."
+          value={query}
           onFocus={() => setAbierto(true)}
           onChange={e => { setQuery(e.target.value); setAbierto(true); setDestacado(-1); }}
           onKeyDown={handleKey}
@@ -92,18 +94,27 @@ function ActivoCombobox({ activos, value, onChange }) {
           style={{ background: 'transparent' }}
           autoComplete="off"
         />
-        {value
-          ? <button type="button" onClick={limpiar} className="pr-3 text-slate-500 hover:text-red-400 text-lg leading-none">×</button>
-          : <span className="pr-3 text-slate-600 text-xs">▾</span>
-        }
+        <span className="pr-3 text-slate-600 text-xs">▾</span>
       </div>
 
-      {/* Etiqueta del seleccionado */}
-      {value && !abierto && (
-        <div className="mt-1 px-2 py-1 rounded-lg text-xs text-blue-300 flex items-center gap-2"
-          style={{ background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.25)' }}>
-          <span>✓</span>
-          <span className="font-medium truncate">{labelSeleccionado}</span>
+      {seleccionados.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          {seleccionados.map(a => (
+            <div key={a.id} className="px-3 py-2 rounded-lg text-xs flex items-center gap-2"
+              style={{ background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.25)' }}>
+              <span className="text-blue-400">✓</span>
+              <span className={`font-medium truncate flex-1 ${isDay ? 'text-slate-800' : 'text-blue-200'}`}>
+                {a.codigo_inventario ? `${a.codigo_inventario} - ` : ''}{a.nombre}
+              </span>
+              <button type="button" onClick={() => quitar(a.id)}
+                className="text-slate-500 hover:text-red-400 font-semibold" aria-label={`Quitar ${a.nombre}`}>
+                ×
+              </button>
+            </div>
+          ))}
+          <p className="text-xs text-slate-500 px-1">
+            {seleccionados.length} activo{seleccionados.length !== 1 ? 's' : ''} en este préstamo
+          </p>
         </div>
       )}
 
@@ -126,7 +137,7 @@ function ActivoCombobox({ activos, value, onChange }) {
             <>
               <div className="px-3 py-1.5 text-xs text-slate-600 sticky top-0"
                 style={{ borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.06)'}`, background: isDay ? '#F8FAFC' : 'rgba(15,23,42,0.98)' }}>
-                {filtrados.length} activo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''}
+                {filtrados.length} activo{filtrados.length !== 1 ? 's' : ''} disponible{filtrados.length !== 1 ? 's' : ''} para agregar
                 {query && ` · filtrando por "${query}"`}
               </div>
               {filtrados.map((a, i) => (
@@ -164,6 +175,7 @@ function ActivoCombobox({ activos, value, onChange }) {
 const ESTADOS_PRESTAMO = {
   ACTIVO:   { label: 'Activo',   color: 'bg-blue-500/10 text-blue-400 border border-blue-500/20' },
   VENCIDO:  { label: 'Vencido',  color: 'bg-red-500/10 text-red-400 border border-red-500/20' },
+  PARCIAL:  { label: 'Parcial',  color: 'bg-amber-500/10 text-amber-500 border border-amber-500/25' },
   DEVUELTO: { label: 'Devuelto', color: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
 };
 
@@ -173,17 +185,6 @@ const CONDICION_OPCIONES = [
   { value: 'MALO',        label: 'Malo — requiere revisión' },
   { value: 'DAÑADO',      label: 'Dañado — fuera de servicio' },
 ];
-
-const CATEGORIAS_LABEL = {
-  COMPUTADORA:    '🖥️ Computadora',
-  IMPRESORA_3D:   '🖨️ Impresora 3D',
-  BRAZO_ROBOTICO: '🦾 Brazo Robótico',
-  SCANNER:        '📡 Escáner',
-  IOT:            '🔌 IoT',
-  HERRAMIENTA:    '🔧 Herramienta',
-  MOBILIARIO:     '🪑 Mobiliario',
-  OTRO:           '📦 Otro',
-};
 
 function formatFecha(iso) {
   if (!iso) return '—';
@@ -224,7 +225,7 @@ export default function Prestamos() {
 
   // ── Formulario préstamo ──
   const [formPrestar, setFormPrestar] = useState({
-    activo_id: '',
+    activo_ids: [],
     receptor_nombre: '',
     receptor_matricula: '',
     receptor_tipo: 'ALUMNO',
@@ -256,8 +257,9 @@ export default function Prestamos() {
       if (filtroEstado) params.append('estado', filtroEstado);
       if (filtroLab)    params.append('laboratorio_id', filtroLab);
 
+      const qs = params.toString();
       const [prestRes, statsRes, labsRes] = await Promise.all([
-        api.get(`/inventario/prestamos?${params}`),
+        api.get(`/inventario/prestamos${qs ? `?${qs}` : ''}`),
         api.get('/inventario/estadisticas'),
         api.get('/laboratorios'),
       ]);
@@ -278,15 +280,18 @@ export default function Prestamos() {
 
   const abrirModalPrestar = async () => {
     try {
-      const params = new URLSearchParams({ solo_disponibles: 'true' });
+      const params = new URLSearchParams({
+        solo_disponibles: 'true',
+        estado_admin: 'VALIDADO',
+      });
       if (filtroLab) params.append('laboratorio_id', filtroLab);
-      const res = await api.get(`/inventario/activos?${params}`);
+      const res = await api.get(`/inventario/activos?${params.toString()}`);
       setActivos(res.data);
     } catch {
       setActivos([]);
     }
     setFormPrestar({
-      activo_id: '',
+      activo_ids: [],
       receptor_nombre: '',
       receptor_matricula: '',
       receptor_tipo: 'ALUMNO',
@@ -303,13 +308,17 @@ export default function Prestamos() {
 
   const guardarPrestamo = async (e) => {
     e.preventDefault();
+    if (formPrestar.activo_ids.length === 0) {
+      setError('Selecciona al menos un activo para el préstamo');
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/inventario/prestamos', formPrestar);
       setModalPrestar(false);
       cargarTodo();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error al registrar préstamo');
+      setError(getApiErrorMessage(err, 'Error al registrar préstamo'));
     } finally {
       setSaving(false);
     }
@@ -318,7 +327,18 @@ export default function Prestamos() {
   // ─── Abrir modal devolución ───────────────────────────────────────────────────
 
   const abrirDevolucion = (prestamo) => {
-    setPrestamoSel(prestamo);
+    setPrestamoSel({ ...prestamo, esGrupo: false });
+    setFormDevolver({ condicion_devolucion: 'BUENO', notas_devolucion: '' });
+    setModalDevolver(true);
+  };
+
+  const abrirDevolucionGrupo = (grupo) => {
+    setPrestamoSel({
+      ...grupo.principal,
+      folio: grupo.folio,
+      esGrupo: true,
+      items: grupo.pendientes,
+    });
     setFormDevolver({ condicion_devolucion: 'BUENO', notas_devolucion: '' });
     setModalDevolver(true);
   };
@@ -329,12 +349,22 @@ export default function Prestamos() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post(`/inventario/prestamos/${prestamoSeleccionado.id}/devolver`, formDevolver);
+      if (prestamoSeleccionado.esGrupo) {
+        await api.post(
+          `/inventario/prestamos/grupos/${encodeURIComponent(prestamoSeleccionado.folio)}/devolver`,
+          {
+            ...formDevolver,
+            prestamo_ids: prestamoSeleccionado.items.map(item => item.id),
+          },
+        );
+      } else {
+        await api.post(`/inventario/prestamos/${prestamoSeleccionado.id}/devolver`, formDevolver);
+      }
       setModalDevolver(false);
       setPrestamoSel(null);
       cargarTodo();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error al registrar devolución');
+      setError(getApiErrorMessage(err, 'Error al registrar devolución'));
     } finally {
       setSaving(false);
     }
@@ -346,10 +376,29 @@ export default function Prestamos() {
     if (!filtroTexto) return true;
     const txt = filtroTexto.toLowerCase();
     return (
-      p.activo_nombre?.toLowerCase().includes(txt) ||
-      p.receptor_nombre?.toLowerCase().includes(txt) ||
-      p.receptor_matricula?.toLowerCase().includes(txt)
+      (p.activo_nombre || '').toLowerCase().includes(txt) ||
+      (p.receptor_nombre || '').toLowerCase().includes(txt) ||
+      (p.receptor_matricula || '').toLowerCase().includes(txt) ||
+      (p.folio || '').toLowerCase().includes(txt)
     );
+  });
+
+  const gruposPrestamo = Object.values(prestamosFiltrados.reduce((grupos, prestamo) => {
+    const clave = prestamo.folio || `PRE-${prestamo.id}`;
+    if (!grupos[clave]) {
+      grupos[clave] = { folio: clave, items: [] };
+    }
+    grupos[clave].items.push(prestamo);
+    return grupos;
+  }, {})).map(grupo => {
+    const pendientes = grupo.items.filter(p => p.estado === 'ACTIVO' || p.estado === 'VENCIDO');
+    const devueltos = grupo.items.filter(p => p.estado === 'DEVUELTO');
+    const estado = pendientes.some(p => p.estado === 'VENCIDO')
+      ? 'VENCIDO'
+      : pendientes.length > 0 && devueltos.length > 0
+        ? 'PARCIAL'
+        : pendientes.length > 0 ? 'ACTIVO' : 'DEVUELTO';
+    return { ...grupo, pendientes, devueltos, estado, principal: grupo.items[0] };
   });
 
   const vencidos = prestamos.filter(p => p.estado === 'VENCIDO');
@@ -363,9 +412,9 @@ export default function Prestamos() {
         {/* Encabezado */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Préstamos de Equipo</h1>
+            <h1 className="text-2xl font-bold text-white">Préstamos de activos</h1>
             <p className="text-sm text-slate-400 mt-1">
-              Registro y control de préstamos de activos tecnológicos
+              Registro y control de préstamos de inventario institucional y de laboratorio
             </p>
           </div>
           <button
@@ -418,10 +467,10 @@ export default function Prestamos() {
         {/* Stats rápidas */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Total préstamos', value: stats.prestamos_totales ?? '—', dot: '#94a3b8', num: 'text-white' },
-            { label: 'Activos',   value: stats.prestamos_activos  ?? '—', dot: '#60a5fa', num: 'text-blue-400' },
-            { label: 'Vencidos',  value: stats.prestamos_vencidos ?? '—', dot: '#f87171', num: 'text-red-400' },
-            { label: 'Devueltos', value: stats.prestamos_devueltos?? '—', dot: '#34d399', num: 'text-emerald-400' },
+            { label: 'Solicitudes', value: stats.solicitudes_prestamo_totales ?? stats.prestamos_totales ?? '-', dot: '#94a3b8', num: 'text-white' },
+            { label: 'Activas',   value: stats.solicitudes_prestamo_activas ?? stats.prestamos_activos ?? '-', dot: '#60a5fa', num: 'text-blue-400' },
+            { label: 'Vencidas',  value: stats.solicitudes_prestamo_vencidas ?? stats.prestamos_vencidos ?? '-', dot: '#f87171', num: 'text-red-400' },
+            { label: 'Devueltas', value: stats.solicitudes_prestamo_devueltas ?? stats.prestamos_devueltos ?? '-', dot: '#34d399', num: 'text-emerald-400' },
           ].map(s => (
             <div key={s.label} className="glass p-4 flex items-center gap-3">
               <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}55` }} />
@@ -542,7 +591,7 @@ export default function Prestamos() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.05)', borderBottom: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.08)'}` }}>
-                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Activo</th>
+                    <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Folio / Activos</th>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Receptor</th>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Propósito</th>
                     <th className="text-left px-5 py-3.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Préstamo</th>
@@ -552,14 +601,15 @@ export default function Prestamos() {
                   </tr>
                 </thead>
                 <tbody>
-                  {prestamosFiltrados.map((p, idx) => {
-                    const est  = ESTADOS_PRESTAMO[p.estado] || ESTADOS_PRESTAMO.ACTIVO;
-                    const dias = p.estado === 'ACTIVO' && p.fecha_devolucion_esperada
+                  {gruposPrestamo.map((grupo, idx) => {
+                    const p = grupo.principal;
+                    const est  = ESTADOS_PRESTAMO[grupo.estado] || ESTADOS_PRESTAMO.ACTIVO;
+                    const dias = grupo.pendientes.length > 0 && p.fecha_devolucion_esperada
                       ? diasRestantes(p.fecha_devolucion_esperada)
                       : null;
 
                     return (
-                      <tr key={p.id}
+                      <tr key={grupo.folio}
                         className="transition-colors"
                         style={{
                           background: idx % 2 === 1 ? (isDay ? '#F8FAFC' : 'rgba(255,255,255,0.02)') : 'transparent',
@@ -568,42 +618,86 @@ export default function Prestamos() {
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                         onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 1 ? 'rgba(255,255,255,0.02)' : 'transparent'}
                       >
-                        {/* Activo */}
-                        <td className="px-5 py-3.5">
-                          <div className="font-medium text-slate-200">{p.activo_nombre}</div>
-                          {p.activo_categoria && (
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              {CATEGORIAS_LABEL[p.activo_categoria] || p.activo_categoria}
-                            </div>
-                          )}
-                          {p.activo_lab && (
-                            <div className="text-xs text-slate-600">{p.activo_lab}</div>
-                          )}
+                        {/* Folio y activos del préstamo */}
+                        <td className="px-5 py-3.5 min-w-[260px]">
+                          <div className="text-[11px] font-mono font-semibold text-blue-500 mb-2">{grupo.folio}</div>
+                          <div className="space-y-2">
+                            {grupo.items.map(item => (
+                              <div key={item.id} className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  item.estado === 'DEVUELTO' ? 'bg-emerald-500' :
+                                  item.estado === 'VENCIDO' ? 'bg-red-500' : 'bg-blue-500'
+                                }`} />
+                                <div className="min-w-0 flex-1">
+                                  <div className={`font-semibold text-sm truncate ${isDay ? 'text-slate-900' : 'text-slate-200'}`}>
+                                    {item.activo_nombre || '-'}
+                                  </div>
+                                  <div className="text-xs text-slate-500 truncate">
+                                    {[item.activo_codigo, item.activo_lab].filter(Boolean).join(' · ')}
+                                  </div>
+                                </div>
+                                {grupo.items.length > 1 && (item.estado === 'ACTIVO' || item.estado === 'VENCIDO') && (
+                                  <button type="button" onClick={() => abrirDevolucion(item)}
+                                    className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-500 whitespace-nowrap">
+                                    Devolver este
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </td>
-                        {/* Receptor */}
+
+                        {/* Receptor — formato título + matrícula en mono */}
                         <td className="px-5 py-3.5">
-                          <div className="font-medium text-slate-200">{p.receptor_nombre}</div>
-                          {p.receptor_matricula && (
-                            <div className="text-xs text-slate-500 font-mono">{p.receptor_matricula}</div>
-                          )}
-                          <div className="text-xs text-slate-600">{p.receptor_tipo}</div>
+                          <div className={`font-semibold text-sm ${isDay ? 'text-slate-900' : 'text-slate-200'}`}>
+                            {p.receptor_nombre
+                              ? p.receptor_nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                              : '-'}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {[p.receptor_matricula, p.receptor_tipo].filter(Boolean).join(' · ')}
+                          </div>
                         </td>
-                        {/* Propósito */}
+
+                        {/* Propósito — primera letra mayúscula */}
                         <td className="px-5 py-3.5">
-                          <div className="text-slate-400 max-w-xs truncate text-sm">{p.proposito || <span className="text-slate-700">—</span>}</div>
+                          <div className="text-slate-400 max-w-xs truncate text-sm">
+                            {p.proposito
+                              ? p.proposito.charAt(0).toUpperCase() + p.proposito.slice(1)
+                              : <span className="text-slate-700">-</span>}
+                          </div>
                         </td>
+
                         {/* Fecha préstamo */}
                         <td className="px-5 py-3.5 text-slate-400 text-sm whitespace-nowrap">
                           {formatFecha(p.fecha_prestamo)}
                         </td>
-                        {/* Devolución */}
+
+                        {/* Devolución — si ya se devolvió, solo fecha real + puntualidad */}
                         <td className="px-5 py-3.5 whitespace-nowrap">
-                          {p.fecha_devolucion_esperada ? (
+                          {grupo.estado === 'DEVUELTO' && p.fecha_devolucion_real ? (
+                            <div>
+                              <div className={`text-sm font-medium ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>
+                                {formatFecha(p.fecha_devolucion_real)}
+                              </div>
+                              {p.fecha_devolucion_esperada && (
+                                <div className={`text-xs mt-0.5 ${
+                                  p.fecha_devolucion_real <= p.fecha_devolucion_esperada
+                                    ? 'text-emerald-500'
+                                    : 'text-amber-400'
+                                }`}>
+                                  {p.fecha_devolucion_real <= p.fecha_devolucion_esperada
+                                    ? 'Entregado a tiempo'
+                                    : 'Entregado tarde'}
+                                </div>
+                              )}
+                            </div>
+                          ) : p.fecha_devolucion_esperada ? (
                             <div>
                               <div className={`text-sm ${dias !== null && dias < 0 ? 'text-red-400 font-semibold' : 'text-slate-400'}`}>
                                 {formatFecha(p.fecha_devolucion_esperada)}
                               </div>
-                              {dias !== null && p.estado === 'ACTIVO' && (
+                              {dias !== null && (
                                 <div className={`text-xs mt-0.5 ${dias < 0 ? 'text-red-500' : dias <= 2 ? 'text-amber-400' : 'text-slate-500'}`}>
                                   {dias < 0
                                     ? `Vencido hace ${Math.abs(dias)} día${Math.abs(dias) > 1 ? 's' : ''}`
@@ -611,38 +705,36 @@ export default function Prestamos() {
                                     : `${dias} día${dias > 1 ? 's' : ''} restante${dias > 1 ? 's' : ''}`}
                                 </div>
                               )}
-                              {p.estado === 'DEVUELTO' && p.fecha_devolucion_real && (
-                                <div className="text-xs text-emerald-500 mt-0.5">
-                                  Devuelto: {formatFecha(p.fecha_devolucion_real)}
-                                </div>
-                              )}
                             </div>
                           ) : <span className="text-slate-700">—</span>}
                         </td>
-                        {/* Estado */}
+
+                        {/* Estado — badge + condición como metadato sutil */}
                         <td className="px-5 py-3.5">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${est.color}`}>
                             {est.label}
                           </span>
-                          {p.condicion_devolucion && (
-                            <div className="text-xs text-slate-600 mt-1">
-                              {p.condicion_devolucion}
-                            </div>
-                          )}
+                          <div className="text-xs text-slate-500 mt-1">
+                            {grupo.devueltos.length}/{grupo.items.length} devueltos
+                          </div>
                         </td>
-                        {/* Acción */}
+
+                        {/* Acción — solo para préstamos activos/vencidos; icono ⋯ para completados */}
                         <td className="px-5 py-3.5 text-right">
-                          {(p.estado === 'ACTIVO' || p.estado === 'VENCIDO') && (
+                          {grupo.pendientes.length > 0 && (
                             <button
-                              onClick={() => abrirDevolucion(p)}
-                              className="text-xs text-emerald-300 px-3 py-1.5 rounded-lg transition font-medium whitespace-nowrap"
-                              style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}
+                              onClick={() => grupo.pendientes.length === 1
+                                ? abrirDevolucion(grupo.pendientes[0])
+                                : abrirDevolucionGrupo(grupo)}
+                              className="text-xs text-white px-3 py-1.5 rounded-lg transition font-semibold whitespace-nowrap bg-emerald-600 hover:bg-emerald-700"
                             >
-                              ↩ Devolver
+                              ↩ {grupo.pendientes.length > 1
+                                ? `Devolver ${grupo.pendientes.length}`
+                                : 'Devolver'}
                             </button>
                           )}
-                          {p.estado === 'DEVUELTO' && (
-                            <span className="text-xs text-slate-600 italic">Completado</span>
+                          {grupo.estado === 'DEVUELTO' && (
+                            <span className="text-slate-600 text-base" title="Completado">···</span>
                           )}
                         </td>
                       </tr>
@@ -655,9 +747,9 @@ export default function Prestamos() {
         </div>
 
         {/* Contador */}
-        {!loading && prestamosFiltrados.length > 0 && (
+        {!loading && gruposPrestamo.length > 0 && (
           <p className="text-xs text-slate-600 text-right">
-            {prestamosFiltrados.length} préstamo{prestamosFiltrados.length !== 1 ? 's' : ''} encontrado{prestamosFiltrados.length !== 1 ? 's' : ''}
+            {gruposPrestamo.length} solicitud{gruposPrestamo.length !== 1 ? 'es' : ''} · {prestamosFiltrados.length} activo{prestamosFiltrados.length !== 1 ? 's' : ''}
           </p>
         )}
       </div>
@@ -676,17 +768,17 @@ export default function Prestamos() {
             </div>
             <form onSubmit={guardarPrestamo} className="p-6 space-y-4">
 
-              {/* Activo */}
+              {/* Activos */}
               <div>
-                <label className="block text-sm text-slate-400 mb-1.5">
-                  Activo a prestar <span className="text-red-400">*</span>
+                <label className="block text-sm text-slate-300 font-medium mb-1.5">
+                  Activos a prestar <span className="text-red-400/80 ml-0.5">*</span>
                 </label>
                 <ActivoCombobox
                   activos={activos}
-                  value={formPrestar.activo_id}
-                  onChange={val => setFormPrestar({ ...formPrestar, activo_id: val })}
+                  value={formPrestar.activo_ids}
+                  onChange={val => setFormPrestar({ ...formPrestar, activo_ids: val })}
                 />
-                <input type="text" required value={formPrestar.activo_id} onChange={() => {}}
+                <input type="text" required value={formPrestar.activo_ids.join(',')} onChange={() => {}}
                   style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', height: 0 }} tabIndex={-1} />
                 {activos.length === 0 && (
                   <p className="text-xs text-amber-400 mt-1">No hay activos disponibles para préstamo en este momento.</p>
@@ -697,7 +789,7 @@ export default function Prestamos() {
               <div className="space-y-3">
                 {/* Tipo */}
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1.5">Tipo de receptor</label>
+                  <label className="block text-sm text-slate-300 font-medium mb-1.5">Tipo de receptor</label>
                   <SelectDark
                     value={formPrestar.receptor_tipo}
                     onChange={v => {
@@ -717,9 +809,9 @@ export default function Prestamos() {
                 {/* ALUMNO → autocomplete nombre/matrícula */}
                 {formPrestar.receptor_tipo === 'ALUMNO' ? (
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1.5">
-                      Buscar alumno <span className="text-red-400">*</span>
-                      <span className="text-slate-600 font-normal ml-1">(nombre o matrícula)</span>
+                    <label className="block text-sm text-slate-300 font-medium mb-1.5">
+                      Buscar alumno <span className="text-red-400/80 ml-0.5">*</span>
+                      <span className="text-slate-500 font-normal ml-1">(nombre o matrícula)</span>
                     </label>
 
                     {/* Si ya hay alumno seleccionado, mostrar chip con opción de limpiar */}
@@ -811,7 +903,7 @@ export default function Prestamos() {
 
               {/* Propósito */}
               <div>
-                <label className="block text-sm text-slate-400 mb-1.5">Propósito del préstamo</label>
+                <label className="block text-sm text-slate-300 font-medium mb-1.5">Propósito del préstamo</label>
                 <input type="text" placeholder="Ej. Proyecto final, Práctica de laboratorio…"
                   value={formPrestar.proposito}
                   onChange={e => setFormPrestar({ ...formPrestar, proposito: e.target.value })}
@@ -824,30 +916,32 @@ export default function Prestamos() {
                 <DatePickerDark
                   value={formPrestar.fecha_devolucion_esperada}
                   onChange={v => setFormPrestar({ ...formPrestar, fecha_devolucion_esperada: v })}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={todayISOInMexico()}
                   placeholder="Seleccionar fecha..."
                 />
               </div>
 
               {/* Notas */}
               <div>
-                <label className="block text-sm text-slate-400 mb-1.5">Notas adicionales</label>
+                <label className="block text-sm text-slate-300 font-medium mb-1.5">Notas adicionales</label>
+                {/* rounded-xl para igualar la geometría de los otros inputs */}
                 <textarea rows={2} placeholder="Condición actual, observaciones…"
                   value={formPrestar.notas}
                   onChange={e => setFormPrestar({ ...formPrestar, notas: e.target.value })}
-                  className="input-dark text-sm rounded-xl w-full resize-none" />
+                  className="input-dark text-sm rounded-xl w-full resize-none placeholder:text-slate-500" />
               </div>
 
-              {/* Botones */}
+              {/* Botones — misma altura (py-2.5) y border-radius (rounded-xl) */}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setModalPrestar(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-400 transition hover:text-white"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}>
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-300 transition-colors hover:text-white border border-white/15 hover:bg-white/8">
                   Cancelar
                 </button>
-                <button type="submit" disabled={saving || activos.length === 0}
-                  className="flex-1 btn-blue py-2.5 text-sm font-semibold disabled:opacity-50">
-                  {saving ? 'Registrando…' : 'Registrar Préstamo'}
+                <button type="submit" disabled={saving || formPrestar.activo_ids.length === 0}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition-colors">
+                  {saving
+                    ? 'Registrando...'
+                    : `Registrar préstamo (${formPrestar.activo_ids.length})`}
                 </button>
               </div>
             </form>
@@ -861,7 +955,9 @@ export default function Prestamos() {
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" style={{ backdropFilter: 'blur(4px)' }}>
           <div className="glass w-full max-w-md shadow-2xl">
             <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-              <h2 className="text-lg font-bold text-white">Registrar Devolución</h2>
+              <h2 className="text-lg font-bold text-white">
+                {prestamoSeleccionado.esGrupo ? 'Devolver activos del préstamo' : 'Registrar Devolución'}
+              </h2>
               <button onClick={() => { setModalDevolver(false); setPrestamoSel(null); }}
                 className="text-slate-400 hover:text-white text-2xl leading-none transition">×</button>
             </div>
@@ -870,10 +966,30 @@ export default function Prestamos() {
               {/* Resumen */}
               <div className="rounded-xl p-4 space-y-1.5 text-sm"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <p>
-                  <span className="text-slate-500">Activo:</span>{' '}
-                  <span className="font-semibold text-slate-200">{prestamoSeleccionado.activo_nombre}</span>
-                </p>
+                {prestamoSeleccionado.esGrupo ? (
+                  <>
+                    <p>
+                      <span className="text-slate-500">Folio:</span>{' '}
+                      <span className="font-mono font-semibold text-blue-400">{prestamoSeleccionado.folio}</span>
+                    </p>
+                    <div>
+                      <span className="text-slate-500">Activos a devolver:</span>
+                      <ul className="mt-1 space-y-1">
+                        {prestamoSeleccionado.items.map(item => (
+                          <li key={item.id} className="font-medium text-slate-300">
+                            • {item.activo_nombre}
+                            {item.activo_codigo && <span className="text-slate-500"> ({item.activo_codigo})</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                ) : (
+                  <p>
+                    <span className="text-slate-500">Activo:</span>{' '}
+                    <span className="font-semibold text-slate-200">{prestamoSeleccionado.activo_nombre}</span>
+                  </p>
+                )}
                 <p>
                   <span className="text-slate-500">Receptor:</span>{' '}
                   <span className="font-medium text-slate-300">{prestamoSeleccionado.receptor_nombre}</span>
@@ -891,6 +1007,14 @@ export default function Prestamos() {
                   </p>
                 )}
               </div>
+
+              {prestamoSeleccionado.esGrupo && (
+                <p className="text-xs text-amber-500 rounded-lg px-3 py-2"
+                  style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.20)' }}>
+                  La condición seleccionada se aplicará a todos estos activos. Si alguno regresó diferente,
+                  devuélvelo por separado desde la lista.
+                </p>
+              )}
 
               {/* Condición */}
               <div>
@@ -946,7 +1070,11 @@ export default function Prestamos() {
                 <button type="submit" disabled={saving}
                   className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition disabled:opacity-50"
                   style={{ background: 'rgba(16,185,129,0.80)', boxShadow: '0 0 14px rgba(16,185,129,0.25)' }}>
-                  {saving ? 'Guardando…' : '✓ Confirmar Devolución'}
+                  {saving
+                    ? 'Guardando...'
+                    : prestamoSeleccionado.esGrupo
+                      ? `Confirmar ${prestamoSeleccionado.items.length} devoluciones`
+                      : 'Confirmar devolución'}
                 </button>
               </div>
             </form>

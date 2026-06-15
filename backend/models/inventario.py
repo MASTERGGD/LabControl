@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Float
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Float, Text
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -37,6 +37,7 @@ class Activo(Base):
     tipo_inventario = Column(String, default="ACTIVO", nullable=False)  # ACTIVO patrimonial individual
     estado_admin = Column(String, default="VALIDADO", nullable=False)  # BORRADOR | EN_REVISION | OBSERVADO | VALIDADO | RECHAZADO | BAJA_SOLICITADA
     codigo_inventario = Column(String, unique=True, nullable=False)
+    numero_oficial = Column(String(80), unique=True, nullable=True)
     nombre = Column(String, nullable=False)
     categoria = Column(String, nullable=False)
     marca = Column(String, nullable=True)
@@ -187,6 +188,7 @@ class Prestamo(Base):
     __tablename__ = "prestamos"
 
     id = Column(Integer, primary_key=True, index=True)
+    folio = Column(String(40), nullable=True, index=True)
     activo_id = Column(Integer, ForeignKey("activos.id"), nullable=False)
     solicitante_nombre = Column(String, nullable=False)
     solicitante_id_escolar = Column(String, nullable=False)
@@ -242,6 +244,29 @@ class Incidente(Base):
     computadora    = relationship("Computadora", back_populates="incidentes")
     laboratorio    = relationship("Laboratorio", back_populates="incidentes")
     reportado_por  = relationship("Usuario", foreign_keys=[reportado_por_id])
+    seguimientos   = relationship(
+        "SeguimientoIncidente",
+        back_populates="incidente",
+        cascade="all, delete-orphan",
+        order_by="SeguimientoIncidente.creado_en",
+    )
+
+
+class SeguimientoIncidente(Base):
+    """Bitacora inmutable de notas y cambios relevantes de una incidencia."""
+    __tablename__ = "incidente_seguimientos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    incidente_id = Column(Integer, ForeignKey("incidentes.id"), nullable=False, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
+    tipo = Column(String(30), default="NOTA", nullable=False)
+    texto = Column(Text, nullable=False)
+    estado_anterior = Column(String(30), nullable=True)
+    estado_nuevo = Column(String(30), nullable=True)
+    creado_en = Column(DateTime, default=_utcnow, nullable=False)
+
+    incidente = relationship("Incidente", back_populates="seguimientos")
+    usuario = relationship("Usuario", foreign_keys=[usuario_id])
 
 
 class MantenimientoPreventivo(Base):

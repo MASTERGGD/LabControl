@@ -6,6 +6,7 @@ import ExpedienteActivo from '../../components/ExpedienteActivo';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 
 const ESTADOS_REVISION = ['LOCALIZADO','NO_LOCALIZADO','OTRA_UBICACION','DANADO','PROPUESTO_BAJA','DATOS_INCOMPLETOS'];
 
@@ -33,13 +34,13 @@ function RevBadge({ estado }) {
 }
 
 // ── Modal de revisión de un activo ─────────────────────────────────────────────
-function ModalRevision({ levantamientoId, activo, onClose, onDone }) {
-  const { addToast } = useToast();
+function ModalRevision({ levantamientoId, activo, revision, onClose, onDone }) {
+  const { toast } = useToast();
   const [form, setForm] = useState({
-    estado: 'LOCALIZADO',
-    ubicacion_reportada: '',
-    resguardante_reportado: '',
-    observaciones: '',
+    estado: revision?.estado || 'LOCALIZADO',
+    ubicacion_reportada: revision?.ubicacion_reportada || activo.ubicacion_label || activo.ubicacion_nombre || '',
+    resguardante_reportado: revision?.resguardante_reportado || activo.responsable_nombre || activo.resguardante_externo_nombre || '',
+    observaciones: revision?.observaciones || '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -51,11 +52,11 @@ function ModalRevision({ levantamientoId, activo, onClose, onDone }) {
         activo_id: activo.id,
         ...form,
       });
-      addToast('Revisión registrada', 'success');
+      toast('Revisión registrada', 'success');
       onDone?.();
       onClose();
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Error al registrar revisión', 'error');
+      toast(err.response?.data?.detail || 'Error al registrar revisión', 'error');
     } finally { setSaving(false); }
   };
 
@@ -108,56 +109,94 @@ function ModalRevision({ levantamientoId, activo, onClose, onDone }) {
 
 // ── Vista de un levantamiento abierto (lista de bienes) ────────────────────────
 function VistaLevantamiento({ lev, onBack, onRefresh }) {
-  const { addToast } = useToast();
+  const { toast } = useToast();
   const [activos, setActivos]   = useState([]);
   const [revisiones, setRevisiones] = useState([]);
+  const [resumen, setResumen] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [revisar, setRevisar]   = useState(null);
   const [expediente, setExpediente] = useState(null);
   const [cerrando, setCerrando] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const [filtroRevision, setFiltroRevision] = useState('TODOS');
+  const [marcandoId, setMarcandoId] = useState(null);
 
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const scope = lev.laboratorio_id
-        ? `laboratorio_id=${lev.laboratorio_id}`
-        : lev.departamento_id
-          ? `departamento_id=${lev.departamento_id}`
-          : '';
-      const [rActivos, rLev] = await Promise.all([
-        api.get(`/inventario/activos?${scope}&page_size=500`),
-        api.get(`/inventario/levantamientos`),
-      ]);
-      setActivos(Array.isArray(rActivos.data) ? rActivos.data : rActivos.data?.items || []);
-      const levActual = rLev.data.find(l => l.id === lev.id);
-      setRevisiones(levActual?.revisiones || []);
-    } catch { addToast('Error al cargar activos', 'error'); }
+      const { data } = await api.get(`/inventario/levantamientos/${lev.id}/detalle`);
+      setActivos(data.activos || []);
+      setRevisiones(data.revisiones || []);
+      setResumen(data.resumen || null);
+    } catch { toast('Error al cargar activos', 'error'); }
     finally { setLoading(false); }
   }, [lev.id]); // eslint-disable-line
 
   useEffect(() => { cargar(); }, [cargar]);
 
   const cerrar = async () => {
+    const pendientes = resumen?.total_pendiente ?? Math.max(0, activos.length - revisiones.length);
+    if (pendientes > 0 && !window.confirm(`Quedan ${pendientes} activo(s) sin revisar. ¿Cerrar levantamiento de todos modos?`)) {
+      return;
+    }
     setCerrando(true);
     try {
       await api.post(`/inventario/levantamientos/${lev.id}/cerrar`);
-      addToast('Levantamiento cerrado', 'success');
+      toast('Levantamiento cerrado', 'success');
       onRefresh();
       onBack();
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Error al cerrar', 'error');
+      toast(e.response?.data?.detail || 'Error al cerrar', 'error');
     } finally { setCerrando(false); }
   };
 
   const revisionDeActivo = (activoId) => revisiones.find(r => r.activo_id === activoId);
-  const revisados = revisiones.length;
-  const total     = activos.length;
-  const pct       = total > 0 ? Math.round((revisados / total) * 100) : 0;
+  const revisados = resumen?.total_revisado ?? revisiones.length;
+  const total     = resumen?.total_esperado ?? activos.length;
+  const pendientes = resumen?.total_pendiente ?? Math.max(0, total - revisados);
+  const pct       = resumen?.porcentaje ?? (total > 0 ? Math.round((revisados / total) * 100) : 0);
 
-  const resumen = ESTADOS_REVISION.reduce((acc, e) => {
+  const resumenEstados = ESTADOS_REVISION.reduce((acc, e) => {
     acc[e] = revisiones.filter(r => r.estado === e).length;
     return acc;
   }, {});
+
+  const marcarLocalizado = async (activo) => {
+    setMarcandoId(activo.id);
+    try {
+      await api.post(`/inventario/levantamientos/${lev.id}/revisiones`, {
+        activo_id: activo.id,
+        estado: 'LOCALIZADO',
+        ubicacion_reportada: activo.ubicacion_label || activo.ubicacion_nombre || '',
+        resguardante_reportado: activo.responsable_nombre || activo.resguardante_externo_nombre || '',
+      });
+      toast('Activo marcado como localizado', 'success');
+      cargar();
+    } catch (err) {
+      toast(err.response?.data?.detail || 'Error al marcar activo', 'error');
+    } finally {
+      setMarcandoId(null);
+    }
+  };
+
+  const activosFiltrados = activos.filter(a => {
+    const rev = revisionDeActivo(a.id);
+    if (filtroRevision === 'PENDIENTES' && rev) return false;
+    if (filtroRevision !== 'TODOS' && filtroRevision !== 'PENDIENTES' && rev?.estado !== filtroRevision) return false;
+    if (!busqueda.trim()) return true;
+    const q = busqueda.trim().toLowerCase();
+    return [
+      a.nombre,
+      a.codigo_inventario,
+      a.numero_oficial,
+      a.categoria,
+      a.departamento_nombre,
+      a.laboratorio_nombre,
+      a.ubicacion_label,
+      a.responsable_nombre,
+      a.resguardante_externo_nombre,
+    ].filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
 
   return (
     <div className="space-y-5">
@@ -193,13 +232,37 @@ function VistaLevantamiento({ lev, onBack, onRefresh }) {
                style={{ width: `${pct}%` }} />
         </div>
         <div className="flex flex-wrap gap-3 mt-3">
-          {Object.entries(resumen).filter(([,v]) => v > 0).map(([estado, cnt]) => (
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="text-slate-400">Pendientes</span>
+            <span className="text-amber-300 font-semibold">{pendientes}</span>
+          </div>
+          {Object.entries(resumenEstados).filter(([,v]) => v > 0).map(([estado, cnt]) => (
             <div key={estado} className="flex items-center gap-1.5 text-xs">
               <RevBadge estado={estado} />
               <span className="text-slate-400">{cnt}</span>
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="glass rounded-xl p-3 flex flex-wrap gap-3 items-center">
+        <input
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+          placeholder="Buscar activo, codigo, ubicacion o resguardante..."
+          className="input-dark min-w-[260px] flex-1"
+        />
+        <SelectDark
+          value={filtroRevision}
+          onChange={setFiltroRevision}
+          className="w-56"
+          options={[
+            { value: 'TODOS', label: 'Todos los activos' },
+            { value: 'PENDIENTES', label: 'Pendientes de revisar' },
+            ...ESTADOS_REVISION.map(e => ({ value: e, label: e.replace(/_/g, ' ') })),
+          ]}
+        />
+        <span className="text-xs text-slate-500">{activosFiltrados.length} resultado(s)</span>
       </div>
 
       {/* Tabla de activos */}
@@ -219,7 +282,7 @@ function VistaLevantamiento({ lev, onBack, onRefresh }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {activos.map(a => {
+              {activosFiltrados.map(a => {
                 const rev = revisionDeActivo(a.id);
                 return (
                   <tr key={a.id} className={`hover:bg-white/3 transition-colors ${rev ? '' : 'opacity-70'}`}>
@@ -246,14 +309,25 @@ function VistaLevantamiento({ lev, onBack, onRefresh }) {
                     </td>
                     <td className="px-4 py-3">
                       {lev.estado === 'ABIERTO' && (
-                        <button onClick={() => setRevisar(a)}
-                          className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
-                            rev
-                              ? 'btn-ghost text-slate-400'
-                              : 'bg-emerald-600 hover:bg-emerald-700 text-white border-0'
-                          }`}>
-                          {rev ? 'Actualizar' : 'Revisar'}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          {!rev && (
+                            <button
+                              onClick={() => marcarLocalizado(a)}
+                              disabled={marcandoId === a.id}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                            >
+                              {marcandoId === a.id ? 'Marcando...' : 'Localizado'}
+                            </button>
+                          )}
+                          <button onClick={() => setRevisar(a)}
+                            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                              rev
+                                ? 'btn-ghost text-slate-400'
+                                : 'bg-slate-700 hover:bg-slate-600 text-white border-0'
+                            }`}>
+                            {rev ? 'Actualizar' : 'Detalle'}
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -268,6 +342,7 @@ function VistaLevantamiento({ lev, onBack, onRefresh }) {
         <ModalRevision
           levantamientoId={lev.id}
           activo={revisar}
+          revision={revisionDeActivo(revisar.id)}
           onClose={() => setRevisar(null)}
           onDone={cargar}
         />
@@ -279,10 +354,11 @@ function VistaLevantamiento({ lev, onBack, onRefresh }) {
   );
 }
 
-// ── Página principal de levantamientos ────────────────────────────────────────
-export default function InventarioLevantamientos() {
-  const { addToast } = useToast();
-  const navigate = useNavigate();
+// ── Panel de levantamientos (sin AdminLayout, para uso como tab) ───────────────
+export function PanelLevantamientos() {
+  const { toast } = useToast();
+  const { usuario } = useAuth();
+  const esRolLaboratorio = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol);
 
   const [levantamientos, setLevantamientos] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -298,12 +374,12 @@ export default function InventarioLevantamientos() {
       const [rLev, rLabs, rDeptos] = await Promise.all([
         api.get('/inventario/levantamientos'),
         api.get('/laboratorios'),
-        api.get('/departamentos'),
+        api.get('/inventario/departamentos-opciones?modo=escritura'),
       ]);
       setLevantamientos(rLev.data);
       setLabs(rLabs.data);
-      setDeptos(rDeptos.data);
-    } catch { addToast('Error al cargar levantamientos', 'error'); }
+      setDeptos(rDeptos.data.items || []);
+    } catch { toast('Error al cargar levantamientos', 'error'); }
     finally { setLoading(false); }
   }, []); // eslint-disable-line
 
@@ -317,41 +393,34 @@ export default function InventarioLevantamientos() {
         laboratorio_id: form.laboratorio_id || null,
         departamento_id: form.departamento_id || null,
       });
-      addToast('Levantamiento creado', 'success');
+      toast('Levantamiento creado', 'success');
       setCreando(false);
       setForm({ nombre: '', laboratorio_id: '', departamento_id: '' });
       cargar();
     } catch (e) {
-      addToast(e.response?.data?.detail || 'Error al crear levantamiento', 'error');
+      toast(e.response?.data?.detail || 'Error al crear levantamiento', 'error');
     }
   };
 
   if (activo) {
     return (
-      <AdminLayout>
-        <div className="p-6">
-          <VistaLevantamiento
-            lev={activo}
-            onBack={() => setActivo(null)}
-            onRefresh={cargar}
-          />
-        </div>
-      </AdminLayout>
+      <div>
+        <VistaLevantamiento
+          lev={activo}
+          onBack={() => setActivo(null)}
+          onRefresh={cargar}
+        />
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
-      <div className="p-6 space-y-6">
+    <>
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <button onClick={() => navigate('/admin/inventario')} className="text-slate-400 hover:text-white transition-colors text-sm">
-                ← Inventario
-              </button>
-            </div>
-            <h1 className="text-2xl font-bold text-white">Levantamientos Físicos</h1>
+            <h2 className="text-xl font-bold text-white">Levantamientos Físicos</h2>
             <p className="text-slate-400 text-sm mt-0.5">Verificación física del inventario patrimonial</p>
           </div>
           <button onClick={() => setCreando(true)} className="btn-emerald">
@@ -415,16 +484,21 @@ export default function InventarioLevantamientos() {
                 <input value={form.nombre} onChange={e => setForm(f=>({...f,nombre:e.target.value}))}
                   required className="input-dark w-full" placeholder="Ej. Levantamiento Lab TI — Jun 2026" />
               </div>
-              <div>
+              {!esRolLaboratorio && <div>
                 <label className="block text-xs text-slate-400 mb-1">Laboratorio (opcional)</label>
                 <SelectDark value={form.laboratorio_id} onChange={v => setForm(f=>({...f,laboratorio_id:v,departamento_id:''}))}
                   options={[{value:'',label:'— Sin laboratorio —'}, ...labs.map(l=>({value:l.id,label:l.nombre}))]} />
-              </div>
-              <div>
+              </div>}
+              {!esRolLaboratorio && <div>
                 <label className="block text-xs text-slate-400 mb-1">Departamento (opcional)</label>
                 <SelectDark value={form.departamento_id} onChange={v => setForm(f=>({...f,departamento_id:v,laboratorio_id:''}))}
                   options={[{value:'',label:'— Sin departamento —'}, ...deptos.map(d=>({value:d.id,label:d.nombre}))]} />
-              </div>
+              </div>}
+              {esRolLaboratorio && (
+                <p className="text-xs text-slate-400 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                  El levantamiento se asignará automáticamente a tu laboratorio.
+                </p>
+              )}
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setCreando(false)} className="btn-ghost text-slate-400">Cancelar</button>
                 <button type="submit" className="btn-emerald">Crear levantamiento</button>
@@ -433,6 +507,23 @@ export default function InventarioLevantamientos() {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+export default function InventarioLevantamientos() {
+  const navigate = useNavigate();
+  return (
+    <AdminLayout>
+      <div className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <button onClick={() => navigate('/admin/inventario?tab=levantamientos')}
+            className="text-slate-400 hover:text-white transition-colors text-sm">
+            ← Inventario
+          </button>
+        </div>
+        <PanelLevantamientos />
+      </div>
     </AdminLayout>
   );
 }

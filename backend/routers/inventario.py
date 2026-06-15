@@ -1,21 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
+from fastapi.responses import StreamingResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from services.auditoria import registrar, Accion, Recurso
 import openpyxl, io, unicodedata
+import uuid
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from typing import Optional, List
+from xml.sax.saxutils import escape
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
 from database import get_db
 from models.departamento import Departamento
 from models.inventario import (
     Activo, Prestamo, Incidente, MantenimientoPreventivo, UbicacionInventario,
     MovimientoInventario, SolicitudBajaInventario, LevantamientoInventario,
-    RevisionLevantamientoInventario,
+    RevisionLevantamientoInventario, SeguimientoIncidente,
 )
-from models.laboratorio import Laboratorio
+from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
 from models.adeudo import Adeudo
+from models.auditoria import AuditLog
 from dependencies import get_current_user, require_roles
 from rls import assert_lab_write, assert_resource_access
+from services.user_permissions import departamentos_inventario, puede_gestionar_inventario
 import datetime
 
 
@@ -27,6 +43,8 @@ router = APIRouter(prefix="/inventario", tags=["Inventario y Préstamos"])
 CATEGORIAS = [
     "COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT",
     "HERRAMIENTA", "MOBILIARIO", "AUDIOVISUAL", "REDES", "MEDICO",
+    "CRISTALERIA", "REACTIVO", "INSTRUMENTO_MEDICION", "EQUIPO_LABORATORIO",
+    "MATERIAL_CONSUMIBLE", "SEGURIDAD_EPP", "ALMACENAMIENTO",
     "OFICINA", "VEHICULO", "OTRO",
 ]
 ESTADOS_ACTIVO = ["OPERATIVO", "MANTENIMIENTO", "DAÑADO", "BAJA"]
@@ -42,6 +60,105 @@ TIPOS_MOVIMIENTO = ["TRANSFERENCIA_DEPARTAMENTO", "CAMBIO_UBICACION", "CAMBIO_RE
 ESTADOS_MOVIMIENTO = ["SOLICITADO", "AUTORIZADO", "RECHAZADO", "ENTREGADO", "RECIBIDO", "CANCELADO"]
 ESTADOS_PRESTAMO = ["ACTIVO", "DEVUELTO", "VENCIDO"]
 CONDICIONES = ["EXCELENTE", "BUENO", "REGULAR", "DAÑADO"]
+ESTADOS_INCIDENTE_CERRADOS = ("REPARADO", "DADO_DE_BAJA", "CERRADO_SIN_ADEUDO")
+
+
+def _es_rol_laboratorio(usuario: Usuario) -> bool:
+    return usuario.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB)
+
+
+def _es_admin_inventario_global(usuario: Usuario) -> bool:
+    return usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB)
+
+
+def _filtrar_lab_asignado(query, model, usuario: Usuario, laboratorio_id: int | None):
+    if _es_rol_laboratorio(usuario):
+        if not usuario.laboratorio_id:
+            raise HTTPException(status_code=403, detail="No tienes laboratorio asignado")
+        if laboratorio_id and laboratorio_id != usuario.laboratorio_id:
+            raise HTTPException(status_code=403, detail="Solo puedes consultar inventario de tu laboratorio")
+        return query.filter(model.laboratorio_id == usuario.laboratorio_id)
+    if laboratorio_id:
+        return query.filter(model.laboratorio_id == laboratorio_id)
+    return query
+
+
+def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario) -> None:
+    if _es_rol_laboratorio(usuario):
+        if not usuario.laboratorio_id or incidente.laboratorio_id != usuario.laboratorio_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo puedes gestionar incidentes de tu laboratorio",
+            )
+
+
+def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[int] | None:
+    if _es_admin_inventario_global(usuario):
+        return None
+    ids = set(departamentos_inventario(db, usuario))
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and usuario.departamento_id:
+        ids.add(usuario.departamento_id)
+    return sorted(ids)
+
+
+def _resolver_departamento_inventario(
+    db: Session,
+    usuario: Usuario,
+    departamento_id: int | None,
+) -> int:
+    if _es_admin_inventario_global(usuario):
+        if departamento_id is None:
+            raise HTTPException(status_code=422, detail="departamento_id es requerido")
+        return departamento_id
+    permitidos = departamentos_inventario(db, usuario)
+    if departamento_id:
+        if departamento_id not in permitidos:
+            raise HTTPException(status_code=403, detail="Solo puedes gestionar inventario de tu departamento")
+        return departamento_id
+    if usuario.departamento_id and usuario.departamento_id in permitidos:
+        return usuario.departamento_id
+    if len(permitidos) == 1:
+        return permitidos[0]
+    raise HTTPException(status_code=422, detail="Selecciona el departamento del activo")
+
+
+def _asegurar_write_inventario_departamento(
+    db: Session,
+    usuario: Usuario,
+    departamento_id: int | None,
+) -> None:
+    if _es_admin_inventario_global(usuario):
+        return
+    if not departamento_id or not puede_gestionar_inventario(db, usuario, departamento_id):
+        raise HTTPException(status_code=403, detail="No tienes permiso para gestionar inventario de este departamento")
+
+
+def _asegurar_acceso_activo_departamental(
+    db: Session,
+    activo: Activo | None,
+    usuario: Usuario,
+) -> None:
+    assert_resource_access(activo, usuario)
+    if _es_admin_inventario_global(usuario):
+        return
+    permitidos = departamentos_inventario(db, usuario)
+    if not activo or activo.departamento_id not in permitidos:
+        raise HTTPException(status_code=404, detail="Activo no encontrado")
+
+
+def _asegurar_activo_validado(activo: Activo | None) -> None:
+    if not activo:
+        raise HTTPException(status_code=404, detail="Activo no encontrado")
+    estado = (activo.estado_admin or "VALIDADO").upper()
+    if estado != "VALIDADO":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"El activo esta en estado {estado.replace('_', ' ')}. "
+                "Solo puede consultarse o corregirse hasta que Super Admin lo valide."
+            ),
+        )
+
 
 # Códigos cortos por categoría para armar el número de inventario
 TIPO_CODIGO = {
@@ -55,6 +172,13 @@ TIPO_CODIGO = {
     "AUDIOVISUAL":    "AUD",
     "REDES":          "RED",
     "MEDICO":         "MED",
+    "CRISTALERIA":    "CRI",
+    "REACTIVO":       "REA",
+    "INSTRUMENTO_MEDICION": "IME",
+    "EQUIPO_LABORATORIO": "LAB",
+    "MATERIAL_CONSUMIBLE": "CON",
+    "SEGURIDAD_EPP":  "EPP",
+    "ALMACENAMIENTO": "ALM",
     "OFICINA":        "OFI",
     "VEHICULO":       "VEH",
     "OTRO":           "OTR",
@@ -73,6 +197,7 @@ class ActivoCreate(BaseModel):
     estado_admin: str = Field(default="VALIDADO", description=f"Uno de: {ESTADOS_ADMIN_ACTIVO}")
     # Opcional: si no se envía, el sistema genera el código automáticamente
     codigo_inventario: Optional[str] = Field(None, min_length=2, max_length=50)
+    numero_oficial: Optional[str] = Field(None, max_length=80)
     nombre: str                      = Field(..., min_length=2, max_length=100)
     categoria: str                   = Field(..., description=f"Una de: {CATEGORIAS}")
     area: Optional[str]              = None   # Prefijo de área, p.ej. "LTI", "LINF"
@@ -99,6 +224,7 @@ class ActivoUpdate(BaseModel):
     alcance: Optional[str]                   = None
     tipo_inventario: Optional[str]           = None
     estado_admin: Optional[str]              = None
+    numero_oficial: Optional[str]            = Field(None, max_length=80)
     nombre: Optional[str]                    = Field(None, min_length=2, max_length=100)
     categoria: Optional[str]                 = None
     area: Optional[str]                      = None
@@ -114,6 +240,11 @@ class ActivoUpdate(BaseModel):
     ubicacion_tipo: Optional[str]            = None
     ubicacion_nombre: Optional[str]          = None
     activo: Optional[bool]                   = None
+
+
+class ActivoValidacionUpdate(BaseModel):
+    estado_admin: str
+    observaciones: Optional[str] = None
 
 
 class UbicacionInventarioIn(BaseModel):
@@ -170,7 +301,8 @@ class RevisionLevantamientoIn(BaseModel):
     evidencia_url: Optional[str] = None
 
 class PrestamoCreate(BaseModel):
-    activo_id: int
+    activo_id: Optional[int] = None
+    activo_ids: List[int] = Field(default_factory=list, max_length=50)
     receptor_nombre: str              = Field(..., min_length=2, max_length=100)
     receptor_matricula: Optional[str] = None
     receptor_tipo: str                = Field(default="ALUMNO")
@@ -181,6 +313,10 @@ class PrestamoCreate(BaseModel):
 class PrestamoDevolver(BaseModel):
     condicion_devolucion: str         = Field(..., description="BUENO, REGULAR, MALO, DAÑADO")
     notas_devolucion: Optional[str]   = None
+
+
+class PrestamoGrupoDevolver(PrestamoDevolver):
+    prestamo_ids: List[int] = Field(default_factory=list, max_length=50)
 
 class IncidenteCreate(BaseModel):
     activo_id:       Optional[int]   = None
@@ -198,6 +334,17 @@ class IncidenteUpdate(BaseModel):
     notas_seguimiento: Optional[str]   = None
     costo_reparacion:  Optional[float] = None
     descripcion:       Optional[str]   = None
+    activo_id:         Optional[int]   = None
+    computadora_id:    Optional[int]   = None
+    motivo_vinculacion: Optional[str]  = Field(default=None, max_length=250)
+
+
+class IncidenteSeguimientoCreate(BaseModel):
+    texto: str = Field(..., min_length=2, max_length=2000)
+
+
+class IncidenteReabrir(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=1000)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -218,6 +365,18 @@ def _buscar_lab(nombre_excel: str, labs_dict: dict, db, current_user):
     Retorna el lab o None.
     """
     clave = _normalizar(nombre_excel)
+    if _es_rol_laboratorio(current_user):
+        if not current_user.laboratorio_id:
+            return None
+        lab_asignado = db.query(Laboratorio).filter(Laboratorio.id == current_user.laboratorio_id).first()
+        if not lab_asignado:
+            return None
+        if not clave:
+            return lab_asignado
+        clave_asignada = _normalizar(lab_asignado.nombre)
+        if clave == clave_asignada or clave in clave_asignada or clave_asignada in clave:
+            return lab_asignado
+        return None
     if not clave:
         return None
     # 1. Coincidencia exacta (sin acentos)
@@ -234,10 +393,6 @@ def _buscar_lab(nombre_excel: str, labs_dict: dict, db, current_user):
         comunes = palabras & palabras_lab
         if len(comunes) >= max(1, len(palabras) // 2):
             return lab
-    # 4. Fallback LAB_ADMIN
-    from models.usuario import RolUsuario as _R
-    if current_user.rol == _R.LAB_ADMIN and current_user.laboratorio_id:
-        return db.query(Laboratorio).filter(Laboratorio.id == current_user.laboratorio_id).first()
     return None
 
 
@@ -271,11 +426,48 @@ def _actualizar_estado_prestamos(db: Session):
     if vencidos:
         db.commit()
 
+
+def _meta_mantenimiento_activo(db: Session, activo_id: int) -> dict:
+    ahora = _utcnow()
+    en_7 = ahora + datetime.timedelta(days=7)
+    pendientes = db.query(MantenimientoPreventivo).filter(
+        MantenimientoPreventivo.activo_id == activo_id,
+        MantenimientoPreventivo.estado.in_(["PENDIENTE", "EN_PROCESO"]),
+    ).order_by(
+        MantenimientoPreventivo.fecha_limite.is_(None),
+        MantenimientoPreventivo.fecha_limite,
+        MantenimientoPreventivo.fecha_programada,
+    ).all()
+    vencidos = [m for m in pendientes if m.fecha_limite and m.fecha_limite < ahora]
+    proximos = [m for m in pendientes if m.fecha_limite and ahora <= m.fecha_limite <= en_7]
+    siguiente = pendientes[0] if pendientes else None
+    estado_alerta = "OK"
+    if vencidos:
+        estado_alerta = "VENCIDO"
+    elif proximos:
+        estado_alerta = "PROXIMO"
+    elif pendientes:
+        estado_alerta = "PROGRAMADO"
+    return {
+        "pendientes": len(pendientes),
+        "vencidos": len(vencidos),
+        "proximos_7": len(proximos),
+        "estado_alerta": estado_alerta,
+        "siguiente_id": siguiente.id if siguiente else None,
+        "siguiente_tipo": siguiente.tipo if siguiente else None,
+        "siguiente_fecha": siguiente.fecha_programada.isoformat() if siguiente and siguiente.fecha_programada else None,
+        "siguiente_limite": siguiente.fecha_limite.isoformat() if siguiente and siguiente.fecha_limite else None,
+    }
+
+
 def _serializar_activo(a: Activo, db: Session) -> dict:
     lab = db.query(Laboratorio).filter(Laboratorio.id == a.laboratorio_id).first() if a.laboratorio_id else None
     dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first() if a.departamento_id else None
     ubicacion = db.query(UbicacionInventario).filter(UbicacionInventario.id == a.ubicacion_id).first() if a.ubicacion_id else None
     responsable = db.query(Usuario).filter(Usuario.id == a.responsable_id).first() if a.responsable_id else None
+    mantenimiento = _meta_mantenimiento_activo(db, a.id)
+    validacion = _meta_validacion_activo(a, db)
+    computadora = db.query(Computadora).filter(Computadora.activo_id == a.id).first()
     prestamo_activo = db.query(Prestamo).filter(
         Prestamo.activo_id == a.id,
         Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
@@ -302,6 +494,7 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
         "responsable_id": a.responsable_id,
         "responsable_nombre": responsable.nombre if responsable else None,
         "codigo_inventario": a.codigo_inventario,
+        "numero_oficial": a.numero_oficial,
         "nombre": a.nombre,
         "categoria": a.categoria,
         "marca": a.marca,
@@ -320,6 +513,12 @@ def _serializar_activo(a: Activo, db: Session) -> dict:
         "activo": a.activo,
         "prestado": prestamo_activo is not None,
         "prestamo_estado": prestamo_activo.estado if prestamo_activo else None,
+        "computadora_id": computadora.id if computadora else None,
+        "computadora_codigo": computadora.codigo if computadora else None,
+        "computadora_numero": computadora.numero if computadora else None,
+        "computadora_fila": computadora.fila if computadora else None,
+        "mantenimiento": mantenimiento,
+        **validacion,
     }
 
 
@@ -337,6 +536,246 @@ def _serializar_ubicacion(u: UbicacionInventario, db: Session) -> dict:
         "activo": u.activo,
         "creado_en": u.creado_en.isoformat() if u.creado_en else None,
         "label": " / ".join([p for p in [u.edificio, u.nombre] if p]),
+    }
+
+
+def _query_activos_filtrados(
+    db: Session,
+    current_user: Usuario,
+    laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str] = None,
+    tipo_inventario: Optional[str] = None,
+    estado_admin: Optional[str] = None,
+    categoria: Optional[str] = None,
+    estado: Optional[str] = None,
+    solo_activos: bool = True,
+):
+    q = db.query(Activo)
+    if solo_activos:
+        q = q.filter(Activo.activo == True)
+    q = _filtrar_lab_asignado(q, Activo, current_user, laboratorio_id)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None:
+        if not departamentos_visibles:
+            return None
+        if departamento_id:
+            if departamento_id not in departamentos_visibles:
+                raise HTTPException(status_code=403, detail="Solo puedes consultar inventario de tu departamento")
+        else:
+            q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
+    if departamento_id:
+        q = q.filter(Activo.departamento_id == departamento_id)
+    if ubicacion_id:
+        q = q.filter(Activo.ubicacion_id == ubicacion_id)
+    if alcance:
+        q = q.filter(Activo.alcance == alcance.upper())
+    if tipo_inventario:
+        q = q.filter(Activo.tipo_inventario == tipo_inventario.upper())
+    if estado_admin:
+        q = q.filter(Activo.estado_admin == estado_admin.upper())
+    if categoria:
+        q = q.filter(Activo.categoria == categoria.upper())
+    if estado:
+        q = q.filter(Activo.estado == estado.upper())
+    return q
+
+
+def _serializar_departamento_opcion(dep: Departamento) -> dict:
+    return {
+        "id": dep.id,
+        "nombre": dep.nombre,
+        "clave": dep.clave,
+        "activo": dep.activo,
+    }
+
+
+def _serializar_usuario_resguardo(u: Usuario, db: Session) -> dict:
+    dep = db.query(Departamento).filter(Departamento.id == u.departamento_id).first() if u.departamento_id else None
+    lab = db.query(Laboratorio).filter(Laboratorio.id == u.laboratorio_id).first() if u.laboratorio_id else None
+    return {
+        "id": u.id,
+        "nombre": u.nombre,
+        "email": u.email,
+        "numero_empleado": u.numero_empleado,
+        "rol": u.rol.value if hasattr(u.rol, "value") else str(u.rol),
+        "departamento_id": u.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
+        "laboratorio_id": u.laboratorio_id,
+        "laboratorio_nombre": lab.nombre if lab else None,
+    }
+
+
+def _texto_pdf(value) -> str:
+    return escape(str(value or ""))
+
+
+def _qr_drawing(payload: str, size: float):
+    qr = QrCodeWidget(payload)
+    qr.barWidth = size
+    qr.barHeight = size
+    drawing = Drawing(size, size)
+    drawing.add(qr)
+    return drawing
+
+
+def _etiqueta_activo_pdf(activo_data: dict, styles: dict):
+    codigo = activo_data.get("codigo_inventario") or f"ACT-{activo_data.get('id')}"
+    numero = activo_data.get("numero_oficial")
+    ubicacion = activo_data.get("ubicacion_label") or activo_data.get("ubicacion_nombre") or "Sin ubicacion"
+    responsable = activo_data.get("responsable_nombre") or activo_data.get("resguardante_externo_nombre") or "Sin resguardante"
+    qr_payload = "|".join([
+        "SIGA-UTECAN",
+        "ACTIVO",
+        str(activo_data.get("id") or ""),
+        str(codigo),
+        str(numero or ""),
+    ])
+    qr = _qr_drawing(qr_payload, 2.15 * cm)
+    texto = Table(
+        [
+            [Paragraph(_texto_pdf(codigo), styles["codigo"])],
+            [Paragraph(_texto_pdf(numero or "Sin numero oficial"), styles["muted"])],
+            [Paragraph(_texto_pdf(activo_data.get("nombre")), styles["nombre"])],
+            [Paragraph(_texto_pdf((activo_data.get("categoria") or "").replace("_", " ")), styles["detalle"])],
+            [Paragraph(_texto_pdf(ubicacion), styles["detalle"])],
+            [Paragraph(_texto_pdf(responsable), styles["muted"])],
+        ],
+        colWidths=[6.1 * cm],
+        style=TableStyle([
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 1),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ]),
+    )
+    return Table(
+        [[qr, texto]],
+        colWidths=[2.45 * cm, 6.25 * cm],
+        style=TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#0f766e")),
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (0, 0), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]),
+    )
+
+
+def _generar_pdf_etiquetas(activos_data: list[dict]) -> io.BytesIO:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        leftMargin=1.0 * cm,
+        rightMargin=1.0 * cm,
+        topMargin=1.0 * cm,
+        bottomMargin=1.0 * cm,
+    )
+    base = getSampleStyleSheet()
+    styles = {
+        "codigo": ParagraphStyle("codigo", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=10.5, leading=12, textColor=colors.HexColor("#0f172a"), alignment=TA_LEFT),
+        "nombre": ParagraphStyle("nombre", parent=base["Normal"], fontName="Helvetica-Bold", fontSize=8.2, leading=9.5, textColor=colors.HexColor("#1e293b"), alignment=TA_LEFT),
+        "detalle": ParagraphStyle("detalle", parent=base["Normal"], fontSize=7.2, leading=8.4, textColor=colors.HexColor("#334155"), alignment=TA_LEFT),
+        "muted": ParagraphStyle("muted", parent=base["Normal"], fontSize=6.8, leading=8, textColor=colors.HexColor("#64748b"), alignment=TA_LEFT),
+    }
+    etiquetas = [_etiqueta_activo_pdf(a, styles) for a in activos_data]
+    rows = []
+    for i in range(0, len(etiquetas), 2):
+        rows.append([etiquetas[i], etiquetas[i + 1] if i + 1 < len(etiquetas) else ""])
+    grid = Table(
+        rows,
+        colWidths=[9.1 * cm, 9.1 * cm],
+        rowHeights=[3.35 * cm for _ in rows],
+        hAlign="LEFT",
+        style=TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]),
+    )
+    story = [grid] if rows else [Spacer(1, 1 * cm), Paragraph("No hay activos para etiquetar.", base["Normal"])]
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def _iso(dt) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+def _serializar_audit_log(log: AuditLog) -> dict:
+    return {
+        "id": log.id,
+        "fecha": _iso(log.timestamp),
+        "accion": log.accion,
+        "recurso": log.recurso,
+        "usuario_nombre": log.usuario_nombre,
+        "usuario_email": log.usuario_email,
+        "detalle": log.detalle or {},
+        "exito": log.exito,
+    }
+
+
+def _meta_validacion_activo(a: Activo, db: Session) -> dict:
+    logs = db.query(AuditLog).filter(
+        AuditLog.recurso == Recurso.ACTIVO,
+        AuditLog.recurso_id == a.id,
+    ).order_by(AuditLog.timestamp.desc()).limit(40).all()
+    validacion = next(
+        (log for log in logs if (log.detalle or {}).get("flujo") == "VALIDACION_INVENTARIO"),
+        None,
+    )
+    creacion = next((log for log in reversed(logs) if log.accion == Accion.CREAR_ACTIVO), None)
+    detalle = validacion.detalle if validacion else {}
+    return {
+        "registrado_por_id": creacion.usuario_id if creacion else None,
+        "registrado_por_nombre": creacion.usuario_nombre if creacion else None,
+        "validacion_motivo": detalle.get("observaciones"),
+        "validacion_revisor": validacion.usuario_nombre if validacion else None,
+        "validacion_fecha": _iso(validacion.timestamp) if validacion else None,
+    }
+
+
+def _destinatarios_validacion_activo(a: Activo, db: Session) -> set[int]:
+    destinatarios: set[int] = set()
+    creacion = db.query(AuditLog).filter(
+        AuditLog.recurso == Recurso.ACTIVO,
+        AuditLog.recurso_id == a.id,
+        AuditLog.accion == Accion.CREAR_ACTIVO,
+    ).order_by(AuditLog.timestamp.asc()).first()
+    if creacion and creacion.usuario_id:
+        destinatarios.add(creacion.usuario_id)
+
+    if a.laboratorio_id:
+        usuarios_lab = db.query(Usuario.id).filter(
+            Usuario.laboratorio_id == a.laboratorio_id,
+            Usuario.activo == True,
+            Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
+        ).all()
+        destinatarios.update(uid for (uid,) in usuarios_lab)
+    elif a.departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first()
+        if dep and dep.responsable_id:
+            destinatarios.add(dep.responsable_id)
+    return destinatarios
+
+
+def _evento_expediente(tipo: str, fecha, titulo: str, descripcion: str | None = None, estado: str | None = None, actor: str | None = None, detalle: dict | None = None) -> dict:
+    return {
+        "tipo": tipo,
+        "fecha": _iso(fecha),
+        "titulo": titulo,
+        "descripcion": descripcion,
+        "estado": estado,
+        "actor": actor,
+        "detalle": detalle or {},
     }
 
 
@@ -441,6 +880,7 @@ def _serializar_levantamiento(l: LevantamientoInventario, db: Session) -> dict:
         "revisados": len(revisiones),
         "no_localizados": sum(1 for r in revisiones if r.estado == "NO_LOCALIZADO"),
         "propuestos_baja": sum(1 for r in revisiones if r.estado == "PROPUESTO_BAJA"),
+        "revisiones": [_serializar_revision(r, db) for r in revisiones],
     }
 
 
@@ -461,6 +901,29 @@ def _serializar_revision(r: RevisionLevantamientoInventario, db: Session) -> dic
         "revisado_por": usuario.nombre if usuario else None,
         "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
     }
+
+
+def _query_activos_levantamiento(db: Session, l: LevantamientoInventario, current_user: Usuario):
+    q = _query_activos_filtrados(
+        db,
+        current_user,
+        laboratorio_id=l.laboratorio_id,
+        departamento_id=l.departamento_id,
+        solo_activos=True,
+    )
+    if q is None:
+        return []
+    return q.filter(
+        or_(Activo.estado_admin == "VALIDADO", Activo.estado_admin.is_(None))
+    ).order_by(Activo.categoria, Activo.nombre).all()
+
+
+def _asegurar_acceso_levantamiento(db: Session, l: LevantamientoInventario | None, current_user: Usuario) -> None:
+    if not l:
+        raise HTTPException(status_code=404, detail="Levantamiento no encontrado")
+    if _es_rol_laboratorio(current_user) and l.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(status_code=403, detail="No puedes gestionar levantamientos de otro laboratorio")
+    _asegurar_write_inventario_departamento(db, current_user, l.departamento_id)
 
 
 def _validar_destinos_movimiento(data: MovimientoInventarioCreate, db: Session):
@@ -513,17 +976,20 @@ def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
     # Decodificar datos extras guardados en observaciones_salida como JSON simple
     receptor_tipo = "ALUMNO"
     proposito     = None
+    notas         = None
     if p.observaciones_salida and p.observaciones_salida.startswith("__meta__"):
         try:
             import json
             meta = json.loads(p.observaciones_salida[8:])
             receptor_tipo = meta.get("receptor_tipo", "ALUMNO")
             proposito     = meta.get("proposito")
+            notas         = meta.get("notas")
         except Exception:
             proposito = p.observaciones_salida
 
     return {
         "id": p.id,
+        "folio": p.folio or f"PRE-{p.id:06d}",
         "activo_id": p.activo_id,
         "activo_nombre": activo.nombre if activo else None,
         "activo_codigo": activo.codigo_inventario if activo else None,
@@ -535,6 +1001,7 @@ def _serializar_prestamo(p: Prestamo, db: Session) -> dict:
         "receptor_matricula": p.solicitante_id_escolar,
         "receptor_tipo": receptor_tipo,
         "proposito": proposito,
+        "notas": notas,
         "fecha_prestamo": p.fecha_salida.isoformat() if p.fecha_salida else None,
         "fecha_devolucion_esperada": p.fecha_retorno_esperada.isoformat() if p.fecha_retorno_esperada else None,
         "fecha_devolucion_real": p.fecha_retorno_real.isoformat() if p.fecha_retorno_real else None,
@@ -630,6 +1097,12 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
 
     # ── Adeudo vinculado a este incidente ────────────────────────────────────
     adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == i.id).first()
+    seguimientos = db.query(SeguimientoIncidente).filter(
+        SeguimientoIncidente.incidente_id == i.id
+    ).order_by(
+        SeguimientoIncidente.creado_en.asc(),
+        SeguimientoIncidente.id.asc(),
+    ).all()
 
     return {
         "id":               i.id,
@@ -652,6 +1125,20 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         "notas_seguimiento": i.notas_seguimiento,
         "fecha_resolucion": i.fecha_resolucion.isoformat() if i.fecha_resolucion else None,
         "costo_reparacion": i.costo_reparacion,
+        "cerrado":           i.estado in ESTADOS_INCIDENTE_CERRADOS,
+        "seguimientos": [
+            {
+                "id": s.id,
+                "tipo": s.tipo,
+                "texto": s.texto,
+                "estado_anterior": s.estado_anterior,
+                "estado_nuevo": s.estado_nuevo,
+                "creado_en": s.creado_en.isoformat() if s.creado_en else None,
+                "usuario_id": s.usuario_id,
+                "usuario_nombre": s.usuario.nombre if s.usuario else "Sistema",
+            }
+            for s in seguimientos
+        ],
         "alumno_responsable": alumno_responsable,
         "certeza":            certeza,
         # Adeudo vinculado (si existe)
@@ -708,6 +1195,71 @@ def crear_ubicacion(
     return _serializar_ubicacion(ubicacion, db)
 
 
+@router.get("/departamentos-opciones", summary="Departamentos disponibles para inventario")
+def departamentos_opciones_inventario(
+    modo: str = "lectura",
+    activo: bool = True,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    modo = (modo or "lectura").lower()
+    if modo not in ("lectura", "escritura"):
+        raise HTTPException(status_code=422, detail="modo debe ser lectura o escritura")
+
+    scope_global = _es_admin_inventario_global(current_user)
+    query = db.query(Departamento)
+    if activo is not None:
+        query = query.filter(Departamento.activo == activo)
+
+    if not scope_global:
+        if modo == "escritura":
+            ids = departamentos_inventario(db, current_user)
+        else:
+            ids = _departamentos_visibles_inventario(db, current_user) or []
+        if not ids:
+            return {"items": [], "scope_global": False, "modo": modo}
+        query = query.filter(Departamento.id.in_(ids))
+
+    items = query.order_by(Departamento.nombre).all()
+    return {
+        "items": [_serializar_departamento_opcion(dep) for dep in items],
+        "scope_global": scope_global,
+        "modo": modo,
+    }
+
+
+@router.get("/resguardantes-opciones", summary="Usuarios disponibles como resguardantes de inventario")
+def resguardantes_opciones(
+    departamento_id: Optional[int] = None,
+    laboratorio_id: Optional[int] = None,
+    buscar: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    q = db.query(Usuario).filter(Usuario.activo == True)
+    if _es_rol_laboratorio(current_user):
+        if not current_user.laboratorio_id:
+            return []
+        q = q.filter(Usuario.laboratorio_id == current_user.laboratorio_id)
+    else:
+        departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+        if departamentos_visibles is not None:
+            if not departamentos_visibles:
+                return []
+            q = q.filter(Usuario.departamento_id.in_(departamentos_visibles))
+    if departamento_id:
+        _asegurar_write_inventario_departamento(db, current_user, departamento_id)
+        q = q.filter(Usuario.departamento_id == departamento_id)
+    if laboratorio_id:
+        assert_lab_write(laboratorio_id, current_user)
+        q = q.filter(Usuario.laboratorio_id == laboratorio_id)
+    if buscar:
+        like = f"%{buscar.strip()}%"
+        q = q.filter((Usuario.nombre.ilike(like)) | (Usuario.email.ilike(like)) | (Usuario.numero_empleado.ilike(like)))
+    usuarios = q.order_by(Usuario.nombre).limit(100).all()
+    return [_serializar_usuario_resguardo(u, db) for u in usuarios]
+
+
 @router.get("/activos", summary="Listar activos")
 def listar_activos(
     laboratorio_id: Optional[int] = None,
@@ -724,34 +1276,373 @@ def listar_activos(
     current_user: Usuario = Depends(get_current_user)
 ):
     _actualizar_estado_prestamos(db)
-    q = db.query(Activo)
-    if solo_activos:
-        q = q.filter(Activo.activo == True)
-    if laboratorio_id:
-        q = q.filter(Activo.laboratorio_id == laboratorio_id)
-    elif current_user.rol == RolUsuario.LAB_ADMIN:
-        q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
-    if departamento_id:
-        q = q.filter(Activo.departamento_id == departamento_id)
-    if ubicacion_id:
-        q = q.filter(Activo.ubicacion_id == ubicacion_id)
-    if alcance:
-        q = q.filter(Activo.alcance == alcance.upper())
-    if tipo_inventario:
-        q = q.filter(Activo.tipo_inventario == tipo_inventario.upper())
-    if estado_admin:
-        q = q.filter(Activo.estado_admin == estado_admin.upper())
-    if categoria:
-        q = q.filter(Activo.categoria == categoria.upper())
-    if estado:
-        q = q.filter(Activo.estado == estado.upper())
+    q = _query_activos_filtrados(
+        db, current_user, laboratorio_id, departamento_id, ubicacion_id,
+        alcance, tipo_inventario, estado_admin, categoria, estado, solo_activos,
+    )
+    if q is None:
+        return []
 
     activos = q.order_by(Activo.categoria, Activo.nombre).all()
     result  = [_serializar_activo(a, db) for a in activos]
 
     if solo_disponibles:
-        result = [a for a in result if not a["prestado"]]
+        result = [
+            a for a in result
+            if not a["prestado"] and (a.get("estado_admin") or "VALIDADO") == "VALIDADO"
+        ]
     return result
+
+
+@router.get("/activos/exportar", summary="Exportar corte de inventario a Excel")
+def exportar_activos(
+    request: Request,
+    laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str]         = None,
+    tipo_inventario: Optional[str] = None,
+    estado_admin: Optional[str]    = None,
+    categoria: Optional[str]      = None,
+    estado: Optional[str]         = None,
+    buscar: Optional[str]         = None,
+    solo_activos: bool             = True,
+    solo_disponibles: bool         = False,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _actualizar_estado_prestamos(db)
+    q = _query_activos_filtrados(
+        db, current_user, laboratorio_id, departamento_id, ubicacion_id,
+        alcance, tipo_inventario, estado_admin, categoria, estado, solo_activos,
+    )
+    if q is not None and not estado_admin:
+        q = q.filter(or_(Activo.estado_admin == "VALIDADO", Activo.estado_admin.is_(None)))
+    activos = [] if q is None else q.order_by(Activo.categoria, Activo.nombre).all()
+    filas = [_serializar_activo(a, db) for a in activos]
+    if solo_disponibles:
+        filas = [a for a in filas if not a["prestado"]]
+    if buscar:
+        q_buscar = _normalizar(buscar)
+        campos_busqueda = [
+            "nombre", "codigo_inventario", "numero_oficial", "marca", "modelo",
+            "numero_serie", "departamento_nombre", "laboratorio_nombre",
+            "ubicacion_label", "responsable_nombre", "resguardante_externo_nombre",
+        ]
+        filas = [
+            item for item in filas
+            if q_buscar in _normalizar(" ".join(str(item.get(c) or "") for c in campos_busqueda))
+        ]
+
+    wb = openpyxl.Workbook()
+    ws_resumen = wb.active
+    ws_resumen.title = "Resumen"
+    ws = wb.create_sheet("Inventario")
+
+    green = "007A53"
+    header_fill = PatternFill("solid", fgColor=green)
+    soft_fill = PatternFill("solid", fgColor="E7F5EE")
+    border = Border(bottom=Side(style="thin", color="D9E2EC"))
+
+    ws_resumen["A1"] = "Corte de inventario"
+    ws_resumen["A1"].font = Font(size=16, bold=True, color=green)
+    ws_resumen["A2"] = "Este archivo es una copia de control para revision fisica y administrativa; no es un respaldo restaurable del sistema."
+    ws_resumen["A2"].font = Font(italic=True, color="64748B")
+
+    lab_filtro = db.query(Laboratorio).filter(Laboratorio.id == laboratorio_id).first() if laboratorio_id else None
+    dep_filtro = db.query(Departamento).filter(Departamento.id == departamento_id).first() if departamento_id else None
+
+    filtros = {
+        "Generado por": current_user.nombre,
+        "Fecha": _utcnow().strftime("%Y-%m-%d %H:%M"),
+        "Laboratorio": lab_filtro.nombre if lab_filtro else "Todos los visibles",
+        "Departamento": dep_filtro.nombre if dep_filtro else "Todos los visibles",
+        "Alcance": alcance or "Todos",
+        "Categoria": categoria or "Todas",
+        "Estado operativo": estado or "Todos",
+        "Estado administrativo": estado_admin or "Todos",
+        "Busqueda": buscar or "Sin busqueda",
+        "Total exportado": len(filas),
+    }
+    for row, (label, value) in enumerate(filtros.items(), start=4):
+        ws_resumen.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws_resumen.cell(row=row, column=2, value=value)
+        ws_resumen.cell(row=row, column=1).fill = soft_fill
+        ws_resumen.cell(row=row, column=1).border = border
+        ws_resumen.cell(row=row, column=2).border = border
+    ws_resumen.column_dimensions["A"].width = 26
+    ws_resumen.column_dimensions["B"].width = 55
+
+    columnas = [
+        ("#", lambda a, i: i),
+        ("Codigo SIGA", lambda a, i: a.get("codigo_inventario")),
+        ("No. oficial", lambda a, i: a.get("numero_oficial")),
+        ("Nombre", lambda a, i: a.get("nombre")),
+        ("Categoria", lambda a, i: a.get("categoria")),
+        ("Estado operativo", lambda a, i: a.get("estado")),
+        ("Estado administrativo", lambda a, i: a.get("estado_admin")),
+        ("Alcance", lambda a, i: a.get("alcance")),
+        ("Departamento", lambda a, i: a.get("departamento_nombre")),
+        ("Laboratorio", lambda a, i: a.get("laboratorio_nombre")),
+        ("Ubicacion", lambda a, i: a.get("ubicacion_label") or a.get("ubicacion_nombre")),
+        ("Resguardante", lambda a, i: a.get("responsable_nombre") or a.get("resguardante_externo_nombre")),
+        ("Marca", lambda a, i: a.get("marca")),
+        ("Modelo", lambda a, i: a.get("modelo")),
+        ("Serie", lambda a, i: a.get("numero_serie")),
+        ("Area", lambda a, i: a.get("area")),
+        ("Valor", lambda a, i: a.get("valor")),
+        ("Prestado", lambda a, i: "SI" if a.get("prestado") else "NO"),
+        ("Observaciones", lambda a, i: a.get("observaciones")),
+    ]
+    ws.append([c[0] for c in columnas])
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = Font(color="FFFFFF", bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    for idx, item in enumerate(filas, start=1):
+        ws.append([getter(item, idx) for _, getter in columnas])
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    widths = [8, 22, 18, 34, 24, 18, 22, 18, 32, 30, 34, 30, 18, 22, 22, 16, 14, 12, 42]
+    for col_idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    registrar(
+        db,
+        Accion.EXPORTAR_INVENTARIO,
+        Recurso.ACTIVO,
+        usuario=current_user,
+        detalle={
+            "total": len(filas),
+            "laboratorio_id": laboratorio_id,
+            "departamento_id": departamento_id,
+            "categoria": categoria,
+            "estado": estado,
+        },
+        request=request,
+    )
+
+    filename = f"corte_inventario_{_utcnow().strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/activos/etiquetas", summary="Generar etiquetas QR de inventario")
+def generar_etiquetas_activos(
+    request: Request,
+    ids: Optional[str] = None,
+    laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str]         = None,
+    tipo_inventario: Optional[str] = None,
+    estado_admin: Optional[str]    = None,
+    categoria: Optional[str]       = None,
+    estado: Optional[str]          = None,
+    buscar: Optional[str]          = None,
+    solo_activos: bool             = True,
+    solo_disponibles: bool         = False,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _actualizar_estado_prestamos(db)
+    if ids:
+        try:
+            ids_int = [int(x.strip()) for x in ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=422, detail="ids debe ser una lista de numeros separados por coma")
+        if not ids_int:
+            raise HTTPException(status_code=422, detail="Selecciona al menos un activo")
+        activos = db.query(Activo).filter(Activo.id.in_(ids_int)).order_by(Activo.categoria, Activo.nombre).all()
+        for activo in activos:
+            _asegurar_acceso_activo_departamental(db, activo, current_user)
+            _asegurar_activo_validado(activo)
+    else:
+        q = _query_activos_filtrados(
+            db, current_user, laboratorio_id, departamento_id, ubicacion_id,
+            alcance, tipo_inventario, estado_admin, categoria, estado, solo_activos,
+        )
+        if q is not None:
+            q = q.filter(or_(Activo.estado_admin == "VALIDADO", Activo.estado_admin.is_(None)))
+        activos = [] if q is None else q.order_by(Activo.categoria, Activo.nombre).limit(200).all()
+
+    filas = [_serializar_activo(a, db) for a in activos]
+    if solo_disponibles:
+        filas = [a for a in filas if not a["prestado"]]
+    if buscar:
+        q_buscar = _normalizar(buscar)
+        campos_busqueda = [
+            "nombre", "codigo_inventario", "numero_oficial", "marca", "modelo",
+            "numero_serie", "departamento_nombre", "laboratorio_nombre",
+            "ubicacion_label", "responsable_nombre", "resguardante_externo_nombre",
+        ]
+        filas = [
+            item for item in filas
+            if q_buscar in _normalizar(" ".join(str(item.get(c) or "") for c in campos_busqueda))
+        ]
+    if len(filas) > 200:
+        filas = filas[:200]
+    if not filas:
+        raise HTTPException(status_code=404, detail="No hay activos para generar etiquetas")
+
+    output = _generar_pdf_etiquetas(filas)
+    registrar(
+        db,
+        Accion.EXPORTAR_INVENTARIO,
+        Recurso.ACTIVO,
+        usuario=current_user,
+        detalle={
+            "tipo": "etiquetas_qr",
+            "total": len(filas),
+            "ids": ids,
+            "laboratorio_id": laboratorio_id,
+            "departamento_id": departamento_id,
+        },
+        request=request,
+    )
+    filename = f"etiquetas_inventario_{_utcnow().strftime('%Y%m%d_%H%M')}.pdf"
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/activos/{activo_id}/etiqueta", summary="Generar etiqueta QR del activo")
+def generar_etiqueta_activo(
+    request: Request,
+    activo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    _asegurar_acceso_activo_departamental(db, activo, current_user)
+    _asegurar_activo_validado(activo)
+    data = _serializar_activo(activo, db)
+    output = _generar_pdf_etiquetas([data])
+    registrar(
+        db,
+        Accion.EXPORTAR_INVENTARIO,
+        Recurso.ACTIVO,
+        usuario=current_user,
+        detalle={"tipo": "etiqueta_qr", "activo_id": activo_id, "codigo": activo.codigo_inventario},
+        request=request,
+    )
+    filename = f"etiqueta_{activo.codigo_inventario}.pdf".replace("/", "-")
+    return StreamingResponse(
+        output,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/activos/{activo_id}/resguardo", summary="Descargar formato de resguardo del activo")
+def descargar_resguardo_activo(
+    request: Request,
+    activo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    _asegurar_acceso_activo_departamental(db, activo, current_user)
+    _asegurar_activo_validado(activo)
+
+    data = _serializar_activo(activo, db)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Resguardo"
+
+    green = "007A53"
+    soft = "E7F5EE"
+    border = Border(bottom=Side(style="thin", color="D9E2EC"))
+
+    ws.merge_cells("A1:D1")
+    ws["A1"] = "Formato de resguardo de activo"
+    ws["A1"].font = Font(size=16, bold=True, color=green)
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.merge_cells("A2:D2")
+    ws["A2"] = "Control interno de entrega/recepcion de inventario institucional"
+    ws["A2"].alignment = Alignment(horizontal="center")
+    ws["A2"].font = Font(italic=True, color="64748B")
+
+    filas = [
+        ("Codigo SIGA", data.get("codigo_inventario")),
+        ("No. oficial/patrimonial", data.get("numero_oficial")),
+        ("Nombre del activo", data.get("nombre")),
+        ("Categoria", data.get("categoria")),
+        ("Marca / modelo", " / ".join([v for v in [data.get("marca"), data.get("modelo")] if v])),
+        ("No. serie", data.get("numero_serie")),
+        ("Estado operativo", data.get("estado")),
+        ("Estado administrativo", data.get("estado_admin")),
+        ("Departamento/Laboratorio", data.get("departamento_nombre") or data.get("laboratorio_nombre")),
+        ("Ubicacion registrada", data.get("ubicacion_label") or data.get("ubicacion_nombre")),
+        ("Resguardante", data.get("responsable_nombre") or data.get("resguardante_externo_nombre")),
+        ("Valor", data.get("valor")),
+        ("Fecha de emision", _utcnow().strftime("%Y-%m-%d %H:%M")),
+        ("Emitido por", current_user.nombre),
+    ]
+    start = 4
+    for idx, (label, value) in enumerate(filas, start=start):
+        ws.cell(idx, 1, label).font = Font(bold=True)
+        ws.cell(idx, 1).fill = PatternFill("solid", fgColor=soft)
+        ws.cell(idx, 2, value if value is not None else "")
+        ws.merge_cells(start_row=idx, start_column=2, end_row=idx, end_column=4)
+        for col in range(1, 5):
+            ws.cell(idx, col).border = border
+
+    obs_row = start + len(filas) + 2
+    ws.merge_cells(start_row=obs_row, start_column=1, end_row=obs_row, end_column=4)
+    ws.cell(obs_row, 1, "Observaciones de entrega").font = Font(bold=True)
+    ws.cell(obs_row + 1, 1, "")
+    ws.merge_cells(start_row=obs_row + 1, start_column=1, end_row=obs_row + 4, end_column=4)
+    ws.cell(obs_row + 1, 1).alignment = Alignment(vertical="top", wrap_text=True)
+
+    sign_row = obs_row + 7
+    ws.merge_cells(start_row=sign_row, start_column=1, end_row=sign_row, end_column=2)
+    ws.merge_cells(start_row=sign_row, start_column=3, end_row=sign_row, end_column=4)
+    ws.cell(sign_row, 1, "Entrega").alignment = Alignment(horizontal="center")
+    ws.cell(sign_row, 3, "Recibe / resguardante").alignment = Alignment(horizontal="center")
+    ws.cell(sign_row, 1).font = Font(bold=True)
+    ws.cell(sign_row, 3).font = Font(bold=True)
+    ws.merge_cells(start_row=sign_row + 4, start_column=1, end_row=sign_row + 4, end_column=2)
+    ws.merge_cells(start_row=sign_row + 4, start_column=3, end_row=sign_row + 4, end_column=4)
+    ws.cell(sign_row + 4, 1, "Nombre y firma").alignment = Alignment(horizontal="center")
+    ws.cell(sign_row + 4, 3, "Nombre y firma").alignment = Alignment(horizontal="center")
+
+    for col, width in {"A": 24, "B": 28, "C": 24, "D": 28}.items():
+        ws.column_dimensions[col].width = width
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    registrar(
+        db,
+        Accion.EXPORTAR_INVENTARIO,
+        Recurso.ACTIVO,
+        usuario=current_user,
+        recurso_id=activo.id,
+        detalle={"formato": "RESGUARDO_ACTIVO", "codigo": activo.codigo_inventario},
+        request=request,
+    )
+    filename = f"resguardo_{activo.codigo_inventario}.xlsx".replace("/", "-")
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/activos", status_code=status.HTTP_201_CREATED, summary="Registrar activo")
@@ -759,20 +1650,40 @@ def crear_activo(
     request: Request,
     data: ActivoCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     # RLS: LAB_ADMIN solo puede crear activos en su propio laboratorio
     alcance = (data.alcance or "LABORATORIO").upper()
     if alcance not in ALCANCES_ACTIVO:
         raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {ALCANCES_ACTIVO}")
+    if _es_rol_laboratorio(current_user):
+        if alcance != "LABORATORIO":
+            raise HTTPException(status_code=403, detail="Solo Super Admin puede crear activos institucionales")
+        if not current_user.laboratorio_id:
+            raise HTTPException(status_code=403, detail="No tienes laboratorio asignado")
+        if data.laboratorio_id and data.laboratorio_id != current_user.laboratorio_id:
+            raise HTTPException(status_code=403, detail="Solo puedes crear activos en tu laboratorio")
+        data.laboratorio_id = current_user.laboratorio_id
     if current_user.rol == RolUsuario.LAB_ADMIN and alcance != "LABORATORIO":
         raise HTTPException(status_code=403, detail="Solo Super Admin puede crear activos institucionales")
+    # La adscripcion de un activo de laboratorio la define el laboratorio.
+    # El departamento solo aplica al inventario institucional.
+    departamento_operacion_id = None if alcance == "LABORATORIO" else data.departamento_id
+    if not _es_admin_inventario_global(current_user):
+        if not departamentos_inventario(db, current_user):
+            raise HTTPException(status_code=403, detail="No tienes permiso para gestionar inventario departamental")
+        departamento_operacion_id = _resolver_departamento_inventario(db, current_user, data.departamento_id)
+        _asegurar_write_inventario_departamento(db, current_user, departamento_operacion_id)
+        if alcance != "INSTITUCIONAL":
+            raise HTTPException(status_code=403, detail="El inventario departamental debe registrarse como institucional")
     tipo_inventario = (data.tipo_inventario or "ACTIVO").upper()
     if tipo_inventario not in TIPOS_INVENTARIO:
         raise HTTPException(status_code=422, detail=f"Tipo de inventario invalido. Use: {TIPOS_INVENTARIO}")
     estado_admin = (data.estado_admin or "VALIDADO").upper()
     if estado_admin not in ESTADOS_ADMIN_ACTIVO:
         raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
+    if current_user.rol != RolUsuario.SUPER_ADMIN:
+        estado_admin = "BORRADOR"
     unidad_medida = (data.unidad_medida or "PIEZA").upper()
     if unidad_medida not in UNIDADES_MEDIDA:
         raise HTTPException(status_code=422, detail=f"Unidad de medida invalida. Use: {UNIDADES_MEDIDA}")
@@ -787,7 +1698,7 @@ def crear_activo(
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
     elif data.laboratorio_id:
         assert_lab_write(data.laboratorio_id, current_user)
-    if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
+    if departamento_operacion_id and not db.query(Departamento).filter(Departamento.id == departamento_operacion_id).first():
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
     if data.ubicacion_id and not db.query(UbicacionInventario).filter(UbicacionInventario.id == data.ubicacion_id, UbicacionInventario.activo == True).first():
         raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
@@ -796,8 +1707,8 @@ def crear_activo(
 
     # Auto-generar código si no se proporcionó
     area_codigo = data.area
-    if not area_codigo and data.departamento_id:
-        dep = db.query(Departamento).filter(Departamento.id == data.departamento_id).first()
+    if not area_codigo and departamento_operacion_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_operacion_id).first()
         area_codigo = dep.clave if dep else None
     codigo = data.codigo_inventario or _generar_codigo(db, data.categoria, area_codigo)
 
@@ -805,8 +1716,15 @@ def crear_activo(
         raise HTTPException(status_code=409, detail=f"Ya existe un activo con código '{codigo}'")
 
     payload = data.model_dump(exclude={"codigo_inventario"})
+    if payload.get("numero_oficial"):
+        payload["numero_oficial"] = payload["numero_oficial"].strip()
+        if db.query(Activo).filter(Activo.numero_oficial == payload["numero_oficial"]).first():
+            raise HTTPException(status_code=409, detail=f"Ya existe un activo con numero oficial '{payload['numero_oficial']}'")
+    else:
+        payload["numero_oficial"] = None
     payload["categoria"] = payload["categoria"].upper()
     payload["alcance"] = alcance
+    payload["departamento_id"] = departamento_operacion_id
     payload["tipo_inventario"] = tipo_inventario
     payload["estado_admin"] = estado_admin
     payload["unidad_medida"] = unidad_medida
@@ -841,6 +1759,9 @@ def obtener_activo(
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     # RLS: LAB_ADMIN no puede ver activos de otros laboratorios (devuelve 404)
     assert_resource_access(a, current_user)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None and a.departamento_id not in departamentos_visibles:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
     historial = db.query(Prestamo).filter(
         Prestamo.activo_id == activo_id
     ).order_by(Prestamo.fecha_salida.desc()).limit(10).all()
@@ -855,12 +1776,52 @@ def editar_activo(
     activo_id: int,
     data: ActivoUpdate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     # RLS: LAB_ADMIN solo puede editar activos de su laboratorio
-    assert_resource_access(a, current_user)
+    _asegurar_acceso_activo_departamental(db, a, current_user)
+    _asegurar_write_inventario_departamento(db, current_user, a.departamento_id)
+    if (a.estado_admin or "VALIDADO").upper() == "RECHAZADO" and current_user.rol != RolUsuario.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El activo no fue autorizado y ya no puede corregirse. "
+                "Super Admin debe reabrirlo como borrador o en revision."
+            ),
+        )
     campos = data.model_dump(exclude_none=True)
+    campos_con_trazabilidad = {
+        "alcance",
+        "laboratorio_id",
+        "departamento_id",
+        "ubicacion_id",
+        "ubicacion_tipo",
+        "ubicacion_nombre",
+        "responsable_id",
+        "resguardante_externo_nombre",
+    }
+    cambios_trazables = [
+        campo for campo in campos_con_trazabilidad
+        if campo in campos and campos[campo] != getattr(a, campo)
+    ]
+    if cambios_trazables:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Los cambios de adscripcion, departamento, ubicacion o resguardante "
+                "deben registrarse desde Movimiento para conservar el historial."
+            ),
+        )
+    if "numero_oficial" in campos:
+        campos["numero_oficial"] = campos["numero_oficial"].strip() or None
+        if campos["numero_oficial"]:
+            duplicado = db.query(Activo).filter(
+                Activo.numero_oficial == campos["numero_oficial"],
+                Activo.id != activo_id,
+            ).first()
+            if duplicado:
+                raise HTTPException(status_code=409, detail=f"Ya existe un activo con numero oficial '{campos['numero_oficial']}'")
     if "categoria" in campos:
         campos["categoria"] = campos["categoria"].upper()
         if campos["categoria"] not in CATEGORIAS:
@@ -869,13 +1830,20 @@ def editar_activo(
         campos["alcance"] = campos["alcance"].upper()
         if campos["alcance"] not in ALCANCES_ACTIVO:
             raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {ALCANCES_ACTIVO}")
-        if current_user.rol == RolUsuario.LAB_ADMIN and campos["alcance"] != "LABORATORIO":
+        if _es_rol_laboratorio(current_user) and campos["alcance"] != "LABORATORIO":
             raise HTTPException(status_code=403, detail="Solo Super Admin puede convertir activos a institucionales")
+        if not _es_admin_inventario_global(current_user) and campos["alcance"] != "INSTITUCIONAL":
+            raise HTTPException(status_code=403, detail="El inventario departamental debe mantenerse como institucional")
     if "tipo_inventario" in campos:
         campos["tipo_inventario"] = campos["tipo_inventario"].upper()
         if campos["tipo_inventario"] not in TIPOS_INVENTARIO:
             raise HTTPException(status_code=422, detail=f"Tipo de inventario invalido. Use: {TIPOS_INVENTARIO}")
     if "estado_admin" in campos:
+        if current_user.rol != RolUsuario.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo Super Admin puede cambiar el estado administrativo del activo",
+            )
         campos["estado_admin"] = campos["estado_admin"].upper()
         if campos["estado_admin"] not in ESTADOS_ADMIN_ACTIVO:
             raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
@@ -891,8 +1859,13 @@ def editar_activo(
         assert_lab_write(destino_lab, current_user)
         if not db.query(Laboratorio).filter(Laboratorio.id == destino_lab, Laboratorio.activo == True).first():
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
-    if "departamento_id" in campos and campos["departamento_id"] and not db.query(Departamento).filter(Departamento.id == campos["departamento_id"]).first():
-        raise HTTPException(status_code=404, detail="Departamento no encontrado")
+    if "departamento_id" in campos:
+        if campos["departamento_id"]:
+            if not db.query(Departamento).filter(Departamento.id == campos["departamento_id"]).first():
+                raise HTTPException(status_code=404, detail="Departamento no encontrado")
+            _asegurar_write_inventario_departamento(db, current_user, campos["departamento_id"])
+        elif not _es_admin_inventario_global(current_user):
+            raise HTTPException(status_code=422, detail="El activo departamental requiere departamento")
     if "ubicacion_id" in campos and campos["ubicacion_id"] and not db.query(UbicacionInventario).filter(UbicacionInventario.id == campos["ubicacion_id"], UbicacionInventario.activo == True).first():
         raise HTTPException(status_code=404, detail="Ubicacion no encontrada")
     if "responsable_id" in campos and campos["responsable_id"] and not db.query(Usuario).filter(Usuario.id == campos["responsable_id"], Usuario.activo == True).first():
@@ -914,16 +1887,91 @@ def editar_activo(
     return _serializar_activo(a, db)
 
 
+@router.post("/activos/{activo_id}/validacion", summary="Cambiar estado administrativo del activo")
+def cambiar_validacion_activo(
+    request: Request,
+    activo_id: int,
+    data: ActivoValidacionUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    if current_user.rol != RolUsuario.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Super Admin puede revisar y validar activos",
+        )
+    a = db.query(Activo).filter(Activo.id == activo_id).first()
+    _asegurar_acceso_activo_departamental(db, a, current_user)
+    _asegurar_write_inventario_departamento(db, current_user, a.departamento_id)
+
+    estado = (data.estado_admin or "").upper()
+    estados_validacion = ["BORRADOR", "EN_REVISION", "OBSERVADO", "VALIDADO", "RECHAZADO"]
+    if estado not in estados_validacion:
+        raise HTTPException(status_code=422, detail=f"Estado de validacion invalido. Use: {estados_validacion}")
+    observaciones = (data.observaciones or "").strip()
+    if estado in ("OBSERVADO", "RECHAZADO") and not observaciones:
+        raise HTTPException(
+            status_code=422,
+            detail="Debes indicar el motivo para observar o rechazar el activo",
+        )
+
+    anterior = a.estado_admin or "VALIDADO"
+    a.estado_admin = estado
+    db.commit()
+    db.refresh(a)
+    registrar(
+        db,
+        accion=Accion.EDITAR_ACTIVO,
+        recurso=Recurso.ACTIVO,
+        usuario=current_user,
+        recurso_id=a.id,
+        detalle={
+            "flujo": "VALIDACION_INVENTARIO",
+            "estado_anterior": anterior,
+            "estado_nuevo": estado,
+            "observaciones": observaciones or None,
+        },
+        request=request,
+    )
+    from routers.notificaciones import crear_notificacion
+    etiquetas = {
+        "BORRADOR": ("Activo devuelto a borrador", "quedo nuevamente en borrador"),
+        "EN_REVISION": ("Activo en revision", "esta siendo revisado"),
+        "OBSERVADO": ("Activo observado", "requiere correcciones"),
+        "VALIDADO": ("Activo validado", "fue validado oficialmente"),
+        "RECHAZADO": ("Activo no autorizado", "no fue autorizado"),
+    }
+    titulo, resultado = etiquetas[estado]
+    mensaje = f"{a.codigo_inventario} · {a.nombre} {resultado}."
+    if observaciones:
+        mensaje += f" Motivo: {observaciones}"
+    for usuario_id in _destinatarios_validacion_activo(a, db):
+        if usuario_id == current_user.id:
+            continue
+        crear_notificacion(
+            db,
+            usuario_id,
+            "INVENTARIO_VALIDACION",
+            titulo,
+            mensaje,
+            f"/admin/inventario?estado_admin={estado}&buscar={a.codigo_inventario}",
+            enviar_email=False,
+        )
+    db.commit()
+    return _serializar_activo(a, db)
+
+
 @router.delete("/activos/{activo_id}", summary="Dar de baja activo")
 def dar_baja_activo(
     request: Request,
     activo_id: int,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB))
 ):
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     # RLS: LAB_ADMIN solo puede dar de baja activos de su laboratorio
     assert_resource_access(a, current_user)
+    _asegurar_activo_validado(a)
     prestamo_activo = db.query(Prestamo).filter(
         Prestamo.activo_id == activo_id,
         Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
@@ -952,8 +2000,13 @@ def listar_movimientos(
     current_user: Usuario = Depends(get_current_user)
 ):
     q = db.query(MovimientoInventario).join(Activo, MovimientoInventario.activo_id == Activo.id)
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if _es_rol_laboratorio(current_user):
         q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None:
+        if not departamentos_visibles:
+            return []
+        q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
     if activo_id:
         q = q.filter(MovimientoInventario.activo_id == activo_id)
     if estado:
@@ -974,12 +2027,18 @@ def solicitar_movimiento(
     request: Request,
     activo_id: int,
     data: MovimientoInventarioCreate,
+    aplicar_directo: bool = True,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
-    assert_resource_access(activo, current_user)
+    _asegurar_acceso_activo_departamental(db, activo, current_user)
+    _asegurar_activo_validado(activo)
+    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
     _validar_destinos_movimiento(data, db)
+    cruza_departamento = data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id
+    if cruza_departamento and current_user.rol != RolUsuario.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Los movimientos entre departamentos requieren administracion central")
     tipo = data.tipo.upper()
     cantidad = data.cantidad or (1 if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" else activo.cantidad or 1)
 
@@ -1005,6 +2064,14 @@ def solicitar_movimiento(
         fecha_solicitud=_utcnow(),
         observaciones=data.observaciones,
     )
+    if aplicar_directo and (current_user.rol == RolUsuario.SUPER_ADMIN or not cruza_departamento):
+        ahora = _utcnow()
+        mov.estado = "RECIBIDO"
+        mov.autorizado_por_id = current_user.id
+        mov.recibido_por_id = current_user.id
+        mov.fecha_autorizacion = ahora
+        mov.fecha_recepcion = ahora
+        _aplicar_movimiento_recibido(activo, mov)
     db.add(mov)
     db.commit()
     db.refresh(mov)
@@ -1106,8 +2173,13 @@ def listar_bajas(
     current_user: Usuario = Depends(get_current_user)
 ):
     q = db.query(SolicitudBajaInventario).join(Activo, SolicitudBajaInventario.activo_id == Activo.id)
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if _es_rol_laboratorio(current_user):
         q = q.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None:
+        if not departamentos_visibles:
+            return []
+        q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
     if estado:
         q = q.filter(SolicitudBajaInventario.estado == estado.upper())
     if activo_id:
@@ -1122,10 +2194,12 @@ def solicitar_baja(
     activo_id: int,
     data: SolicitudBajaCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
-    assert_resource_access(activo, current_user)
+    _asegurar_acceso_activo_departamental(db, activo, current_user)
+    _asegurar_activo_validado(activo)
+    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
     abierta = db.query(SolicitudBajaInventario).filter(
         SolicitudBajaInventario.activo_id == activo_id,
         SolicitudBajaInventario.estado.in_(["SOLICITADA", "EN_REVISION", "VALIDADA_FISICAMENTE", "AUTORIZADA"]),
@@ -1161,7 +2235,7 @@ def actualizar_baja(
     accion: str,
     data: SolicitudBajaAccion = SolicitudBajaAccion(),
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB))
 ):
     baja = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.id == baja_id).first()
     if not baja:
@@ -1234,22 +2308,71 @@ def listar_levantamientos(
     current_user: Usuario = Depends(get_current_user)
 ):
     q = db.query(LevantamientoInventario)
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if _es_rol_laboratorio(current_user):
         q = q.filter(LevantamientoInventario.laboratorio_id == current_user.laboratorio_id)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None:
+        if not departamentos_visibles:
+            return []
+        q = q.filter(LevantamientoInventario.departamento_id.in_(departamentos_visibles))
     if estado:
         q = q.filter(LevantamientoInventario.estado == estado.upper())
     return [_serializar_levantamiento(l, db) for l in q.order_by(LevantamientoInventario.fecha_inicio.desc()).all()]
+
+
+@router.get("/levantamientos/{levantamiento_id}/detalle", summary="Detalle operativo de levantamiento fisico")
+def detalle_levantamiento(
+    levantamiento_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    l = db.query(LevantamientoInventario).filter(LevantamientoInventario.id == levantamiento_id).first()
+    _asegurar_acceso_levantamiento(db, l, current_user)
+    activos = _query_activos_levantamiento(db, l, current_user)
+    revisiones = db.query(RevisionLevantamientoInventario).filter(
+        RevisionLevantamientoInventario.levantamiento_id == levantamiento_id
+    ).all()
+    revisados_ids = {r.activo_id for r in revisiones}
+    por_estado = {estado: 0 for estado in ESTADOS_REVISION_LEVANTAMIENTO}
+    for r in revisiones:
+        por_estado[r.estado] = por_estado.get(r.estado, 0) + 1
+    pendientes = [a for a in activos if a.id not in revisados_ids]
+    return {
+        "levantamiento": _serializar_levantamiento(l, db),
+        "activos": [_serializar_activo(a, db) for a in activos],
+        "revisiones": [_serializar_revision(r, db) for r in revisiones],
+        "pendientes": [_serializar_activo(a, db) for a in pendientes],
+        "resumen": {
+            "total_esperado": len(activos),
+            "total_revisado": len(revisiones),
+            "total_pendiente": len(pendientes),
+            "por_estado": por_estado,
+            "porcentaje": round((len(revisiones) / len(activos)) * 100) if activos else 0,
+        },
+    }
 
 
 @router.post("/levantamientos", status_code=status.HTTP_201_CREATED, summary="Crear campana de levantamiento fisico")
 def crear_levantamiento(
     data: LevantamientoCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
-    if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
+    departamento_operacion_id = data.departamento_id
+    if not _es_admin_inventario_global(current_user):
+        departamento_operacion_id = _resolver_departamento_inventario(db, current_user, data.departamento_id)
+        _asegurar_write_inventario_departamento(db, current_user, departamento_operacion_id)
+    if departamento_operacion_id and not db.query(Departamento).filter(Departamento.id == departamento_operacion_id).first():
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
     lab_id = data.laboratorio_id
+    if _es_rol_laboratorio(current_user):
+        if not current_user.laboratorio_id:
+            raise HTTPException(status_code=403, detail="No tienes laboratorio asignado")
+        if lab_id and lab_id != current_user.laboratorio_id:
+            raise HTTPException(status_code=403, detail="Solo puedes crear levantamientos de tu laboratorio")
+        lab_id = current_user.laboratorio_id
+    if not _es_admin_inventario_global(current_user):
+        lab_id = None
     if lab_id:
         assert_lab_write(lab_id, current_user)
         if not db.query(Laboratorio).filter(Laboratorio.id == lab_id, Laboratorio.activo == True).first():
@@ -1258,7 +2381,7 @@ def crear_levantamiento(
         lab_id = current_user.laboratorio_id
     l = LevantamientoInventario(
         nombre=data.nombre,
-        departamento_id=data.departamento_id,
+        departamento_id=departamento_operacion_id,
         laboratorio_id=lab_id,
         observaciones=data.observaciones,
         creado_por_id=current_user.id,
@@ -1272,18 +2395,22 @@ def crear_levantamiento(
 
 @router.post("/levantamientos/{levantamiento_id}/revisiones", status_code=status.HTTP_201_CREATED, summary="Registrar revision fisica de un bien")
 def registrar_revision_levantamiento(
+    request: Request,
     levantamiento_id: int,
     data: RevisionLevantamientoIn,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     l = db.query(LevantamientoInventario).filter(LevantamientoInventario.id == levantamiento_id).first()
-    if not l:
-        raise HTTPException(status_code=404, detail="Levantamiento no encontrado")
+    _asegurar_acceso_levantamiento(db, l, current_user)
     if l.estado != "ABIERTO":
         raise HTTPException(status_code=409, detail="El levantamiento no esta abierto")
     activo = db.query(Activo).filter(Activo.id == data.activo_id).first()
-    assert_resource_access(activo, current_user)
+    _asegurar_acceso_activo_departamental(db, activo, current_user)
+    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    activos_scope = _query_activos_levantamiento(db, l, current_user)
+    if activo.id not in {a.id for a in activos_scope}:
+        raise HTTPException(status_code=422, detail="El activo no pertenece al alcance de este levantamiento")
     estado = data.estado.upper()
     if estado not in ESTADOS_REVISION_LEVANTAMIENTO:
         raise HTTPException(status_code=422, detail=f"Estado de revision invalido. Use: {ESTADOS_REVISION_LEVANTAMIENTO}")
@@ -1310,24 +2437,35 @@ def registrar_revision_levantamiento(
         activo.estado_admin = "BAJA_SOLICITADA"
     db.commit()
     db.refresh(revision)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user, recurso_id=activo.id,
+              detalle={"levantamiento_id": l.id, "revision_id": revision.id, "estado_revision": revision.estado},
+              request=request)
     return _serializar_revision(revision, db)
 
 
 @router.post("/levantamientos/{levantamiento_id}/cerrar", summary="Cerrar levantamiento fisico")
 def cerrar_levantamiento(
+    request: Request,
     levantamiento_id: int,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     l = db.query(LevantamientoInventario).filter(LevantamientoInventario.id == levantamiento_id).first()
-    if not l:
-        raise HTTPException(status_code=404, detail="Levantamiento no encontrado")
-    if current_user.rol == RolUsuario.LAB_ADMIN and l.laboratorio_id != current_user.laboratorio_id:
-        raise HTTPException(status_code=403, detail="No puedes cerrar levantamientos de otro laboratorio")
+    _asegurar_acceso_levantamiento(db, l, current_user)
+    activos = _query_activos_levantamiento(db, l, current_user)
+    revisiones = db.query(RevisionLevantamientoInventario).filter(
+        RevisionLevantamientoInventario.levantamiento_id == levantamiento_id
+    ).all()
+    pendientes = max(0, len(activos) - len({r.activo_id for r in revisiones}))
     l.estado = "CERRADO"
     l.fecha_cierre = _utcnow()
     db.commit()
     db.refresh(l)
+    registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
+              usuario=current_user,
+              detalle={"levantamiento_id": l.id, "accion": "CERRAR_LEVANTAMIENTO", "total_esperado": len(activos), "total_revisado": len(revisiones), "pendientes": pendientes},
+              request=request)
     return _serializar_levantamiento(l, db)
 
 
@@ -1339,18 +2477,132 @@ def expediente_activo(
 ):
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
     assert_resource_access(activo, current_user)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None and activo.departamento_id not in departamentos_visibles:
+        raise HTTPException(status_code=404, detail="Recurso no encontrado")
     movimientos = db.query(MovimientoInventario).filter(MovimientoInventario.activo_id == activo_id).order_by(MovimientoInventario.fecha_solicitud.desc()).all()
     bajas = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.activo_id == activo_id).order_by(SolicitudBajaInventario.fecha_solicitud.desc()).all()
     revisiones = db.query(RevisionLevantamientoInventario).filter(RevisionLevantamientoInventario.activo_id == activo_id).order_by(RevisionLevantamientoInventario.fecha_revision.desc()).all()
     prestamos = db.query(Prestamo).filter(Prestamo.activo_id == activo_id).order_by(Prestamo.fecha_salida.desc()).all()
     incidentes = db.query(Incidente).filter(Incidente.activo_id == activo_id).order_by(Incidente.fecha_reporte.desc()).all()
+    auditoria = db.query(AuditLog).filter(
+        AuditLog.recurso == Recurso.ACTIVO,
+        AuditLog.recurso_id == activo_id,
+    ).order_by(AuditLog.timestamp.desc()).limit(80).all()
+
+    timeline = []
+    for m in movimientos:
+        mov_data = _serializar_movimiento(m, db)
+        origen = (
+            mov_data.get("departamento_origen_nombre") or
+            mov_data.get("ubicacion_origen_nombre") or
+            mov_data.get("resguardante_origen_nombre")
+        )
+        destino = (
+            mov_data.get("departamento_destino_nombre") or
+            mov_data.get("ubicacion_destino_nombre") or
+            mov_data.get("resguardante_destino_nombre")
+        )
+        timeline.append(_evento_expediente(
+            "MOVIMIENTO",
+            m.fecha_recepcion or m.fecha_entrega or m.fecha_autorizacion or m.fecha_solicitud,
+            (m.tipo or "MOVIMIENTO").replace("_", " "),
+            f"{origen or 'Origen sin dato'} -> {destino or 'Destino sin dato'}",
+            m.estado,
+            None,
+            {"movimiento_id": m.id},
+        ))
+    for b in bajas:
+        timeline.append(_evento_expediente(
+            "BAJA",
+            b.fecha_ejecucion or b.fecha_autorizacion or b.fecha_solicitud,
+            f"Baja patrimonial: {b.estado}",
+            b.motivo,
+            b.estado,
+            None,
+            {"baja_id": b.id},
+        ))
+    for r in revisiones:
+        timeline.append(_evento_expediente(
+            "LEVANTAMIENTO",
+            r.fecha_revision,
+            f"Revision fisica: {r.estado}",
+            r.observaciones or r.ubicacion_reportada,
+            r.estado,
+            None,
+            {"revision_id": r.id, "levantamiento_id": r.levantamiento_id},
+        ))
+    for p in prestamos:
+        timeline.append(_evento_expediente(
+            "PRESTAMO",
+            p.fecha_retorno_real or p.fecha_salida,
+            f"Prestamo: {p.estado}",
+            f"{p.solicitante_nombre} ({p.solicitante_id_escolar})",
+            p.estado,
+            None,
+            {"prestamo_id": p.id},
+        ))
+    for i in incidentes:
+        timeline.append(_evento_expediente(
+            "INCIDENTE",
+            i.fecha_reporte,
+            f"Incidente: {i.tipo}",
+            i.descripcion,
+            i.estado,
+            None,
+            {"incidente_id": i.id, "prioridad": i.prioridad},
+        ))
+    for log in auditoria:
+        detalle = log.detalle or {}
+        if detalle.get("flujo") == "VALIDACION_INVENTARIO":
+            titulo = f"Validacion: {detalle.get('estado_anterior', '—')} -> {detalle.get('estado_nuevo', '—')}"
+            descripcion = detalle.get("observaciones")
+            estado = detalle.get("estado_nuevo")
+        else:
+            titulo = log.accion.replace("_", " ")
+            descripcion = ", ".join(detalle.get("campos", [])) if isinstance(detalle.get("campos"), list) else None
+            estado = None
+        timeline.append(_evento_expediente(
+            "AUDITORIA",
+            log.timestamp,
+            titulo,
+            descripcion,
+            estado,
+            log.usuario_nombre,
+            {"audit_id": log.id, "accion": log.accion, "detalle": detalle},
+        ))
+    timeline = sorted([e for e in timeline if e["fecha"]], key=lambda e: e["fecha"], reverse=True)
+
+    activo_data = _serializar_activo(activo, db)
+    alertas = []
+    if not activo.numero_oficial:
+        alertas.append("Sin numero oficial/patrimonial")
+    if not activo.departamento_id and (activo.alcance or "").upper() == "INSTITUCIONAL":
+        alertas.append("Sin departamento responsable")
+    if not activo.ubicacion_id and not activo.ubicacion_nombre:
+        alertas.append("Sin ubicacion registrada")
+    if not activo.responsable_id and not activo.resguardante_externo_nombre:
+        alertas.append("Sin resguardante")
+    if (activo.estado_admin or "").upper() != "VALIDADO":
+        alertas.append(f"Validacion pendiente: {activo.estado_admin}")
+
     return {
-        "activo": _serializar_activo(activo, db),
+        "activo": activo_data,
+        "resumen": {
+            "alertas": alertas,
+            "total_eventos": len(timeline),
+            "estado_admin": activo.estado_admin or "VALIDADO",
+            "estado_operativo": activo.estado,
+            "prestado": bool(activo_data.get("prestado")),
+            "ultima_actualizacion": timeline[0]["fecha"] if timeline else None,
+        },
         "movimientos": [_serializar_movimiento(m, db) for m in movimientos],
         "bajas": [_serializar_solicitud_baja(b, db) for b in bajas],
         "levantamientos": [_serializar_revision(r, db) for r in revisiones],
         "prestamos": [_serializar_prestamo(p, db) for p in prestamos],
         "incidentes": [_serializar_incidente(i, db) for i in incidentes],
+        "auditoria": [_serializar_audit_log(log) for log in auditoria],
+        "timeline": timeline,
     }
 
 
@@ -1371,11 +2623,12 @@ def listar_prestamos(
         q = q.filter(Prestamo.estado == "VENCIDO")
     if activo_id:
         q = q.filter(Prestamo.activo_id == activo_id)
-    if laboratorio_id:
-        activo_ids = [a.id for a in db.query(Activo).filter(Activo.laboratorio_id == laboratorio_id).all()]
-        q = q.filter(Prestamo.activo_id.in_(activo_ids))
-    elif current_user.rol == RolUsuario.LAB_ADMIN:
-        activo_ids = [a.id for a in db.query(Activo).filter(Activo.laboratorio_id == current_user.laboratorio_id).all()]
+    if laboratorio_id or _es_rol_laboratorio(current_user):
+        activos_query = db.query(Activo.id)
+        activos_query = _filtrar_lab_asignado(activos_query, Activo, current_user, laboratorio_id)
+        activo_ids = [row[0] for row in activos_query.all()]
+        if not activo_ids:
+            return []
         q = q.filter(Prestamo.activo_id.in_(activo_ids))
 
     prestamos = q.order_by(Prestamo.fecha_salida.desc()).all()
@@ -1389,8 +2642,15 @@ def prestamos_vencidos(
 ):
     _actualizar_estado_prestamos(db)
     q = db.query(Prestamo).filter(Prestamo.estado == "VENCIDO")
-    if current_user.rol == RolUsuario.LAB_ADMIN:
-        activo_ids = [a.id for a in db.query(Activo).filter(Activo.laboratorio_id == current_user.laboratorio_id).all()]
+    if _es_rol_laboratorio(current_user):
+        activo_ids = [
+            row[0]
+            for row in db.query(Activo.id)
+            .filter(Activo.laboratorio_id == current_user.laboratorio_id)
+            .all()
+        ]
+        if not activo_ids:
+            return []
         q = q.filter(Prestamo.activo_id.in_(activo_ids))
     return [_serializar_prestamo(p, db) for p in q.order_by(Prestamo.fecha_retorno_esperada).all()]
 
@@ -1407,21 +2667,46 @@ def crear_prestamo(
 
     _actualizar_estado_prestamos(db)
 
-    activo = db.query(Activo).filter(Activo.id == data.activo_id, Activo.activo == True).first()
-    if not activo:
-        raise HTTPException(status_code=404, detail="Activo no encontrado o dado de baja")
+    activo_ids = list(dict.fromkeys(data.activo_ids or ([data.activo_id] if data.activo_id else [])))
+    if not activo_ids:
+        raise HTTPException(status_code=422, detail="Selecciona al menos un activo")
 
-    # RLS: LAB_ADMIN solo puede prestar activos de su propio laboratorio
-    assert_resource_access(activo, current_user)
-    if activo.estado not in ("OPERATIVO",):
-        raise HTTPException(status_code=400, detail=f"El activo está en estado '{activo.estado}', no se puede prestar")
+    activos = db.query(Activo).filter(Activo.id.in_(activo_ids), Activo.activo == True).all()
+    activos_por_id = {activo.id: activo for activo in activos}
+    faltantes = [activo_id for activo_id in activo_ids if activo_id not in activos_por_id]
+    if faltantes:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Activos no encontrados o dados de baja: {', '.join(map(str, faltantes))}",
+        )
 
-    prestamo_activo = db.query(Prestamo).filter(
-        Prestamo.activo_id == data.activo_id,
-        Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
-    ).first()
-    if prestamo_activo:
-        raise HTTPException(status_code=409, detail="Este activo ya tiene un préstamo activo sin devolver")
+    prestamos_activos = {
+        row[0]
+        for row in db.query(Prestamo.activo_id).filter(
+            Prestamo.activo_id.in_(activo_ids),
+            Prestamo.estado.in_(["ACTIVO", "VENCIDO"]),
+        ).all()
+    }
+    if prestamos_activos:
+        nombres = [
+            activos_por_id[activo_id].nombre
+            for activo_id in activo_ids
+            if activo_id in prestamos_activos
+        ]
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya tienen un préstamo activo: {', '.join(nombres)}",
+        )
+
+    for activo_id in activo_ids:
+        activo = activos_por_id[activo_id]
+        assert_resource_access(activo, current_user)
+        _asegurar_activo_validado(activo)
+        if activo.estado != "OPERATIVO":
+            raise HTTPException(
+                status_code=400,
+                detail=f"El activo '{activo.nombre}' está en estado '{activo.estado}' y no se puede prestar",
+            )
 
     # Parsear fecha de devolución esperada
     fecha_retorno = None
@@ -1441,30 +2726,103 @@ def crear_prestamo(
         # Por defecto 7 días
         fecha_retorno = _utcnow() + datetime.timedelta(days=7)
 
-    # Guardar receptor_tipo y proposito en observaciones_salida como metadato JSON
+    # Guardar los datos compartidos de la solicitud como metadato.
     import json
-    meta = json.dumps({"receptor_tipo": data.receptor_tipo, "proposito": data.proposito})
+    meta = json.dumps({
+        "receptor_tipo": data.receptor_tipo,
+        "proposito": data.proposito,
+        "notas": data.notas,
+    })
     obs_salida = f"__meta__{meta}"
+    folio = f"PRE-{datetime.date.today():%Y%m%d}-{uuid.uuid4().hex[:8].upper()}"
+    fecha_salida = _utcnow()
+    prestamos = []
+    for activo_id in activo_ids:
+        prestamo = Prestamo(
+            folio=folio,
+            activo_id=activo_id,
+            solicitante_nombre=data.receptor_nombre,
+            solicitante_id_escolar=data.receptor_matricula or "",
+            autorizado_por=current_user.id,
+            fecha_salida=fecha_salida,
+            fecha_retorno_esperada=fecha_retorno,
+            estado="ACTIVO",
+            condicion_salida="BUENO",
+            observaciones_salida=obs_salida,
+        )
+        db.add(prestamo)
+        prestamos.append(prestamo)
 
-    p = Prestamo(
-        activo_id=data.activo_id,
-        solicitante_nombre=data.receptor_nombre,
-        solicitante_id_escolar=data.receptor_matricula or "",
-        autorizado_por=current_user.id,
-        fecha_salida=_utcnow(),
-        fecha_retorno_esperada=fecha_retorno,
-        estado="ACTIVO",
-        condicion_salida="BUENO",
-        observaciones_salida=obs_salida,
-    )
-    db.add(p)
     db.commit()
-    db.refresh(p)
-    registrar(db, accion=Accion.CREAR_PRESTAMO, recurso=Recurso.PRESTAMO,
-              usuario=current_user, recurso_id=p.id,
-              detalle={"activo_id": p.activo_id, "receptor": p.solicitante_nombre},
-              request=request)
-    return _serializar_prestamo(p, db)
+    for prestamo in prestamos:
+        db.refresh(prestamo)
+        registrar(
+            db,
+            accion=Accion.CREAR_PRESTAMO,
+            recurso=Recurso.PRESTAMO,
+            usuario=current_user,
+            recurso_id=prestamo.id,
+            detalle={
+                "folio": folio,
+                "activo_id": prestamo.activo_id,
+                "receptor": prestamo.solicitante_nombre,
+                "total_activos": len(prestamos),
+            },
+            request=request,
+        )
+
+    serializados = [_serializar_prestamo(prestamo, db) for prestamo in prestamos]
+    if len(serializados) == 1:
+        return serializados[0]
+    return {
+        "folio": folio,
+        "total_activos": len(serializados),
+        "estado": "ACTIVO",
+        "prestamos": serializados,
+    }
+
+
+@router.post("/prestamos/grupos/{folio}/devolver", summary="Registrar devolución total o parcial")
+def devolver_grupo_prestamos(
+    request: Request,
+    folio: str,
+    data: PrestamoGrupoDevolver,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    prestamos_pendientes = db.query(Prestamo).filter(
+        Prestamo.folio == folio,
+        Prestamo.estado.in_(["ACTIVO", "VENCIDO"]),
+    ).order_by(Prestamo.id).all()
+    if not prestamos_pendientes:
+        raise HTTPException(status_code=404, detail="No hay activos pendientes para este folio")
+
+    if data.prestamo_ids:
+        ids_solicitados = set(data.prestamo_ids)
+        ids_disponibles = {prestamo.id for prestamo in prestamos_pendientes}
+        ids_invalidos = ids_solicitados - ids_disponibles
+        if ids_invalidos:
+            raise HTTPException(
+                status_code=400,
+                detail="La selección incluye préstamos que no pertenecen al folio o ya fueron devueltos",
+            )
+        prestamos_pendientes = [
+            prestamo for prestamo in prestamos_pendientes if prestamo.id in ids_solicitados
+        ]
+
+    for prestamo in prestamos_pendientes:
+        activo = db.query(Activo).filter(Activo.id == prestamo.activo_id).first()
+        assert_resource_access(activo, current_user)
+
+    resultados = [
+        devolver_prestamo(request, prestamo.id, data, db, current_user)
+        for prestamo in prestamos_pendientes
+    ]
+    return {
+        "folio": folio,
+        "devueltos": len(resultados),
+        "prestamos": resultados,
+    }
 
 
 @router.post("/prestamos/{prestamo_id}/devolver", summary="Registrar devolución")
@@ -1475,11 +2833,17 @@ def devolver_prestamo(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    if data.condicion_devolucion not in ("BUENO", "REGULAR", "MALO", "DAÑADO"):
+        raise HTTPException(status_code=422, detail="Condición de devolución no válida")
+
     p = db.query(Prestamo).filter(Prestamo.id == prestamo_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Préstamo no encontrado")
     if p.estado == "DEVUELTO":
         raise HTTPException(status_code=400, detail="Este préstamo ya fue devuelto")
+
+    activo = db.query(Activo).filter(Activo.id == p.activo_id).first()
+    assert_resource_access(activo, current_user)
 
     p.estado                = "DEVUELTO"
     p.fecha_retorno_real    = _utcnow()
@@ -1541,7 +2905,7 @@ def devolver_prestamo(
             from routers.notificaciones import crear_notificacion
             admins = db.query(Usuario).filter(
                 Usuario.activo == True,
-                Usuario.rol.in_(["SUPER_ADMIN", "LAB_ADMIN"]),
+                Usuario.rol.in_(["SUPER_ADMIN", "LAB_ADMIN", "RESPONSABLE_LAB"]),
             ).all()
             for admin in admins:
                 if admin.rol == "SUPER_ADMIN" or admin.laboratorio_id == activo.laboratorio_id:
@@ -1598,10 +2962,7 @@ def listar_incidentes(
         q = q.filter(Incidente.prioridad == prioridad.upper())
     if tipo:
         q = q.filter(Incidente.tipo == tipo.upper())
-    if laboratorio_id:
-        q = q.filter(Incidente.laboratorio_id == laboratorio_id)
-    elif current_user.rol == RolUsuario.LAB_ADMIN:
-        q = q.filter(Incidente.laboratorio_id == current_user.laboratorio_id)
+    q = _filtrar_lab_asignado(q, Incidente, current_user, laboratorio_id)
 
     incidentes = q.order_by(Incidente.fecha_reporte.desc()).all()
     return [_serializar_incidente(i, db) for i in incidentes]
@@ -1617,26 +2978,46 @@ def crear_incidente(
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
-    # Validar: debe referenciar al menos un activo o una computadora
-    if not data.activo_id and not data.computadora_id:
+    # Los reportes de limpieza, iluminacion o seguridad pueden ser generales
+    # del laboratorio. El responsable asociara un equipo despues si aplica.
+    if not data.activo_id and not data.computadora_id and not data.laboratorio_id:
         raise HTTPException(
             status_code=422,
-            detail="El incidente debe referenciar un activo de inventario (activo_id) o una computadora de laboratorio (computadora_id)"
+            detail="El incidente debe indicar un laboratorio, un activo o una computadora"
+        )
+    if data.activo_id and data.computadora_id:
+        raise HTTPException(
+            status_code=422,
+            detail="El incidente no puede asociarse simultaneamente a un activo y a una computadora"
         )
 
-    # Si viene activo_id, extraer laboratorio_id automáticamente
+    # Si viene activo_id, validar el alta oficial y extraer laboratorio_id.
     lab_id = data.laboratorio_id
-    if data.activo_id and not lab_id:
+    activo = None
+    if data.activo_id:
         activo = db.query(Activo).filter(Activo.id == data.activo_id).first()
-        if activo:
-            lab_id = activo.laboratorio_id
+        _asegurar_acceso_activo_departamental(db, activo, current_user)
+        _asegurar_activo_validado(activo)
+        if lab_id and activo.laboratorio_id and lab_id != activo.laboratorio_id:
+            raise HTTPException(status_code=422, detail="El activo no pertenece al laboratorio indicado")
+        lab_id = activo.laboratorio_id or lab_id
 
-    # Si viene computadora_id, extraer laboratorio_id automáticamente
-    if data.computadora_id and not lab_id:
+    # Si viene computadora_id, validar y extraer laboratorio_id.
+    if data.computadora_id:
         from models.laboratorio import Computadora
         pc = db.query(Computadora).filter(Computadora.id == data.computadora_id).first()
-        if pc:
-            lab_id = pc.laboratorio_id
+        if not pc:
+            raise HTTPException(status_code=404, detail="Computadora no encontrada")
+        if lab_id and lab_id != pc.laboratorio_id:
+            raise HTTPException(status_code=422, detail="La computadora no pertenece al laboratorio indicado")
+        lab_id = pc.laboratorio_id
+
+    if lab_id:
+        lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
+        if not lab:
+            raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+        if _es_rol_laboratorio(current_user) and current_user.laboratorio_id != lab.id:
+            raise HTTPException(status_code=403, detail="Solo puedes reportar incidentes de tu laboratorio")
 
     i = Incidente(
         activo_id        = data.activo_id,
@@ -1654,7 +3035,6 @@ def crear_incidente(
 
     # Si el incidente es sobre un activo de inventario → actualizar su estado
     if data.activo_id and data.tipo.upper() in ("DAÑO", "MANTENIMIENTO"):
-        activo = db.query(Activo).filter(Activo.id == data.activo_id).first()
         if activo:
             activo.estado = "DAÑADO" if data.tipo.upper() == "DAÑO" else "MANTENIMIENTO"
 
@@ -1691,12 +3071,104 @@ def actualizar_incidente(
     i = db.query(Incidente).filter(Incidente.id == incidente_id).first()
     if not i:
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
+    _asegurar_acceso_incidente(i, current_user)
+    if i.estado in ESTADOS_INCIDENTE_CERRADOS:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La incidencia ya esta cerrada y su expediente es de solo lectura. "
+                "Puedes agregar un seguimiento o reabrirla indicando el motivo."
+            ),
+        )
 
-    campos = data.model_dump(exclude_none=True)
+    campos = data.model_dump(exclude_unset=True)
+    motivo_vinculacion = (campos.pop("motivo_vinculacion", None) or "").strip()
+    nota_legacy = (campos.pop("notas_seguimiento", None) or "").strip()
     estado_anterior = i.estado
+    vinculo_creado = None
+
+    if "activo_id" in campos or "computadora_id" in campos:
+        if current_user.rol not in (
+            RolUsuario.SUPER_ADMIN,
+            RolUsuario.LAB_ADMIN,
+            RolUsuario.RESPONSABLE_LAB,
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el responsable del laboratorio puede asociar el reporte con un equipo"
+            )
+
+        activo_id = campos.get("activo_id")
+        computadora_id = campos.get("computadora_id")
+        if i.activo_id or i.computadora_id:
+            mismo_activo = activo_id == i.activo_id and computadora_id in (None, i.computadora_id)
+            misma_pc = computadora_id == i.computadora_id and activo_id in (None, i.activo_id)
+            if not (mismo_activo or misma_pc):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "El equipo relacionado ya forma parte de la trazabilidad del incidente. "
+                        "No puede cambiarse desde la actualización normal."
+                    )
+                )
+            campos.pop("activo_id", None)
+            campos.pop("computadora_id", None)
+            activo_id = None
+            computadora_id = None
+        if activo_id and computadora_id:
+            raise HTTPException(
+                status_code=422,
+                detail="El incidente no puede asociarse simultaneamente a un activo y a una computadora"
+            )
+        if (activo_id or computadora_id) and len(motivo_vinculacion) < 5:
+            raise HTTPException(
+                status_code=422,
+                detail="Debes indicar cómo se identificó el equipo relacionado"
+            )
+
+        if activo_id:
+            activo_asignado = db.query(Activo).filter(Activo.id == activo_id).first()
+            _asegurar_acceso_activo_departamental(db, activo_asignado, current_user)
+            _asegurar_activo_validado(activo_asignado)
+            if i.laboratorio_id and activo_asignado.laboratorio_id != i.laboratorio_id:
+                raise HTTPException(status_code=422, detail="El activo no pertenece al laboratorio del reporte")
+            campos["computadora_id"] = None
+            vinculo_creado = {
+                "tipo": "ACTIVO",
+                "id": activo_asignado.id,
+                "codigo": activo_asignado.codigo_inventario,
+                "motivo": motivo_vinculacion,
+            }
+
+        if computadora_id:
+            from models.laboratorio import Computadora
+            pc_asignada = db.query(Computadora).filter(Computadora.id == computadora_id).first()
+            if not pc_asignada:
+                raise HTTPException(status_code=404, detail="Computadora no encontrada")
+            if i.laboratorio_id and pc_asignada.laboratorio_id != i.laboratorio_id:
+                raise HTTPException(status_code=422, detail="La computadora no pertenece al laboratorio del reporte")
+            if _es_rol_laboratorio(current_user) and current_user.laboratorio_id != pc_asignada.laboratorio_id:
+                raise HTTPException(status_code=403, detail="Solo puedes gestionar equipos de tu laboratorio")
+            campos["activo_id"] = None
+            vinculo_creado = {
+                "tipo": "COMPUTADORA",
+                "id": pc_asignada.id,
+                "codigo": pc_asignada.codigo,
+                "motivo": motivo_vinculacion,
+            }
+            if i.tipo.upper() in ("DAÑO", "MANTENIMIENTO", "OTRO"):
+                pc_asignada.estado = "MANTENIMIENTO"
 
     # ── Bloquear reabrir un incidente que ya generó un adeudo ────────────────
     nuevo_estado = campos.get("estado", "").upper() if "estado" in campos else ""
+    if nuevo_estado == "DADO_DE_BAJA":
+        activo_destino = campos.get("activo_id", i.activo_id)
+        pc_destino = campos.get("computadora_id", i.computadora_id)
+        if not activo_destino and not pc_destino:
+            raise HTTPException(
+                status_code=422,
+                detail="Una observacion general no puede marcarse como dada de baja sin un equipo relacionado",
+            )
     if nuevo_estado in ("PENDIENTE", "EN_REVISION"):
         adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == incidente_id).first()
         if adeudo_vinculado and adeudo_vinculado.estado not in ("RESUELTO", "CANCELADO"):
@@ -1750,8 +3222,48 @@ def actualizar_incidente(
                 pc.estado = "BAJA"
                 pc.activa = False
 
+    if nota_legacy:
+        db.add(SeguimientoIncidente(
+            incidente_id=i.id,
+            usuario_id=current_user.id,
+            tipo="NOTA",
+            texto=nota_legacy,
+        ))
+    if vinculo_creado:
+        db.add(SeguimientoIncidente(
+            incidente_id=i.id,
+            usuario_id=current_user.id,
+            tipo="VINCULACION",
+            texto=(
+                f"Se relaciono {vinculo_creado['tipo'].lower()} "
+                f"{vinculo_creado['codigo']}: {vinculo_creado['motivo']}"
+            ),
+        ))
+    if nuevo_estado and nuevo_estado != estado_anterior:
+        db.add(SeguimientoIncidente(
+            incidente_id=i.id,
+            usuario_id=current_user.id,
+            tipo="CAMBIO_ESTADO",
+            texto=f"Estado cambiado de {estado_anterior} a {nuevo_estado}",
+            estado_anterior=estado_anterior,
+            estado_nuevo=nuevo_estado,
+        ))
+
     db.commit()
     db.refresh(i)
+    if vinculo_creado:
+        registrar(
+            db,
+            accion=Accion.VINCULAR_EQUIPO_INCIDENTE,
+            recurso=Recurso.INCIDENTE,
+            usuario=current_user,
+            recurso_id=i.id,
+            detalle={
+                **vinculo_creado,
+                "laboratorio_id": i.laboratorio_id,
+            },
+            request=request,
+        )
     # Audit log when closing/resolving
     if "estado" in campos and campos["estado"].upper() in ("REPARADO", "CERRADO_SIN_ADEUDO", "DADO_DE_BAJA"):
         registrar(db, accion=Accion.CERRAR_MANTENIMIENTO, recurso=Recurso.INCIDENTE,
@@ -1760,6 +3272,118 @@ def actualizar_incidente(
                            "laboratorio_id": i.laboratorio_id},
                   request=request)
     return _serializar_incidente(i, db)
+
+
+@router.post("/incidentes/{incidente_id}/seguimientos", summary="Agregar nota al historial del incidente")
+def agregar_seguimiento_incidente(
+    request: Request,
+    incidente_id: int,
+    data: IncidenteSeguimientoCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if current_user.rol == RolUsuario.ALUMNO:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+
+    incidente = db.query(Incidente).filter(Incidente.id == incidente_id).first()
+    if not incidente:
+        raise HTTPException(status_code=404, detail="Incidente no encontrado")
+    _asegurar_acceso_incidente(incidente, current_user)
+
+    texto = data.texto.strip()
+    if len(texto) < 2:
+        raise HTTPException(status_code=422, detail="Escribe el seguimiento realizado")
+
+    db.add(SeguimientoIncidente(
+        incidente_id=incidente.id,
+        usuario_id=current_user.id,
+        tipo="NOTA",
+        texto=texto,
+    ))
+    db.commit()
+    db.refresh(incidente)
+    registrar(
+        db,
+        accion=Accion.AGREGAR_SEGUIMIENTO_INCIDENTE,
+        recurso=Recurso.INCIDENTE,
+        usuario=current_user,
+        recurso_id=incidente.id,
+        detalle={"estado": incidente.estado, "laboratorio_id": incidente.laboratorio_id},
+        request=request,
+    )
+    return _serializar_incidente(incidente, db)
+
+
+@router.post("/incidentes/{incidente_id}/reabrir", summary="Reabrir un incidente cerrado")
+def reabrir_incidente(
+    request: Request,
+    incidente_id: int,
+    data: IncidenteReabrir,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if current_user.rol not in (
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.LAB_ADMIN,
+        RolUsuario.RESPONSABLE_LAB,
+    ):
+        raise HTTPException(status_code=403, detail="Solo un responsable puede reabrir incidencias")
+
+    incidente = db.query(Incidente).filter(Incidente.id == incidente_id).first()
+    if not incidente:
+        raise HTTPException(status_code=404, detail="Incidente no encontrado")
+    _asegurar_acceso_incidente(incidente, current_user)
+    if incidente.estado not in ESTADOS_INCIDENTE_CERRADOS:
+        raise HTTPException(status_code=409, detail="La incidencia no esta cerrada")
+
+    adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == incidente_id).first()
+    if adeudo_vinculado and adeudo_vinculado.estado not in ("RESUELTO", "CANCELADO"):
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede reabrir mientras tenga un adeudo pendiente",
+        )
+
+    motivo = data.motivo.strip()
+    estado_anterior = incidente.estado
+    incidente.estado = "EN_REVISION"
+    incidente.fecha_resolucion = None
+
+    if incidente.activo_id:
+        activo = db.query(Activo).filter(Activo.id == incidente.activo_id).first()
+        if activo:
+            activo.activo = True
+            activo.estado = "MANTENIMIENTO"
+    if incidente.computadora_id:
+        pc = db.query(Computadora).filter(Computadora.id == incidente.computadora_id).first()
+        if pc:
+            pc.activa = True
+            pc.estado = "MANTENIMIENTO"
+
+    db.add(SeguimientoIncidente(
+        incidente_id=incidente.id,
+        usuario_id=current_user.id,
+        tipo="REAPERTURA",
+        texto=f"Incidencia reabierta: {motivo}",
+        estado_anterior=estado_anterior,
+        estado_nuevo="EN_REVISION",
+    ))
+    db.commit()
+    db.refresh(incidente)
+    registrar(
+        db,
+        accion=Accion.REABRIR_INCIDENTE,
+        recurso=Recurso.INCIDENTE,
+        usuario=current_user,
+        recurso_id=incidente.id,
+        detalle={
+            "estado_anterior": estado_anterior,
+            "estado_nuevo": incidente.estado,
+            "motivo": motivo,
+            "laboratorio_id": incidente.laboratorio_id,
+        },
+        request=request,
+    )
+    return _serializar_incidente(incidente, db)
 
 
 @router.get("/incidentes/estadisticas", summary="Resumen de incidentes")
@@ -1806,10 +3430,13 @@ def listar_categorias(_: Usuario = Depends(get_current_user)):
 @router.get("/labs-nombres", summary="Nombres exactos de laboratorios activos")
 def labs_nombres(
     db: Session = Depends(get_db),
-    _: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user)
 ):
     """Devuelve los nombres tal como están registrados, para usarlos en la plantilla."""
-    labs = db.query(Laboratorio).filter(Laboratorio.activo == True).order_by(Laboratorio.nombre).all()
+    query = db.query(Laboratorio).filter(Laboratorio.activo == True)
+    if _es_rol_laboratorio(current_user):
+        query = query.filter(Laboratorio.id == current_user.laboratorio_id)
+    labs = query.order_by(Laboratorio.nombre).all()
     return [{"id": l.id, "nombre": l.nombre} for l in labs]
 
 
@@ -1828,10 +3455,23 @@ def estadisticas(
     q_a = db.query(Activo).filter(Activo.activo == True)
     q_p = db.query(Prestamo)
 
-    if laboratorio_id:
-        q_a = q_a.filter(Activo.laboratorio_id == laboratorio_id)
-    elif current_user.rol == RolUsuario.LAB_ADMIN:
-        q_a = q_a.filter(Activo.laboratorio_id == current_user.laboratorio_id)
+    q_a = _filtrar_lab_asignado(q_a, Activo, current_user, laboratorio_id)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None:
+        if not departamentos_visibles:
+            activos = []
+            ids = []
+            return {
+                "total_activos": 0, "operativos": 0, "en_mantenimiento": 0,
+                "bajas": 0, "prestamos_activos": 0, "prestamos_vencidos": 0,
+                "institucionales": 0, "bajas_pendientes": 0, "no_localizados": 0,
+                "por_categoria": {}, "por_departamento": {}, "por_estado_admin": {},
+            }
+        if departamento_id:
+            if departamento_id not in departamentos_visibles:
+                raise HTTPException(status_code=403, detail="Solo puedes consultar estadisticas de tu departamento")
+        else:
+            q_a = q_a.filter(Activo.departamento_id.in_(departamentos_visibles))
     if departamento_id:
         q_a = q_a.filter(Activo.departamento_id == departamento_id)
     if ubicacion_id:
@@ -1840,14 +3480,34 @@ def estadisticas(
         q_a = q_a.filter(Activo.alcance == alcance.upper())
     if tipo_inventario:
         q_a = q_a.filter(Activo.tipo_inventario == tipo_inventario.upper())
-    if estado_admin:
-        q_a = q_a.filter(Activo.estado_admin == estado_admin.upper())
 
-    activos = q_a.all()
+    activos_scope = q_a.all()
+    por_estado_admin = {}
+    for activo in activos_scope:
+        estado_validacion = activo.estado_admin or "VALIDADO"
+        por_estado_admin[estado_validacion] = por_estado_admin.get(estado_validacion, 0) + 1
+
+    if estado_admin:
+        estado_filtro = estado_admin.upper()
+        activos = [
+            activo for activo in activos_scope
+            if (activo.estado_admin or "VALIDADO") == estado_filtro
+        ]
+    else:
+        activos = [
+            activo for activo in activos_scope
+            if (activo.estado_admin or "VALIDADO") == "VALIDADO"
+        ]
     ids = [a.id for a in activos]
     prestamos = db.query(Prestamo).filter(Prestamo.activo_id.in_(ids)).all() if ids else []
     bajas = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.activo_id.in_(ids)).all() if ids else []
     revisiones = db.query(RevisionLevantamientoInventario).filter(RevisionLevantamientoInventario.activo_id.in_(ids)).all() if ids else []
+    ahora = _utcnow()
+    en_7 = ahora + datetime.timedelta(days=7)
+    mantenimientos = db.query(MantenimientoPreventivo).filter(
+        MantenimientoPreventivo.activo_id.in_(ids),
+        MantenimientoPreventivo.estado.in_(["PENDIENTE", "EN_PROCESO"]),
+    ).all() if ids else []
 
     por_categoria = {}
     por_departamento = {}
@@ -1855,6 +3515,22 @@ def estadisticas(
         por_categoria[a.categoria] = por_categoria.get(a.categoria, 0) + 1
         key = a.departamento_id or 0
         por_departamento[key] = por_departamento.get(key, 0) + 1
+
+    solicitudes_prestamo = {}
+    for prestamo in prestamos:
+        clave = prestamo.folio or f"PRE-{prestamo.id}"
+        solicitudes_prestamo.setdefault(clave, []).append(prestamo)
+
+    solicitudes_activas = 0
+    solicitudes_vencidas = 0
+    solicitudes_devueltas = 0
+    for items in solicitudes_prestamo.values():
+        if any(item.estado == "VENCIDO" for item in items):
+            solicitudes_vencidas += 1
+        elif any(item.estado == "ACTIVO" for item in items):
+            solicitudes_activas += 1
+        else:
+            solicitudes_devueltas += 1
 
     return {
         "total_activos": len(activos),
@@ -1865,7 +3541,12 @@ def estadisticas(
         "prestamos_activos":  sum(1 for p in prestamos if p.estado == "ACTIVO"),
         "prestamos_vencidos": sum(1 for p in prestamos if p.estado == "VENCIDO"),
         "prestamos_devueltos": sum(1 for p in prestamos if p.estado == "DEVUELTO"),
+        "solicitudes_prestamo_totales": len(solicitudes_prestamo),
+        "solicitudes_prestamo_activas": solicitudes_activas,
+        "solicitudes_prestamo_vencidas": solicitudes_vencidas,
+        "solicitudes_prestamo_devueltas": solicitudes_devueltas,
         "por_categoria": por_categoria,
+        "por_estado_admin": por_estado_admin,
         "institucionales": sum(1 for a in activos if (a.alcance or "").upper() == "INSTITUCIONAL"),
         "de_laboratorio": sum(1 for a in activos if (a.alcance or "LABORATORIO").upper() == "LABORATORIO"),
         "activos_individuales": sum(1 for a in activos if (a.tipo_inventario or "ACTIVO").upper() == "ACTIVO"),
@@ -1873,7 +3554,83 @@ def estadisticas(
         "bajas_ejecutadas": sum(1 for b in bajas if b.estado == "EJECUTADA"),
         "no_localizados": sum(1 for r in revisiones if r.estado == "NO_LOCALIZADO"),
         "propuestos_baja": sum(1 for r in revisiones if r.estado == "PROPUESTO_BAJA"),
+        "mantenimientos_pendientes": len(mantenimientos),
+        "mantenimientos_vencidos": sum(1 for m in mantenimientos if m.fecha_limite and m.fecha_limite < ahora),
+        "mantenimientos_proximos": sum(1 for m in mantenimientos if m.fecha_limite and ahora <= m.fecha_limite <= en_7),
         "por_departamento": por_departamento,
+    }
+
+
+@router.get("/mantenimiento-alertas", summary="Alertas de mantenimiento preventivo por inventario")
+def alertas_mantenimiento_inventario(
+    laboratorio_id: Optional[int] = None,
+    departamento_id: Optional[int] = None,
+    ubicacion_id: Optional[int] = None,
+    alcance: Optional[str] = None,
+    estado_admin: Optional[str] = None,
+    categoria: Optional[str] = None,
+    estado: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    q = _query_activos_filtrados(
+        db,
+        current_user,
+        laboratorio_id=laboratorio_id,
+        departamento_id=departamento_id,
+        ubicacion_id=ubicacion_id,
+        alcance=alcance,
+        estado_admin=estado_admin,
+        categoria=categoria,
+        estado=estado,
+        solo_activos=True,
+    )
+    activos = [] if q is None else q.all()
+    activos_map = {a.id: a for a in activos}
+    ids = list(activos_map.keys())
+    ahora = _utcnow()
+    en_7 = ahora + datetime.timedelta(days=7)
+    mantenimientos = db.query(MantenimientoPreventivo).filter(
+        MantenimientoPreventivo.activo_id.in_(ids),
+        MantenimientoPreventivo.estado.in_(["PENDIENTE", "EN_PROCESO"]),
+    ).order_by(
+        MantenimientoPreventivo.fecha_limite.is_(None),
+        MantenimientoPreventivo.fecha_limite,
+        MantenimientoPreventivo.fecha_programada,
+    ).all() if ids else []
+
+    items = []
+    for m in mantenimientos[:30]:
+        activo = activos_map.get(m.activo_id)
+        if not activo:
+            continue
+        dep = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first() if activo.departamento_id else None
+        lab = db.query(Laboratorio).filter(Laboratorio.id == activo.laboratorio_id).first() if activo.laboratorio_id else None
+        estado_alerta = "PROGRAMADO"
+        if m.fecha_limite and m.fecha_limite < ahora:
+            estado_alerta = "VENCIDO"
+        elif m.fecha_limite and ahora <= m.fecha_limite <= en_7:
+            estado_alerta = "PROXIMO"
+        items.append({
+            "id": m.id,
+            "activo_id": activo.id,
+            "codigo_inventario": activo.codigo_inventario,
+            "activo_nombre": activo.nombre,
+            "departamento_nombre": dep.nombre if dep else None,
+            "laboratorio_nombre": lab.nombre if lab else None,
+            "tipo": m.tipo,
+            "estado": m.estado,
+            "estado_alerta": estado_alerta,
+            "fecha_programada": m.fecha_programada.isoformat() if m.fecha_programada else None,
+            "fecha_limite": m.fecha_limite.isoformat() if m.fecha_limite else None,
+        })
+
+    return {
+        "total_pendientes": len(mantenimientos),
+        "vencidos": sum(1 for m in mantenimientos if m.fecha_limite and m.fecha_limite < ahora),
+        "proximos_7": sum(1 for m in mantenimientos if m.fecha_limite and ahora <= m.fecha_limite <= en_7),
+        "programados": sum(1 for m in mantenimientos if not m.fecha_limite or m.fecha_limite > en_7),
+        "items": items,
     }
 
 
@@ -1887,16 +3644,21 @@ def estadisticas(
 #
 # El sistema genera el número de inventario automáticamente (UTC-[ÁREA]-[TIPO]-[SEQ])
 
-_admin_roles = require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)
-
 @router.post("/activos/importar", summary="Importar activos desde Plantilla_Inventario_UTC.xlsx")
 async def importar_activos(
+    request: Request,
     file: UploadFile = File(...),
+    estado_admin_default: str = "BORRADOR",
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(_admin_roles),
+    current_user: Usuario = Depends(get_current_user),
 ):
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
+    if not _es_admin_inventario_global(current_user) and not departamentos_inventario(db, current_user):
+        raise HTTPException(status_code=403, detail="No tienes permiso para importar inventario departamental")
+    estado_admin_default = (estado_admin_default or "BORRADOR").upper()
+    if estado_admin_default not in ESTADOS_ADMIN_ACTIVO:
+        raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
 
     contents = await file.read()
     try:
@@ -1911,12 +3673,40 @@ async def importar_activos(
         return str(v).strip() if v is not None else ""
 
     # Cache de laboratorios (nombre normalizado sin acentos → objeto)
-    labs_list = db.query(Laboratorio).filter(Laboratorio.activo == True).all()
+    labs_query = db.query(Laboratorio).filter(Laboratorio.activo == True)
+    if _es_rol_laboratorio(current_user):
+        labs_query = labs_query.filter(Laboratorio.id == current_user.laboratorio_id)
+    labs_list = labs_query.all()
     labs = {_normalizar(lab.nombre): lab for lab in labs_list}
+    departamentos_list = db.query(Departamento).filter(Departamento.activo == True).all()
+    departamentos_por_nombre = {_normalizar(d.nombre): d for d in departamentos_list}
+    departamentos_por_clave = {_normalizar(d.clave): d for d in departamentos_list if d.clave}
+
+    def _resolver_departamento_excel(texto: str) -> int | None:
+        if not texto:
+            return current_user.departamento_id
+        key = _normalizar(texto)
+        dep = departamentos_por_clave.get(key) or departamentos_por_nombre.get(key)
+        return dep.id if dep else None
+
+    def _normalizar_numero_oficial(valor: str) -> str | None:
+        valor = (valor or "").strip()
+        return valor or None
+
+    def _buscar_existente(codigo_siga: str | None, numero_oficial: str | None) -> Activo | None:
+        if codigo_siga:
+            existente = db.query(Activo).filter(Activo.codigo_inventario == codigo_siga).first()
+            if existente:
+                return existente
+        if numero_oficial:
+            return db.query(Activo).filter(Activo.numero_oficial == numero_oficial).first()
+        return None
 
     creados = 0
     actualizados = 0
+    duplicados_posibles = 0
     errores = []
+    activos_creados_ids = []
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=6, values_only=True), start=6):
         # Fila completamente vacía → fin del listado
@@ -1938,6 +3728,13 @@ async def importar_activos(
         estado     = _v(row, 10).upper() or "OPERATIVO"
         resguardo  = _v(row, 11) or None
         obs        = _v(row, 12) or None
+        codigo_siga = _v(row, 13).upper() or None
+        numero_oficial = _normalizar_numero_oficial(_v(row, 14))
+        departamento_txt = _v(row, 15)
+        alcance_excel = _v(row, 16).upper()
+        estado_admin = _v(row, 17).upper() or estado_admin_default
+        if current_user.rol != RolUsuario.SUPER_ADMIN:
+            estado_admin = "BORRADOR"
 
         fila_errs = []
         if not nombre:
@@ -1950,6 +3747,8 @@ async def importar_activos(
         # Normalizar estado
         if estado not in ESTADOS_ACTIVO:
             estado = "OPERATIVO"
+        if estado_admin not in ESTADOS_ADMIN_ACTIVO:
+            fila_errs.append(f"Estado administrativo invalido: {estado_admin}")
 
         # Parsear valor monetario
         try:
@@ -1957,26 +3756,135 @@ async def importar_activos(
         except (ValueError, TypeError):
             valor = None
 
-        # Buscar laboratorio con tolerancia a acentos y coincidencias parciales
-        lab = _buscar_lab(_v(row, 2), labs, db, current_user)
-        if not lab:
-            nombres_disponibles = ", ".join(f"'{l.nombre}'" for l in labs_list)
-            fila_errs.append(
-                f"Laboratorio '{_v(row, 2)}' no encontrado. "
-                f"Nombres disponibles: {nombres_disponibles}"
-            )
+        alcance = "LABORATORIO" if (
+            alcance_excel == "LABORATORIO" or
+            (_es_admin_inventario_global(current_user) and not alcance_excel and _v(row, 2))
+        ) else "INSTITUCIONAL"
+        lab = None
+        departamento_id = None
+
+        if _es_rol_laboratorio(current_user):
+            alcance = "LABORATORIO"
+            lab = _buscar_lab(_v(row, 2), labs, db, current_user)
+            if not lab and current_user.laboratorio_id:
+                lab = db.query(Laboratorio).filter(
+                    Laboratorio.id == current_user.laboratorio_id,
+                    Laboratorio.activo == True,
+                ).first()
+            if not lab:
+                fila_errs.append("Tu usuario no tiene un laboratorio asignado para importar activos")
+        elif alcance == "LABORATORIO":
+            lab = _buscar_lab(_v(row, 2), labs, db, current_user)
+            if not lab:
+                nombres_disponibles = ", ".join(f"'{l.nombre}'" for l in labs_list)
+                fila_errs.append(
+                    f"Laboratorio '{_v(row, 2)}' no encontrado. "
+                    f"Nombres disponibles: {nombres_disponibles}"
+                )
+        else:
+            departamento_id = _resolver_departamento_excel(departamento_txt)
+            if not departamento_id:
+                fila_errs.append(f"Departamento '{departamento_txt}' no encontrado")
+            else:
+                try:
+                    departamento_id = _resolver_departamento_inventario(db, current_user, departamento_id)
+                    _asegurar_write_inventario_departamento(db, current_user, departamento_id)
+                except HTTPException as exc:
+                    fila_errs.append(str(exc.detail))
 
         if fila_errs:
             errores.append({"fila": row_idx, "codigo": "—", "nombre": nombre or "—", "errores": fila_errs})
             continue
 
         # Generar número de inventario automáticamente
-        codigo = _generar_codigo(db, categoria, area)
+        existente = _buscar_existente(codigo_siga, numero_oficial)
+        if existente:
+            try:
+                if _es_rol_laboratorio(current_user):
+                    assert_lab_write(existente.laboratorio_id, current_user)
+                else:
+                    _asegurar_write_inventario_departamento(db, current_user, existente.departamento_id)
+            except HTTPException as exc:
+                errores.append({"fila": row_idx, "codigo": existente.codigo_inventario, "nombre": nombre, "errores": [str(exc.detail)]})
+                continue
 
-        db.add(Activo(
+            if numero_oficial:
+                otro = db.query(Activo).filter(
+                    Activo.numero_oficial == numero_oficial,
+                    Activo.id != existente.id,
+                ).first()
+                if otro:
+                    errores.append({
+                        "fila": row_idx,
+                        "codigo": existente.codigo_inventario,
+                        "nombre": nombre,
+                        "errores": [f"El numero oficial '{numero_oficial}' ya pertenece a {otro.codigo_inventario}"],
+                    })
+                    continue
+
+            existente.nombre = nombre
+            existente.categoria = categoria
+            existente.area = area
+            existente.marca = marca
+            existente.modelo = modelo
+            existente.numero_serie = num_serie
+            existente.especificaciones = specs
+            existente.valor = valor
+            existente.estado = estado
+            existente.estado_admin = estado_admin
+            existente.numero_oficial = numero_oficial
+            existente.resguardante_externo_nombre = resguardo
+            existente.observaciones = obs
+            existente.tipo_inventario = "ACTIVO"
+            existente.cantidad = 1.0
+            existente.unidad_medida = "PIEZA"
+            existente.stock_minimo = None
+            existente.alcance = alcance
+            existente.laboratorio_id = lab.id if lab else None
+            existente.departamento_id = departamento_id
+            db.flush()
+            actualizados += 1
+            continue
+
+        if not codigo_siga and num_serie:
+            posible = db.query(Activo).filter(
+                Activo.numero_serie == num_serie,
+                Activo.nombre == nombre,
+            ).first()
+            if posible:
+                duplicados_posibles += 1
+                errores.append({
+                    "fila": row_idx,
+                    "codigo": posible.codigo_inventario,
+                    "nombre": nombre,
+                    "errores": [
+                        "Posible duplicado por nombre y numero de serie. Agrega Codigo SIGA o No. oficial para actualizarlo.",
+                    ],
+                })
+                continue
+
+        area_codigo = area
+        if not area_codigo and departamento_id:
+            dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
+            area_codigo = dep.clave if dep else None
+        codigo = codigo_siga or _generar_codigo(db, categoria, area_codigo)
+
+        if db.query(Activo).filter(Activo.codigo_inventario == codigo).first():
+            errores.append({"fila": row_idx, "codigo": codigo, "nombre": nombre, "errores": [f"Ya existe un activo con codigo '{codigo}'"]})
+            continue
+        if numero_oficial and db.query(Activo).filter(Activo.numero_oficial == numero_oficial).first():
+            errores.append({"fila": row_idx, "codigo": codigo, "nombre": nombre, "errores": [f"Ya existe un activo con numero oficial '{numero_oficial}'"]})
+            continue
+
+        nuevo_activo = Activo(
             codigo_inventario = codigo,
+            numero_oficial    = numero_oficial,
             nombre            = nombre,
-            laboratorio_id    = lab.id,
+            alcance           = alcance,
+            laboratorio_id    = lab.id if lab else None,
+            departamento_id   = departamento_id,
+            tipo_inventario   = "ACTIVO",
+            estado_admin      = estado_admin,
             categoria         = categoria,
             area              = area,
             marca             = marca,
@@ -1984,18 +3892,50 @@ async def importar_activos(
             numero_serie      = num_serie,
             especificaciones  = specs,
             valor             = valor,
+            cantidad          = 1.0,
+            unidad_medida     = "PIEZA",
+            stock_minimo      = None,
             estado            = estado,
             resguardante_externo_nombre = resguardo,
             observaciones     = obs,
-        ))
+            fecha_adquisicion = _utcnow(),
+        )
+        db.add(nuevo_activo)
         # Flush para que _generar_codigo en la siguiente fila vea este código
         db.flush()
+        activos_creados_ids.append(nuevo_activo.id)
         creados += 1
 
     db.commit()
+    for activo_id in activos_creados_ids:
+        registrar(
+            db,
+            Accion.CREAR_ACTIVO,
+            Recurso.ACTIVO,
+            usuario=current_user,
+            recurso_id=activo_id,
+            detalle={"origen": "IMPORTACION_EXCEL"},
+            request=request,
+        )
+    registrar(
+        db,
+        Accion.IMPORTAR_ACTIVOS,
+        Recurso.ACTIVO,
+        usuario=current_user,
+        detalle={
+            "creados": creados,
+            "actualizados": actualizados,
+            "duplicados_posibles": duplicados_posibles,
+            "errores": len(errores),
+            "estado_admin_default": estado_admin_default,
+        },
+        request=request,
+    )
     return {
         "creados":       creados,
-        "actualizados":  0,           # La importación siempre crea (no actualiza, el código es nuevo)
+        "actualizados":  actualizados,
+        "duplicados_posibles": duplicados_posibles,
+        "estado_admin_default": estado_admin_default,
         "total_errores": len(errores),
         "errores":       errores,
     }
@@ -2092,11 +4032,25 @@ def listar_mantenimientos(
     q = db.query(MantenimientoPreventivo)
     if laboratorio_id:
         q = q.filter(MantenimientoPreventivo.laboratorio_id == laboratorio_id)
-    elif current_user.rol == RolUsuario.LAB_ADMIN and current_user.laboratorio_id:
+    elif _es_rol_laboratorio(current_user) and current_user.laboratorio_id:
         q = q.filter(MantenimientoPreventivo.laboratorio_id == current_user.laboratorio_id)
+    elif not _es_admin_inventario_global(current_user):
+        departamentos_visibles = _departamentos_visibles_inventario(db, current_user) or []
+        if not departamentos_visibles:
+            return []
+        activos_ids = [
+            row[0] for row in db.query(Activo.id)
+            .filter(Activo.departamento_id.in_(departamentos_visibles))
+            .all()
+        ]
+        if not activos_ids:
+            return []
+        q = q.filter(MantenimientoPreventivo.activo_id.in_(activos_ids))
     if estado:
         q = q.filter(MantenimientoPreventivo.estado == estado.upper())
     if activo_id:
+        activo = db.query(Activo).filter(Activo.id == activo_id).first()
+        _asegurar_acceso_activo_departamental(db, activo, current_user)
         q = q.filter(MantenimientoPreventivo.activo_id == activo_id)
     items = q.order_by(MantenimientoPreventivo.fecha_programada).all()
     return [_serializar_mp(m, db) for m in items]
@@ -2106,12 +4060,22 @@ def listar_mantenimientos(
 def crear_mantenimiento(
     data: MantPrevCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
+    activo = db.query(Activo).filter(Activo.id == data.activo_id).first() if data.activo_id else None
+    if activo:
+        _asegurar_acceso_activo_departamental(db, activo, current_user)
+        _asegurar_activo_validado(activo)
+        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    elif data.laboratorio_id:
+        assert_lab_write(data.laboratorio_id, current_user)
+    elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
+        raise HTTPException(status_code=403, detail="Selecciona un activo de tu departamento para programar mantenimiento")
+
     mp = MantenimientoPreventivo(
         activo_id        = data.activo_id,
         computadora_id   = data.computadora_id,
-        laboratorio_id   = data.laboratorio_id,
+        laboratorio_id   = data.laboratorio_id or (activo.laboratorio_id if activo else None),
         tipo             = data.tipo.upper(),
         periodicidad     = data.periodicidad.upper(),
         fecha_programada = datetime.datetime.fromisoformat(data.fecha_programada),
@@ -2131,17 +4095,29 @@ def actualizar_mantenimiento(
     mp_id: int,
     data: MantPrevUpdate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     mp = db.query(MantenimientoPreventivo).filter(MantenimientoPreventivo.id == mp_id).first()
     if not mp:
         raise HTTPException(status_code=404, detail="Mantenimiento no encontrado")
+    activo = db.query(Activo).filter(Activo.id == mp.activo_id).first() if mp.activo_id else None
+    if activo:
+        _asegurar_acceso_activo_departamental(db, activo, current_user)
+        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    elif mp.laboratorio_id:
+        assert_lab_write(mp.laboratorio_id, current_user)
+    elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
+        raise HTTPException(status_code=403, detail="No puedes actualizar este mantenimiento")
 
     if data.estado:
         mp.estado = data.estado.upper()
+        if activo and data.estado.upper() == "EN_PROCESO":
+            activo.estado = "MANTENIMIENTO"
         if data.estado.upper() == "COMPLETADO":
             mp.completado_por_id = current_user.id
             mp.fecha_completado  = _utcnow()
+            if activo and activo.estado == "MANTENIMIENTO":
+                activo.estado = "OPERATIVO"
             # Auto-generar el siguiente según periodicidad
             delta_map = {
                 "SEMANAL":    datetime.timedelta(weeks=1),
@@ -2192,11 +4168,19 @@ def actualizar_mantenimiento(
 def eliminar_mantenimiento(
     mp_id: int,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     mp = db.query(MantenimientoPreventivo).filter(MantenimientoPreventivo.id == mp_id).first()
     if not mp:
         raise HTTPException(status_code=404, detail="No encontrado")
+    activo = db.query(Activo).filter(Activo.id == mp.activo_id).first() if mp.activo_id else None
+    if activo:
+        _asegurar_acceso_activo_departamental(db, activo, current_user)
+        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    elif mp.laboratorio_id:
+        assert_lab_write(mp.laboratorio_id, current_user)
+    elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
+        raise HTTPException(status_code=403, detail="No puedes eliminar este mantenimiento")
     db.delete(mp)
     db.commit()
     return {"ok": True}
@@ -2212,6 +4196,10 @@ def historial_activo(
 ):
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
     if not activo:
+        raise HTTPException(status_code=404, detail="Activo no encontrado")
+    assert_resource_access(activo, current_user)
+    departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+    if departamentos_visibles is not None and activo.departamento_id not in departamentos_visibles:
         raise HTTPException(status_code=404, detail="Activo no encontrado")
 
     eventos = []
