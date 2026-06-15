@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
+import { todayISOInMexico } from '../../utils/timezone';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const ESTADO_CFG = {
@@ -39,7 +40,7 @@ function ModalLiberarRango({ espacios, onClose, onLiberado }) {
   const { toast: showToast } = useToast();
   const [form, setForm] = useState({
     espacio_id: espacios?.[0]?.id || '',
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: todayISOInMexico(),
     hora_inicio: '08:00',
     hora_fin: '11:00',
     motivo: '',
@@ -341,7 +342,11 @@ function DrawerDetalle({ solicitud, onClose, onActualizada }) {
               </div>
               <div>
                 <p className="font-medium text-white">{solicitud.solicitante_nombre}</p>
-                {solicitud.area_solicitante && (
+                {solicitud.solicitante_externo_nombre ? (
+                  <p className="text-xs text-amber-300">
+                    Registró para: {solicitud.solicitante_externo_nombre}
+                  </p>
+                ) : solicitud.area_solicitante && (
                   <p className="text-xs text-slate-400">{solicitud.area_solicitante}</p>
                 )}
               </div>
@@ -488,7 +493,9 @@ function TarjetaSolicitud({ s, onClick }) {
           </div>
           <p className="font-medium text-white text-sm truncate">{s.motivo}</p>
           <p className="text-xs text-slate-400 mt-0.5">
-            {s.solicitante_nombre} · {s.area_solicitante || 'Sin área'}
+            {s.solicitante_nombre} · {s.solicitante_externo_nombre
+              ? `Para externo: ${s.solicitante_externo_nombre}`
+              : s.area_solicitante || 'Sin área'}
           </p>
         </div>
         <div className="text-right flex-shrink-0">

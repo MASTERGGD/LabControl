@@ -19,18 +19,25 @@ const ESTADOS_CUMPLIMIENTO = [
   { value: 'CANCELADA_TARDIA', label: 'Cancelada tarde', color: '#fdba74' },
 ];
 
-// Gradientes por estado — dark glassmorphism
+// Backgrounds por estado
 const GRAD_SLOT = {
-  MIO:         'linear-gradient(135deg,#4f46e5 0%,#2563eb 100%)',
-  OCUPADO:     'linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%)',
-  EN_DISPUTA:  'linear-gradient(135deg,#78350f 0%,#b45309 100%)',
-  YO_SOLICITE: 'linear-gradient(135deg,#7c2d12 0%,#c2410c 100%)',
+  MIO:         'rgba(79,70,229,0.28)',
+  OCUPADO:     '#1e2d45',
+  EN_DISPUTA:  'rgba(120,53,15,0.35)',
+  YO_SOLICITE: 'rgba(124,45,18,0.30)',
 };
 const GRAD_SLOT_DAY = {
-  MIO:         '#DBEAFE',
-  OCUPADO:     '#DBEAFE',
-  EN_DISPUTA:  '#FEF3C7',
-  YO_SOLICITE: '#FFEDD5',
+  MIO:         '#EFF6FF',
+  OCUPADO:     '#F0F4FF',
+  EN_DISPUTA:  '#FFFBEB',
+  YO_SOLICITE: '#FFF7ED',
+};
+// Borde izquierdo de color según estado (coherente con la leyenda)
+const BORDER_LEFT_COLOR = {
+  MIO:         '#6366f1',
+  OCUPADO:     '#3b82f6',
+  EN_DISPUTA:  '#f59e0b',
+  YO_SOLICITE: '#f97316',
 };
 
 // ─── Helpers de Requerimientos ───────────────────────────────────────────────
@@ -755,7 +762,9 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
   const horaFinMap  = {};
   slots.forEach(s => {
     idx[`${s.dia_semana}-${s.hora_inicio}`] = s;
-    if (!horaFinMap[s.hora_inicio]) horaFinMap[s.hora_inicio] = s.hora_fin;
+    if (!horaFinMap[s.hora_inicio] || s.hora_fin < horaFinMap[s.hora_inicio]) {
+      horaFinMap[s.hora_inicio] = s.hora_fin;
+    }
   });
 
   return (
@@ -782,8 +791,8 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
               onClick={() => onSlotClick(slot)}
               className="group h-full flex items-center justify-center cursor-pointer rounded-lg transition-all duration-150"
               style={{
-                background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.07)'}`,
+                background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${isDay ? '#E2E8F0' : '#1e293b'}`,
                 minHeight: '56px',
               }}
               onMouseEnter={e => {
@@ -806,37 +815,56 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
         }
 
         /* Ocupado / mío / disputa / solicitado */
-        const grad     = isDay ? (GRAD_SLOT_DAY[slot.estado_vista] || GRAD_SLOT_DAY.OCUPADO) : (GRAD_SLOT[slot.estado_vista] || GRAD_SLOT.OCUPADO);
+        const grad      = isDay ? (GRAD_SLOT_DAY[slot.estado_vista] || GRAD_SLOT_DAY.OCUPADO) : (GRAD_SLOT[slot.estado_vista] || GRAD_SLOT.OCUPADO);
+        const accentClr = BORDER_LEFT_COLOR[slot.estado_vista] || BORDER_LEFT_COLOR.OCUPADO;
         const clickable = ['MIO','OCUPADO','EN_DISPUTA','YO_SOLICITE'].includes(slot.estado_vista);
+        const nombreDoc = slot.reservacion?.docente_nombre
+          ? slot.reservacion.docente_nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+          : null;
 
         return (
           <div
             onClick={() => clickable && onSlotClick(slot)}
-            className={`relative h-full flex flex-col justify-between p-2 rounded-lg overflow-hidden transition-all duration-150
+            className={`relative h-full flex flex-col gap-0.5 px-2 py-1.5 rounded-lg overflow-hidden transition-all duration-150
               ${clickable ? 'cursor-pointer' : ''}
               ${slot.estado_vista === 'EN_DISPUTA' ? 'slot-disputa' : ''}`}
             style={{
               background: grad,
-              border: `1px solid ${slot.estado_vista === 'EN_DISPUTA' ? '#F59E0B' : isDay ? '#93C5FD' : 'transparent'}`,
-              boxShadow: isDay ? '0 1px 4px rgba(15,23,42,0.08)' : '0 2px 8px rgba(0,0,0,0.3)',
+              /* Borde izquierdo grueso — coherente con la leyenda de colores */
+              borderLeft:   `3px solid ${accentClr}`,
+              borderTop:    `1px solid ${isDay ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
+              borderRight:  `1px solid ${isDay ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
+              borderBottom: `1px solid ${isDay ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'}`,
+              boxShadow: isDay ? '0 1px 3px rgba(15,23,42,0.06)' : '0 2px 8px rgba(0,0,0,0.25)',
               minHeight: '56px',
             }}
-            onMouseEnter={e => { if (clickable) e.currentTarget.style.opacity = '0.88'; }}
+            onMouseEnter={e => { if (clickable) e.currentTarget.style.opacity = '0.85'; }}
             onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
           >
-            <p className={`text-xs font-medium leading-tight truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>
-              {slot.reservacion?.materia || '—'}
-            </p>
-            <div>
-              {slot.estado_vista !== 'MIO' && slot.reservacion?.docente_nombre && (
-                <p className={`text-[10px] truncate font-medium ${isDay ? 'text-slate-600' : 'text-white/75'}`}>
-                  {slot.reservacion.docente_nombre}
-                </p>
-              )}
+            {/* Fila superior: materia + tag de grupo */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+              <p className={`text-xs font-semibold leading-tight line-clamp-2 ${isDay ? 'text-slate-900' : 'text-white'}`}
+                style={{ flex: 1, minWidth: 0 }}>
+                {slot.reservacion?.materia || '—'}
+              </p>
               {slot.reservacion?.grupo && (
-                <p className={`text-[10px] ${isDay ? 'text-slate-500' : 'text-white/55'}`}>{slot.reservacion.grupo}</p>
+                <span className={`text-[9px] font-semibold leading-none mt-0.5 ${
+                  isDay ? 'text-slate-400' : 'text-slate-500'
+                }`} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {slot.reservacion.grupo}
+                </span>
               )}
             </div>
+
+            {/* Docente en formato título */}
+            {slot.estado_vista !== 'MIO' && nombreDoc && (
+              <p className={`text-[10px] truncate leading-tight ${isDay ? 'text-slate-500' : ''}`}
+                style={!isDay ? { color: '#cbd5e1' } : {}}>
+                {nombreDoc}
+              </p>
+            )}
+
+            {/* Badges de estado especial — disputa y solicitudes */}
             {slot.estado_vista === 'EN_DISPUTA' && (
               <span className="absolute top-1 right-1 text-[9px] bg-amber-400 text-amber-900 px-1 rounded font-bold leading-tight">!</span>
             )}
@@ -856,18 +884,21 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
 
 function Leyenda({ esDocente }) {
   const items = [
-    { color: '#10b981', label: 'Disponible' },
-    { color: '#4f46e5', label: 'Mi reserva' },
-    { color: '#1e40af', label: 'Ocupado' },
-    { color: '#b45309', label: 'En disputa' },
-    ...(esDocente ? [{ color: '#c2410c', label: 'Solicité' }] : []),
+    { color: '#10b981', label: 'Disponible',  dot: true },
+    { color: '#6366f1', label: 'Mi reserva',  dot: false },
+    { color: '#3b82f6', label: 'Ocupado',     dot: false },
+    { color: '#f59e0b', label: 'En disputa',  dot: false },
+    ...(esDocente ? [{ color: '#f97316', label: 'Solicité', dot: false }] : []),
   ];
   return (
     <div className="flex flex-wrap gap-3 items-center justify-end">
       {items.map(item => (
         <div key={item.label} className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full" style={{ background: item.color }} />
-          <span className="text-xs text-slate-400">{item.label}</span>
+          {item.dot
+            ? <span className="w-2 h-2 rounded-full" style={{ background: item.color }} />
+            : <span className="w-0.5 h-3.5 rounded-full" style={{ background: item.color }} />
+          }
+          <span className="text-xs text-slate-300">{item.label}</span>
         </div>
       ))}
     </div>

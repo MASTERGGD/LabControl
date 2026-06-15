@@ -11,6 +11,7 @@ Cubre:
 import pytest
 from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
+from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
 
 
@@ -30,6 +31,14 @@ def _usuario(db, nombre, email, rol, password="Test1234!"):
 
 def _admin(db, email="admin@test.mx"):
     return _usuario(db, "Admin", email, RolUsuario.SUPER_ADMIN)
+
+
+def _departamento(db, nombre="Coordinacion Academica", clave="COOR-ACA"):
+    departamento = Departamento(nombre=nombre, clave=clave, activo=True)
+    db.add(departamento)
+    db.commit()
+    db.refresh(departamento)
+    return departamento
 
 
 def _crear_espacio(client, token, nombre="Sala Central"):
@@ -186,20 +195,29 @@ class TestSolicitudesEspacio:
             "usuario_id": resp.id,
         }, headers=auth_headers(tok_admin))
         # Solicitante
+        departamento_doc = _departamento(db, "Departamento Docente", "DEP-DOC")
         doc = _usuario(db, "Doc", "doc@test.mx", RolUsuario.DOCENTE)
+        doc.departamento_id = departamento_doc.id
+        db.commit()
         tok_doc = get_token(client, "doc@test.mx", "Test1234!")
         return tok_admin, tok_doc, esp_id
 
     def _crear_solicitud(self, client, tok, esp_id, fecha="2026-08-01",
-                         h_ini="09:00", h_fin="11:00"):
-        return client.post("/espacios/solicitudes", json={
+                         h_ini="09:00", h_fin="11:00", **extra):
+        payload = {
             "espacio_id": esp_id,
             "fecha": fecha,
             "hora_inicio": h_ini,
             "hora_fin": h_fin,
             "motivo": "Reunión de academia departamental",
             "numero_asistentes": 20,
-        }, headers=auth_headers(tok))
+        }
+        payload.update(extra)
+        return client.post(
+            "/espacios/solicitudes",
+            json=payload,
+            headers=auth_headers(tok),
+        )
 
     def test_crear_solicitud(self, client, db):
         tok_admin, tok_doc, esp_id = self._setup(client, db)
@@ -208,6 +226,126 @@ class TestSolicitudesEspacio:
         data = r.json()
         assert data["espacio_id"] == esp_id
         assert data["estado"] == "PENDIENTE"
+        assert data["departamento_nombre"] == "Departamento Docente"
+
+    def test_listar_departamentos_disponibles(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+        activo = _departamento(db)
+        inactivo = _departamento(db, "Departamento Inactivo", "DEP-INACT")
+        inactivo.activo = False
+        db.commit()
+
+        r = client.get(
+            f"/espacios/departamentos-disponibles?espacio_id={esp_id}",
+            headers=auth_headers(tok_admin),
+        )
+
+        assert r.status_code == 200
+        ids = {item["id"] for item in r.json()}
+        assert activo.id in ids
+        assert inactivo.id not in ids
+
+    def test_usuario_normal_no_puede_listar_catalogo_para_representar(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+
+        r = client.get(
+            f"/espacios/departamentos-disponibles?espacio_id={esp_id}",
+            headers=auth_headers(tok_doc),
+        )
+
+        assert r.status_code == 403
+
+    def test_responsable_crea_solicitud_para_otro_departamento(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+        departamento = _departamento(db)
+
+        r = self._crear_solicitud(
+            client,
+            tok_admin,
+            esp_id,
+            fecha="2026-08-11",
+            departamento_id=departamento.id,
+            area_solicitante="Texto que no debe prevalecer",
+        )
+
+        assert r.status_code == 201
+        data = r.json()
+        assert data["departamento_id"] == departamento.id
+        assert data["departamento_nombre"] == departamento.nombre
+        assert data["area_solicitante"] == departamento.nombre
+
+    def test_responsable_crea_solicitud_externa(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+
+        r = self._crear_solicitud(
+            client,
+            tok_admin,
+            esp_id,
+            fecha="2026-08-12",
+            departamento_id=None,
+            solicitante_externo_nombre="Institucion invitada",
+        )
+
+        assert r.status_code == 201
+        assert r.json()["departamento_id"] is None
+        assert r.json()["area_solicitante"] == "Institucion invitada"
+        assert r.json()["solicitante_externo_nombre"] == "Institucion invitada"
+
+    def test_responsable_asignado_puede_registrar_externo(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+        tok_responsable = get_token(client, "resp@test.mx", "Test1234!")
+
+        r = self._crear_solicitud(
+            client,
+            tok_responsable,
+            esp_id,
+            fecha="2026-08-16",
+            solicitante_externo_nombre="Visitante institucional",
+        )
+
+        assert r.status_code == 201
+        assert r.json()["solicitante_nombre"] == "Resp"
+        assert r.json()["solicitante_externo_nombre"] == "Visitante institucional"
+
+    def test_usuario_normal_no_puede_elegir_otro_departamento(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+        departamento = _departamento(db)
+
+        r = self._crear_solicitud(
+            client,
+            tok_doc,
+            esp_id,
+            fecha="2026-08-14",
+            departamento_id=departamento.id,
+        )
+
+        assert r.status_code == 403
+
+    def test_usuario_normal_no_puede_registrar_externo(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+
+        r = self._crear_solicitud(
+            client,
+            tok_doc,
+            esp_id,
+            fecha="2026-08-15",
+            solicitante_externo_nombre="Empresa externa",
+        )
+
+        assert r.status_code == 403
+
+    def test_departamento_invalido_422(self, client, db):
+        tok_admin, tok_doc, esp_id = self._setup(client, db)
+
+        r = self._crear_solicitud(
+            client,
+            tok_admin,
+            esp_id,
+            fecha="2026-08-13",
+            departamento_id=9999,
+        )
+
+        assert r.status_code == 422
 
     def test_mis_solicitudes(self, client, db):
         tok_admin, tok_doc, esp_id = self._setup(client, db)

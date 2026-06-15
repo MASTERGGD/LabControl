@@ -30,6 +30,22 @@ const ESTADO_CFG_DAY = {
   FINALIZADA: { label: 'Finalizada',  dot: 'bg-blue-600',   bg: 'bg-blue-50 border-blue-300',     text: 'text-blue-800'   },
 };
 const TIPO_ICON = { AUDIOVISUAL: '🎥', RECTORIA: '🏛️', OTRO: '🏢' };
+
+const toTitleCase = s =>
+  !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+
+/** Formatea "2026-05-21" → "21 may. 2026" evitando el desfase UTC */
+const fmtFechaHumana = iso => {
+  if (!iso) return '—';
+  // Forzar mediodía local para que no haya desfase de zona horaria
+  return new Date(iso + 'T12:00').toLocaleDateString('es-MX', {
+    day: '2-digit', month: 'short', year: 'numeric',
+  });
+};
+
+/** Cabecera de grupo de mes — usa día 15 para evitar desfase */
+const fmtMesGrupo = mesISO =>
+  new Date(mesISO + '-15').toLocaleDateString('es-MX', { year: 'numeric', month: 'long' });
 const REQS_LABEL = {
   PROYECTOR:'Proyector', AUDIO:'Audio', MICROFONO:'Micrófono',
   ACOMODO_SILLAS:'Acomodo sillas', MANTELES:'Manteles',
@@ -165,11 +181,15 @@ function DrawerDetalle({ solicitud, onClose, onCancelada }) {
             </div>
           </section>
 
-          {/* Área */}
-          {solicitud.area_solicitante && (
+          {/* Área o representado */}
+          {(solicitud.area_solicitante || solicitud.solicitante_externo_nombre) && (
             <section>
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Área solicitante</h4>
-              <p className="text-sm text-slate-300 bg-white/5 rounded-xl px-4 py-2">{solicitud.area_solicitante}</p>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                {solicitud.solicitante_externo_nombre ? 'Solicitante representado' : 'Área solicitante'}
+              </h4>
+              <p className="text-sm text-slate-300 bg-white/5 rounded-xl px-4 py-2">
+                {solicitud.solicitante_externo_nombre || solicitud.area_solicitante}
+              </p>
             </section>
           )}
 
@@ -402,7 +422,9 @@ export default function MisSolicitudes() {
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 filtro === k
                   ? 'bg-blue-600 text-white'
-                  : isDay ? 'text-slate-600 hover:text-slate-950 hover:bg-slate-100' : 'text-slate-400 hover:text-white'
+                  : isDay
+                    ? 'text-slate-600 hover:text-slate-950 hover:bg-slate-100 border border-transparent hover:border-slate-200'
+                    : 'text-slate-300 hover:text-white border border-transparent hover:border-white/10'
               }`}>
               {l}
             </button>
@@ -434,7 +456,7 @@ export default function MisSolicitudes() {
             {Object.entries(grupos).sort(([a],[b]) => b.localeCompare(a)).map(([mes, items]) => (
               <div key={mes}>
                 <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 px-1 ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
-                  {new Date(mes + '-01').toLocaleDateString('es-MX', { year: 'numeric', month: 'long' })}
+                  {fmtMesGrupo(mes)}
                 </h3>
                 <div className="space-y-2">
                   {items.map(s => {
@@ -449,31 +471,55 @@ export default function MisSolicitudes() {
                         }`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+
+                            {/* 1 — Título del evento (protagonista) */}
+                            <p className={`font-semibold text-base leading-snug truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>
+                              {toTitleCase(s.motivo)}
+                            </p>
+
+                            {/* 2 — Sala + estado badge */}
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                               <span className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.bg} ${cfg.text}`}>
                                 <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                                 {cfg.label}
                               </span>
-                              <span className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
+                              <span className={`text-xs ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>
                                 {TIPO_ICON[s.espacio_tipo]} {s.espacio_nombre}
                               </span>
                             </div>
-                            <p className={`font-medium text-sm truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{s.motivo}</p>
+
+                            {/* 3 — Observaciones atenuadas (sin repetir la palabra "Rechazada") */}
                             {s.estado === 'RECHAZADA' && s.motivo_rechazo && (
-                              <p className={`text-xs mt-0.5 truncate ${isDay ? 'text-red-700' : 'text-red-400'}`}>Rechazada: {s.motivo_rechazo}</p>
+                              <p className={`flex items-start gap-1 text-xs mt-1.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                                <svg className="w-3 h-3 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                </svg>
+                                <span className="truncate">{toTitleCase(s.motivo_rechazo)}</span>
+                              </p>
                             )}
                             {s.estado === 'LIBERADA' && s.motivo_liberacion && (
-                              <p className={`text-xs mt-0.5 truncate ${isDay ? 'text-violet-700' : 'text-violet-300'}`}>Liberada: {s.motivo_liberacion}</p>
+                              <p className={`flex items-start gap-1 text-xs mt-1.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                                <svg className="w-3 h-3 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                                </svg>
+                                <span className="truncate">{toTitleCase(s.motivo_liberacion)}</span>
+                              </p>
                             )}
                             {s.requerimientos?.length > 0 && (
-                              <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
+                              <p className={`text-xs mt-1 ${isDay ? 'text-slate-400' : 'text-slate-600'}`}>
                                 {s.requerimientos.length} requerimiento{s.requerimientos.length > 1 ? 's' : ''}
                               </p>
                             )}
                           </div>
+
+                          {/* Fecha legible + horario */}
                           <div className="text-right flex-shrink-0">
-                            <p className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{s.fecha}</p>
-                            <p className="text-xs text-slate-400">{s.hora_inicio} – {s.hora_fin}</p>
+                            <p className={`text-sm font-semibold ${isDay ? 'text-slate-800' : 'text-white'}`}>
+                              {fmtFechaHumana(s.fecha)}
+                            </p>
+                            <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                              {s.hora_inicio} – {s.hora_fin}
+                            </p>
                           </div>
                         </div>
                       </div>

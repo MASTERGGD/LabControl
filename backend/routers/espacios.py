@@ -26,6 +26,7 @@ from models.espacio import (
     EstadoSolicitud, SolicitudEspacio, RequerimientoSolicitud,
     TipoEspacio, TipoRequerimiento, EstadoOperativoEspacio, EstadoExtension,
 )
+from models.departamento import Departamento
 from models.notificacion import Notificacion
 from models.usuario import RolUsuario, Usuario
 from services.auditoria import Accion, Recurso, registrar
@@ -213,7 +214,9 @@ class RequerimientoIn(BaseModel):
 
 class SolicitudCreate(BaseModel):
     espacio_id:         int
-    area_solicitante:   Optional[str] = None
+    departamento_id:    Optional[int] = None
+    area_solicitante:   Optional[str] = Field(None, max_length=200)
+    solicitante_externo_nombre: Optional[str] = Field(None, max_length=200)
     fecha:              datetime.date
     hora_inicio:        str = Field(..., pattern=r"^\d{2}:\d{2}$")
     hora_fin:           str = Field(..., pattern=r"^\d{2}:\d{2}$")
@@ -333,7 +336,10 @@ def _ser_solicitud(s: SolicitudEspacio) -> dict:
         "espacio_tipo":       s.espacio.tipo   if s.espacio else None,
         "solicitante_id":     s.solicitante_id,
         "solicitante_nombre": s.solicitante_nombre,
+        "departamento_id":    s.departamento_id,
+        "departamento_nombre": s.departamento.nombre if s.departamento else None,
         "area_solicitante":   s.area_solicitante,
+        "solicitante_externo_nombre": s.solicitante_externo_nombre,
         "fecha":              s.fecha.isoformat() if s.fecha else None,
         "hora_inicio":        s.hora_inicio,
         "hora_fin":           s.hora_fin,
@@ -651,6 +657,30 @@ def disponibilidad(
 # SOLICITUDES
 # ═══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/departamentos-disponibles", summary="Departamentos disponibles para representar")
+def listar_departamentos_disponibles(
+    espacio_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    espacio = db.query(EspacioInstitucional).filter(
+        EspacioInstitucional.id == espacio_id,
+        EspacioInstitucional.activo == True,
+    ).first()
+    if not espacio:
+        raise HTTPException(404, "Espacio no encontrado o inactivo")
+    if not _puede_gestionar(espacio, user, db):
+        raise HTTPException(403, "Solo los responsables del espacio pueden representar a otra area")
+
+    departamentos = db.query(Departamento).filter(
+        Departamento.activo == True,
+    ).order_by(Departamento.nombre).all()
+    return [
+        {"id": departamento.id, "nombre": departamento.nombre, "clave": departamento.clave}
+        for departamento in departamentos
+    ]
+
+
 @router.post("/solicitudes", status_code=201, summary="Crear solicitud de espacio")
 def crear_solicitud(
     data:    SolicitudCreate,
@@ -688,11 +718,55 @@ def crear_solicitud(
             "El espacio ya esta reservado o requiere tiempo operativo de limpieza/acondicionamiento en ese bloque"
         )
 
+    puede_representar = _puede_gestionar(espacio, user, db)
+    departamento = None
+    solicitante_externo = (data.solicitante_externo_nombre or "").strip() or None
+
+    if not puede_representar:
+        if solicitante_externo:
+            raise HTTPException(403, "Solo los responsables del espacio pueden registrar solicitudes externas")
+        if not user.departamento_id:
+            raise HTTPException(422, "Tu usuario no tiene un departamento activo asignado")
+        if data.departamento_id is not None and data.departamento_id != user.departamento_id:
+            raise HTTPException(403, "Solo puedes solicitar el espacio para tu propio departamento")
+        departamento = db.query(Departamento).filter(
+            Departamento.id == user.departamento_id,
+            Departamento.activo == True,
+        ).first()
+        if not departamento:
+            raise HTTPException(422, "Tu usuario no tiene un departamento activo asignado")
+        area_solicitante = departamento.nombre
+    elif solicitante_externo:
+        if data.departamento_id is not None:
+            raise HTTPException(422, "Una solicitud externa no puede vincularse a un departamento")
+        area_solicitante = solicitante_externo
+    elif data.departamento_id is not None:
+        departamento = db.query(Departamento).filter(
+            Departamento.id == data.departamento_id,
+            Departamento.activo == True,
+        ).first()
+        if not departamento:
+            raise HTTPException(422, "El departamento seleccionado no existe o esta inactivo")
+        area_solicitante = departamento.nombre
+    elif user.departamento_id:
+        departamento = db.query(Departamento).filter(
+            Departamento.id == user.departamento_id,
+            Departamento.activo == True,
+        ).first()
+        if departamento:
+            area_solicitante = departamento.nombre
+        else:
+            raise HTTPException(422, "Selecciona un departamento o indica el solicitante externo")
+    else:
+        raise HTTPException(422, "Selecciona un departamento o indica el solicitante externo")
+
     solicitud = SolicitudEspacio(
         espacio_id         = data.espacio_id,
         solicitante_id     = user.id,
         solicitante_nombre = user.nombre,
-        area_solicitante   = data.area_solicitante,
+        departamento_id    = departamento.id if departamento else None,
+        area_solicitante   = area_solicitante,
+        solicitante_externo_nombre = solicitante_externo,
         fecha              = data.fecha,
         hora_inicio        = data.hora_inicio,
         hora_fin           = data.hora_fin,
@@ -718,12 +792,24 @@ def crear_solicitud(
     db.refresh(solicitud)
 
     # Notificar a responsables del espacio
+    representado = solicitante_externo or (departamento.nombre if departamento else None)
+    actua_para_otro = bool(
+        puede_representar and (
+            solicitante_externo or
+            (departamento and departamento.id != user.departamento_id)
+        )
+    )
+    descripcion_solicitante = (
+        f"{user.nombre} registro la solicitud para {representado}"
+        if actua_para_otro
+        else f"{user.nombre} solicito"
+    )
     for resp in espacio.responsables:
         _notificar(
             db, resp.usuario_id,
             tipo    = "SOLICITUD_ESPACIO",
             titulo  = f"Nueva solicitud — {espacio.nombre}",
-            mensaje = f"{user.nombre} solicitó '{espacio.nombre}' el {data.fecha} de {data.hora_inicio} a {data.hora_fin}.",
+            mensaje = f"{descripcion_solicitante} '{espacio.nombre}' el {data.fecha} de {data.hora_inicio} a {data.hora_fin}.",
             url     = f"/espacios/bandeja",
         )
     if espacio.estado_operativo != EstadoOperativoEspacio.DISPONIBLE and espacio.aviso_operativo:
@@ -738,7 +824,12 @@ def crear_solicitud(
 
     registrar(db, "CREAR_SOLICITUD_ESPACIO", "ESPACIO", usuario=user,
               recurso_id=solicitud.id,
-              detalle={"espacio": espacio.nombre, "fecha": str(data.fecha)},
+              detalle={
+                  "espacio": espacio.nombre,
+                  "fecha": str(data.fecha),
+                  "departamento_id": solicitud.departamento_id,
+                  "solicitante_externo": solicitud.solicitante_externo_nombre,
+              },
               request=request)
 
     return _ser_solicitud(solicitud)

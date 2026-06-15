@@ -13,21 +13,9 @@ import React from 'react';
 
 const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
-const BASE_PX    = 80;  // px para un bloque de 60 minutos
-const MIN_ROW_PX = 80;  // mínimo = BASE_PX: slots cortos (<60 min) tienen el mismo alto que 1 hora
-const MAX_ROW_PX = 128; // cap: máximo 2 horas de alto (evita filas gigantes con slots largos)
-
-function toMinutes(t) {
-  const [h, m] = t.split(':').map(Number);
-  return h * 60 + m;
-}
-
-/** Altura de fila en px proporcional a la duración del período, con min y max */
-function rowHeightPx(inicio, fin) {
-  if (!fin) return BASE_PX;
-  const mins = toMinutes(fin) - toMinutes(inicio);
-  return Math.min(MAX_ROW_PX, Math.max(MIN_ROW_PX, Math.round((mins / 60) * BASE_PX)));
-}
+// La cuadrícula representa periodos, no una línea de tiempo proporcional.
+// Mantener una altura fija evita que un turno largo de un solo día deforme toda la semana.
+const ROW_PX = 80;
 
 // Estilos compartidos
 const BG_DARK    = 'var(--timegrid-bg, rgb(2 6 23))';
@@ -96,7 +84,7 @@ export default function TimeGrid({
         <tbody>
           {horas.map(hora => {
             const hFin  = horaFinMap[hora];
-            const rowH  = rowHeightPx(hora, hFin);
+            const rowH  = ROW_PX;
 
             return (
               <React.Fragment key={hora}>
@@ -108,15 +96,15 @@ export default function TimeGrid({
                       colSpan={dias.length + 1}
                       style={{
                         padding: 0,
-                        background: 'rgba(120,53,15,0.14)',
-                        borderTop:    'none',
-                        borderBottom: '1px solid rgba(245,158,11,0.18)',
+                        background: 'rgba(255,255,255,0.03)',
+                        borderTop:    '1px dashed rgba(255,255,255,0.08)',
+                        borderBottom: '1px dashed rgba(255,255,255,0.08)',
                       }}
                     >
-                      <div className="flex items-center gap-2 px-3 py-1.5 text-amber-400/65 text-xs font-medium">
-                        <span>☕</span>
-                        <span>Receso — 9:45 a 10:15</span>
-                        <div className="flex-1 h-px ml-1" style={{ background: 'rgba(245,158,11,0.22)' }} />
+                      <div className="flex items-center justify-center gap-2 px-3 py-1 text-slate-500 text-[11px] font-medium tracking-widest uppercase">
+                        <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
+                        <span>☕ Receso · 9:45 – 10:15</span>
+                        <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.07)' }} />
                       </div>
                     </td>
                   </tr>
@@ -140,7 +128,7 @@ export default function TimeGrid({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    <span className="text-xs font-mono font-semibold text-blue-400 block leading-tight">
+                    <span className="text-xs font-mono font-semibold text-slate-400 block leading-tight">
                       {hora}
                     </span>
                     {hFin && (

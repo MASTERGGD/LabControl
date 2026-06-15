@@ -12,10 +12,26 @@ import { useToast } from '../../context/ToastContext';
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const TIPO_LABEL = { AUDIOVISUAL: 'Sala Audiovisual', RECTORIA: 'Sala de Rectoría', OTRO: 'Otro' };
 const TIPO_ICON  = { AUDIOVISUAL: '🎥', RECTORIA: '🏛️', OTRO: '🏢' };
+/* Tag neutro — color vivo reservado para alertas de estado, no para categorías */
 const TIPO_COLOR = {
-  AUDIOVISUAL: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  RECTORIA:    'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  OTRO:        'bg-slate-500/20 text-slate-300 border-slate-500/30',
+  AUDIOVISUAL: 'bg-slate-700/60 text-slate-300 border-slate-600/40',
+  RECTORIA:    'bg-slate-700/60 text-slate-300 border-slate-600/40',
+  OTRO:        'bg-slate-700/60 text-slate-300 border-slate-600/40',
+};
+
+const ESTADO_OP_COLOR = {
+  DISPONIBLE:         'text-emerald-400',
+  REQUIERE_LIMPIEZA:  'text-amber-400',
+  REQUIERE_ACOMODO:   'text-amber-400',
+  REVISION_TECNICA:   'text-orange-400',
+  FUERA_SERVICIO:     'text-red-400',
+};
+const ESTADO_OP_LABEL = {
+  DISPONIBLE:         'Disponible',
+  REQUIERE_LIMPIEZA:  'Limpieza',
+  REQUIERE_ACOMODO:   'Acomodo',
+  REVISION_TECNICA:   'Rev. técnica',
+  FUERA_SERVICIO:     'Fuera servicio',
 };
 
 const EMPTY_FORM = {
@@ -42,12 +58,12 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
       const payload = {
         ...form,
         nombre:      form.nombre.trim(),
-        ubicacion:   form.ubicacion?.trim()   || null,
-        descripcion: form.descripcion?.trim() || null,
+        ubicacion:   form.ubicacion.trim()   || null,
+        descripcion: form.descripcion.trim() || null,
         capacidad:   form.capacidad ? Number(form.capacidad) : null,
         buffer_antes_minutos: Number(form.buffer_antes_minutos || 0),
         buffer_despues_minutos: Number(form.buffer_despues_minutos || 0),
-        aviso_operativo: form.aviso_operativo?.trim() || null,
+        aviso_operativo: form.aviso_operativo.trim() || null,
       };
       if (espacio) {
         await api.put(`/espacios/institucionales/${espacio.id}`, payload);
@@ -58,7 +74,7 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
       }
       onSaved();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al guardar');
+      setError(err.response.data.detail || 'Error al guardar');
     } finally { setSaving(false); }
   };
 
@@ -67,7 +83,7 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
       <div className="glass w-full max-w-lg shadow-glass animate-fadeUp overflow-y-auto max-h-[90vh]">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
           <h3 className="font-semibold text-white">
-            {espacio ? '✏️ Editar espacio' : '➕ Nuevo espacio institucional'}
+            {espacio ? 'Editar espacio' : 'Nuevo espacio institucional'}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -118,12 +134,12 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Buffer antes (min)</label>
+              <label className="block text-sm text-slate-400 mb-1">Margen antes de reserva (min)</label>
               <input type="number" min="0" max="120" className="input-dark" value={form.buffer_antes_minutos ?? 0}
                 onChange={e => set('buffer_antes_minutos', e.target.value)} />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Buffer despues (min)</label>
+              <label className="block text-sm text-slate-400 mb-1">Margen después de reserva (min)</label>
               <input type="number" min="0" max="180" className="input-dark" value={form.buffer_despues_minutos ?? 30}
                 onChange={e => set('buffer_despues_minutos', e.target.value)} />
             </div>
@@ -165,7 +181,7 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
             <button type="submit" disabled={saving} className="btn-blue flex-1">
-              {saving ? 'Guardando…' : (espacio ? 'Guardar cambios' : 'Crear espacio')}
+              {saving ? 'Guardando...' : (espacio ? 'Guardar cambios' : 'Crear espacio')}
             </button>
           </div>
         </form>
@@ -177,16 +193,20 @@ function ModalEspacio({ espacio, onClose, onSaved }) {
 // ─── Panel Responsables ────────────────────────────────────────────────────────
 function PanelResponsables({ espacio, onClose }) {
   const { toast: showToast } = useToast();
-  const [responsables, setResponsables] = useState(espacio.responsables || []);
-  const [apoyos, setApoyos]             = useState(espacio.apoyos || []);
-  const [usuarios, setUsuarios]         = useState([]);
-  const [selUsuario, setSelUsuario]     = useState('');
-  const [selApoyo, setSelApoyo]         = useState('');
-  const [loading, setLoading]           = useState(false);
+  const [responsables, setResponsables]   = useState(espacio.responsables || []);
+  const [apoyos, setApoyos]               = useState(espacio.apoyos || []);
+  const [usuarios, setUsuarios]           = useState([]);
+  const [departamentos, setDepartamentos] = useState([]);
+  const [selUsuario, setSelUsuario]       = useState('');
+  const [selApoyo, setSelApoyo]           = useState('');
+  const [loading, setLoading]             = useState(false);
 
   useEffect(() => {
     api.get('/usuarios?activo=true&page_size=200').then(r => {
       setUsuarios(r.data.items || r.data || []);
+    }).catch(() => {});
+    api.get('/departamentos?activo=true').then(r => {
+      setDepartamentos(Array.isArray(r.data) ? r.data : []);
     }).catch(() => {});
   }, []);
 
@@ -199,7 +219,7 @@ function PanelResponsables({ espacio, onClose }) {
       setSelUsuario('');
       showToast('Responsable asignado', 'success');
     } catch (err) {
-      showToast(err.response?.data?.detail || 'Error', 'error');
+      showToast(err.response.data.detail || 'Error', 'error');
     } finally { setLoading(false); }
   };
 
@@ -218,14 +238,13 @@ function PanelResponsables({ espacio, onClose }) {
     setLoading(true);
     try {
       const { data } = await api.post(`/espacios/institucionales/${espacio.id}/apoyos`, {
-        usuario_id: Number(selApoyo),
-        rol_apoyo: 'Apoyo operativo',
+        departamento_id: Number(selApoyo),
       });
       setApoyos(p => [...p, data]);
       setSelApoyo('');
-      showToast('Area de apoyo asignada', 'success');
+      showToast('Área de apoyo asignada', 'success');
     } catch (err) {
-      showToast(err.response?.data?.detail || 'Error', 'error');
+      showToast(err.response.data.detail || 'Error', 'error');
     } finally { setLoading(false); }
   };
 
@@ -239,10 +258,11 @@ function PanelResponsables({ espacio, onClose }) {
     }
   };
 
-  const asignadosIds = new Set(responsables.map(r => r.usuario_id));
-  const disponibles  = usuarios.filter(u => !asignadosIds.has(u.id));
-  const apoyosIds = new Set(apoyos.map(r => r.usuario_id));
-  const disponiblesApoyo = usuarios.filter(u => !apoyosIds.has(u.id));
+  const asignadosIds     = new Set(responsables.map(r => r.usuario_id));
+  const disponibles      = usuarios.filter(u => !asignadosIds.has(u.id));
+  const apoyoDeptoIds    = new Set(apoyos.map(r => r.departamento_id));
+  const departamentosSinResponsable = departamentos.filter(d => !d.responsable_id);
+  const disponiblesApoyo = departamentos.filter(d => d.responsable_id && !apoyoDeptoIds.has(d.id));
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -259,7 +279,7 @@ function PanelResponsables({ espacio, onClose }) {
           </button>
         </div>
         <div className="p-6 space-y-4">
-          {/* Lista actual */}
+          {/* Lista responsables actuales */}
           <div className="space-y-2">
             {responsables.length === 0 ? (
               <p className="text-sm text-slate-500 text-center py-4">Sin responsables asignados</p>
@@ -276,7 +296,7 @@ function PanelResponsables({ espacio, onClose }) {
               </div>
             ))}
           </div>
-          {/* Asignar nuevo */}
+          {/* Asignar responsable */}
           <div className="border-t border-white/5 pt-4">
             <label className="block text-sm text-slate-400 mb-2">Asignar responsable</label>
             <div className="flex gap-2">
@@ -287,19 +307,32 @@ function PanelResponsables({ espacio, onClose }) {
                 ))}
               </select>
               <button onClick={asignar} disabled={!selUsuario || loading} className="btn-blue px-4">
-                {loading ? '…' : 'Asignar'}
+                {loading ? '...' : 'Asignar'}
               </button>
             </div>
           </div>
+
+          {/* Áreas de apoyo — por departamento */}
           <div className="border-t border-white/5 pt-4 space-y-2">
-            <label className="block text-sm text-slate-400">Areas de apoyo notificadas</label>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm text-slate-400 font-medium">Departamentos de apoyo</span>
+              <span className="text-xs text-slate-500">· se notifica a su responsable</span>
+            </div>
+            {departamentosSinResponsable.length > 0 && (
+              <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                {departamentosSinResponsable.length} departamento{departamentosSinResponsable.length !== 1 ? 's' : ''} sin responsable no se muestran como apoyo.
+              </p>
+            )}
             {apoyos.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-2">Sin apoyos asignados</p>
+              <p className="text-sm text-slate-500 text-center py-2">Sin departamentos asignados</p>
             ) : apoyos.map(r => (
-              <div key={r.id} className="flex items-center justify-between bg-emerald-500/10 rounded-xl px-3 py-2">
+              <div key={r.id} className="flex items-center justify-between bg-blue-500/10 rounded-xl px-3 py-2">
                 <div>
-                  <p className="text-sm text-white font-medium">{r.nombre}</p>
-                  <p className="text-xs text-slate-400">{r.email}</p>
+                  <p className="text-sm text-white font-medium">🏢 {r.departamento_nombre}</p>
+                  <p className="text-xs text-slate-400">
+                    Responsable: {r.responsable_nombre || 'Sin asignar'}
+                    {r.responsable_email ? ` · ${r.responsable_email}` : ''}
+                  </p>
                 </div>
                 <button onClick={() => quitarApoyo(r.id)}
                   className="text-red-400 hover:text-red-300 transition-colors text-xs px-2 py-1 rounded-lg hover:bg-red-500/10">
@@ -309,13 +342,15 @@ function PanelResponsables({ espacio, onClose }) {
             ))}
             <div className="flex gap-2">
               <select className="input-dark flex-1" value={selApoyo} onChange={e => setSelApoyo(e.target.value)}>
-                <option value="">— Usuario de apoyo —</option>
-                {disponiblesApoyo.map(u => (
-                  <option key={u.id} value={u.id}>{u.nombre} ({u.rol})</option>
+                <option value="">— Departamento de apoyo —</option>
+                {disponiblesApoyo.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.nombre}{d.responsable_nombre ? ` · ${d.responsable_nombre}` : ''}
+                  </option>
                 ))}
               </select>
               <button onClick={asignarApoyo} disabled={!selApoyo || loading} className="btn-blue px-4">
-                Asignar
+                {loading ? '...' : 'Asignar'}
               </button>
             </div>
           </div>
@@ -346,13 +381,13 @@ export default function EspaciosAdmin() {
   useEffect(() => { cargar(); }, [cargar]);
 
   const desactivar = async (esp) => {
-    if (!window.confirm(`¿Desactivar "${esp.nombre}"? Las solicitudes existentes no se eliminarán.`)) return;
+    if (!window.confirm(`¿Desactivar "${esp.nombre}" Las solicitudes existentes no se eliminarán.`)) return;
     try {
       await api.delete(`/espacios/institucionales/${esp.id}`);
       showToast('Espacio desactivado', 'success');
       cargar();
     } catch (err) {
-      showToast(err.response?.data?.detail || 'Error', 'error');
+      showToast(err.response.data.detail || 'Error', 'error');
     }
   };
 
@@ -403,77 +438,97 @@ export default function EspaciosAdmin() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {espacios.map(esp => (
               <div key={esp.id} className={`glass rounded-2xl p-5 flex flex-col gap-4 transition-all ${!esp.activo ? 'opacity-50' : ''}`}>
-                {/* Header tarjeta */}
+
+                {/* ── Cabecera ── */}
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{TIPO_ICON[esp.tipo] || '🏢'}</span>
-                    <div>
-                      <h3 className="font-semibold text-white text-sm">{esp.nombre}</h3>
-                      {esp.ubicacion && <p className="text-xs text-slate-400">{esp.ubicacion}</p>}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-2xl shrink-0">{TIPO_ICON[esp.tipo] || '🏢'}</span>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-white leading-snug">{esp.nombre}</h3>
+                      {esp.ubicacion && (
+                        <p className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
+                          <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                          </svg>
+                          {esp.ubicacion}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${TIPO_COLOR[esp.tipo]}`}>
+                  {/* Tag neutro — color vivo reservado para alertas */}
+                  <span className={`text-[11px] px-2 py-0.5 rounded border font-medium shrink-0 ${TIPO_COLOR[esp.tipo]}`}>
                     {TIPO_LABEL[esp.tipo]}
                   </span>
                 </div>
 
-                {/* Info */}
+                {/* ── Grid 2×3 simétrico ── */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-white/5 rounded-xl px-3 py-2">
-                    <p className="text-slate-500">Horario</p>
-                    <p className="text-slate-300 font-medium">{esp.hora_inicio_permitida} – {esp.hora_fin_permitida}</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl px-3 py-2">
-                    <p className="text-slate-500">Capacidad</p>
-                    <p className="text-slate-300 font-medium">{esp.capacidad ?? '—'} personas</p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl px-3 py-2">
-                    <p className="text-slate-500">Aprobación</p>
-                    <p className={`font-medium ${esp.requiere_aprobacion ? 'text-amber-400' : 'text-green-400'}`}>
-                      {esp.requiere_aprobacion ? 'Requerida' : 'Automática'}
-                    </p>
-                  </div>
-                  <div className="bg-white/5 rounded-xl px-3 py-2">
-                    <p className="text-slate-500">Responsables</p>
-                    <p className="text-slate-300 font-medium">{esp.responsables?.length || 0} / apoyo {esp.apoyos?.length || 0}</p>
-                  </div>
-                </div>
-                <div className="bg-white/5 rounded-xl px-3 py-2 text-xs">
-                  <p className="text-slate-500">Operacion</p>
-                  <p className="text-slate-300 font-medium">
-                    Buffer {esp.buffer_antes_minutos || 0}/{esp.buffer_despues_minutos || 0} min · {esp.estado_operativo || 'DISPONIBLE'}
-                  </p>
+                  {[
+                    {
+                      label: 'Horario',
+                      val: <span className="text-slate-200 font-semibold">{esp.hora_inicio_permitida} – {esp.hora_fin_permitida}</span>,
+                    },
+                    {
+                      label: 'Capacidad',
+                      val: <span className="text-slate-200 font-semibold">{esp.capacidad ?? '-'} personas</span>,
+                    },
+                    {
+                      label: 'Aprobación',
+                      val: <span className={`font-semibold ${esp.requiere_aprobacion ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {esp.requiere_aprobacion ? 'Requerida' : 'Automática'}
+                      </span>,
+                    },
+                    {
+                      label: 'Responsables',
+                      val: <span className="text-slate-200 font-semibold">
+                        {esp.responsables.length || 0}
+                        {esp.apoyos.length > 0 && <span className="text-slate-500 font-normal"> · apoyo {esp.apoyos.length}</span>}
+                      </span>,
+                    },
+                    {
+                      label: 'Margen entre reservas',
+                      val: <span className="text-slate-200 font-semibold">
+                        {esp.buffer_antes_minutos || 0}/{esp.buffer_despues_minutos || 0} min
+                      </span>,
+                    },
+                    {
+                      label: 'Estado',
+                      val: <span className={`font-semibold ${ESTADO_OP_COLOR[esp.estado_operativo] || ESTADO_OP_COLOR.DISPONIBLE}`}>
+                        {ESTADO_OP_LABEL[esp.estado_operativo] || 'Disponible'}
+                      </span>,
+                    },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="bg-white/5 rounded-xl px-3 py-2">
+                      <p className="text-slate-500 mb-0.5">{label}</p>
+                      {val}
+                    </div>
+                  ))}
                 </div>
 
-                {/* Responsables pills */}
-                {esp.responsables?.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {esp.responsables.slice(0, 3).map(r => (
-                      <span key={r.id} className="text-xs bg-slate-700/60 text-slate-300 rounded-full px-2 py-0.5">
-                        {r.nombre.split(' ')[0]}
-                      </span>
-                    ))}
-                    {esp.responsables.length > 3 && (
-                      <span className="text-xs bg-slate-700/60 text-slate-400 rounded-full px-2 py-0.5">
-                        +{esp.responsables.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* Acciones */}
-                <div className="flex gap-2 mt-auto pt-2 border-t border-white/5">
+                {/* ── Acciones — ghost con iconos, sin recortes ── */}
+                <div className="flex items-center gap-1 mt-auto pt-3 border-t border-white/5">
                   <button onClick={() => setModalEspacio(esp)}
-                    className="flex-1 text-xs text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl py-1.5 transition-colors">
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-white hover:bg-white/5 rounded-xl py-2 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6-6 3 3-6 6H9v-3z"/>
+                    </svg>
                     Editar
                   </button>
                   <button onClick={() => setPanelResp(esp)}
-                    className="flex-1 text-xs text-blue-300 hover:text-blue-200 bg-blue-500/10 hover:bg-blue-500/20 rounded-xl py-1.5 transition-colors">
-                    Responsables/apoyo
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs text-slate-400 hover:text-white hover:bg-white/5 rounded-xl py-2 transition-colors">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Responsables
                   </button>
                   {esp.activo && (
                     <button onClick={() => desactivar(esp)}
-                      className="text-xs text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 rounded-xl px-3 py-1.5 transition-colors">
+                      className="flex items-center justify-center gap-1.5 text-xs text-red-400/70 hover:text-red-300 hover:bg-red-500/10 rounded-xl px-3 py-2 transition-colors"
+                      title="Desactivar espacio">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+                      </svg>
                       Desactivar
                     </button>
                   )}

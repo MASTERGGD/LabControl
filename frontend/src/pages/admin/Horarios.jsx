@@ -992,6 +992,8 @@ function ModalDetalleBloqueo({ slot, onClose, onDesbloqueado }) {
 
 export default function Horarios() {
   const { usuario }                   = useAuth();
+  const { themeKey }                  = useTheme();
+  const isDay                         = themeKey === 'day';
   const esSuperAdmin                  = usuario?.rol === 'SUPER_ADMIN';
   const [labs, setLabs]               = useState([]);
   const [labSeleccionado, setLabSeleccionado] = useState('');
@@ -1069,7 +1071,11 @@ export default function Horarios() {
   horarios.forEach(h => {
     if (!grid[h.hora_inicio]) grid[h.hora_inicio] = {};
     grid[h.hora_inicio][h.dia_semana] = h;
-    horaFinMap[h.hora_inicio] = h.hora_fin;
+    // Una fila puede contener rangos distintos por día. La etiqueta lateral
+    // representa el periodo base y no debe tomar el turno más largo por accidente.
+    if (!horaFinMap[h.hora_inicio] || h.hora_fin < horaFinMap[h.hora_inicio]) {
+      horaFinMap[h.hora_inicio] = h.hora_fin;
+    }
   });
   const horasConSlots = Object.keys(grid).sort();
 
@@ -1142,7 +1148,11 @@ export default function Horarios() {
         <div className="flex items-end pb-0.5 gap-2">
           <span className="text-xs text-slate-500">Cuatrimestre</span>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
-            style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
+            style={{
+              background: isDay ? '#DBEAFE' : 'rgba(59,130,246,0.15)',
+              color: isDay ? '#1D4ED8' : '#93C5FD',
+              border: '1px solid rgba(59,130,246,0.35)',
+            }}>
             📅 {cuatrimestre}
           </span>
         </div>
@@ -1205,15 +1215,24 @@ export default function Horarios() {
               const bloqueo     = slot.bloqueo;
               const cellKey     = `${hora}|${dia}`;
               const isSelecting = selectedCells.has(cellKey);
+              // Estilos adaptativos día/noche para cada estado
+              const cellStyle = (() => {
+                if (isSelecting)  return { background: isDay ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.5)' };
+                if (esInactivo)   return { background: isDay ? '#f1f5f9' : 'rgba(255,255,255,0.015)', border: isDay ? '1px dashed #cbd5e1' : '1px dashed rgba(255,255,255,0.1)', opacity: 0.5 };
+                if (esBloqueado)  return { background: isDay ? '#f5f3ff' : 'rgba(109,40,217,0.15)', border: isDay ? '1px solid #ddd6fe' : '1px solid rgba(139,92,246,0.3)' };
+                if (esDisputa)    return { background: isDay ? '#fffbeb' : 'rgba(120,53,15,0.35)',   border: isDay ? '1px solid #fde68a' : '1px solid rgba(251,191,36,0.3)', borderLeft: isDay ? '3px solid #f59e0b' : '3px solid #f59e0b' };
+                if (esReservado)  return { background: isDay ? '#f8fafc' : '#1e2d3d', border: isDay ? '1px solid #e2e8f0' : '1px solid #334155', borderLeft: isDay ? '3px solid #3b82f6' : '3px solid #3b82f6' };
+                // libre
+                return { background: isDay ? '#f8fafc' : 'rgba(16,185,129,0.04)', border: isDay ? '1px solid #e2e8f0' : '1px dashed rgba(74,222,128,0.2)' };
+              })();
+              const cellCursor = esInactivo ? 'default' : esReservado || esBloqueado || esDisputa ? 'pointer' : esSuperAdmin ? 'pointer' : 'crosshair';
+
               return (
                 <div
-                  className={`rounded-lg px-2 py-1.5 flex flex-col gap-0.5 transition-all group select-none h-full
-                    ${isSelecting  ? 'slot-selecting'
-                    : esInactivo  ? 'slot-inactivo border border-dashed border-white/10 cursor-default'
-                    : esBloqueado ? 'slot-bloqueado cursor-pointer hover:brightness-110'
-                    : esDisputa   ? 'slot-disputa cursor-pointer hover:brightness-110'
-                    : esReservado ? 'slot-reservado cursor-pointer hover:brightness-110'
-                    :              'slot-libre cursor-crosshair'}`}
+                  className="rounded-lg px-2 py-1.5 flex flex-col gap-0.5 transition-all group select-none h-full"
+                  style={{ ...cellStyle, cursor: cellCursor }}
+                  onMouseEnter={e => { if (!esInactivo) e.currentTarget.style.filter = 'brightness(0.96)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
                   onMouseDown={e => {
                     // Super admin usa click para bloquear, no para arrastre de creación
                     if (esInactivo || esBloqueado || esReservado || esSuperAdmin) return;
@@ -1246,9 +1265,9 @@ export default function Horarios() {
                   {/* Bloqueado */}
                   {esBloqueado && (
                     <>
-                      <p className="text-xs font-semibold text-purple-300 leading-tight">🔒 Bloqueado</p>
+                      <p className="text-xs font-semibold leading-tight" style={{ color: isDay ? '#7c3aed' : '#c4b5fd' }}>🔒 Bloqueado</p>
                       {bloqueo && (
-                        <p className="text-xs text-purple-400/80 leading-tight truncate">{bloqueo.motivo}</p>
+                        <p className="text-xs leading-tight truncate" style={{ color: isDay ? '#8b5cf6' : 'rgba(196,181,253,0.7)' }}>{bloqueo.motivo}</p>
                       )}
                     </>
                   )}
@@ -1256,17 +1275,26 @@ export default function Horarios() {
                   {/* Libre / inactivo */}
                   {!esBloqueado && !esReservado && (
                     <>
-                      <span className="text-xs font-mono text-slate-500 leading-tight">
+                      <span className="text-xs font-mono leading-tight" style={{ color: isDay ? '#10b981' : '#4ade80' }}>
                         {slot.hora_inicio}–{slot.hora_fin}
                       </span>
                       <div className="flex items-center justify-between mt-auto">
-                        <span className="text-xs text-green-400/80">
-                          {esSuperAdmin ? '🔒 Bloquear' : 'Libre'}
-                        </span>
+                        {esSuperAdmin ? (
+                          <span className="hidden group-hover:inline-flex items-center gap-1 text-xs transition-opacity"
+                            style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                            Bloquear
+                          </span>
+                        ) : (
+                          <span className="hidden group-hover:inline-flex text-xs" style={{ color: isDay ? '#94a3b8' : '#475569' }}>Libre</span>
+                        )}
                         {!esInactivo && !esSuperAdmin && (
                           <button
                             onClick={(ev) => { ev.stopPropagation(); handleDesactivar(slot.id); }}
-                            className="hidden group-hover:block text-slate-600 hover:text-red-400 transition-colors"
+                            className="hidden group-hover:block hover:text-red-400 transition-colors"
+                            style={{ color: isDay ? '#94a3b8' : '#475569' }}
                             title="Desactivar">
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
@@ -1280,9 +1308,24 @@ export default function Horarios() {
                   {/* Reservado */}
                   {!esBloqueado && esReservado && res && (
                     <>
-                      <p className="text-xs font-semibold text-white leading-tight line-clamp-1">{res.materia}</p>
-                      <p className="text-xs text-blue-300 leading-tight">{res.grupo}</p>
-                      <p className="text-xs text-slate-400 leading-tight line-clamp-1">{res.docente_nombre}</p>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+                        <p className="text-xs font-semibold leading-tight line-clamp-2"
+                          style={{ flex: 1, minWidth: 0, color: isDay ? '#111827' : '#ffffff' }}>
+                          {res.materia}
+                        </p>
+                        {res.grupo && (
+                          <span className="text-[9px] font-semibold leading-none mt-0.5"
+                            style={{ flexShrink: 0, whiteSpace: 'nowrap', color: isDay ? '#6b7280' : '#64748b' }}>
+                            {res.grupo}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs leading-tight line-clamp-1 mt-0.5"
+                        style={{ color: isDay ? '#4b5563' : '#cbd5e1' }}>
+                        {res.docente_nombre
+                          ? res.docente_nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                          : '—'}
+                      </p>
                     </>
                   )}
                 </div>

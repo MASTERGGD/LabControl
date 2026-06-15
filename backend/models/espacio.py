@@ -173,7 +173,9 @@ class SolicitudEspacio(Base):
 
     # Datos del solicitante (desnormalizados por si el usuario cambia)
     solicitante_nombre = Column(String(200), nullable=False)
+    departamento_id    = Column(Integer, ForeignKey("departamentos.id", ondelete="SET NULL"), nullable=True, index=True)
     area_solicitante   = Column(String(200), nullable=True)
+    solicitante_externo_nombre = Column(String(200), nullable=True)
 
     # Cuándo
     fecha       = Column(Date,   nullable=False, index=True)
@@ -221,6 +223,7 @@ class SolicitudEspacio(Base):
     # Relaciones
     espacio      = relationship("EspacioInstitucional", back_populates="solicitudes")
     solicitante  = relationship("Usuario", foreign_keys=[solicitante_id])
+    departamento = relationship("Departamento")
     aprobador    = relationship("Usuario", foreign_keys=[aprobado_por])
     cancelador   = relationship("Usuario", foreign_keys=[cancelado_por])
     liberador    = relationship("Usuario", foreign_keys=[liberado_por])

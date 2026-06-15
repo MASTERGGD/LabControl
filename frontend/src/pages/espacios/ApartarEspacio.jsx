@@ -8,10 +8,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { dateToLocalISO } from '../../utils/timezone';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const TIPO_LABEL = { AUDIOVISUAL: 'Sala Audiovisual', RECTORIA: 'Sala de Rectoría', OTRO: 'Otro' };
@@ -47,6 +50,7 @@ const REQS = [
   { key: 'INTERNET',       label: 'Internet' },
   { key: 'OTRO',           label: 'Otro (especificar)' },
 ];
+const DEPARTAMENTO_OTRO = '__otro__';
 
 // ─── Utilidades de fecha ───────────────────────────────────────────────────────
 function getLunes(date) {
@@ -63,7 +67,7 @@ function addDays(date, n) {
   return d;
 }
 function fmtDate(date) {
-  return date.toISOString().slice(0, 10);
+  return dateToLocalISO(date);
 }
 function fmtDisplay(date) {
   return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
@@ -76,6 +80,8 @@ function hm2min(hm) {
 // ─── Componente Calendarlo semanal ────────────────────────────────────────────
 function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSeleccionar }) {
   const { usuario } = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [solicitudes, setSolicitudes] = useState([]);
   const [loading, setLoading]         = useState(false);
 
@@ -133,14 +139,16 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
       const esMia = aprobada.solicitante_id === usuario?.id;
       return (
         <div title={`${aprobada.solicitante_nombre}: ${aprobada.motivo}`}
-          className={`h-full min-h-[56px] rounded-lg p-2 overflow-hidden border ${
-            esMia ? 'bg-indigo-600/40 border-indigo-400/60' : 'bg-blue-900/35 border-blue-500/35'
+          className={`space-booking-card space-booking-approved h-full min-h-[56px] rounded-lg p-2 overflow-hidden border shadow-sm ${
+            esMia ? 'space-booking-own' : ''
           }`}>
-          {esMia && <p className="text-[10px] font-bold text-indigo-200/80 uppercase tracking-wide">Mi solicitud</p>}
-          <p className={`text-xs font-bold leading-tight truncate ${esMia ? 'text-indigo-100' : 'text-blue-200'}`}>
+          <p className="space-booking-badge text-[9px] font-bold uppercase tracking-wide leading-tight">
+            {esMia ? 'Mi reservación aprobada' : 'Reservación aprobada'}
+          </p>
+          <p className="space-booking-title text-xs font-bold leading-tight truncate mt-0.5">
             {aprobada.motivo}
           </p>
-          <p className={`text-[10px] mt-1 truncate ${esMia ? 'text-indigo-200/70' : 'text-blue-200/70'}`}>
+          <p className="space-booking-person text-[10px] mt-1 truncate font-semibold">
             {aprobada.solicitante_nombre}
           </p>
         </div>
@@ -151,28 +159,42 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
       const esMia = miSolicitud?.id === pendiente.id;
       return (
         <div title={`Pendiente: ${pendiente.solicitante_nombre}`}
-          className={`h-full min-h-[56px] rounded-lg p-2 overflow-hidden border ${
-            esMia ? 'bg-orange-600/30 border-orange-400/50' : 'bg-amber-600/25 border-amber-500/40'
+          className={`space-booking-card space-booking-pending h-full min-h-[56px] rounded-lg p-2 overflow-hidden border shadow-sm ${
+            esMia ? 'space-booking-own' : ''
           }`}>
-          <p className={`text-xs font-bold leading-tight truncate ${esMia ? 'text-orange-200' : 'text-amber-200'}`}>
-            {esMia ? 'Mi solicitud pendiente' : 'Pendiente'}
+          <p className="space-booking-title text-xs font-bold leading-tight truncate">
+            {esMia ? 'Mi solicitud pendiente' : 'Solicitud pendiente'}
           </p>
-          <p className={`text-[10px] mt-1 truncate ${esMia ? 'text-orange-200/70' : 'text-amber-200/70'}`}>
+          <p className="space-booking-reason text-[10px] mt-1 truncate font-medium">
             {pendiente.motivo}
+          </p>
+          <p className="space-booking-person text-[10px] mt-0.5 truncate font-semibold">
+            {pendiente.solicitante_nombre}
           </p>
         </div>
       );
     }
 
     if (esPasado(fecha, hora)) {
-      return <div className="h-full min-h-[56px] rounded-lg border border-white/[0.04] bg-white/[0.015] opacity-40" />;
+      return (
+        <div className="h-full min-h-[56px] rounded-lg border opacity-50"
+          style={{
+            background: isDay ? '#F1F5F9' : 'rgba(255,255,255,0.015)',
+            borderColor: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.04)',
+          }} />
+      );
     }
 
     return (
       <button type="button" onClick={() => onSeleccionar(fechaKey, hora.slice(0, 2))}
-        className="group h-full min-h-[56px] w-full rounded-lg border border-white/[0.07] bg-white/[0.03] flex items-center justify-center transition-all duration-150 hover:border-blue-400/50 hover:bg-blue-500/10 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)]"
+        className="group h-full min-h-[56px] w-full rounded-lg border flex items-center justify-center transition-all duration-150 hover:border-blue-400/50 hover:shadow-[0_0_12px_rgba(59,130,246,0.15)]"
+        style={{
+          background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)',
+          borderColor: isDay ? '#E2E8F0' : 'rgba(255,255,255,0.07)',
+        }}
         title="Solicitar este horario">
-        <svg className="w-4 h-4 text-slate-700 group-hover:text-blue-400 transition-colors"
+        <svg className="w-4 h-4 group-hover:text-blue-400 transition-colors"
+          style={{ color: isDay ? '#94A3B8' : '#334155' }}
           fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
         </svg>
@@ -205,10 +227,20 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
       </div>
 
       {/* Leyenda */}
-      <div className="flex gap-4 text-xs text-slate-400 justify-end">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-500/40 border border-green-500/50"/> Aprobado</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-500/40 border border-amber-500/50"/> Pendiente</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-500/30 border border-blue-500/40"/> Libre (clic para solicitar)</span>
+      <div className="flex gap-4 text-xs justify-end"
+        style={{ color: isDay ? '#475569' : '#94A3B8' }}>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded" style={{ background: isDay ? '#DCFCE7' : 'rgba(34,197,94,0.4)', border: '1px solid #22C55E' }}/>
+          Aprobado
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded" style={{ background: isDay ? '#FEF3C7' : 'rgba(245,158,11,0.4)', border: '1px solid #F59E0B' }}/>
+          Pendiente
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded" style={{ background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.03)', border: `1px solid ${isDay ? '#CBD5E1' : '#334155'}` }}/>
+          Libre (clic para solicitar)
+        </span>
       </div>
 
       {/* Grid */}
@@ -233,9 +265,14 @@ function CalendarioSemana({ espacio, semanaInicio, setSemanaInicio, onSelecciona
 function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
   const { usuario } = useAuth();
   const { toast: showToast } = useToast();
+  const puedeRepresentar =
+    usuario?.rol === 'SUPER_ADMIN' ||
+    espacio.responsables?.some(resp => Number(resp.usuario_id) === Number(usuario?.id));
 
   const [form, setForm] = useState({
-    area_solicitante: '',
+    departamento_opcion: usuario?.departamento_id ? String(usuario.departamento_id) : '',
+    area_solicitante: usuario?.departamento_nombre || '',
+    solicitante_externo_nombre: '',
     hora_inicio: horaPreset ? `${horaPreset}:00` : espacio.hora_inicio_permitida,
     hora_fin:    horaPreset ? `${String(parseInt(horaPreset)+1).padStart(2,'0')}:00` : '10:00',
     motivo: '',
@@ -243,10 +280,107 @@ function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
     observaciones: '',
     requerimientos: [],
   });
+  const [departamentos, setDepartamentos] = useState([]);
+  const [loadingDepartamentos, setLoadingDepartamentos] = useState(true);
+  const [catalogoDisponible, setCatalogoDisponible] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    let activo = true;
+
+    const cargarDepartamentos = async () => {
+      if (!puedeRepresentar) {
+        setForm(actual => ({
+          ...actual,
+          departamento_opcion: usuario?.departamento_id ? String(usuario.departamento_id) : '',
+          area_solicitante: usuario?.departamento_nombre || '',
+          solicitante_externo_nombre: '',
+        }));
+        setLoadingDepartamentos(false);
+        return;
+      }
+
+      try {
+        let respuesta;
+        try {
+          respuesta = await api.get(
+            `/espacios/departamentos-disponibles?espacio_id=${espacio.id}`
+          );
+        } catch {
+          respuesta = await api.get('/departamentos?activo=true');
+        }
+
+        if (!activo) return;
+        const lista = Array.isArray(respuesta.data)
+          ? respuesta.data.filter(dep => dep.activo !== false)
+          : [];
+        setDepartamentos(lista);
+        setCatalogoDisponible(true);
+        setForm(actual => {
+          if (actual.departamento_opcion) return actual;
+          const propio = lista.find(dep => Number(dep.id) === Number(usuario?.departamento_id));
+          if (propio) {
+            return {
+              ...actual,
+              departamento_opcion: String(propio.id),
+              area_solicitante: propio.nombre,
+            };
+          }
+          if (usuario?.departamento_nombre) {
+            return {
+              ...actual,
+              departamento_opcion: DEPARTAMENTO_OTRO,
+              area_solicitante: usuario.departamento_nombre,
+            };
+          }
+          return actual;
+        });
+      } catch {
+        if (!activo) return;
+        setCatalogoDisponible(false);
+        setForm(actual => ({
+          ...actual,
+          departamento_opcion: actual.departamento_opcion || DEPARTAMENTO_OTRO,
+          area_solicitante: actual.area_solicitante || usuario?.departamento_nombre || '',
+          solicitante_externo_nombre: actual.solicitante_externo_nombre || '',
+        }));
+      } finally {
+        if (activo) setLoadingDepartamentos(false);
+      }
+    };
+
+    cargarDepartamentos();
+
+    return () => { activo = false; };
+  }, [
+    espacio.id,
+    puedeRepresentar,
+    usuario?.departamento_id,
+    usuario?.departamento_nombre,
+  ]);
+
+  const seleccionarDepartamento = (valor) => {
+    if (valor === DEPARTAMENTO_OTRO) {
+      setForm(f => ({
+        ...f,
+        departamento_opcion: DEPARTAMENTO_OTRO,
+        area_solicitante: '',
+        solicitante_externo_nombre: '',
+      }));
+      return;
+    }
+
+    const departamento = departamentos.find(dep => String(dep.id) === String(valor));
+    setForm(f => ({
+      ...f,
+      departamento_opcion: String(valor),
+      area_solicitante: departamento?.nombre || '',
+      solicitante_externo_nombre: '',
+    }));
+  };
 
   const toggleReq = (tipo) => {
     setForm(f => {
@@ -269,6 +403,19 @@ function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
 
   const handleSubmit = async e => {
     e.preventDefault();
+    if (!puedeRepresentar && !usuario?.departamento_id) {
+      setError('Tu usuario no tiene un departamento asignado. Solicita la actualización a un administrador.'); return;
+    }
+    if (puedeRepresentar && !form.departamento_opcion) {
+      setError('Selecciona el departamento o la opción Otro / Externo'); return;
+    }
+    if (
+      puedeRepresentar &&
+      form.departamento_opcion === DEPARTAMENTO_OTRO &&
+      !form.solicitante_externo_nombre.trim()
+    ) {
+      setError('Escribe el nombre del área o solicitante externo'); return;
+    }
     if (hm2min(form.hora_fin) <= hm2min(form.hora_inicio)) {
       setError('La hora de fin debe ser mayor que la de inicio'); return;
     }
@@ -276,7 +423,13 @@ function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
     try {
       await api.post('/espacios/solicitudes', {
         espacio_id:        espacio.id,
-        area_solicitante:  form.area_solicitante,
+        departamento_id:   form.departamento_opcion === DEPARTAMENTO_OTRO
+          ? null
+          : Number(form.departamento_opcion),
+        area_solicitante:  form.area_solicitante.trim(),
+        solicitante_externo_nombre: form.departamento_opcion === DEPARTAMENTO_OTRO
+          ? form.solicitante_externo_nombre.trim()
+          : null,
         fecha,
         hora_inicio:       form.hora_inicio,
         hora_fin:          form.hora_fin,
@@ -321,11 +474,65 @@ function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
 
           {/* Área solicitante */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Área / Departamento</label>
-            <input className="input-dark" value={form.area_solicitante}
-              onChange={e => set('area_solicitante', e.target.value)}
-              placeholder="Ej: Coordinación Académica, Dirección…" />
+            <label className="block text-sm text-slate-400 mb-1">Área / Departamento *</label>
+            {puedeRepresentar ? (
+              <>
+                <SelectDark
+                  value={form.departamento_opcion}
+                  onChange={seleccionarDepartamento}
+                  disabled={loadingDepartamentos}
+                  placeholder={loadingDepartamentos ? 'Cargando departamentos…' : 'Selecciona un departamento'}
+                  options={[
+                    ...departamentos.map(dep => ({
+                      value: String(dep.id),
+                      label: dep.nombre,
+                      sublabel: dep.clave,
+                    })),
+                    { value: DEPARTAMENTO_OTRO, label: 'Externo / Invitado' },
+                  ]}
+                />
+                {!catalogoDisponible && (
+                  <p className="text-xs text-amber-400 mt-1.5">
+                    No se pudo cargar el catálogo. Puedes registrar un solicitante externo.
+                  </p>
+                )}
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Como responsable, puedes registrar la solicitud en representación de otra área.
+                </p>
+              </>
+            ) : usuario?.departamento_id && usuario?.departamento_nombre ? (
+              <div className="input-dark flex items-center justify-between gap-3">
+                <span>{usuario.departamento_nombre}</span>
+                <span className="text-xs text-slate-500">Asignado a tu usuario</span>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-red-500/40 bg-red-950/30 px-4 py-3">
+                <p className="text-sm text-red-300">No tienes un departamento asignado.</p>
+                <p className="text-xs text-red-300/70 mt-1">
+                  Un administrador debe asignarlo antes de que puedas solicitar la sala.
+                </p>
+              </div>
+            )}
           </div>
+
+          {puedeRepresentar && form.departamento_opcion === DEPARTAMENTO_OTRO && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">
+                Solicitante externo o institución *
+              </label>
+              <input
+                className="input-dark"
+                value={form.solicitante_externo_nombre}
+                onChange={e => set('solicitante_externo_nombre', e.target.value)}
+                placeholder="Ej: Empresa ABC, Universidad invitada o nombre de la persona…"
+                maxLength={200}
+                required
+              />
+              <p className="text-xs text-slate-500 mt-1.5">
+                La solicitud quedará registrada por {usuario?.nombre} en representación del externo.
+              </p>
+            </div>
+          )}
 
           {/* Horario */}
           <div className="grid grid-cols-2 gap-3">
@@ -429,7 +636,11 @@ function FormSolicitud({ espacio, fecha, horaPreset, onClose, onCreada }) {
 
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
-            <button type="submit" disabled={saving} className="btn-blue flex-1">
+            <button
+              type="submit"
+              disabled={saving || (!puedeRepresentar && !usuario?.departamento_id)}
+              className="btn-blue flex-1"
+            >
               {saving ? 'Enviando…' : 'Enviar solicitud'}
             </button>
           </div>
@@ -481,7 +692,7 @@ export default function ApartarEspacio() {
 
         {/* Header + Breadcrumb */}
         <div>
-          <div className="flex items-center gap-2 text-sm text-slate-400 mb-3">
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
             <button onClick={() => setPaso(1)} className={`hover:text-white transition-colors ${paso === 1 ? 'text-white font-medium' : ''}`}>
               Espacios
             </button>
@@ -515,16 +726,49 @@ export default function ApartarEspacio() {
               {espacios.map(esp => (
                 <button key={esp.id}
                   onClick={() => seleccionarEspacio(esp)}
-                  className={`glass rounded-2xl p-6 text-left border bg-gradient-to-br transition-all hover:scale-[1.02] active:scale-100 ${TIPO_GRAD[esp.tipo]}`}>
+                  className={`group glass rounded-2xl p-6 text-left border bg-gradient-to-br transition-all hover:scale-[1.02] active:scale-100 flex flex-col ${TIPO_GRAD[esp.tipo]}`}>
                   <div className="text-4xl mb-3">{TIPO_ICON[esp.tipo]}</div>
                   <h3 className="font-bold text-white text-lg">{esp.nombre}</h3>
-                  <p className="text-slate-400 text-sm mt-1">{TIPO_DESC[esp.tipo]}</p>
-                  {esp.ubicacion && (
-                    <p className="text-slate-500 text-xs mt-2">📍 {esp.ubicacion}</p>
-                  )}
-                  <div className="flex gap-3 mt-3 text-xs text-slate-400">
-                    <span>🕐 {esp.hora_inicio_permitida}–{esp.hora_fin_permitida}</span>
-                    {esp.capacidad && <span>👥 {esp.capacidad} personas</span>}
+                  {/* Descripción con contraste mejorado */}
+                  <p className="text-slate-500 text-sm mt-1 leading-snug">{TIPO_DESC[esp.tipo]}</p>
+
+                  {/* Metadatos — SVG neutros en vez de emojis de color */}
+                  <div className="mt-3 space-y-1.5">
+                    {esp.ubicacion && (
+                      <p className="flex items-center gap-1.5 text-slate-500 text-xs">
+                        <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                        {esp.ubicacion}
+                      </p>
+                    )}
+                    <div className="flex gap-3 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        {esp.hora_inicio_permitida}–{esp.hora_fin_permitida}
+                      </span>
+                      {esp.capacidad && (
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                          </svg>
+                          {esp.capacidad} personas
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CTA — siempre visible, énfasis en hover */}
+                  <div className="mt-4 pt-3 border-t border-white/10 flex justify-end">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-500 group-hover:text-emerald-400 transition-colors">
+                      Apartar
+                      <svg className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </span>
                   </div>
                 </button>
               ))}
@@ -541,7 +785,7 @@ export default function ApartarEspacio() {
               <p className="font-semibold text-white">{espacioSel.nombre}</p>
               <p className="text-sm text-slate-400">{TIPO_DESC[espacioSel.tipo]}</p>
               <p className="text-xs text-slate-500 mt-1">
-                Tiempo operativo entre eventos: {espacioSel.buffer_antes_minutos || 0} min antes / {espacioSel.buffer_despues_minutos || 0} min despues.
+                Margen entre reservas: {espacioSel.buffer_antes_minutos || 0} min antes / {espacioSel.buffer_despues_minutos || 0} min después.
               </p>
               {espacioSel.estado_operativo && espacioSel.estado_operativo !== 'DISPONIBLE' && (
                 <p className="text-xs text-amber-300 mt-1">
