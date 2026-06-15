@@ -316,3 +316,12 @@ class TestPermisosTutoria:
             "grupo": "A", "periodo": "ENE-ABR-2026",
         }, headers=auth_headers(tok))
         assert r.status_code == 403
+
+    def test_lab_admin_no_puede_administrar_tutoria(self, client, db):
+        _usuario(db, "Admin Lab", "labadmin.tut@test.mx", RolUsuario.LAB_ADMIN)
+        tok = get_token(client, "labadmin.tut@test.mx", "Test1234!")
+        r = client.post("/tutoria/grupos", json={
+            "tutor_id": 1, "carrera": "TI", "cuatrimestre": 1,
+            "grupo": "A", "periodo": "ENE-ABR-2026",
+        }, headers=auth_headers(tok))
+        assert r.status_code == 403

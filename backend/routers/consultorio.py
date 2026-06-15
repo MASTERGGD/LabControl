@@ -22,6 +22,7 @@ from models.consultorio import Paciente, ConsultaMedica, CanalizacionMedica
 from models.catalogo import CatalogoAlumno
 from models.tutoria import Canalizacion as CanalizacionTutoria
 from services.auditoria import registrar
+from services.timezone import as_mx, format_fecha_corta_mx, format_fecha_larga_mx, today_mx
 
 # reportlab
 from reportlab.lib.pagesizes import letter
@@ -185,7 +186,7 @@ def _clasificar_imc(imc: Optional[float]) -> Optional[str]:
 
 
 def _alertas_paciente(pac: Paciente, consultas: List[ConsultaMedica]) -> List[dict]:
-    hoy = datetime.date.today()
+    hoy = today_mx()
     alertas: List[dict] = []
 
     if pac.alergias and pac.alergias.strip():
@@ -737,6 +738,55 @@ def actualizar_consulta(
     return _consulta_dict(c, db)
 
 
+@router.patch("/consultas/{consulta_id}/seguimiento-estado", summary="Marcar estado del seguimiento programado")
+def actualizar_seguimiento_estado(
+    consulta_id: int,
+    estado: str,                          # REALIZADO | NO_PRESENTO | CANCELADO
+    nota: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """
+    Permite al médico resolver una consulta de seguimiento programada:
+    - REALIZADO   → el paciente asistió y se registró la consulta de seguimiento
+    - NO_PRESENTO → la fecha pasó y el paciente no se presentó
+    - CANCELADO   → se canceló con anticipación
+    """
+    _require_medico(current_user)
+    estados_validos = {"REALIZADO", "NO_PRESENTO", "CANCELADO", "PENDIENTE"}
+    if estado not in estados_validos:
+        raise HTTPException(400, f"Estado inválido. Valores permitidos: {', '.join(estados_validos)}")
+
+    c = db.get(ConsultaMedica, consulta_id)
+    if not c:
+        raise HTTPException(404, "Consulta no encontrada")
+    if not c.requiere_seguimiento:
+        raise HTTPException(400, "Esta consulta no tiene seguimiento programado")
+
+    c.seguimiento_estado = estado
+    if nota:
+        c.seguimiento_notas = nota
+    db.commit()
+    db.refresh(c)
+    return _consulta_dict(c, db)
+
+
+@router.get("/seguimientos-vencidos", summary="Consultas con seguimiento programado que ya venció")
+def seguimientos_vencidos(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Devuelve seguimientos cuya fecha ya pasó y siguen en estado PENDIENTE."""
+    _require_medico(current_user)
+    hoy = today_mx()
+    vencidos = db.query(ConsultaMedica).filter(
+        ConsultaMedica.requiere_seguimiento == True,
+        ConsultaMedica.seguimiento_estado == "PENDIENTE",
+        ConsultaMedica.fecha_seguimiento < hoy,
+    ).order_by(ConsultaMedica.fecha_seguimiento.asc()).all()
+    return [_consulta_dict(c, db) for c in vencidos]
+
+
 # ─── CANALIZACIONES ───────────────────────────────────────────────────────────
 
 @router.get("/canalizaciones", summary="Canalizaciones pendientes y su estado")
@@ -1095,14 +1145,16 @@ def estadisticas(
     }
 
 
-# ─── PDF RECETA — diseño editorial profesional ────────────────────────────────
-# Paleta médica institucional
-_C_AZUL    = colors.HexColor("#006699")   # títulos de sección
-_C_TEXTO   = colors.HexColor("#2c3e50")   # cuerpo principal
-_C_SUBT    = colors.HexColor("#4a6274")   # subtítulos / labels secundarios
-_C_FONDO   = colors.HexColor("#f8fafc")   # fondo signos vitales y datos paciente
-_C_LINEA   = colors.HexColor("#e2e8f0")   # divisores tenues
-_C_AZUL_CL = colors.HexColor("#e8f4f8")   # fondo encabezado de tabla
+# ─── PDF RECETA — formato medico institucional ────────────────────────────────
+# Paleta sobria: el verde funciona como acento, no como relleno dominante.
+_C_AZUL    = colors.HexColor("#007A53")
+_C_TEXTO   = colors.HexColor("#111827")
+_C_SUBT    = colors.HexColor("#526175")
+_C_MUTED   = colors.HexColor("#8A97AA")
+_C_FONDO   = colors.HexColor("#F7FAFC")
+_C_LINEA   = colors.HexColor("#D8E2EA")
+_C_AZUL_CL = colors.HexColor("#EAF7F2")
+_C_ORO     = colors.HexColor("#B8872B")
 _C_BLANCO  = colors.white
 
 
@@ -1113,46 +1165,52 @@ def _estilos_receta():
         return ParagraphStyle(name, parent=base, **kw)
 
     return {
-        # Encabezado institución
+        # Encabezado institucion
         "inst_nombre": ps("inst_nombre",
-            fontName="Helvetica-Bold", fontSize=11, leading=14,
-            alignment=TA_CENTER, textColor=_C_AZUL, spaceAfter=1),
+            fontName="Helvetica-Bold", fontSize=10.5, leading=13,
+            textColor=_C_TEXTO, spaceAfter=1),
         "inst_dep": ps("inst_dep",
-            fontName="Helvetica", fontSize=8.5, leading=11,
-            alignment=TA_CENTER, textColor=_C_SUBT, spaceAfter=1),
+            fontName="Helvetica", fontSize=8, leading=10,
+            textColor=_C_SUBT, spaceAfter=1),
         "inst_doc": ps("inst_doc",
-            fontName="Helvetica-Bold", fontSize=9, leading=12,
-            alignment=TA_CENTER, textColor=_C_TEXTO, spaceAfter=0),
+            fontName="Helvetica-Bold", fontSize=11, leading=13,
+            alignment=TA_RIGHT, textColor=_C_AZUL, spaceAfter=1),
+        "inst_doc_sub": ps("inst_doc_sub",
+            fontName="Helvetica", fontSize=7.5, leading=9,
+            alignment=TA_RIGHT, textColor=_C_SUBT, spaceAfter=0),
         # Folio / fecha
         "meta": ps("meta",
-            fontName="Helvetica", fontSize=8.5, leading=12,
+            fontName="Helvetica", fontSize=8, leading=11,
             textColor=_C_SUBT),
         "meta_r": ps("meta_r",
-            fontName="Helvetica", fontSize=8.5, leading=12,
+            fontName="Helvetica", fontSize=8, leading=11,
             alignment=TA_RIGHT, textColor=_C_SUBT),
-        # Label de sección (títulos de bloque)
+        # Label de seccion
         "seccion": ps("seccion",
-            fontName="Helvetica-Bold", fontSize=7.5, leading=10,
-            textColor=_C_AZUL, spaceBefore=6, spaceAfter=3,
-            letterSpacing=0.8),
+            fontName="Helvetica-Bold", fontSize=7.4, leading=9,
+            textColor=_C_AZUL, spaceBefore=7, spaceAfter=4,
+            letterSpacing=0.6),
         # Texto de datos (label dentro de tabla)
         "lbl": ps("lbl",
-            fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+            fontName="Helvetica-Bold", fontSize=7.2, leading=9,
             textColor=_C_SUBT),
         "val": ps("val",
-            fontName="Helvetica", fontSize=8.5, leading=11,
+            fontName="Helvetica", fontSize=8.4, leading=10.5,
+            textColor=_C_TEXTO),
+        "val_b": ps("val_b",
+            fontName="Helvetica-Bold", fontSize=8.4, leading=10.5,
             textColor=_C_TEXTO),
         # Cuerpo de texto clínico
         "cuerpo": ps("cuerpo",
-            fontName="Helvetica", fontSize=9, leading=12,
+            fontName="Helvetica", fontSize=9, leading=12.5,
             textColor=_C_TEXTO, spaceAfter=2),
         "item": ps("item",
-            fontName="Helvetica", fontSize=9, leading=12,
-            textColor=_C_TEXTO, leftIndent=10, spaceAfter=2),
+            fontName="Helvetica", fontSize=9, leading=12.5,
+            textColor=_C_TEXTO, leftIndent=12, firstLineIndent=-6, spaceAfter=2),
         # Pie y firma
         "pie": ps("pie",
-            fontName="Helvetica", fontSize=7.5, leading=10,
-            textColor=colors.HexColor("#94a3b8"), alignment=TA_CENTER),
+            fontName="Helvetica", fontSize=7, leading=9,
+            textColor=_C_MUTED, alignment=TA_CENTER),
         "firma_nombre": ps("firma_nombre",
             fontName="Helvetica-Bold", fontSize=9.5, leading=13,
             alignment=TA_CENTER, textColor=_C_TEXTO),
@@ -1161,7 +1219,7 @@ def _estilos_receta():
             alignment=TA_CENTER, textColor=_C_SUBT),
         "firma_folio": ps("firma_folio",
             fontName="Helvetica", fontSize=7.5, leading=10,
-            alignment=TA_CENTER, textColor=colors.HexColor("#94a3b8")),
+            alignment=TA_CENTER, textColor=_C_MUTED),
     }
 
 
@@ -1180,7 +1238,7 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
     st     = _estilos_receta()
 
     # Datos derivados
-    nombre_pac   = c.paciente_nombre_snapshot or (pac.nombre if pac else "—")
+    nombre_pac   = (c.paciente_nombre_snapshot or (pac.nombre if pac else "—")).title()
     tipo_pac     = c.paciente_tipo_snapshot   or (pac.tipo   if pac else "—")
     sexo_raw     = c.paciente_sexo_snapshot   or (pac.sexo   if pac else "")
     sexo_pac     = {"M": "Masculino", "F": "Femenino", "OTRO": "Otro"}.get(sexo_raw or "", "—")
@@ -1191,13 +1249,13 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
 
     edad_str = "—"
     if pac and pac.fecha_nacimiento:
-        hoy  = datetime.date.today()
+        hoy  = today_mx()
         edad = hoy.year - pac.fecha_nacimiento.year - (
             (hoy.month, hoy.day) < (pac.fecha_nacimiento.month, pac.fecha_nacimiento.day)
         )
         edad_str = f"{edad} años"
 
-    fecha_str = c.fecha_consulta.strftime("%d de %B de %Y") if c.fecha_consulta else "—"
+    fecha_str = format_fecha_larga_mx(c.fecha_consulta)
     folio_str = f"Folio #{c.id:05d}"
 
     buffer = io.BytesIO()
@@ -1210,70 +1268,78 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
     story = []
     page_w = letter[0] - 3.6 * cm   # ancho útil
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # 1. ENCABEZADO INSTITUCIONAL
-    # ═══════════════════════════════════════════════════════════════════════════
+    # 1. Encabezado institucional: membrete sobrio, sin apariencia de plantilla.
     logo_path = Path(__file__).resolve().parents[1] / "assets" / "tutoria" / "utecan_logo.jpg"
-    logo_cell = RLImage(str(logo_path), width=3.6 * cm, height=1.05 * cm) \
+    logo_cell = RLImage(str(logo_path), width=4.0 * cm, height=1.15 * cm) \
                 if logo_path.exists() \
                 else Paragraph("<b>UTECAN</b>", st["inst_nombre"])
 
-    texto_inst = [
-        Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA", st["inst_nombre"]),
-        Paragraph("NOTA DE CONSULTA MÉDICA", st["inst_doc"]),
-    ]
+    texto_inst = Table(
+        [[Paragraph("Universidad Tecnológica de Candelaria", st["inst_nombre"])],
+         [Paragraph("Consultorio Médico Universitario", st["inst_dep"])],
+         [Paragraph("Atención primaria y seguimiento clínico", st["inst_dep"])]],
+        colWidths=[page_w - 8.7 * cm],
+        style=TableStyle([
+            ("TOPPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ("LEFTPADDING", (0,0), (-1,-1), 0),
+            ("RIGHTPADDING", (0,0), (-1,-1), 0),
+        ]),
+    )
+    doc_meta = Table(
+        [[Paragraph("NOTA MÉDICA", st["inst_doc"])],
+         [Paragraph(folio_str, st["inst_doc_sub"])],
+         [Paragraph(fecha_str, st["inst_doc_sub"])]],
+        colWidths=[4.2 * cm],
+        style=TableStyle([
+            ("TOPPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ("LEFTPADDING", (0,0), (-1,-1), 0),
+            ("RIGHTPADDING", (0,0), (-1,-1), 0),
+        ]),
+    )
     header_tbl = Table(
-        [[logo_cell, texto_inst]],
-        colWidths=[4 * cm, page_w - 4 * cm],
+        [[logo_cell, texto_inst, doc_meta]],
+        colWidths=[4.5 * cm, page_w - 8.7 * cm, 4.2 * cm],
     )
     header_tbl.setStyle(TableStyle([
         ("VALIGN",  (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN",   (0, 0), (0, 0),   "CENTER"),
-        ("LEFTPADDING",  (1, 0), (1, 0), 12),
+        ("ALIGN",   (0, 0), (0, 0),   "LEFT"),
+        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING",   (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 4),
     ]))
     story.append(header_tbl)
-    story.append(HRFlowable(width="100%", thickness=1.5, color=_C_AZUL,
-                             spaceBefore=5, spaceAfter=3))
+    story.append(HRFlowable(width="100%", thickness=0.9, color=_C_LINEA,
+                             spaceBefore=3, spaceAfter=7))
 
-    # Fecha + Folio
-    story.append(Table(
-        [[Paragraph(f"Fecha: {fecha_str}", st["meta"]),
-          Paragraph(folio_str, st["meta_r"])]],
-        colWidths=["65%", "35%"],
-        style=TableStyle([("TOPPADDING", (0,0), (-1,-1), 0),
-                          ("BOTTOMPADDING", (0,0), (-1,-1), 0)]),
-    ))
-    story.append(Spacer(1, 0.2 * cm))
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # 2. DATOS DEL PACIENTE — bloque encapsulado con fondo suave
-    # ═══════════════════════════════════════════════════════════════════════════
     story.append(Paragraph("DATOS DEL PACIENTE", st["seccion"]))
 
     filas_pac = [
-        [Paragraph("Nombre", st["lbl"]),    Paragraph(nombre_pac, st["val"]),
-         Paragraph("Tipo",   st["lbl"]),    Paragraph(tipo_pac,   st["val"])],
-        [Paragraph("Sexo",   st["lbl"]),    Paragraph(sexo_pac,   st["val"]),
-         Paragraph("Edad",   st["lbl"]),    Paragraph(edad_str,   st["val"])],
+        [Paragraph("NOMBRE", st["lbl"]),    Paragraph(nombre_pac, st["val_b"]),
+         Paragraph("TIPO",   st["lbl"]),    Paragraph(tipo_pac,   st["val_b"])],
+        [Paragraph("SEXO",   st["lbl"]),    Paragraph(sexo_pac,   st["val"]),
+         Paragraph("EDAD",   st["lbl"]),    Paragraph(edad_str,   st["val"])],
     ]
     if carrera_pac:
         filas_pac.append([
-            Paragraph("Carrera",       st["lbl"]), Paragraph(str(carrera_pac), st["val"]),
-            Paragraph("Cuatrimestre",  st["lbl"]), Paragraph(str(cuatri_pac or "—"), st["val"]),
+            Paragraph("CARRERA",       st["lbl"]), Paragraph(str(carrera_pac), st["val"]),
+            Paragraph("CUATRIMESTRE",  st["lbl"]), Paragraph(str(cuatri_pac or "—"), st["val"]),
         ])
     if depto_pac:
         filas_pac.append([
-            Paragraph("Departamento", st["lbl"]), Paragraph(str(depto_pac), st["val"]),
+            Paragraph("DEPARTAMENTO", st["lbl"]), Paragraph(str(depto_pac), st["val"]),
             Paragraph("", st["lbl"]), Paragraph("", st["val"]),
         ])
     if matricula_pac:
         filas_pac.append([
-            Paragraph("Matrícula / Empleado", st["lbl"]), Paragraph(str(matricula_pac), st["val"]),
+            Paragraph("MATRÍCULA / EMPLEADO", st["lbl"]), Paragraph(str(matricula_pac), st["val_b"]),
             Paragraph("", st["lbl"]), Paragraph("", st["val"]),
         ])
     if pac and pac.alergias:
         filas_pac.append([
-            Paragraph("Alergias conocidas", st["lbl"]),
+            Paragraph("ALERGIAS CONOCIDAS", st["lbl"]),
             Paragraph(pac.alergias, st["val"]),
             Paragraph("", st["lbl"]), Paragraph("", st["val"]),
         ])
@@ -1281,20 +1347,19 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
     t_pac = Table(filas_pac, colWidths=[3.0 * cm, 6.6 * cm, 3.0 * cm, 4.8 * cm])
     t_pac.setStyle(TableStyle([
         ("BACKGROUND",    (0, 0), (-1, -1), _C_FONDO),
-        ("TOPPADDING",    (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
-        ("LINEBELOW",     (0, 0), (-1, -2), 0.4, _C_LINEA),
-        ("BOX",           (0, 0), (-1, -1), 0.5, _C_LINEA),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+        ("LINEBELOW",     (0, 0), (-1, -2), 0.35, colors.HexColor("#E6EDF3")),
+        ("LINEBEFORE",    (2, 0), (2, -1), 0.35, colors.HexColor("#E6EDF3")),
+        ("LINEABOVE",     (0, 0), (-1, 0), 1.0, _C_AZUL),
+        ("BOX",           (0, 0), (-1, -1), 0.45, _C_LINEA),
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
     ]))
     story.append(t_pac)
-    story.append(Spacer(1, 0.2 * cm))
+    story.append(Spacer(1, 0.14 * cm))
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # 3. SIGNOS VITALES — bloque encapsulado, 3 columnas
-    # ═══════════════════════════════════════════════════════════════════════════
     sv_raw = [
         ("Temperatura",        f"{c.temperatura} °C"                         if c.temperatura          else None),
         ("Presión arterial",   f"{c.presion_arterial} mmHg"                  if c.presion_arterial      else None),
@@ -1304,19 +1369,17 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
                                if _calcular_imc(c.peso, c.talla) is not None else None),
         ("Frec. cardíaca",     f"{c.frecuencia_cardiaca} lpm"                if c.frecuencia_cardiaca   else None),
         ("Frec. respiratoria", f"{c.frecuencia_respiratoria} rpm"            if c.frecuencia_respiratoria else None),
-        # Saturación O₂ — carácter Unicode correcto, sin usar entidades HTML que rompen la fuente
-        ("Saturación O₂",  f"{c.saturacion_oxigeno}%"                   if c.saturacion_oxigeno    else None),
+        ("Saturación O2",  f"{c.saturacion_oxigeno}%"                   if c.saturacion_oxigeno    else None),
     ]
     sv_items = [(lbl, val) for lbl, val in sv_raw if val is not None]
 
     if sv_items:
         story.append(Paragraph("SIGNOS VITALES", st["seccion"]))
-        # Tabla plana: 4 columnas, etiqueta + valor en la misma celda (una línea)
         sv_style_lbl = ParagraphStyle("sv_lbl", parent=st["lbl"],
-                                      fontSize=7, leading=9, textColor=_C_SUBT)
+                                      fontSize=6.8, leading=8.5, textColor=_C_MUTED)
         sv_style_val = ParagraphStyle("sv_val2", parent=st["val"],
-                                      fontSize=9, fontName="Helvetica-Bold",
-                                      textColor=_C_AZUL, leading=11)
+                                      fontSize=8.8, fontName="Helvetica-Bold",
+                                      textColor=_C_TEXTO, leading=11)
         COLS = 4
         col_w = page_w / COLS
         rows_sv = []
@@ -1345,50 +1408,47 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
         t_sv = Table(flat_rows, colWidths=[col_w] * COLS)
         t_sv.setStyle(TableStyle([
             ("BACKGROUND",    (0, 0), (-1, -1), _C_FONDO),
-            ("TOPPADDING",    (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
-            ("LINEBELOW",     (0, 0), (-1, -2), 0.4, _C_LINEA),
-            ("LINEBEFORE",    (1, 0), (-1, -1), 0.4, _C_LINEA),
-            ("BOX",           (0, 0), (-1, -1), 0.5, _C_LINEA),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("LINEBEFORE",    (1, 0), (-1, -1), 0.35, colors.HexColor("#E6EDF3")),
+            ("LINEABOVE",     (0, 0), (-1, 0), 0.7, _C_LINEA),
+            ("LINEBELOW",     (0, -1), (-1, -1), 0.7, _C_LINEA),
             ("VALIGN",        (0, 0), (-1, -1), "TOP"),
         ]))
         story.append(t_sv)
-        story.append(Spacer(1, 0.2 * cm))
+        story.append(Spacer(1, 0.14 * cm))
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # 4. CLÍNICA: motivo, diagnóstico, receta, indicaciones
-    # ═══════════════════════════════════════════════════════════════════════════
     story.append(Paragraph("MOTIVO DE CONSULTA", st["seccion"]))
     story.append(Paragraph(c.motivo_consulta or "—", st["cuerpo"]))
 
-    story.append(_divider(spaceBefore=2, spaceAfter=2))
+    story.append(_divider(spaceBefore=4, spaceAfter=2))
     story.append(Paragraph("DIAGNÓSTICO", st["seccion"]))
     story.append(Paragraph(c.diagnostico or "—", st["cuerpo"]))
 
-    story.append(_divider(spaceBefore=2, spaceAfter=2))
-    story.append(Paragraph("℞  TRATAMIENTO / RECETA MÉDICA", st["seccion"]))
+    story.append(_divider(spaceBefore=4, spaceAfter=2))
+    story.append(Paragraph("TRATAMIENTO / RECETA MÉDICA", st["seccion"]))
     if c.medicamentos:
         for linea in c.medicamentos.split("\n"):
             if linea.strip():
-                story.append(Paragraph(f"•  {linea.strip()}", st["item"]))
+                story.append(Paragraph(f"- {linea.strip()}", st["item"]))
     else:
         story.append(Paragraph("Sin medicamentos prescritos.", st["cuerpo"]))
 
     if c.indicaciones:
-        story.append(_divider(spaceBefore=2, spaceAfter=2))
+        story.append(_divider(spaceBefore=4, spaceAfter=2))
         story.append(Paragraph("INDICACIONES Y CUIDADOS", st["seccion"]))
         for linea in c.indicaciones.split("\n"):
             if linea.strip():
-                story.append(Paragraph(f"→  {linea.strip()}", st["item"]))
+                story.append(Paragraph(f"- {linea.strip()}", st["item"]))
 
     # ── Incapacidad
     if c.genera_incapacidad:
-        story.append(_divider(spaceBefore=2, spaceAfter=2))
+        story.append(_divider(spaceBefore=4, spaceAfter=2))
         story.append(Paragraph("INCAPACIDAD MÉDICA", st["seccion"]))
-        fi = c.fecha_inicio_incapacidad.strftime("%d/%m/%Y") if c.fecha_inicio_incapacidad else "—"
-        ff = c.fecha_fin_incapacidad.strftime("%d/%m/%Y")    if c.fecha_fin_incapacidad    else fi
+        fi = format_fecha_corta_mx(c.fecha_inicio_incapacidad)
+        ff = format_fecha_corta_mx(c.fecha_fin_incapacidad) if c.fecha_fin_incapacidad else fi
         story.append(Paragraph(
             f"Se extiende incapacidad por <b>{c.dias_incapacidad or '—'} día(s)</b> "
             f"a partir del {fi} al {ff}.",
@@ -1400,26 +1460,26 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
         story.append(Spacer(1, 0.1 * cm))
         story.append(Table(
             [[Paragraph(
-                f"\U0001F4C5 Cita de seguimiento: "
-                f"<b>{c.fecha_seguimiento.strftime('%d/%m/%Y')}</b> "
+                f"Seguimiento programado: "
+                f"<b>{format_fecha_corta_mx(c.fecha_seguimiento)}</b> "
                 f"— {c.seguimiento_estado or 'PENDIENTE'}",
                 ParagraphStyle("segt", parent=st["cuerpo"],
-                               textColor=_C_AZUL, fontSize=9)
+                               textColor=_C_TEXTO, fontSize=9)
             )]],
             colWidths=[page_w],
             style=TableStyle([
-                ("BACKGROUND",    (0,0), (-1,-1), _C_AZUL_CL),
+                ("BACKGROUND",    (0,0), (-1,-1), _C_FONDO),
                 ("TOPPADDING",    (0,0), (-1,-1), 6),
                 ("BOTTOMPADDING", (0,0), (-1,-1), 6),
                 ("LEFTPADDING",   (0,0), (-1,-1), 10),
-                ("BOX",           (0,0), (-1,-1), 0.5, _C_LINEA),
+                ("LINEBEFORE",    (0,0), (0,-1), 2.0, _C_AZUL),
+                ("BOX",           (0,0), (-1,-1), 0.4, _C_LINEA),
             ])
         ))
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # 5. BLOQUE DE FIRMA — centrado, línea tenue, tipografía institucional
-    # ═══════════════════════════════════════════════════════════════════════════
-    story.append(Spacer(1, 0.5 * cm))
+    # 5. Validacion y firma
+    story.append(Spacer(1, 0.42 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=_C_LINEA, spaceAfter=8))
 
     # QR de validación interna
     qr_payload = f"SIGA-UTECAN|CONSULTA|{c.id}|{c.id:05d}"
@@ -1431,43 +1491,54 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
 
     nombre_medico = medico.nombre if medico else "Médico Universitario"
 
+    sello_style = ParagraphStyle(
+        "sello_info", parent=st["firma_folio"], alignment=TA_LEFT,
+        fontSize=7.2, leading=9.5, textColor=_C_MUTED
+    )
     firma_block = Table(
         [[
-            # Columna QR (izquierda)
             Table(
-                [[drawing_qr],
-                 [Paragraph(folio_str, st["firma_folio"])],
-                 [Paragraph("Validación interna SIGA", st["firma_folio"])]],
-                colWidths=[3 * cm],
+                [[drawing_qr]],
+                colWidths=[2.4 * cm],
                 style=TableStyle([
-                    ("ALIGN",         (0,0), (-1,-1), "CENTER"),
-                    ("TOPPADDING",    (0,0), (-1,-1), 2),
-                    ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                    ("ALIGN", (0,0), (-1,-1), "CENTER"),
+                    ("TOPPADDING", (0,0), (-1,-1), 0),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 0),
                 ])
             ),
-            # Columna firma (derecha — centrada)
             Table(
-                [[Paragraph("", st["val"])],                    # espacio para firma manual
-                 [HRFlowable(width=6 * cm, thickness=0.5,
-                              color=_C_LINEA, spaceAfter=4)],
+                [[Paragraph(folio_str, sello_style)],
+                 [Paragraph("Validación interna SIGA", sello_style)],
+                 [Paragraph("El código permite verificar la emisión institucional de esta nota.", sello_style)]],
+                colWidths=[5.1 * cm],
+                style=TableStyle([
+                    ("TOPPADDING", (0,0), (-1,-1), 1),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 1),
+                    ("LEFTPADDING", (0,0), (-1,-1), 0),
+                    ("RIGHTPADDING", (0,0), (-1,-1), 0),
+                ])
+            ),
+            Table(
+                [[Spacer(1, 1.35 * cm)],
+                 [HRFlowable(width=6.2 * cm, thickness=0.6, color=_C_LINEA, spaceAfter=4)],
                  [Paragraph(nombre_medico, st["firma_nombre"])],
                  [Paragraph("Médico Universitario", st["firma_cargo"])],
-                 [Paragraph("Universidad Tecnológica de Candelaria", st["firma_cargo"])],
-                ],
-                colWidths=[page_w - 3 * cm - 0.5 * cm],
+                 [Paragraph("Universidad Tecnológica de Candelaria", st["firma_cargo"])]],
+                colWidths=[page_w - 7.5 * cm],
                 style=TableStyle([
-                    ("ALIGN",         (0,0), (-1,-1), "CENTER"),
-                    ("TOPPADDING",    (0,1), (-1,-1), 3),
-                    ("BOTTOMPADDING", (0,0), (-1,-1), 3),
-                    ("ROWBACKGROUND", (0,0), (-1,0),  colors.white),
-                    ("TOPPADDING",    (0,0), (0,0),   18),   # espacio para firma manual
+                    ("ALIGN", (0,0), (-1,-1), "CENTER"),
+                    ("TOPPADDING", (0,0), (-1,-1), 1),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 1),
                 ])
             ),
         ]],
-        colWidths=[3 * cm, page_w - 3 * cm],
+        colWidths=[2.4 * cm, 5.1 * cm, page_w - 7.5 * cm],
         style=TableStyle([
             ("VALIGN",  (0,0), (-1,-1), "BOTTOM"),
-            ("LEFTPADDING",  (1,0), (1,0), 20),
+            ("LEFTPADDING",  (0,0), (-1,-1), 0),
+            ("RIGHTPADDING", (0,0), (-1,-1), 0),
+            ("TOPPADDING",   (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 0),
         ])
     )
     story.append(firma_block)
@@ -1502,7 +1573,10 @@ def exportar_pdf_receta(
     c = db.get(ConsultaMedica, consulta_id)
     pac = db.get(Paciente, c.paciente_id)
     nombre_safe = (pac.nombre or "paciente").replace(" ", "_")[:30]
-    fecha_safe  = c.fecha_consulta.strftime("%Y%m%d") if c.fecha_consulta else "sin_fecha"
+    fecha_local = c.fecha_consulta
+    if isinstance(fecha_local, datetime.datetime):
+        fecha_local = as_mx(fecha_local)
+    fecha_safe  = fecha_local.strftime("%Y%m%d") if fecha_local else "sin_fecha"
     filename    = f"Consulta_{nombre_safe}_{fecha_safe}.pdf"
 
     return StreamingResponse(

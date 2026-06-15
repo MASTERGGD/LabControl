@@ -3,6 +3,7 @@ import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import SelectDark from "../../components/SelectDark";
+import { todayISOInMexico } from "../../utils/timezone";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const SEMAFORO = {
@@ -71,7 +72,7 @@ function PerfilCard({ perfil }) {
 // ─── Modal Registrar Sesión (F-DC-07) ────────────────────────────────────────
 function ModalSesion({ grupo, alumnos, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [fecha, setFecha] = useState(todayISOInMexico());
   const [tipoSesion, setTipoSesion] = useState("GRUPAL");
   const [observaciones, setObservaciones] = useState("");
   const [registros, setRegistros] = useState(

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { dateToLocalISO } from '../../utils/timezone';
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
@@ -39,8 +40,8 @@ export default function CumplimientoDocente() {
   const [docentes, setDocentes]         = useState([]);
 
   const hoy = new Date();
-  const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
-  const ultimoDia = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).toISOString().split('T')[0];
+  const primerDia = dateToLocalISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  const ultimoDia = dateToLocalISO(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0));
 
   const [filtros, setFiltros] = useState({
     laboratorio_id: '',

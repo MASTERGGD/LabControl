@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 function saludar(nombre) {
   const h = new Date().getHours();
@@ -84,7 +85,7 @@ function StatCard({ icon, label, value, sub, badge, badgeColor = '', urgent, onC
         {value ?? '—'}
       </div>
       <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</div>
-      {sub && <div className="text-[11px] text-slate-500 mt-1 leading-tight">{sub}</div>}
+      {sub && <div className="text-[11px] mt-1 leading-tight" style={{ color: '#9ca3af' }}>{sub}</div>}
     </button>
   );
 }
@@ -134,12 +135,12 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
     <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-500/3 p-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-blue-400 mb-1">
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
             {esHoy ? '⚡ Próxima clase hoy' : '📅 Próxima clase'}
           </p>
           <p className="text-white font-bold text-base leading-tight">{reservacion.materia}</p>
           <p className="text-slate-400 text-sm mt-0.5">
-            {reservacion.grupo} · {reservacion.laboratorio_nombre}
+            {reservacion.grupo} · {toTitleCase(reservacion.laboratorio_nombre)}
           </p>
           <p className="text-slate-500 text-xs mt-1">
             {fmtFechaClase(prox)} · {fmtHora(reservacion.hora_inicio)} – {fmtHora(reservacion.hora_fin)}
@@ -316,7 +317,7 @@ export default function DashboardDocente() {
             icon="📢"
             label="Comunicados"
             value={pendientesComunicados ?? '…'}
-            sub={pendientesComunicados === 0 ? 'Estás al día ✓' : 'sin leer'}
+            sub={pendientesComunicados === 0 ? 'Estás al día ✓' : `${pendientesComunicados} sin leer`}
             badge={pendientesComunicados > 0 ? `${pendientesComunicados} pendiente${pendientesComunicados > 1 ? 's' : ''}` : null}
             badgeColor="bg-amber-500/20 text-amber-300"
             urgent={pendientesComunicados > 0}
@@ -379,7 +380,7 @@ export default function DashboardDocente() {
               <button
                 key={a.path}
                 onClick={() => navigate(a.path)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/8
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/8
                   bg-white/3 hover:bg-white/6 text-slate-400 hover:text-white text-sm
                   transition-all duration-150"
               >

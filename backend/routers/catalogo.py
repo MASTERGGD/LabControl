@@ -81,7 +81,6 @@ def _serializar_materia(m: CatalogoMateria) -> dict:
     }
 
 _admin_roles = require_roles(
-    RolUsuario.LAB_ADMIN,
     RolUsuario.SUPER_ADMIN,
     RolUsuario.SERVICIOS_ESCOLARES,
 )

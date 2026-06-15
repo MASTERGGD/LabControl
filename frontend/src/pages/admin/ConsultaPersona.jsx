@@ -70,8 +70,11 @@ export default function ConsultaPersona() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => window.history.back()}
-          className="text-slate-400 hover:text-white transition-colors">
+        <button
+          onClick={() => window.history.back()}
+          className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/8 transition-colors shrink-0"
+          title="Volver"
+        >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
           </svg>
@@ -79,24 +82,17 @@ export default function ConsultaPersona() {
         <div>
           <h1 className="text-2xl font-bold text-white">Consulta de Persona</h1>
           <p className="text-slate-400 text-sm">
-            Busca alumnos o personal por nombre, matrícula o número de empleado
+            Busca alumnos, docentes o personal por nombre, matrícula o número de empleado
           </p>
         </div>
       </div>
 
-      {/* Buscador */}
-      <div className="glass rounded-2xl p-6">
-        <label className="block text-sm text-slate-400 mb-1 font-medium">
-          🔍 Buscar persona por nombre, matrícula o número de empleado
-        </label>
-        <p className="text-xs text-slate-500 mb-3">
-          Busca alumnos por nombre o matrícula, o personal administrativo/docente por nombre o número de empleado
-        </p>
-
+      {/* Buscador — input como protagonista, sin caja dentro de caja */}
+      <div className="glass rounded-2xl p-4">
         {!seleccionado ? (
           <AutocompleteInput
             endpoint="/catalogo/buscar-personas"
-            placeholder="🔍 Escribe nombre, matrícula o no. empleado…"
+            placeholder="Escribe nombre, matrícula o número de empleado…"
             value={busqueda}
             onChange={setBusqueda}
             onSelect={handleSeleccionar}
@@ -307,7 +303,7 @@ export default function ConsultaPersona() {
       {!resultado && !loading && !error && (
         <div className="glass rounded-2xl p-16 text-center">
           <div className="text-6xl mb-4">🔍</div>
-          <p className="text-slate-400 font-medium text-lg">Busca un alumno para consultar su historial</p>
+          <p className="text-slate-400 font-medium text-lg">Busca una persona para consultar su historial</p>
           <p className="text-slate-500 text-sm mt-2">
             Escribe el nombre o matrícula — verás adeudos, préstamos y trazabilidad en una sola vista
           </p>

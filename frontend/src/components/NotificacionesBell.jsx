@@ -26,10 +26,13 @@ const IconX = ({ className = '' }) => (
 
 // ── Colores y emojis por tipo ─────────────────────────────────────────────────
 const TIPO_CONFIG = {
-  PRESTAMO_VENCIDO: { color: 'text-red-400',    bg: 'bg-red-900/30',    icon: '🔴', label: 'Préstamo' },
-  MANTENIMIENTO:    { color: 'text-orange-400',  bg: 'bg-orange-900/30', icon: '🔧', label: 'Mantenimiento' },
-  RESERVACION:      { color: 'text-blue-400',    bg: 'bg-blue-900/30',   icon: '📅', label: 'Reservación' },
-  OVERTIME:         { color: 'text-purple-400',  bg: 'bg-purple-900/30', icon: '⏰', label: 'Tiempo extra' },
+  PRESTAMO_VENCIDO:      { color: 'text-red-400',     bg: 'bg-red-900/30',     icon: '🔴', label: 'Préstamo' },
+  MANTENIMIENTO:         { color: 'text-orange-400',   bg: 'bg-orange-900/30',  icon: '🔧', label: 'Mantenimiento' },
+  RESERVACION:           { color: 'text-blue-400',     bg: 'bg-blue-900/30',    icon: '📅', label: 'Reservación' },
+  OVERTIME:              { color: 'text-purple-400',   bg: 'bg-purple-900/30',  icon: '⏰', label: 'Tiempo extra' },
+  COMUNICADO_RESPUESTA:  { color: 'text-emerald-400',  bg: 'bg-emerald-900/30', icon: '💬', label: 'Comunicado' },
+  COMUNICADO_SEGUIMIENTO:{ color: 'text-teal-400',     bg: 'bg-teal-900/30',    icon: '↩️', label: 'Seguimiento' },
+  INVENTARIO_VALIDACION: { color: 'text-amber-300',    bg: 'bg-amber-900/30',   icon: '✓',  label: 'Inventario' },
 };
 
 // ── Componente principal ──────────────────────────────────────────────────────
@@ -226,7 +229,10 @@ export default function NotificacionesBell({ comunicadosPendientes = 0 }) {
             const c = cfg(n.tipo);
             return (
               <div key={n.id}
-                onClick={() => { if (!n.leida) marcarLeida(n.id); }}
+                onClick={() => {
+                  if (!n.leida) marcarLeida(n.id);
+                  if (n.url) { setOpen(false); navigate(n.url); }
+                }}
                 style={{
                   display:'flex', gap:12, padding:'12px 16px',
                   borderBottom:'1px solid rgba(255,255,255,0.05)',

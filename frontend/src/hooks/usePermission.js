@@ -28,7 +28,7 @@ export default function usePermission() {
    */
   function can(permiso) {
     if (!rol) return false;
-    return _can(rol, permiso);
+    return usuario?.permisos?.includes(permiso) || _can(rol, permiso);
   }
 
   /**
@@ -65,7 +65,7 @@ export default function usePermission() {
    */
   function myPermissions() {
     if (!rol) return [];
-    return getPermissions(rol);
+    return Array.from(new Set([...getPermissions(rol), ...(usuario?.permisos || [])]));
   }
 
   /**
@@ -89,6 +89,7 @@ export default function usePermission() {
     hasRole,
     isSuperAdmin: rol === 'SUPER_ADMIN',
     isLabAdmin:   rol === 'LAB_ADMIN',
+    isResponsableLab: rol === 'RESPONSABLE_LAB',
     isDocente:    rol === 'DOCENTE',
   };
 }

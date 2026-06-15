@@ -14,6 +14,7 @@
 export const ROLES = {
   SUPER_ADMIN: 'SUPER_ADMIN',
   LAB_ADMIN:   'LAB_ADMIN',
+  RESPONSABLE_LAB: 'RESPONSABLE_LAB',
   ADMINISTRATIVO: 'ADMINISTRATIVO',
   TUTORIA_ADMIN: 'TUTORIA_ADMIN',
   SERVICIOS_ESCOLARES: 'SERVICIOS_ESCOLARES',
@@ -23,6 +24,7 @@ export const ROLES = {
 
 const SA = ROLES.SUPER_ADMIN;
 const LA = ROLES.LAB_ADMIN;
+const RL = ROLES.RESPONSABLE_LAB;
 const AD = ROLES.ADMINISTRATIVO;
 const TA = ROLES.TUTORIA_ADMIN;
 const SE = ROLES.SERVICIOS_ESCOLARES;
@@ -33,7 +35,7 @@ const DO = ROLES.DOCENTE;
 // permiso → array de roles que lo tienen
 export const PERMISSIONS = {
   // Laboratorios
-  'laboratorios:read':      [SA, LA, DO],
+  'laboratorios:read':      [SA, LA, RL, DO],
   'laboratorios:write':     [SA],
   'laboratorios:delete':    [SA],
   'pcs:read':               [SA, LA, DO],
@@ -45,7 +47,7 @@ export const PERMISSIONS = {
   'usuarios:write':         [SA],
   'usuarios:delete':        [SA],
   'usuarios:reset':         [SA],
-  'usuarios:self':          [SA, LA, AD, TA, SE, AL, DO],
+  'usuarios:self':          [SA, LA, RL, AD, TA, SE, AL, DO],
   'usuarios:import':        [SA],
 
   // Horarios
@@ -66,15 +68,15 @@ export const PERMISSIONS = {
   'sesiones:incidencia':    [SA, LA, DO],
 
   // Inventario
-  'inventario:read':        [SA, LA, DO],
-  'inventario:write':       [SA, LA],
-  'inventario:delete':      [SA, LA],
-  'inventario:import':      [SA, LA],
+  'inventario:read':        [SA, LA, RL, AD, DO],
+  'inventario:write':       [SA, LA, RL],
+  'inventario:delete':      [SA, LA, RL],
+  'inventario:import':      [SA, LA, RL],
 
   // Préstamos
-  'prestamos:read':         [SA, LA, DO],
-  'prestamos:write':        [SA, LA, DO],
-  'prestamos:devolver':     [SA, LA],
+  'prestamos:read':         [SA, LA, RL, DO],
+  'prestamos:write':        [SA, LA, RL, DO],
+  'prestamos:devolver':     [SA, LA, RL],
 
   // Mantenimiento
   'mantenimiento:read':     [SA, LA, DO],
@@ -88,21 +90,22 @@ export const PERMISSIONS = {
 
   // Catálogo
   'catalogo:read':          [SA, LA, SE, DO],
-  'catalogo:write':         [SA, LA, SE],
-  'catalogo:delete':        [SA, LA, SE],
-  'catalogo:import':        [SA, LA, SE],
+  'catalogo:write':         [SA, SE],
+  'catalogo:delete':        [SA, SE],
+  'catalogo:import':        [SA, SE],
 
   // Reportes
   'reportes:read':          [SA, LA],
   'reportes:export':        [SA, LA],
+  'sistema:backup':         [SA],
 
   // Notificaciones
-  'notificaciones:own':     [SA, LA, AD, TA, SE, AL, DO],
-  'comunicados:own':        [SA, LA, AD, TA, SE, AL, DO],
-  'comunicados:write':      [SA, LA, AD, TA, SE],
-  'departamentos:read':     [SA, LA, AD, TA, SE, DO],
+  'notificaciones:own':     [SA, LA, RL, AD, TA, SE, AL, DO],
+  'comunicados:own':        [SA, LA, RL, AD, TA, SE, AL, DO],
+  'comunicados:write':      [SA, LA, TA],
+  'departamentos:read':     [SA, LA, RL, AD, TA, SE, DO],
   'departamentos:write':    [SA],
-  'tutoria:admin':          [SA, LA, TA],
+  'tutoria:admin':          [SA, TA],
   'tutoria:own':            [DO],
 };
 
@@ -117,19 +120,20 @@ export const ROUTE_PERMISSIONS = {
   '/servicios-escolares/estudios-socioeconomicos': [SA, SE],
   '/alumno':                      [AL],
   '/alumno/estudio-socioeconomico': [AL],
-  '/admin/tutoria':               [SA, LA, TA],
-  '/admin/laboratorios':          [SA, LA],
-  '/admin/laboratorios/:labId':   [SA, LA],
+  '/admin/tutoria':               [SA, TA],
+  '/admin/laboratorios':          [SA, LA, RL],
+  '/admin/laboratorios/:labId':   [SA, LA, RL],
   '/admin/usuarios':              [SA],
-  '/admin/departamentos':         [SA],
+  '/admin/departamentos':         [SA, AD],
   '/admin/horarios':              [SA, LA],
   '/admin/reservaciones':         [SA, LA, DO],
-  '/admin/inventario':            [SA, LA],
-  '/admin/prestamos':             [SA, LA],
+  '/admin/inventario':            [SA, LA, RL, AD],
+  '/admin/prestamos':             [SA, LA, RL],
   '/admin/mantenimiento':         [SA, LA],
-  '/admin/catalogo':              [SA, LA],
+  '/admin/catalogo':              [SA],
   '/admin/reportes':                      [SA, LA],
-  '/admin/historial-alumno':              [SA, LA],
+  '/admin/historial-alumno':              [SA],
+  '/admin/respaldos':                      [SA],
   '/admin/sesion/:sesionId':              [SA, LA, DO],
   '/admin/sesion/:sesionId/asistencia':   [SA, LA, DO],
   '/docente':                             [DO],
@@ -137,6 +141,7 @@ export const ROUTE_PERMISSIONS = {
   '/docente/sesion/:sesionId':    [SA, LA, DO],
   '/comunicados':                 [SA, LA, AD, TA, DO],
   '/admin/comunicados':           [SA, LA, AD, TA],
+  '/medico/consultorio':           ['MEDICO', SA],
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

@@ -59,7 +59,6 @@ def _norm(v) -> str:
 
 _resp_roles = require_roles(
     RolUsuario.SUPER_ADMIN,
-    RolUsuario.LAB_ADMIN,
     RolUsuario.TUTORIA_ADMIN,
 )
 

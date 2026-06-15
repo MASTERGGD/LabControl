@@ -6,10 +6,10 @@ const SECCIONES = [
   {
     id: "personales",
     label: "Datos personales",
-    descripcion: "Identidad del alumno, datos academicos base y situacion personal.",
+    descripcion: "Identidad del alumno, datos acad?micos base y situaci?n personal.",
     campos: [
       ["nombre", "Nombre del alumno", "ALEJANDRO LOPEZ DANIEL EMANUEL", "texto"],
-      ["matricula", "Matricula", "UTC240001", "matricula"],
+      ["matricula", "Matr?cula", "UTC240001", "matricula"],
       ["fecha_ingreso", "Fecha de ingreso", "2026-05-01", "fecha"],
       ["carrera", "Carrera", "LIC. EN CIENCIA DE DATOS", "select"],
       ["sexo", "Sexo", "Masculino", "select"],
@@ -17,66 +17,66 @@ const SECCIONES = [
       ["lugar_nacimiento", "Lugar de nacimiento", "Calkini, Campeche", "texto"],
       ["fecha_nacimiento", "Fecha de nacimiento", "2005-09-12", "fecha"],
       ["tiene_hijos", "Tiene hijos", "No", "condicional"],
-      ["lengua_indigena", "Habla lengua distinta al espanol", "No", "condicional"],
+      ["lengua_indigena", "Habla lengua distinta al espa?ol", "No", "condicional"],
     ],
   },
   {
     id: "domicilios",
     label: "Contacto y domicilios",
-    descripcion: "Domicilio de procedencia, residencia y telefonos capturados por separado.",
+    descripcion: "Domicilio de procedencia, residencia y tel?fonos capturados por separado.",
     campos: [
-      ["procedencia_calle", "Procedencia: calle y numero", "Calle 12 #45", "texto"],
+      ["procedencia_calle", "Procedencia: calle y n?mero", "Calle 12 #45", "texto"],
       ["procedencia_colonia", "Procedencia: colonia", "Centro", "texto"],
       ["procedencia_localidad", "Procedencia: localidad", "Calkini", "texto"],
       ["procedencia_municipio", "Procedencia: municipio", "Calkini", "texto"],
       ["procedencia_estado", "Procedencia: estado", "Campeche", "select"],
-      ["procedencia_cp", "Procedencia: codigo postal", "24900", "cp"],
-      ["procedencia_tel", "Procedencia: telefono", "9961234567", "telefono"],
-      ["residencia_calle", "Residencia: calle y numero", "Av. Universidad S/N", "texto"],
-      ["residencia_tel", "Residencia: telefono", "", "telefono"],
+      ["procedencia_cp", "Procedencia: c?digo postal", "24900", "cp"],
+      ["procedencia_tel", "Procedencia: tel?fono", "9961234567", "tel?fono"],
+      ["residencia_calle", "Residencia: calle y n?mero", "Av. Universidad S/N", "texto"],
+      ["residencia_tel", "Residencia: tel?fono", "", "tel?fono"],
     ],
   },
   {
     id: "academicos",
     label: "Antecedentes escolares",
-    descripcion: "Bachillerato, periodo, promedio y area de procedencia.",
+    descripcion: "Bachillerato, periodo, promedio y ?rea de procedencia.",
     campos: [
       ["bachillerato", "Bachillerato o escuela de procedencia", "COBACH Calkini", "texto"],
-      ["ubicacion_bachillerato", "Lugar de ubicacion", "Calkini, Campeche", "texto"],
+      ["ubicacion_bachillerato", "Lugar de ubicaci?n", "Calkini, Campeche", "texto"],
       ["periodo_estudios", "Periodo de estudios", "2021-2024", "texto"],
       ["promedio", "Promedio general", "8.4", "decimal"],
-      ["area_bachillerato", "Area de bachillerato", "General", "select"],
+      ["area_bachillerato", "?rea de bachillerato", "General", "select"],
     ],
   },
   {
     id: "economicos",
-    label: "Dependencia economica",
+    label: "Dependencia econ?mica",
     descripcion: "Persona responsable, ingresos, gasto familiar y apoyos institucionales.",
     campos: [
-      ["depende_de", "Depende economicamente de", "Mama", "select"],
+      ["depende_de", "Depende econ?micamente de", "Mam?", "select"],
       ["responsable_nombre", "Nombre de la persona responsable", "MARIA EMANUEL PECH", "texto"],
       ["responsable_parentesco", "Parentesco", "Madre", "texto"],
-      ["responsable_ocupacion", "Ocupacion", "Comerciante", "texto"],
-      ["responsable_estudios", "Maximo nivel de estudios", "Bachillerato", "select"],
+      ["responsable_ocupacion", "Ocupaci?n", "Comerciante", "texto"],
+      ["responsable_estudios", "M?ximo nivel de estudios", "Bachillerato", "select"],
       ["responsable_ingreso", "Ingreso mensual", "4500", "moneda"],
       ["gasto_familiar", "Gasto mensual familiar", "3800", "moneda"],
       ["dependientes", "Personas que dependen del jefe de familia", "4", "entero"],
       ["apoyo_institucional", "Recibe apoyo o beca", "Si", "condicional"],
-      ["institucion_apoyo", "Institucion de apoyo", "Beca institucional", "texto"],
+      ["institucion_apoyo", "Instituci?n de apoyo", "Beca institucional", "texto"],
     ],
   },
   {
     id: "familia",
     label: "Datos familiares",
-    descripcion: "Informacion de padre, madre, hermanos e ingreso familiar aproximado.",
+    descripcion: "Informaci?n de padre, madre, hermanos e ingreso familiar aproximado.",
     campos: [
       ["padre_nombre", "Nombre del padre", "Sin dato", "texto"],
-      ["padre_ocupacion", "Ocupacion del padre", "Sin dato", "texto"],
+      ["padre_ocupacion", "Ocupaci?n del padre", "Sin dato", "texto"],
       ["padre_estado_civil", "Estado civil del padre", "Sin dato", "select"],
       ["madre_nombre", "Nombre de la madre", "MARIA EMANUEL PECH", "texto"],
-      ["madre_ocupacion", "Ocupacion de la madre", "Comerciante", "texto"],
+      ["madre_ocupacion", "Ocupaci?n de la madre", "Comerciante", "texto"],
       ["madre_estado_civil", "Estado civil de la madre", "Soltera", "select"],
-      ["num_hijos", "Numero de hijos en la familia", "3", "entero"],
+      ["num_hijos", "N?mero de hijos en la familia", "3", "entero"],
       ["hombres", "Hombres", "1", "entero"],
       ["mujeres", "Mujeres", "2", "entero"],
       ["ingreso_familiar", "Ingreso familiar aproximado", "4500", "moneda"],
@@ -85,27 +85,27 @@ const SECCIONES = [
   {
     id: "salud",
     label: "Salud y condiciones",
-    descripcion: "Alergias, enfermedad cronica, discapacidad e informacion relevante.",
+    descripcion: "Alergias, enfermedad cr?nica, discapacidad e informaci?n relevante.",
     campos: [
       ["tiene_alergia", "Tiene alergia", "No", "condicional"],
-      ["alergia_cual", "Alergia: cual", "", "texto"],
+      ["alergia_cual", "Alergia: cu?l", "", "texto"],
       ["alergia_medicamento", "Alergia: medicamento", "", "texto"],
-      ["enfermedad_cronica", "Tiene enfermedad cronica", "No", "condicional"],
+      ["enfermedad_cronica", "Tiene enfermedad cr?nica", "No", "condicional"],
       ["enfermedad_tipo", "Tipo de enfermedad", "", "checklist"],
       ["enfermedad_medicamento", "Enfermedad: medicamento", "", "texto"],
       ["discapacidad", "Tiene discapacidad", "No", "condicional"],
       ["discapacidad_tipo", "Tipo de discapacidad", "", "checklist"],
       ["discapacidad_medicamento", "Discapacidad: medicamento", "", "texto"],
-      ["informacion_relevante", "Informacion relevante", "Sin observaciones", "textarea"],
+      ["informacion_relevante", "Informaci?n relevante", "Sin observaciones", "textarea"],
     ],
   },
   {
     id: "control",
-    label: "Control y validacion",
+    label: "Control y validaci?n",
     descripcion: "Aplicador, fecha, estado de ficha y firma o consentimiento.",
     campos: [
       ["aplicador", "Nombre del aplicador", "Responsable de Servicios Escolares", "texto"],
-      ["fecha_aplicacion", "Fecha de aplicacion", "2026-05-22", "fecha"],
+      ["fecha_aplicacion", "Fecha de aplicaci?n", "2026-05-22", "fecha"],
       ["estado_ficha", "Estado de ficha", "Borrador", "select"],
       ["consentimiento", "Consentimiento de uso institucional", "Pendiente", "select"],
       ["origen", "Origen de datos", "Captura SIGA", "select"],
@@ -114,13 +114,13 @@ const SECCIONES = [
 ];
 
 const REGLAS_CALIDAD = [
-  ["Telefono", "10 digitos numericos; sin NO, N/A o textos mezclados.", "alta"],
-  ["Matricula", "Formato institucional y sin duplicados.", "alta"],
+  ["Tel?fono", "10 d?gitos num?ricos; sin NO, N/A o textos mezclados.", "alta"],
+  ["Matr?cula", "Formato institucional y sin duplicados.", "alta"],
   ["Fechas", "Nacimiento menor a ingreso; ingreso dentro del periodo activo.", "media"],
-  ["Ingresos", "Numeros positivos y rangos razonables para evitar montos capturados como texto.", "alta"],
-  ["Condicionales", "Si responde Si, el detalle se vuelve obligatorio.", "alta"],
-  ["Domicilios", "CP de 5 digitos y procedencia/residencia separados.", "media"],
-  ["Promedio", "Valor numerico entre 0 y 10.", "alta"],
+  ["Ingresos", "N?meros positivos y rangos razonables para evitar montos capturados como texto.", "alta"],
+  ["Condicionales", "Si responde S?, el detalle se vuelve obligatorio.", "alta"],
+  ["Domicilios", "CP de 5 d?gitos y procedencia/residencia separados.", "media"],
+  ["Promedio", "Valor num?rico entre 0 y 10.", "alta"],
   ["Completitud", "Ficha completa antes de usarla en reportes oficiales.", "media"],
 ];
 
@@ -190,18 +190,17 @@ export default function EstudioSocioeconomico() {
         <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
             <div>
-              <p className={`text-xs uppercase tracking-[0.2em] ${muted}`}>Diseno funcional</p>
-              <h1 className="text-3xl font-bold mt-1">Estudio socioeconomico</h1>
+              <p className={`text-xs uppercase tracking-[0.2em] ${muted}`}>Dise?o funcional</p>
+              <h1 className="text-3xl font-bold mt-1">Estudio socioecon?mico</h1>
               <p className={`text-sm mt-2 max-w-3xl ${muted}`}>
-                Prototipo del formulario F-SE-05 para captura directa en SIGA. El Excel queda como apoyo de migracion, pero la ficha validada nace aqui.
+                Prototipo del formulario F-SE-05 para captura directa en SIGA. El Excel queda como apoyo de migraci?n, pero la ficha validada nace aqu?.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                  isDay
-                    ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  isDay ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                     : "border-slate-600/70 text-slate-300 hover:bg-white/5"
                 }`}
               >
@@ -223,9 +222,9 @@ export default function EstudioSocioeconomico() {
           <section className={`card-lift rounded-2xl border p-5 ${panel}`}>
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold">Flujo de activacion para alumnos</h2>
+                <h2 className="text-lg font-bold">Flujo de activaci?n para alumnos</h2>
                 <p className={`text-sm mt-1 ${muted}`}>
-                  Servicios Escolares activa la ficha en el perfil del estudiante. El alumno entra a SIGA y solo ve el formulario socioeconomico activo.
+                  Servicios Escolares activa la ficha en el perfil del estudiante. El alumno entra a SIGA y solo ve el formulario socioecon?mico activo.
                 </p>
               </div>
               <div className={`rounded-xl border px-4 py-3 text-sm ${soft}`}>
@@ -236,8 +235,8 @@ export default function EstudioSocioeconomico() {
               {[
                 ["1", "Activar", "Servicios Escolares habilita el estudio por periodo."],
                 ["2", "Capturar", "El alumno llena y guarda borrador por secciones."],
-                ["3", "Validar", "Servicios Escolares revisa calidad y solicita correccion si aplica."],
-                ["4", "Analizar", "Tutoria usa fichas validadas para semaforos y reportes."],
+                ["3", "Validar", "Servicios Escolares revisa calidad y solicita correcci?n si aplica."],
+                ["4", "Analizar", "Tutor?a usa fichas validadas para sem?foros y reportes."],
               ].map(([num, title, detail]) => (
                 <div key={num} className={`card-lift rounded-xl border p-4 ${soft}`}>
                   <span className="inline-flex w-8 h-8 items-center justify-center rounded-lg bg-blue-600 text-white text-sm font-bold">{num}</span>
@@ -260,10 +259,9 @@ export default function EstudioSocioeconomico() {
                       type="button"
                       onClick={() => setSeccionActiva(s.id)}
                       className={`w-full rounded-xl px-3 py-3 text-left transition-colors border ${
-                        active
-                          ? "bg-blue-600 text-white border-blue-500"
-                          : isDay
-                            ? "bg-white text-slate-700 border-transparent hover:bg-slate-100"
+                        active ?
+                          "bg-blue-600 text-white border-blue-500"
+                          : isDay ? "bg-white text-slate-700 border-transparent hover:bg-slate-100"
                             : "bg-transparent text-slate-300 border-transparent hover:bg-white/5"
                       }`}
                     >
@@ -297,7 +295,7 @@ export default function EstudioSocioeconomico() {
               <div className={`mx-6 mb-6 rounded-xl border p-4 ${soft}`}>
                 <p className="text-sm font-semibold">Comportamiento esperado</p>
                 <p className={`text-sm mt-1 ${muted}`}>
-                  Cada campo se guardara con tipo de dato definido. Las respuestas condicionales activan campos obligatorios y las advertencias de calidad aparecen antes de validar la ficha.
+                  Cada campo se guardar? con tipo de dato definido. Las respuestas condicionales activan campos obligatorios y las advertencias de calidad aparecen antes de validar la ficha.
                 </p>
               </div>
             </main>
@@ -312,8 +310,8 @@ export default function EstudioSocioeconomico() {
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold">{titulo}</p>
                         <span className={`text-[10px] rounded-full px-2 py-0.5 border ${
-                          prioridad === "alta"
-                            ? "border-red-500/40 text-red-300 bg-red-950/20"
+                          prioridad === "alta" ?
+                             "border-red-500/40 text-red-300 bg-red-950/20"
                             : "border-amber-500/40 text-amber-300 bg-amber-950/20"
                         }`}>
                           {prioridad}
@@ -329,10 +327,10 @@ export default function EstudioSocioeconomico() {
                 <h3 className="font-bold">Flujo propuesto</h3>
                 <div className={`mt-4 space-y-3 text-sm ${muted}`}>
                   <p><span className="font-semibold text-blue-400">1.</span> Captura o prellenado desde Excel.</p>
-                  <p><span className="font-semibold text-blue-400">2.</span> Revision automatica de calidad.</p>
-                  <p><span className="font-semibold text-blue-400">3.</span> Correccion por Servicios Escolares o Tutoria.</p>
-                  <p><span className="font-semibold text-blue-400">4.</span> Validacion institucional.</p>
-                  <p><span className="font-semibold text-blue-400">5.</span> Uso en dashboard, reportes y semaforo.</p>
+                  <p><span className="font-semibold text-blue-400">2.</span> Revisi?n autom?tica de calidad.</p>
+                  <p><span className="font-semibold text-blue-400">3.</span> Correcci?n por Servicios Escolares o Tutor?a.</p>
+                  <p><span className="font-semibold text-blue-400">4.</span> Validaci?n institucional.</p>
+                  <p><span className="font-semibold text-blue-400">5.</span> Uso en dashboard, reportes y sem?foro.</p>
                 </div>
               </section>
             </aside>

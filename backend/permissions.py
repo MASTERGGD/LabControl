@@ -29,6 +29,7 @@ from dependencies import get_current_user
 # Alias cortos para leer la matriz más fácil
 SA  = RolUsuario.SUPER_ADMIN
 LA  = RolUsuario.LAB_ADMIN
+RL  = RolUsuario.RESPONSABLE_LAB
 AD  = RolUsuario.ADMINISTRATIVO
 TA  = RolUsuario.TUTORIA_ADMIN
 SE  = RolUsuario.SERVICIOS_ESCOLARES
@@ -41,7 +42,7 @@ DO  = RolUsuario.DOCENTE
 PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
 
     # ── Laboratorios ────────────────────────────────────────────────────────────
-    "laboratorios:read":        frozenset({SA, LA, DO}),   # ver lista y detalle
+    "laboratorios:read":        frozenset({SA, LA, RL, DO}),   # ver lista y detalle
     "laboratorios:write":       frozenset({SA}),            # crear / editar lab
     "laboratorios:delete":      frozenset({SA}),            # desactivar lab
     "pcs:read":                 frozenset({SA, LA, DO}),   # ver PCs
@@ -53,7 +54,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "usuarios:write":           frozenset({SA}),            # crear / editar usuario
     "usuarios:delete":          frozenset({SA}),            # desactivar
     "usuarios:reset":           frozenset({SA}),            # reset de contraseña
-    "usuarios:self":            frozenset({SA, LA, AD, TA, DO}),   # cambiar propia contraseña
+    "usuarios:self":            frozenset({SA, LA, RL, AD, TA, DO}),   # cambiar propia contraseña
     "usuarios:import":          frozenset({SA}),            # importar desde Excel
 
     # ── Horarios ────────────────────────────────────────────────────────────────
@@ -74,15 +75,15 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "sesiones:incidencia":      frozenset({SA, LA, DO}),   # reportar incidencia en sesión
 
     # ── Inventario ──────────────────────────────────────────────────────────────
-    "inventario:read":          frozenset({SA, LA, DO}),   # ver activos
-    "inventario:write":         frozenset({SA, LA}),        # crear / editar activo
-    "inventario:delete":        frozenset({SA, LA}),        # dar de baja activo
-    "inventario:import":        frozenset({SA, LA}),        # importar Excel
+    "inventario:read":          frozenset({SA, LA, RL, AD, DO}),   # ver activos
+    "inventario:write":         frozenset({SA, LA, RL}),        # crear / editar activo
+    "inventario:delete":        frozenset({SA, LA, RL}),        # dar de baja activo
+    "inventario:import":        frozenset({SA, LA, RL}),        # importar Excel
 
     # ── Préstamos ────────────────────────────────────────────────────────────────
-    "prestamos:read":           frozenset({SA, LA, DO}),   # ver préstamos
-    "prestamos:write":          frozenset({SA, LA, DO}),   # registrar préstamo
-    "prestamos:devolver":       frozenset({SA, LA}),        # registrar devolución
+    "prestamos:read":           frozenset({SA, LA, RL, DO}),   # ver préstamos
+    "prestamos:write":          frozenset({SA, LA, RL, DO}),   # registrar préstamo
+    "prestamos:devolver":       frozenset({SA, LA, RL}),        # registrar devolución
 
     # ── Mantenimiento ────────────────────────────────────────────────────────────
     "mantenimiento:read":       frozenset({SA, LA, DO}),   # ver incidentes / preventivos
@@ -96,36 +97,37 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
 
     # ── Catálogo académico ───────────────────────────────────────────────────────
     "catalogo:read":            frozenset({SA, LA, DO}),   # buscar alumnos / materias
-    "catalogo:write":           frozenset({SA, LA}),        # crear / editar
-    "catalogo:delete":          frozenset({SA, LA}),        # desactivar
-    "catalogo:import":          frozenset({SA, LA}),        # importar Excel
+    "catalogo:write":           frozenset({SA}),            # crear / editar
+    "catalogo:delete":          frozenset({SA}),            # desactivar
+    "catalogo:import":          frozenset({SA}),            # importar Excel
 
     # ── Reportes ─────────────────────────────────────────────────────────────────
     "reportes:read":            frozenset({SA, LA}),        # ver reportes mensuales
     "reportes:export":          frozenset({SA, LA}),        # descargar Excel
+    "sistema:backup":            frozenset({SA}),            # generar y administrar respaldos
 
     # ── Notificaciones ───────────────────────────────────────────────────────────
-    "notificaciones:own":       frozenset({SA, LA, AD, TA, DO}),   # ver / marcar las propias
+    "notificaciones:own":       frozenset({SA, LA, RL, AD, TA, DO}),   # ver / marcar las propias
 
     # Departamentos y comunicados institucionales
-    "departamentos:read":       frozenset({SA, LA, AD, TA, DO}),
+    "departamentos:read":       frozenset({SA, LA, RL, AD, TA, DO}),
     "departamentos:write":      frozenset({SA}),
-    "comunicados:own":          frozenset({SA, LA, AD, TA, DO}),
+    "comunicados:own":          frozenset({SA, LA, RL, AD, TA, DO}),
     "comunicados:write":        frozenset({SA, LA, TA}),
 
     # Tutoria
-    "tutoria:admin":            frozenset({SA, LA, TA}),
+    "tutoria:admin":            frozenset({SA, TA}),
     "tutoria:own":              frozenset({DO}),
 
     # Servicios Escolares comparte catalogo academico y comunicados.
-    "usuarios:self":            frozenset({SA, LA, AD, TA, SE, DO}),
+    "usuarios:self":            frozenset({SA, LA, RL, AD, TA, SE, DO}),
     "catalogo:read":            frozenset({SA, LA, SE, DO}),
-    "catalogo:write":           frozenset({SA, LA, SE}),
-    "catalogo:delete":          frozenset({SA, LA, SE}),
-    "catalogo:import":          frozenset({SA, LA, SE}),
-    "notificaciones:own":       frozenset({SA, LA, AD, TA, SE, DO}),
-    "departamentos:read":       frozenset({SA, LA, AD, TA, SE, DO}),
-    "comunicados:own":          frozenset({SA, LA, AD, TA, SE, DO}),
+    "catalogo:write":           frozenset({SA, SE}),
+    "catalogo:delete":          frozenset({SA, SE}),
+    "catalogo:import":          frozenset({SA, SE}),
+    "notificaciones:own":       frozenset({SA, LA, RL, AD, TA, SE, DO}),
+    "departamentos:read":       frozenset({SA, LA, RL, AD, TA, SE, DO}),
+    "comunicados:own":          frozenset({SA, LA, RL, AD, TA, SE, DO}),
     "comunicados:write":        frozenset({SA, LA, TA}),
 }
 

@@ -5,6 +5,9 @@ import AdminLayout from '../components/AdminLayout';
 import api from '../hooks/useApi';
 import SelectDark from '../components/SelectDark';
 import { useTheme } from '../context/ThemeContext';
+import { MEXICO_TIME_ZONE, todayISOInMexico } from '../utils/timezone';
+
+const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const MODULOS = [
@@ -149,11 +152,13 @@ function KpiPrincipal({ valor, label, sub, color, icon, alert, onClick }) {
           style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
       )}
       <div style={{ fontSize: 20, marginBottom: 18 }}>{icon}</div>
-      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850, color: alert ? '#DC2626' : isDay ? '#0F172A' : '#f8fafc', fontVariantNumeric: 'tabular-nums' }}>
+      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850,
+        color: alert ? '#DC2626' : (valor === 0 || valor === '0') ? '#9CA3AF' : isDay ? '#0F172A' : '#f8fafc',
+        fontVariantNumeric: 'tabular-nums' }}>
         {valor}
       </p>
       <p style={{ margin: '7px 0 0', fontSize: 13, color: isDay ? '#475569' : '#94a3b8', fontWeight: 600 }}>{label}</p>
-      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color: alert ? '#DC2626' : isDay ? '#2563EB' : color, fontWeight: 600 }}>{sub}</p>}
+      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color: alert ? '#DC2626' : '#10b981', fontWeight: 600 }}>{sub}</p>}
     </button>
   );
 }
@@ -574,7 +579,7 @@ function WidgetEquipos({ pcs, navigate }) {
 // ─── Próximas reservaciones ───────────────────────────────────────────────────
 function WidgetProximas({ reservaciones, navigate }) {
   if (!reservaciones?.length) return null;
-  const hoy = new Date().toISOString().split('T')[0];
+  const hoy = todayISOInMexico();
   return (
     <div style={{
       background:'rgba(30,41,59,0.55)',
@@ -587,7 +592,7 @@ function WidgetProximas({ reservaciones, navigate }) {
           <span>📅</span>
           <p className="text-sm font-semibold text-white" style={{margin:0}}>Próximas reservaciones</p>
         </div>
-        <button onClick={() => navigate('/admin/reservaciones')} className="text-xs text-blue-400 hover:text-blue-300 transition-colors" style={{background:'none',border:'none',cursor:'pointer'}}>Ver todas →</button>
+        <button onClick={() => navigate('/admin/reservaciones')} className="text-xs transition-colors" style={{background:'none',border:'none',cursor:'pointer',color:'#10b981',fontWeight:600}}>Ver todas →</button>
       </div>
       <div>
         {reservaciones.map(r => {
@@ -610,7 +615,7 @@ function WidgetProximas({ reservaciones, navigate }) {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-white truncate" style={{margin:0}}>{r.materia}</p>
-                <p className="text-xs text-slate-400 truncate" style={{margin:0}}>{r.docente} · {r.hora_ini}–{r.hora_fin}</p>
+                <p className="text-xs truncate" style={{margin:0, color:'#94a3b8'}}>{toTitleCase(r.docente)} · {r.hora_ini}–{r.hora_fin}</p>
               </div>
               {r.grupo && <span style={{ fontSize:11, background:'rgba(255,255,255,0.06)', color:'#94a3b8', padding:'2px 8px', borderRadius:20, flexShrink:0 }}>{r.grupo}</span>}
             </div>
@@ -783,7 +788,13 @@ export default function DashboardAdmin() {
   const modulosVisibles = MODULOS.filter(m => !m.soloSuperAdmin || usuario?.rol === 'SUPER_ADMIN');
   const ahora    = new Date();
   const saludo   = ahora.getHours() < 12 ? '☀️' : ahora.getHours() < 19 ? '🌤️' : '🌙';
-  const fechaStr = ahora.toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  const fechaStr = ahora.toLocaleDateString('es-MX', {
+    timeZone: MEXICO_TIME_ZONE,
+    weekday:'long',
+    day:'numeric',
+    month:'long',
+    year:'numeric',
+  });
 
   return (
     <AdminLayout>
@@ -793,7 +804,7 @@ export default function DashboardAdmin() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white" style={{margin:0}}>{saludo} Bienvenido, {usuario?.nombre?.split(' ')[0]}</h1>
-            <p className="text-sm text-slate-400 capitalize" style={{margin:'4px 0 0'}}>{fechaStr}</p>
+            <p className="text-sm text-slate-400" style={{margin:'4px 0 0'}}>{fechaStr}</p>
           </div>
           {stats?.labs?.length > 1 && (
             <div>

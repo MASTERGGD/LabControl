@@ -4,6 +4,9 @@ import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { todayISOInMexico } from "../../utils/timezone";
+
+const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 const SEMAFORO = {
   ALTO:      { label: "Vulnerabilidad Alta",   cls: "bg-red-500/20 text-red-300 border-red-500/40" },
@@ -13,7 +16,7 @@ const SEMAFORO = {
 };
 
 const ESTADO_SEG = {
-  SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-slate-700/50 text-slate-400 border-slate-600" },
+  SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-slate-100 text-slate-700 border-slate-300" },
   EN_OBSERVACION:  { label: "En observación",  cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
   CANALIZADO:      { label: "Canalizado",      cls: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
   ATENDIDO:        { label: "Atendido",        cls: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
@@ -36,20 +39,23 @@ const ESTADO_INF = {
 function StatCard({ label, value, icon, alert, hint, tone = "slate" }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === "day";
-  const tones = {
-    slate: isDay ? "bg-white border-slate-200" : "bg-slate-800/60 border-slate-700/50",
-    blue: isDay ? "bg-blue-50 border-blue-200" : "bg-blue-950/35 border-blue-500/30",
-    emerald: isDay ? "bg-emerald-50 border-emerald-200" : "bg-emerald-950/30 border-emerald-500/30",
-    amber: isDay ? "bg-amber-50 border-amber-200" : "bg-amber-950/30 border-amber-500/30",
-    red: isDay ? "bg-red-50 border-red-200" : "bg-red-950/30 border-red-500/30",
+  // All cards share a neutral background — only the value number is colored
+  const cardBg = isDay ? "bg-white border-slate-200" : "bg-slate-800/60 border-slate-700/50";
+  const valueColors = {
+    slate:   isDay ? "text-slate-950"    : "text-white",
+    blue:    isDay ? "text-blue-600"     : "text-blue-400",
+    emerald: isDay ? "text-emerald-700"  : "text-emerald-400",
+    amber:   isDay ? "text-amber-700"    : "text-amber-400",
+    red:     isDay ? "text-red-700"      : "text-red-400",
   };
+  const valueColor = alert
+    ? (isDay ? "text-red-700" : "text-red-400")
+    : (valueColors[tone] || valueColors.slate);
   return (
-    <div className={`rounded-xl border p-4 flex items-center gap-4 ${
-      alert ? tones.red : tones[tone] || tones.slate
-    }`}>
-      <span className={`text-xl w-10 h-10 rounded-xl border flex items-center justify-center ${isDay ? "bg-slate-50 border-slate-200 text-slate-700" : "bg-white/5 border-white/10"}`}>{icon}</span>
+    <div className={`rounded-xl border p-4 flex items-center gap-4 ${cardBg}`}>
+      <span className={`text-xl w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${isDay ? "bg-slate-50 border-slate-200 text-slate-700" : "bg-white/5 border-white/10"}`}>{icon}</span>
       <div className="min-w-0">
-        <p className={`text-2xl font-bold ${isDay ? "text-slate-950" : "text-white"}`}>{value}</p>
+        <p className={`text-2xl font-bold ${valueColor}`}>{value}</p>
         <p className={`text-xs ${isDay ? "text-slate-600" : "text-slate-400"}`}>{label}</p>
         {hint && <p className={`text-[11px] mt-0.5 truncate ${isDay ? "text-slate-400" : "text-slate-500"}`}>{hint}</p>}
       </div>
@@ -102,12 +108,29 @@ function TutorCumplimientoCard({ tutor, onVerGrupos, onVerInformes }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${dot}`} />
-            <p className={`font-semibold truncate ${isDay ? "text-slate-950" : "text-white"}`}>{tutor.tutor_nombre}</p>
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} />
+            <p className={`font-semibold truncate ${isDay ? "text-slate-950" : "text-white"}`}>{toTitleCase(tutor.tutor_nombre)}</p>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">{tutor.grupos} grupo(s) · {tutor.alumnos} alumno(s)</p>
         </div>
-        <span className={`text-lg font-bold ${isDay ? "text-slate-950" : "text-white"}`}>{tutor.cumplimiento_pct}%</span>
+      </div>
+      {/* Progress bar */}
+      <div className="mt-2.5 mb-1">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[11px] text-slate-500">Cumplimiento</span>
+          <span className={`text-sm font-bold ${
+            tutor.semaforo === "VERDE" ? (isDay ? "text-emerald-700" : "text-emerald-400") :
+            tutor.semaforo === "AMARILLO" ? (isDay ? "text-amber-700" : "text-amber-400") :
+            tutor.semaforo === "ROJO" ? (isDay ? "text-red-700" : "text-red-400") :
+            (isDay ? "text-slate-700" : "text-slate-300")
+          }`}>{tutor.cumplimiento_pct}%</span>
+        </div>
+        <div className={`w-full rounded-full h-1.5 ${isDay ? "bg-slate-200" : "bg-white/10"}`}>
+          <div
+            className={`h-1.5 rounded-full transition-all ${dot}`}
+            style={{ width: `${Math.min(Math.max(tutor.cumplimiento_pct, 0), 100)}%` }}
+          />
+        </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
         <div className={`rounded-lg border px-2 py-1.5 ${isDay ? "bg-white/70 border-slate-200" : "bg-black/15 border-white/10"}`}>
@@ -405,7 +428,7 @@ function ModalVerAlumnos({ grupo, onClose, onVerSeguimiento }) {
           <div>
             <h3 className="text-lg font-bold text-white">Alumnos del Grupo</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              {grupo.carrera} · Grupo {grupo.grupo} · {grupo.periodo} · {alumnos.length} alumno(s)
+              {grupo.carrera} · Grupo {grupo.grupo} · {grupo.periodo} · {alumnos.length} {alumnos.length === 1 ? 'alumno' : 'alumnos'}
             </p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
@@ -427,24 +450,27 @@ function ModalVerAlumnos({ grupo, onClose, onVerSeguimiento }) {
               <div key={a.id} className="bg-slate-800/50 border border-slate-700/40 rounded-xl px-3 py-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white font-medium truncate">{a.nombre}</p>
+                    <p className="text-sm text-white font-medium truncate">
+                      {a.nombre ? a.nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : ''}
+                    </p>
                     <p className="text-xs text-slate-400">{a.matricula}</p>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${semCls}`}>
+                  {/* Etiquetas informativas — borde sutil, sin relleno */}
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-600 text-slate-500 shrink-0">
                     {a.semaforo_vulnerabilidad?.replace("SIN_DATOS","Sin datos") || "Sin datos"}
                   </span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border shrink-0 ${estInfo.cls}`}>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-600 text-slate-500 shrink-0">
                     {estInfo.label}
                   </span>
                   <div className="flex gap-1 shrink-0">
                     {onVerSeguimiento && (
                       <button onClick={() => onVerSeguimiento(a.id)}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-blue-600/80 hover:bg-blue-600 text-white">
+                        className="text-[11px] px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium">
                         Historial
                       </button>
                     )}
                     <button onClick={() => enEdicion ? setEditandoId(null) : abrirEdicion(a)}
-                      className="text-[11px] px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 hover:bg-slate-700">
+                      className="text-[11px] px-2.5 py-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
                       {enEdicion ? "Cancelar" : "Estado"}
                     </button>
                   </div>
@@ -1531,9 +1557,9 @@ export default function TutoriaAdmin() {
     .slice(0, 4);
   const alertasRestantes = Math.max(alertas.length - alertasDashboard.length, 0);
   const TABS = [
-    { id: "dashboard",      label: "Dashboard" + (alertasAltas > 0 ? ` (${alertasAltas})` : "") },
+    { id: "dashboard",      label: "Dashboard",        badge: alertasAltas > 0 ? alertasAltas : null },
     { id: "grupos",         label: "Grupos" },
-    { id: "canalizaciones", label: "Canalizaciones" + (dash?.canalizaciones_pendientes > 0 ? ` (${dash.canalizaciones_pendientes})` : "") },
+    { id: "canalizaciones", label: "Canalizaciones",   badge: (dash?.canalizaciones_pendientes > 0) ? dash.canalizaciones_pendientes : null },
     { id: "informes",       label: "Informes" },
     { id: "riesgo",         label: "Alumnos en riesgo" },
     { id: "reporte",        label: "Reporte general" },
@@ -1553,13 +1579,13 @@ export default function TutoriaAdmin() {
           <p className="text-sm text-slate-400 mt-1">P-DC-02 v08 · F-DC-07, F-DC-08 y F-DC-09</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button onClick={() => navigate("/admin/comunicados?nuevo=1&origen=tutoria")}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-semibold flex items-center gap-2">
-            Enviar comunicado a tutores
-          </button>
           <button onClick={() => setModal("importar")}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-sm font-semibold flex items-center gap-2">
+            className="px-4 py-2.5 rounded-xl border border-slate-600/80 text-slate-200 hover:bg-white/8 hover:border-slate-500 text-sm font-medium flex items-center gap-2 transition-colors">
             Importar estudio socioeconómico
+          </button>
+          <button onClick={() => navigate("/admin/comunicados?nuevo=1&origen=tutoria")}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center gap-2 transition-colors">
+            Enviar comunicado a tutores
           </button>
         </div>
       </div>
@@ -1568,10 +1594,17 @@ export default function TutoriaAdmin() {
       <div className={`flex flex-wrap gap-1 rounded-xl p-1 w-full max-w-full ${isDay ? "bg-white border border-slate-200" : "bg-slate-800/50"}`}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              tab === t.id ? "bg-blue-600 text-white shadow" : isDay ? "text-slate-600 hover:text-slate-950 hover:bg-slate-100" : "text-slate-400 hover:text-white"
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+              tab === t.id ? "bg-blue-600 text-white shadow" : isDay ? "text-slate-600 hover:text-slate-950 hover:bg-slate-100" : "text-slate-300 hover:text-white border border-transparent hover:border-white/10"
             }`}>
             {t.label}
+            {t.badge && (
+              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
+                tab === t.id ? "bg-white/25 text-white" : "bg-red-500/25 text-red-300"
+              }`}>
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -1616,7 +1649,7 @@ export default function TutoriaAdmin() {
                   <div className="space-y-2">
                     {dash.sesiones_por_tutor.map(t => (
                       <div key={t.tutor_id} className="flex items-center justify-between gap-3 text-xs">
-                        <span className="text-slate-300 truncate">{t.tutor_nombre}</span>
+                        <span className="text-slate-300 truncate">{toTitleCase(t.tutor_nombre)}</span>
                         <span className="text-slate-500 shrink-0">{t.sesiones} sesiones · {t.alumnos} alumnos</span>
                       </div>
                     ))}
@@ -1760,19 +1793,19 @@ export default function TutoriaAdmin() {
                 <p className="text-xs text-slate-500 mt-0.5">Todos los tutores han registrado sesiones recientes y no hay canalizaciones sin atender.</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className={`rounded-xl border divide-y ${isDay ? "border-slate-200 divide-slate-100" : "border-white/8 divide-white/6"}`}>
                 {alertasDashboard.map((a, i) => (
-                  <div key={i} className={`rounded-xl border px-4 py-3 ${
-                    a.nivel === "ALTO"
-                      ? "border-red-500/30 bg-red-950/15"
-                      : "border-amber-500/30 bg-amber-950/10"
-                  }`}>
+                  <div key={i} className="px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <span className="text-lg mt-0.5 shrink-0">
-                        {a.tipo === "SIN_SESION" ? "📅" : "🔴"}
+                      <span className={`text-base mt-0.5 shrink-0 ${a.nivel === "ALTO" ? "text-red-400" : "text-amber-400"}`}>
+                        {a.tipo === "SIN_SESION" ? (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        )}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-medium ${a.nivel === "ALTO" ? "text-red-200" : "text-amber-200"}`}>
+                        <p className={`text-sm font-medium ${isDay ? "text-slate-900" : "text-slate-100"}`}>
                           {a.mensaje}
                         </p>
                         <p className="text-xs text-slate-500 mt-0.5">{a.detalle}</p>
@@ -1782,7 +1815,7 @@ export default function TutoriaAdmin() {
                       }`}>{a.nivel}</span>
                     </div>
                     {/* Acciones directas */}
-                    <div className="flex gap-2 mt-2.5 ml-8 flex-wrap">
+                    <div className="flex gap-2 mt-2.5 ml-7 flex-wrap">
                       {a.tipo === "SIN_SESION" && a.grupo_id && (
                         <button
                           onClick={() => {
@@ -1812,12 +1845,14 @@ export default function TutoriaAdmin() {
                   </div>
                 ))}
                 {alertasRestantes > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setTab("programacion")}
-                    className="w-full rounded-xl border border-slate-700/70 bg-slate-800/35 px-4 py-3 text-sm text-slate-300 hover:bg-white/5">
-                    Ver {alertasRestantes} alerta(s) más en programación y seguimiento
-                  </button>
+                  <div className="px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setTab("programacion")}
+                      className="w-full rounded-lg px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors text-left">
+                      Ver {alertasRestantes} alerta(s) más en programación y seguimiento →
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -2102,7 +2137,7 @@ export default function TutoriaAdmin() {
                 const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a"); a.href = url;
-                a.download = `reporte_tutoria_${new Date().toISOString().slice(0,10)}.csv`;
+                a.download = `reporte_tutoria_${todayISOInMexico()}.csv`;
                 a.click(); URL.revokeObjectURL(url);
               }}
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-sm font-medium">
@@ -2181,11 +2216,13 @@ export default function TutoriaAdmin() {
                     return (
                       <tr key={i} className="border-b border-slate-800/60 hover:bg-white/3 transition-colors">
                         <td className="px-3 py-2.5 text-slate-300 font-mono text-xs">{r.matricula}</td>
-                        <td className="px-3 py-2.5 text-white font-medium max-w-[180px] truncate">{r.nombre}</td>
-                        <td className="px-3 py-2.5 text-slate-400 text-xs max-w-[120px] truncate">{r.carrera}</td>
+                        <td className="px-3 py-2.5 text-white font-medium min-w-[200px]">{toTitleCase(r.nombre)}</td>
+                        <td className="px-3 py-2.5 text-xs whitespace-nowrap" title={r.carrera}>
+                          <span className="text-slate-300 font-medium">{r.carrera_clave || (r.carrera ? r.carrera.split(' ').filter(w => w.length > 2).map(w => w[0]).join('').toUpperCase().slice(0,5) : '—')}</span>
+                        </td>
                         <td className="px-3 py-2.5 text-slate-400 text-center">{r.grupo}</td>
                         <td className="px-3 py-2.5 text-slate-500 text-xs whitespace-nowrap">{r.periodo}</td>
-                        <td className="px-3 py-2.5 text-slate-400 text-xs max-w-[120px] truncate">{r.tutor_nombre || "—"}</td>
+                        <td className="px-3 py-2.5 text-slate-300 text-xs max-w-[130px] truncate">{toTitleCase(r.tutor_nombre) || "—"}</td>
                         <td className="px-3 py-2.5">
                           <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border ${sem.cls}`}>
                             {sem.label.replace("Vulnerabilidad ", "")}
@@ -2214,8 +2251,8 @@ export default function TutoriaAdmin() {
                         </td>
                         <td className="px-3 py-2.5">
                           <button onClick={() => setModalSeguimiento(r.alumno_id)}
-                            className="text-xs text-blue-400 hover:text-blue-300 whitespace-nowrap">
-                            Ver →
+                            className="text-xs px-2.5 py-1 rounded-lg border border-slate-600 text-slate-300 hover:border-blue-500 hover:text-blue-400 transition-colors whitespace-nowrap">
+                            Ver detalle
                           </button>
                         </td>
                       </tr>

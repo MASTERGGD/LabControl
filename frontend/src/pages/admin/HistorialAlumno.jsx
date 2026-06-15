@@ -155,8 +155,11 @@ export default function HistorialAlumno() {
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)}
-            className="text-slate-400 hover:text-white transition-colors">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/8 transition-colors shrink-0"
+            title="Volver"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
@@ -168,19 +171,14 @@ export default function HistorialAlumno() {
         </div>
 
         {/* ── Buscador ────────────────────────────────────────────────────── */}
-        <div className="glass rounded-2xl p-6">
-          <label className="block text-sm text-slate-400 mb-1 font-medium">
-            🔍 Buscar alumno por nombre o matrícula
-          </label>
-          <p className="text-xs text-slate-500 mb-3">
-            Escribe el nombre del alumno o su número de matrícula
-          </p>
+        {/* Buscador compacto — sin caja dentro de caja, ancho contenido */}
+        <div className="glass rounded-2xl p-4">
           <form onSubmit={e => { e.preventDefault(); buscar(); }}
-                className="flex gap-3 items-end flex-wrap">
-            <div className="flex-1" style={{ minWidth: '220px', maxWidth: '380px', position: 'relative', zIndex: 10 }}>
+                className="flex gap-3 items-center flex-wrap max-w-2xl">
+            <div className="flex-1" style={{ minWidth: '220px', position: 'relative', zIndex: 10 }}>
               <AutocompleteInput
                 endpoint="/catalogo/alumnos/buscar"
-                placeholder="Ej: MENDOZA VERONICA o UTC250134"
+                placeholder="Ej: Mendoza Verónica o UTC250134"
                 value={inputVal}
                 onChange={handleInputChange}
                 onSelect={seleccionarAlumno}
@@ -301,6 +299,7 @@ export default function HistorialAlumno() {
                         onChange={e => setBusqueda(e.target.value)}
                         placeholder="Filtrar por materia, lab…"
                         className="input-dark pl-9 text-sm h-9 w-full"
+                        style={{ paddingLeft: 36 }}
                       />
                     </div>
                   </div>
@@ -386,9 +385,9 @@ export default function HistorialAlumno() {
         {!data && !loading && !error && (
           <div className="glass rounded-2xl py-20 text-center">
             <div className="text-5xl mb-4">🔍</div>
-            <p className="text-slate-400 font-medium">Ingresa una matrícula para consultar el historial</p>
-            <p className="text-slate-600 text-sm mt-1">
-              Podrás ver todos los laboratorios que ha usado, las horas acumuladas y las materias cursadas.
+            <p className="text-slate-300 font-semibold text-lg">Ingresa una matrícula para consultar el historial</p>
+            <p className="text-slate-600 text-xs mt-1.5 max-w-sm mx-auto leading-relaxed">
+              Verás los laboratorios usados, horas acumuladas y materias cursadas en una sola vista.
             </p>
           </div>
         )}

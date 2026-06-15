@@ -4,13 +4,20 @@ import { useAuth } from '../context/AuthContext';
 import AdminLayout from '../components/AdminLayout';
 import api from '../hooks/useApi';
 
+const esLabComputo = categoria => (categoria || '').toUpperCase() === 'COMPUTO';
+const resumenRecursosLab = lab => (
+  esLabComputo(lab.categoria)
+    ? `${lab.total_computadoras || 0} PCs`
+    : `${lab.capacidad || 0} puestos`
+);
+
 const ACCESOS = [
   { titulo: 'Laboratorios', texto: 'Alta, capacidad y equipos', ruta: '/admin/laboratorios', color: '#2563eb' },
   { titulo: 'Usuarios', texto: 'Roles y accesos del sistema', ruta: '/admin/usuarios', color: '#7c3aed' },
   { titulo: 'Departamentos', texto: 'Estructura institucional', ruta: '/admin/departamentos', color: '#0891b2' },
   { titulo: 'Comunicados', texto: 'Mensajes institucionales', ruta: '/admin/comunicados', color: '#059669' },
-  { titulo: 'Espacios', texto: 'Salas y areas compartidas', ruta: '/admin/espacios', color: '#d97706' },
-  { titulo: 'Auditoria', texto: 'Bitacora de actividad', ruta: '/admin/auditoria', color: '#dc2626' },
+  { titulo: 'Espacios', texto: 'Salas y áreas compartidas', ruta: '/admin/espacios', color: '#d97706' },
+  { titulo: 'Auditoría', texto: 'Bitácora de actividad', ruta: '/admin/auditoria', color: '#dc2626' },
 ];
 
 function CardKpi({ label, value, sub, color = '#3b82f6' }) {
@@ -107,7 +114,9 @@ export default function DashboardSuperAdmin() {
     };
   }, [labs, usuarios]);
 
-  const totalPcs = labs.reduce((sum, lab) => sum + (lab.total_computadoras || 0), 0);
+  const totalPcs = labs
+    .filter(lab => esLabComputo(lab.categoria))
+    .reduce((sum, lab) => sum + (lab.total_computadoras || 0), 0);
   const alertas = operacion?.alertas?.total ?? 0;
   const fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -117,12 +126,12 @@ export default function DashboardSuperAdmin() {
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <p className="text-xs font-semibold text-blue-400 uppercase tracking-[0.18em]" style={{ margin: 0 }}>
-              Administracion general
+              Administración general
             </p>
             <h1 className="text-2xl font-bold text-white mt-2" style={{ marginBottom: 0 }}>
-              Bienvenido, {usuario?.nombre?.split(' ')[0]}
+              Bienvenido, {usuario.nombre.split(' ')[0]}
             </h1>
-            <p className="text-sm text-slate-400 capitalize mt-1" style={{ marginBottom: 0 }}>{fecha}</p>
+            <p className="text-sm text-slate-400 mt-1" style={{ marginBottom: 0 }}>{fecha}</p>
           </div>
           <button onClick={() => navigate('/lab')} className="btn-ghost">
             Ver dashboard de laboratorios
@@ -139,7 +148,7 @@ export default function DashboardSuperAdmin() {
           <CardKpi label="Laboratorios activos" value={cargando ? '...' : resumen.labsActivos} sub={`${resumen.labsInactivos} inactivos`} color="#2563eb" />
           <CardKpi label="Usuarios activos" value={cargando ? '...' : resumen.usuariosActivos} sub={`${resumen.usuariosInactivos} inactivos`} color="#7c3aed" />
           <CardKpi label="Administradores lab" value={cargando ? '...' : resumen.adminsLab} sub="Responsables asignados" color="#a855f7" />
-          <CardKpi label="Docentes" value={cargando ? '...' : resumen.docentes} sub="Con acceso academico" color="#10b981" />
+          <CardKpi label="Docentes" value={cargando ? '...' : resumen.docentes} sub="Con acceso académico" color="#10b981" />
           <CardKpi label="Equipos registrados" value={cargando ? '...' : totalPcs} sub={`${alertas} alertas operativas`} color={alertas > 0 ? '#ef4444' : '#38bdf8'} />
         </div>
 
@@ -148,7 +157,7 @@ export default function DashboardSuperAdmin() {
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-lg font-bold text-white" style={{ margin: 0 }}>Accesos administrativos</h2>
-                <p className="text-sm text-slate-500 mt-1" style={{ marginBottom: 0 }}>Gestion global de plataforma, usuarios y modulos institucionales.</p>
+                <p className="text-sm text-slate-500 mt-1" style={{ marginBottom: 0 }}>Gestión global de plataforma, usuarios y módulos institucionales.</p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -159,7 +168,7 @@ export default function DashboardSuperAdmin() {
           </section>
 
           <section className="rounded-xl p-5" style={{ background: 'rgba(15,23,42,0.62)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <h2 className="text-lg font-bold text-white" style={{ margin: 0 }}>Mapa rapido de laboratorios</h2>
+            <h2 className="text-lg font-bold text-white" style={{ margin: 0 }}>Mapa rápido de laboratorios</h2>
             <div className="mt-4 space-y-3">
               {labs.slice(0, 6).map(lab => (
                 <button key={lab.id} onClick={() => navigate(`/admin/laboratorios/${lab.id}`)}
@@ -167,9 +176,9 @@ export default function DashboardSuperAdmin() {
                   style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-white truncate" style={{ margin: 0 }}>{lab.nombre}</p>
-                    <p className="text-xs text-slate-500 truncate" style={{ margin: 0 }}>{lab.ubicacion || 'Sin ubicacion'}</p>
+                    <p className="text-xs text-slate-500 truncate" style={{ margin: 0 }}>{lab.ubicacion || 'Sin ubicación'}</p>
                   </div>
-                  <span className="text-xs font-semibold text-slate-300 shrink-0">{lab.total_computadoras || 0} PCs</span>
+                  <span className="text-xs font-semibold text-slate-300 shrink-0">{resumenRecursosLab(lab)}</span>
                 </button>
               ))}
               {!cargando && labs.length === 0 && (

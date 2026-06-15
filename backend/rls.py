@@ -40,7 +40,7 @@ def lab_filter(query: Query, model, current_user: Usuario) -> Query:
         q = db.query(Activo)
         q = lab_filter(q, Activo, current_user)
     """
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         query = query.filter(model.laboratorio_id == current_user.laboratorio_id)
     return query
 
@@ -71,7 +71,7 @@ def usuario_lab_filter(query: Query, model, current_user: Usuario) -> Query:
       (un LAB_ADMIN necesita poder ver los docentes que reservan en su lab)
     - DOCENTE:     solo se ve a sí mismo.
     """
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         from sqlalchemy import or_
         query = query.filter(
             or_(
@@ -97,7 +97,7 @@ def assert_lab_write(target_lab_id: int | None, current_user: Usuario,
     Uso en POST/PUT/DELETE:
         assert_lab_write(data.laboratorio_id, current_user)
     """
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         if target_lab_id is None or target_lab_id != current_user.laboratorio_id:
             raise _403(detail)
 
@@ -120,7 +120,7 @@ def assert_resource_access(resource, current_user: Usuario,
     if resource is None:
         raise _404()
 
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         lab_id = getattr(resource, lab_id_attr, None)
         if lab_id != current_user.laboratorio_id:
             raise _404()  # 404 para no revelar que el recurso existe
@@ -154,7 +154,7 @@ def assert_report_access(target_lab_id: int, current_user: Usuario) -> None:
     Uso en GET /reportes/mensual:
         assert_report_access(laboratorio_id, current_user)
     """
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         if target_lab_id != current_user.laboratorio_id:
             raise _403("Solo puedes acceder a los reportes de tu laboratorio")
     elif current_user.rol == RolUsuario.DOCENTE:
@@ -176,6 +176,6 @@ def resolve_lab_id(requested_lab_id: int | None, current_user: Usuario) -> int |
         if lab_id:
             q = q.filter(Model.laboratorio_id == lab_id)
     """
-    if current_user.rol == RolUsuario.LAB_ADMIN:
+    if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         return current_user.laboratorio_id
     return requested_lab_id

@@ -51,6 +51,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./data:/app/data
     command: sh /app/start.sh
     restart: unless-stopped
     healthcheck:

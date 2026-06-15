@@ -8,6 +8,7 @@ import { ROUTE_PERMISSIONS } from './config/permissions';
 
 // Páginas
 import Login from './pages/Login';
+import CambiarPasswordObligatorio from './pages/CambiarPasswordObligatorio';
 import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardSuperAdmin from './pages/DashboardSuperAdmin';
 import DashboardDocente from './pages/DashboardDocente';
@@ -29,6 +30,7 @@ import Reportes from './pages/admin/Reportes';
 import AsistenciaSesion from './pages/admin/AsistenciaSesion';
 import HistorialAlumno from './pages/admin/HistorialAlumno';
 import Auditoria from './pages/admin/Auditoria';
+import RespaldosSistema from './pages/admin/RespaldosSistema';
 import Adeudos from './pages/admin/Adeudos';
 import ConsultaPersona from './pages/admin/ConsultaPersona';
 import SesionClase from './pages/docente/SesionClase';
@@ -59,6 +61,12 @@ function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) 
     return <Navigate to="/login" replace />;
   }
 
+  // Cambio de contraseña obligatorio pendiente: bloquear toda la app.
+  // (El backend también lo bloquea; esto evita pantallas rotas.)
+  if (usuario.debe_cambiar_password) {
+    return <Navigate to="/cambiar-password" replace />;
+  }
+
   // Determinar roles permitidos: parámetro explícito > ROUTE_PERMISSIONS > libre
   const allowed = rolesPermitidos ?? (path ? ROUTE_PERMISSIONS[path] : null);
 
@@ -82,6 +90,7 @@ function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) 
 const RUTAS_POR_ROL = {
   SUPER_ADMIN: '/admin',
   LAB_ADMIN:   '/lab',
+  RESPONSABLE_LAB: '/admin/inventario',
   ADMINISTRATIVO: '/administrativo',
   SERVICIOS_ESCOLARES: '/servicios-escolares',
   TUTORIA_ADMIN: '/admin/tutoria',
@@ -106,6 +115,9 @@ function AppRoutes() {
       {/* Pública */}
       <Route path="/login" element={<Login />} />
       <Route path="/autoasignacion/:token" element={<AutoAsignacion />} />
+
+      {/* Cambio de contraseña obligatorio (requiere sesión, sin rol) */}
+      <Route path="/cambiar-password" element={<CambiarPasswordObligatorio />} />
 
       {/* SUPER_ADMIN: dashboard general de plataforma */}
       <Route
@@ -155,7 +167,7 @@ function AppRoutes() {
       <Route
         path="/admin/laboratorios"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB']}>
             <Laboratorios />
           </RutaProtegida>
         }
@@ -163,7 +175,7 @@ function AppRoutes() {
       <Route
         path="/admin/laboratorios/:labId"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB']}>
             <LaboratorioDetalle />
           </RutaProtegida>
         }
@@ -181,7 +193,7 @@ function AppRoutes() {
       <Route
         path="/admin/departamentos"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN','ADMINISTRATIVO']}>
             <Departamentos />
           </RutaProtegida>
         }
@@ -201,32 +213,24 @@ function AppRoutes() {
 
       {/* Admin: Inventario y Préstamos */}
       <Route path="/admin/inventario" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO']} permisosPermitidos="inventario:write">
           <Inventario />
         </RutaProtegida>
       }/>
-      <Route path="/admin/inventario/bajas" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
-          <InventarioBajas />
-        </RutaProtegida>
-      }/>
-      <Route path="/admin/inventario/levantamientos" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
-          <InventarioLevantamientos />
-        </RutaProtegida>
-      }/>
+      <Route path="/admin/inventario/bajas" element={<Navigate to="/admin/inventario?tab=bajas" replace />}/>
+      <Route path="/admin/inventario/levantamientos" element={<Navigate to="/admin/inventario?tab=levantamientos" replace />}/>
       <Route path="/admin/prestamos" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB']}>
           <Prestamos />
         </RutaProtegida>
       }/>
       <Route path="/admin/mantenimiento" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO']}>
           <Mantenimiento />
         </RutaProtegida>
       }/>
       <Route path="/admin/catalogo" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
           <Catalogo />
         </RutaProtegida>
       }/>
@@ -236,7 +240,7 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/admin/historial-alumno" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
           <HistorialAlumno />
         </RutaProtegida>
       }/>
@@ -245,13 +249,18 @@ function AppRoutes() {
           <Auditoria />
         </RutaProtegida>
       }/>
+      <Route path="/admin/respaldos" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+          <RespaldosSistema />
+        </RutaProtegida>
+      }/>
       <Route path="/admin/adeudos" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
           <Adeudos />
         </RutaProtegida>
       }/>
       <Route path="/admin/consulta-persona" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
           <ConsultaPersona />
         </RutaProtegida>
       }/>
@@ -280,7 +289,7 @@ function AppRoutes() {
 
       {/* Comunicados Institucionales */}
       <Route path="/comunicados" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE']}>
           <MisComunicados />
         </RutaProtegida>
       }/>
@@ -351,7 +360,7 @@ function AppRoutes() {
 
       {/* Tutoría — panel responsable */}
       <Route path="/admin/tutoria" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','TUTORIA_ADMIN']}>
           <TutoriaAdmin />
         </RutaProtegida>
       }/>
@@ -375,7 +384,7 @@ function AppRoutes() {
 
       {/* Consultorio Médico */}
       <Route path="/medico/consultorio" element={
-        <RutaProtegida rolesPermitidos={['MEDICO','SUPER_ADMIN','LAB_ADMIN']}>
+        <RutaProtegida rolesPermitidos={['MEDICO','SUPER_ADMIN']}>
           <ConsultorioMedico />
         </RutaProtegida>
       }/>

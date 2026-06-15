@@ -38,7 +38,7 @@ const PRIORIDADES = [
   { v: 'IMPORTANTE',  l: 'Importante',  dot: 'bg-amber-400' },
   { v: 'URGENTE',     l: 'Urgente',     dot: 'bg-red-400'   },
 ];
-const ROLES_DESTINATARIO = ['DOCENTE', 'ADMINISTRATIVO', 'LAB_ADMIN', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'MEDICO'];
+const ROLES_DESTINATARIO = ['DOCENTE', 'ADMINISTRATIVO', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'MEDICO'];
 const SEGUIMIENTO_OPCIONES = [
   { v: '', l: 'Todos' },
   { v: 'CON_RESPUESTAS', l: 'Con respuestas' },

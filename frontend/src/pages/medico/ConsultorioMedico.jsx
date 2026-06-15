@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import AdminLayout from "../../components/AdminLayout";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
+import { useTheme } from "../../context/ThemeContext";
+import { dateToLocalISO, todayISOInMexico } from "../../utils/timezone";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const fmt = (iso) =>
@@ -9,12 +11,12 @@ const fmt = (iso) =>
 const fmtDT = (iso) =>
   iso ? new Date(iso).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => todayISOInMexico();
 const addDaysISO = (iso, days) => {
   if (!iso || !days) return "";
   const d = new Date(`${iso}T00:00:00`);
   d.setDate(d.getDate() + Number(days) - 1);
-  return d.toISOString().slice(0, 10);
+  return dateToLocalISO(d);
 };
 
 const MESES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -22,9 +24,10 @@ const SEXO_LABEL = { M: "Masculino", F: "Femenino", OTRO: "Otro" };
 const ORIGEN_LABEL = { ESPONTANEA: "Espontánea", CANALIZADA_TUTORIA: "Tutoría", CANALIZADA_INTERNA: "Interna" };
 const DESTINO_OPTS = ["PSICOLOGIA","TUTORIA","NUTRICION","HOSPITAL","OTRO"];
 const ALERTA_CLASES = {
-  danger: "border-red-400/50 bg-red-50 text-red-700",
-  warning: "border-yellow-400/50 bg-yellow-50 text-yellow-700",
-  info: "border-blue-400/50 bg-blue-50 text-blue-700",
+  // Texto muy oscuro/quemado sobre fondo pastel — ratio WCAG AA ≥ 4.5:1
+  danger:  "border-red-300    bg-red-50     text-red-900",
+  warning: "border-yellow-300 bg-yellow-50  text-amber-900",
+  info:    "border-blue-300   bg-blue-50    text-blue-900",
 };
 
 const calcIMC = (peso, talla) => {
@@ -153,6 +156,8 @@ function Campo({ label, value }) {
 // si se pasa, la consulta se registra como atención a ese referido de tutoría
 function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === "day";
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     temperatura: consulta?.temperatura || "",
@@ -263,7 +268,11 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
             <h3 className="font-semibold text-white">
               {consulta ? "✏️ Editar Consulta" : "🩺 Nueva Consulta"}
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{paciente.nombre}</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {paciente.nombre
+                ? paciente.nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                : "—"}
+            </p>
           </div>
           <div className="flex gap-2">
             {consulta && (
@@ -330,44 +339,69 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
 
           {/* Motivo y diagnóstico */}
           {imcTexto && (
-            <div className="rounded-xl border border-emerald-600/30 bg-emerald-50 px-4 py-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+            <div className="rounded-xl px-4 py-3" style={{
+              background: isDay ? '#ecfdf5' : 'rgba(16,185,129,0.1)',
+              border: `1px solid ${isDay ? '#6ee7b7' : 'rgba(16,185,129,0.25)'}`,
+            }}>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide dark:text-emerald-200">IMC calculado</span>
-                <span className="text-sm font-bold text-emerald-900 dark:text-emerald-100">{imcTexto}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide"
+                  style={{ color: isDay ? '#065f46' : '#6ee7b7' }}>IMC calculado</span>
+                <span className="text-sm font-bold"
+                  style={{ color: isDay ? '#064e3b' : '#ffffff' }}>{imcTexto}</span>
               </div>
               {imcOrientacion && (
-                <p className="text-xs text-emerald-800/80 dark:text-emerald-100/75 mt-1">{imcOrientacion}</p>
+                <p className="text-xs mt-1"
+                  style={{ color: isDay ? '#047857' : 'rgba(167,243,208,0.85)' }}>{imcOrientacion}</p>
               )}
             </div>
           )}
 
-          {!soloLectura && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Plantillas rapidas</p>
-              <div className="flex flex-wrap gap-2">
-                {PLANTILLAS_CONSULTA.map(tpl => (
-                  <button
-                    key={tpl.nombre}
-                    type="button"
-                    onClick={() => aplicarPlantilla(tpl)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-emerald-700/30 border border-white/10 text-xs text-slate-200 transition-colors">
-                    {tpl.nombre}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Motivo de consulta */}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Motivo de consulta *</label>
               <textarea value={form.motivo_consulta} onChange={e => set("motivo_consulta", e.target.value)}
-                rows={3} required className="input-dark w-full resize-none" placeholder="Describe el motivo..." />
+                rows={4} required disabled={soloLectura}
+                className="input-dark w-full resize-none placeholder:text-slate-400"
+                placeholder="Describe el motivo de la visita..." />
             </div>
+
+            {/* Diagnóstico + plantillas rápidas encima */}
             <div>
+              {!soloLectura && (
+                <div className="mb-2">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Plantillas rápidas
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PLANTILLAS_CONSULTA.map(tpl => {
+                      // Nombres con acentos y capitalización correcta
+                      const etiqueta = tpl.nombre
+                        .replace("Presion", "Presión")
+                        .replace("Curacion", "Curación");
+                      const activa = form.diagnostico === tpl.diagnostico || form.motivo_consulta === tpl.motivo_consulta;
+                      return (
+                        <button
+                          key={tpl.nombre}
+                          type="button"
+                          onClick={() => aplicarPlantilla(tpl)}
+                          className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
+                            activa
+                              ? "bg-emerald-600/25 border-emerald-500/50 text-emerald-300"
+                              : "bg-slate-800/70 border-white/10 text-slate-300 hover:bg-emerald-700/20 hover:border-emerald-600/30 hover:text-emerald-200"
+                          }`}>
+                          {etiqueta}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <label className="block text-xs text-slate-400 mb-1">Diagnóstico *</label>
               <textarea value={form.diagnostico} onChange={e => set("diagnostico", e.target.value)}
-                rows={3} required className="input-dark w-full resize-none" placeholder="Diagnóstico médico..." />
+                rows={soloLectura ? 4 : 3} required disabled={soloLectura}
+                className="input-dark w-full resize-none placeholder:text-slate-400"
+                placeholder="Diagnóstico médico..." />
             </div>
           </div>
 
@@ -375,18 +409,24 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
           <div>
             <label className="block text-xs text-slate-400 mb-1">Medicamentos (uno por línea)</label>
             <textarea value={form.medicamentos} onChange={e => set("medicamentos", e.target.value)}
-              rows={3} className="input-dark w-full resize-none font-mono text-sm"
+              rows={3} disabled={soloLectura}
+              className="input-dark w-full resize-none font-mono text-sm placeholder:text-slate-400"
               placeholder={"Paracetamol 500mg c/8h por 3 días\nIbuprofeno 400mg c/12h por 5 días"} />
           </div>
           <div>
             <label className="block text-xs text-slate-400 mb-1">Indicaciones y cuidados</label>
             <textarea value={form.indicaciones} onChange={e => set("indicaciones", e.target.value)}
-              rows={2} className="input-dark w-full resize-none"
+              rows={2} disabled={soloLectura}
+              className="input-dark w-full resize-none placeholder:text-slate-400"
+              autoCapitalize="sentences"
               placeholder="Reposo, hidratación, dieta blanda..." />
           </div>
 
-          {/* Incapacidad */}
+          {/* Opciones adicionales — Incapacidad y Seguimiento agrupadas */}
           <div className="bg-slate-800/40 rounded-xl p-4 space-y-3">
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Opciones adicionales</p>
+
+            {/* Incapacidad */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.genera_incapacidad}
                 disabled={soloLectura}
@@ -395,11 +435,11 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
                   genera_incapacidad: e.target.checked,
                   fecha_inicio_incapacidad: e.target.checked && !f.fecha_inicio_incapacidad ? todayISO() : f.fecha_inicio_incapacidad,
                 }))}
-                className="rounded border-slate-600" />
+                className="rounded border-slate-600 accent-emerald-500" />
               <span className="text-sm text-slate-300">Genera incapacidad</span>
             </label>
             {form.genera_incapacidad && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pl-6">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Días de incapacidad</label>
                   <input type="number" min="1" value={form.dias_incapacidad}
@@ -421,35 +461,39 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Seguimiento */}
-          <div className="bg-slate-800/40 rounded-xl p-4 space-y-3">
+            {/* Divider sutil */}
+            <div className="border-t border-white/6" />
+
+            {/* Seguimiento */}
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.requiere_seguimiento}
+                disabled={soloLectura}
                 onChange={e => set("requiere_seguimiento", e.target.checked)}
-                className="rounded border-slate-600" />
+                className="rounded border-slate-600 accent-emerald-500" />
               <span className="text-sm text-slate-300">Requiere seguimiento</span>
             </label>
             {form.requiere_seguimiento && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 pl-6">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Fecha de cita</label>
                   <input type="date" value={form.fecha_seguimiento}
+                    disabled={soloLectura}
                     onChange={e => set("fecha_seguimiento", e.target.value)}
                     className="input-dark w-full" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Estado</label>
                   <div className="input-dark w-full flex items-center text-sm text-slate-300">
-                    {form.seguimiento_estado === "PENDIENTE" ? "Pendiente automatico" : form.seguimiento_estado}
+                    {form.seguimiento_estado === "PENDIENTE" ? "Pendiente automático" : form.seguimiento_estado}
                   </div>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <label className="block text-xs text-slate-400 mb-1">Notas de seguimiento</label>
                   <input type="text" value={form.seguimiento_notas}
+                    disabled={soloLectura}
                     onChange={e => set("seguimiento_notas", e.target.value)}
-                    className="input-dark w-full" placeholder="Indicaciones..." />
+                    className="input-dark w-full" placeholder="Indicaciones para la próxima cita..." />
                 </div>
               </div>
             )}
@@ -459,11 +503,11 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
           {!consulta && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                  Canalizaciones (opcional)
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Canalizaciones <span className="normal-case font-normal">(opcional)</span>
                 </p>
                 <button type="button" onClick={addCan}
-                  className="text-xs px-2 py-1 rounded-lg bg-blue-700/30 hover:bg-blue-700/50 text-blue-300">
+                  className="text-xs px-3 py-1 rounded-lg border border-emerald-500/60 text-emerald-600 hover:bg-emerald-50 transition-colors font-medium">
                   + Agregar
                 </button>
               </div>
@@ -485,9 +529,13 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
 
           {/* Acciones */}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+            <button type="button" onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 text-sm font-medium hover:bg-slate-800 transition-colors">
+              Cancelar
+            </button>
             {!soloLectura && (
-              <button type="submit" disabled={loading} className="btn-blue flex-1">
+              <button type="submit" disabled={loading}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors disabled:opacity-50">
                 {loading ? "Guardando..." : "Registrar Consulta"}
               </button>
             )}
@@ -625,10 +673,19 @@ function ModalPaciente({ onSelect, onClose }) {
         <div className="p-6 space-y-4">
           {/* Tabs */}
           <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 text-xs">
-            {[["buscar","🔍 Ya atendido"],["alumno","🎓 Alumno"],["personal","🏢 Personal"]].map(([k,l]) => (
+            {[
+              { k: "buscar",   icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>, label: "Ya atendido" },
+              { k: "alumno",   icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" /></svg>, label: "Alumno" },
+              { k: "personal", icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c0 1.657 1.343 3 3 3h.5" /></svg>, label: "Personal" },
+            ].map(({ k, icon, label }) => (
               <button key={k} onClick={() => { setTab(k); setPersonalSel(null); setAlumnoSel(null); }}
-                className={`flex-1 py-1.5 rounded-lg font-medium transition-colors ${tab === k ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>
-                {l}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-lg font-medium transition-colors ${
+                  tab === k
+                    ? "bg-emerald-600 text-white"
+                    : "text-slate-300 hover:text-white hover:bg-white/8"
+                }`}>
+                {icon}
+                {label}
               </button>
             ))}
           </div>
@@ -636,12 +693,14 @@ function ModalPaciente({ onSelect, onClose }) {
           {/* Tab: Buscar paciente ya registrado */}
           {tab === "buscar" && (
             <div className="space-y-3">
-              <p className="text-xs text-slate-500">Pacientes que ya han sido atendidos antes</p>
               <div className="flex gap-2">
                 <input type="text" value={qPaciente} onChange={e => setQPaciente(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && buscarPaciente()}
-                  className="input-dark flex-1" placeholder="Nombre o matrícula/empleado..." />
-                <button onClick={buscarPaciente} className="btn-blue px-4 text-sm">Buscar</button>
+                  className="input-dark flex-1 h-11" placeholder="Nombre o matrícula/empleado..." />
+                <button onClick={buscarPaciente}
+                  className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shrink-0">
+                  Buscar
+                </button>
               </div>
               {buscando && <p className="text-slate-400 text-sm text-center animate-pulse">Buscando…</p>}
               <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -667,29 +726,43 @@ function ModalPaciente({ onSelect, onClose }) {
           {/* Tab: Alumno del catálogo */}
           {tab === "alumno" && !alumnoSel && (
             <div className="space-y-3">
-              <p className="text-xs text-slate-500">Busca por nombre, apellido o matrícula</p>
               <div className="flex gap-2">
                 <input type="text" value={qAlumno} onChange={e => setQAlumno(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && buscarAlumno()}
-                  className="input-dark flex-1" placeholder="Ej: García, VERO, 23010001..." />
-                <button onClick={buscarAlumno} className="btn-blue px-4 text-sm">Buscar</button>
+                  className="input-dark flex-1 h-11" placeholder="Ej: García, VERO, 23010001..." />
+                <button onClick={buscarAlumno}
+                  className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shrink-0">
+                  Buscar
+                </button>
               </div>
               {buscando && <p className="text-slate-400 text-sm text-center animate-pulse">Buscando…</p>}
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {alumnosBS.map(a => (
-                  <button key={a.id} onClick={() => { setAlumnoSel(a); setSexoAlumno(""); setFnAlumno(""); }}
-                    className="w-full text-left p-3 rounded-xl bg-slate-700/40 hover:bg-slate-700/70 transition-colors">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-sm text-white font-medium">{a.nombre}</p>
-                        <p className="text-xs text-slate-400">
-                          {a.matricula} · {a.carrera || "Sin carrera"} · {a.grupo} · {a.periodo}
-                        </p>
+                {alumnosBS.map(a => {
+                  const nombreFmt = a.nombre
+                    ? a.nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                    : "—";
+                  const carreraFmt = a.carrera
+                    ? a.carrera.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                    : "Sin carrera";
+                  const meta = [a.matricula, carreraFmt, a.grupo && a.grupo !== "N/A" ? a.grupo : null, a.periodo].filter(Boolean).join(" · ");
+                  return (
+                    <button key={a.id} onClick={() => {
+                      setAlumnoSel(a);
+                      // Pre-llenar si el catálogo ya tiene estos datos
+                      setSexoAlumno(a.sexo || "");
+                      setFnAlumno(a.fecha_nacimiento || "");
+                    }}
+                      className="w-full text-left p-3 rounded-xl bg-slate-700/40 hover:bg-slate-700/70 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-white font-medium">{nombreFmt}</p>
+                          <p className="text-xs text-slate-400">{meta}</p>
+                        </div>
+                        <span className="text-xs text-emerald-400 ml-2 flex-shrink-0">Seleccionar →</span>
                       </div>
-                      <span className="text-xs text-blue-400 ml-2 flex-shrink-0">Seleccionar →</span>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
                 {alumnosBS.length === 0 && qAlumno.length >= 2 && !buscando && (
                   <p className="text-slate-500 text-sm text-center py-2">Sin resultados</p>
                 )}
@@ -697,53 +770,95 @@ function ModalPaciente({ onSelect, onClose }) {
             </div>
           )}
 
-          {tab === "alumno" && alumnoSel && (
-            <form onSubmit={registrarAlumno} className="space-y-4">
-              <div className="rounded-xl bg-slate-800/50 border border-white/10 p-4">
-                <p className="text-sm text-white font-medium">{alumnoSel.nombre}</p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {alumnoSel.matricula} · {alumnoSel.carrera || "Sin carrera"} · {alumnoSel.grupo || "Sin grupo"}
-                </p>
-              </div>
-              <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3">
-                <p className="text-xs text-yellow-100">
-                  Estos datos alimentan la receta medica. Si se dejan vacios, Sexo y Edad apareceran como no disponibles.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Sexo</label>
-                  <select value={sexoAlumno} onChange={e => setSexoAlumno(e.target.value)}
-                    className="input-dark w-full">
-                    <option value="">Seleccionar</option>
-                    <option value="F">Femenino</option>
-                    <option value="M">Masculino</option>
-                    <option value="OTRO">Otro</option>
-                  </select>
+          {tab === "alumno" && alumnoSel && (() => {
+            const nombreFmt = alumnoSel.nombre
+              ? alumnoSel.nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+              : "—";
+            const carreraFmt = alumnoSel.carrera
+              ? alumnoSel.carrera.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+              : null;
+            const meta = [
+              alumnoSel.matricula,
+              carreraFmt,
+              alumnoSel.grupo && alumnoSel.grupo !== "N/A" ? alumnoSel.grupo : null,
+            ].filter(Boolean).join(" · ");
+            const sexoPrecargado = !!alumnoSel.sexo;
+            const fnPrecargada   = !!alumnoSel.fecha_nacimiento;
+            const todosPrecargados = sexoPrecargado && fnPrecargada;
+            return (
+              <form onSubmit={registrarAlumno} className="space-y-4">
+                {/* Paciente identificado */}
+                <div className="rounded-xl bg-slate-800/50 border border-white/10 p-4">
+                  <p className="text-sm text-white font-semibold">{nombreFmt}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{meta}</p>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Fecha de nacimiento</label>
-                  <input type="date" value={fnAlumno}
-                    onChange={e => setFnAlumno(e.target.value)}
-                    className="input-dark w-full" />
+
+                {/* Aviso solo si faltan datos */}
+                {!todosPrecargados && (
+                  <div className="rounded-xl border border-yellow-300 bg-yellow-50 p-3">
+                    <p className="text-xs text-amber-900 font-medium">
+                      Estos datos alimentan la receta médica. Si se dejan vacíos, Sexo y Edad aparecerán como no disponibles.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-400">Sexo</label>
+                      {sexoPrecargado && <span className="text-[10px] text-emerald-500">Desde escolares</span>}
+                    </div>
+                    {sexoPrecargado ? (
+                      <div className="input-dark w-full flex items-center text-sm opacity-70 cursor-default select-none">
+                        {SEXO_LABEL[sexoAlumno] || sexoAlumno}
+                      </div>
+                    ) : (
+                      <select value={sexoAlumno} onChange={e => setSexoAlumno(e.target.value)}
+                        className="input-dark w-full">
+                        <option value="">Seleccionar</option>
+                        <option value="F">Femenino</option>
+                        <option value="M">Masculino</option>
+                        <option value="OTRO">Otro</option>
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-400">Fecha de nacimiento</label>
+                      {fnPrecargada && <span className="text-[10px] text-emerald-500">Desde escolares</span>}
+                    </div>
+                    <input type="date" value={fnAlumno}
+                      readOnly={fnPrecargada}
+                      onChange={e => !fnPrecargada && setFnAlumno(e.target.value)}
+                      className={`input-dark w-full ${fnPrecargada ? "opacity-70 cursor-default" : ""}`} />
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setAlumnoSel(null)} className="btn-ghost flex-1 text-sm">Volver</button>
-                <button type="submit" className="btn-blue flex-1 text-sm">Confirmar y continuar</button>
-              </div>
-            </form>
-          )}
+
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setAlumnoSel(null)}
+                    className="flex-1 py-2 rounded-xl border border-slate-600 text-slate-300 text-sm hover:bg-slate-800 transition-colors">
+                    Volver
+                  </button>
+                  <button type="submit"
+                    className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">
+                    Confirmar y continuar
+                  </button>
+                </div>
+              </form>
+            );
+          })()}
 
           {/* Tab: Personal del sistema (docentes / administrativos) */}
           {tab === "personal" && !personalSel && (
             <div className="space-y-3">
-              <p className="text-xs text-slate-500">Busca docentes y administrativos registrados en el sistema</p>
               <div className="flex gap-2">
                 <input type="text" value={qPersonal} onChange={e => setQPersonal(e.target.value)}
                   onKeyDown={e => e.key === "Enter" && buscarPersonal()}
-                  className="input-dark flex-1" placeholder="Nombre o número de empleado..." />
-                <button onClick={buscarPersonal} className="btn-blue px-4 text-sm">Buscar</button>
+                  className="input-dark flex-1 h-11" placeholder="Nombre o número de empleado..." />
+                <button onClick={buscarPersonal}
+                  className="h-11 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shrink-0">
+                  Buscar
+                </button>
               </div>
               {buscando && <p className="text-slate-400 text-sm text-center animate-pulse">Buscando…</p>}
               <div className="space-y-2 max-h-52 overflow-y-auto">
@@ -900,30 +1015,43 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
   const seguimientosPendientes = expediente.consultas.filter(
     c => c.requiere_seguimiento && c.seguimiento_estado === "PENDIENTE"
   );
+  const hoyStr = todayISOInMexico();
+  const esVencido = c => c.fecha_seguimiento && c.fecha_seguimiento < hoyStr;
 
   return (
     <div className="space-y-4">
       {/* Header paciente */}
-      <div className="glass p-4 rounded-2xl flex items-start justify-between">
+      <div className="glass p-4 rounded-2xl flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-white font-bold text-lg">{expediente.nombre}</h3>
-          <div className="flex gap-2 mt-1 flex-wrap">
-            <Chip color={expediente.tipo === "ALUMNO" ? "blue" : "cyan"} text={expediente.tipo} />
-            {expediente.sexo && <Chip text={SEXO_LABEL[expediente.sexo] || expediente.sexo} />}
-            {expediente.carrera && <Chip color="emerald" text={expediente.carrera} />}
-            {expediente.departamento && <Chip color="cyan" text={expediente.departamento} />}
+          <h3 className="text-white font-bold text-lg">
+            {expediente.nombre
+              ? expediente.nombre.toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase())
+              : "—"}
+          </h3>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {/* Tag tipo neutro */}
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-white/10 text-slate-300 border border-white/15">
+              {expediente.tipo === "ALUMNO" ? "Alumno" : "Personal"}
+            </span>
+            {/* Metadatos secundarios inline */}
+            {[
+              expediente.matricula_o_emp,
+              expediente.sexo ? (SEXO_LABEL[expediente.sexo] || expediente.sexo) : null,
+              expediente.carrera || expediente.departamento,
+            ].filter(Boolean).map((m, i) => (
+              <span key={i} className="text-xs text-slate-400">{i > 0 ? `• ${m}` : m}</span>
+            ))}
           </div>
-          {expediente.matricula_o_emp && (
-            <p className="text-xs text-slate-500 mt-1">
-              {expediente.tipo === "ALUMNO" ? "Matrícula" : "Empleado"}: {expediente.matricula_o_emp}
-            </p>
-          )}
         </div>
-        <div className="flex gap-2">
-          <button onClick={onNuevaConsulta} className="btn-blue text-sm px-4">
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={onNuevaConsulta}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">
             + Nueva consulta
           </button>
-          <button onClick={onClose} className="btn-ghost text-sm px-3">Cerrar</button>
+          <button onClick={onClose}
+            className="px-3 py-2 rounded-xl border border-white/15 text-slate-300 hover:bg-white/8 text-sm transition-colors">
+            Cerrar
+          </button>
         </div>
       </div>
 
@@ -997,49 +1125,90 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
       </div>
 
       {seguimientosPendientes.length > 0 && (
-        <div className="glass p-4 rounded-2xl border border-blue-500/30 bg-blue-500/5">
+        <div className={`glass p-4 rounded-2xl ${
+          seguimientosPendientes.some(esVencido)
+            ? 'border border-red-500/30 bg-red-500/5'
+            : 'border border-blue-500/30 bg-blue-500/5'
+        }`}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Seguimientos pendientes</p>
-              <p className="text-xs text-slate-400 mt-0.5">Atenciones que deben regresar al consultorio medico.</p>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${
+                seguimientosPendientes.some(esVencido) ? 'text-red-400' : 'text-blue-300'
+              }`}>Seguimientos pendientes</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {seguimientosPendientes.some(esVencido)
+                  ? 'Uno o más seguimientos ya vencieron — marcar el resultado.'
+                  : 'Atenciones que deben regresar al consultorio médico.'}
+              </p>
             </div>
-            <Chip color="blue" text={`${seguimientosPendientes.length} pendiente(s)`} />
+            <div className="flex items-center gap-2">
+              {seguimientosPendientes.some(esVencido) && (
+                <Chip color="red" text={`${seguimientosPendientes.filter(esVencido).length} vencido(s)`} />
+              )}
+              <Chip color="blue" text={`${seguimientosPendientes.length} pendiente(s)`} />
+            </div>
           </div>
           <div className="space-y-3">
-            {seguimientosPendientes.map(c => (
-              <div key={`seg-${c.id}`} className="rounded-xl bg-white border border-slate-200 p-3 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm text-slate-800 font-semibold">{c.diagnostico}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{c.motivo_consulta}</p>
-                  <p className="text-xs text-blue-600 mt-2">
-                    Programado: {fmt(c.fecha_seguimiento)}
-                    {c.seguimiento_notas ? ` · ${c.seguimiento_notas}` : ""}
-                  </p>
+            {seguimientosPendientes.map(c => {
+              const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "—";
+              const vencido = esVencido(c);
+
+              const marcarEstado = async (estado) => {
+                try {
+                  await api.patch(`/consultorio/consultas/${c.id}/seguimiento-estado?estado=${estado}`);
+                  showToast(
+                    estado === "NO_PRESENTO" ? "Registrado: paciente no se presentó" :
+                    estado === "CANCELADO"   ? "Seguimiento cancelado" : "Seguimiento cerrado",
+                    estado === "NO_PRESENTO" ? "warning" : "success"
+                  );
+                  cargarExpediente();
+                } catch {
+                  showToast("Error al actualizar seguimiento", "error");
+                }
+              };
+
+              return (
+                <div key={`seg-${c.id}`} className={`rounded-xl p-3 flex items-start justify-between gap-3 ${
+                  vencido
+                    ? 'bg-red-50 border border-red-200'
+                    : 'bg-white border border-slate-200'
+                }`}>
+                  <div className="min-w-0">
+                    {vencido && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600 bg-red-100 border border-red-200 rounded-full px-2 py-0.5 mb-1.5">
+                        ⚠ Vencido
+                      </span>
+                    )}
+                    <p className="text-sm text-slate-800 font-semibold">{cap(c.diagnostico)}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{cap(c.motivo_consulta)}</p>
+                    <p className={`text-xs mt-1.5 ${vencido ? 'text-red-500 font-medium' : 'text-blue-600'}`}>
+                      Programado: {fmt(c.fecha_seguimiento)}
+                      {c.seguimiento_notas ? ` · ${c.seguimiento_notas}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSeguimientoSel(c)}
+                      className="px-3 py-1.5 rounded-lg border border-emerald-500/60 text-emerald-600 hover:bg-emerald-50 text-xs font-semibold transition-colors whitespace-nowrap">
+                      ✓ Asistió — Atender
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => marcarEstado("NO_PRESENTO")}
+                      className="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-xs font-medium transition-colors whitespace-nowrap">
+                      ✕ No se presentó
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => marcarEstado("CANCELADO")}
+                      className="text-xs text-slate-400 hover:text-slate-600 transition-colors px-1">
+                      Cancelar cita
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setSeguimientoSel(c)}
-                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold">
-                    Atender seguimiento
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await api.put(`/consultorio/consultas/${c.id}`, { seguimiento_estado: "CERRADO" });
-                        showToast("Seguimiento cerrado", "success");
-                        cargarExpediente();
-                      } catch {
-                        showToast("Error al cerrar seguimiento", "error");
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-white/10">
-                    Cerrar
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1077,13 +1246,15 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
           <p className="text-slate-500 text-sm text-center py-6">Sin consultas registradas</p>
         )}
         <div className="space-y-3">
-          {expediente.consultas.map(c => (
+          {expediente.consultas.map(c => {
+            const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : "—";
+            return (
             <div key={c.id} className="bg-white border border-slate-200 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
               onClick={() => setConsultaSel(c)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-slate-800 font-semibold">{c.diagnostico}</p>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">{c.motivo_consulta}</p>
+                  <p className="text-sm text-slate-800 font-semibold">{cap(c.diagnostico)}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">{cap(c.motivo_consulta)}</p>
                   <div className="flex gap-1.5 mt-2 flex-wrap">
                     <Chip color="slate" text={fmtDT(c.fecha_consulta)} />
                     <Chip color={c.origen === "ESPONTANEA" ? "emerald" : "yellow"} text={ORIGEN_LABEL[c.origen] || c.origen} />
@@ -1100,7 +1271,8 @@ function ExpedientePaciente({ paciente, onNuevaConsulta, onClose }) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -1200,32 +1372,21 @@ function Estadisticas() {
       {/* KPIs */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
         {[
-          { label: "Consultas periodo", value: stats.total_periodo ?? stats.total_anio, color: "blue", icon: "🩺" },
-          { label: "Consultas año",     value: stats.total_anio,              color: "blue",    icon: "🩺" },
-          { label: "Este mes",          value: stats.consultas_mes_actual,     color: "emerald", icon: "📅" },
-          { label: "Incapacidades",     value: stats.incapacidades_anio,       color: "red",     icon: "📋" },
-          { label: "Seguimientos pend.",value: stats.seguimientos_pendientes,  color: "yellow",  icon: "🔔" },
-          { label: "Canalizaciones pend.", value: stats.canalizaciones_pendientes, color: "cyan", icon: "➡️" },
-        ].map(({ label, value, color, icon }) => {
-          const cls = {
-            blue:    "border-blue-200    bg-blue-50",
-            emerald: "border-emerald-200 bg-emerald-50",
-            red:     "border-red-200     bg-red-50",
-            yellow:  "border-yellow-200  bg-yellow-50",
-            cyan:    "border-cyan-200    bg-cyan-50",
-          }[color];
-          const tcls = {
-            blue: "text-blue-700", emerald: "text-emerald-700",
-            red: "text-red-700",   yellow: "text-yellow-700", cyan: "text-cyan-700",
-          }[color];
-          return (
-            <div key={label} className={`border ${cls} p-3 rounded-xl text-center bg-white`}>
-              <div className="text-xl mb-0.5">{icon}</div>
-              <div className={`text-xl font-bold ${tcls}`}>{value}</div>
-              <div className="text-xs text-slate-500 mt-0.5 leading-tight">{label}</div>
+          { label: "Consultas periodo",    value: stats.total_periodo ?? stats.total_anio,     numCls: "text-blue-600",    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
+          { label: "Consultas año",        value: stats.total_anio,                            numCls: "text-blue-600",    icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> },
+          { label: "Este mes",             value: stats.consultas_mes_actual,                  numCls: "text-emerald-600", icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg> },
+          { label: "Incapacidades",        value: stats.incapacidades_anio,                    numCls: (stats.incapacidades_anio > 0) ? "text-red-600" : "text-slate-700", icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> },
+          { label: "Seguimientos pend.",   value: stats.seguimientos_pendientes,               numCls: (stats.seguimientos_pendientes > 0) ? "text-amber-500" : "text-slate-700", icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg> },
+          { label: "Canalizaciones pend.", value: stats.canalizaciones_pendientes,             numCls: (stats.canalizaciones_pendientes > 0) ? "text-cyan-600" : "text-slate-700", icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg> },
+        ].map(({ label, value, numCls, icon }) => (
+          <div key={label} className="border border-slate-200 bg-white p-3 rounded-xl text-center">
+            <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center mx-auto mb-1.5 text-slate-500">
+              {icon}
             </div>
-          );
-        })}
+            <div className={`text-xl font-bold ${numCls}`}>{value ?? 0}</div>
+            <div className="text-xs text-slate-500 mt-0.5 leading-tight">{label}</div>
+          </div>
+        ))}
       </div>
 
       {/* Gráfica por mes */}
@@ -1282,12 +1443,16 @@ function Estadisticas() {
         <div className="bg-white border border-slate-200 p-4 rounded-2xl">
           <p className="text-sm font-semibold text-slate-600 mb-3">Por Tipo</p>
           <div className="space-y-2">
-            {Object.entries(stats.por_tipo).map(([tipo, cnt]) => (
-              <div key={tipo} className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">{tipo}</span>
-                <span className="text-sm font-bold text-slate-800">{cnt}</span>
-              </div>
-            ))}
+            {Object.entries(stats.por_tipo).map(([tipo, cnt]) => {
+              const tipoLabel = tipo === "ALUMNO" ? "Alumno" : tipo === "ADMINISTRATIVO" ? "Administrativo" :
+                tipo.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+              return (
+                <div key={tipo} className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-slate-600">{tipoLabel}</span>
+                  <span className="text-sm font-semibold text-slate-800">{cnt}</span>
+                </div>
+              );
+            })}
             {Object.keys(stats.por_tipo).length === 0 && (
               <p className="text-slate-400 text-sm">Sin datos</p>
             )}
@@ -1316,12 +1481,17 @@ function Estadisticas() {
         <div className="bg-white border border-slate-200 p-4 rounded-2xl">
           <p className="text-sm font-semibold text-slate-600 mb-3">Por carrera/departamento</p>
           <div className="space-y-2">
-            {Object.entries(stats.por_area || {}).slice(0, 8).map(([area, cnt]) => (
-              <div key={area} className="flex items-center justify-between gap-3">
-                <span className="text-sm text-slate-600 truncate">{area}</span>
-                <span className="text-sm font-bold text-slate-800">{cnt}</span>
-              </div>
-            ))}
+            {Object.entries(stats.por_area || {}).slice(0, 8).map(([area, cnt]) => {
+              const areaFmt = area
+                ? area.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
+                : "Sin área";
+              return (
+                <div key={area} className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-slate-600 truncate">{areaFmt}</span>
+                  <span className="text-sm font-semibold text-slate-800 shrink-0">{cnt}</span>
+                </div>
+              );
+            })}
             {Object.keys(stats.por_area || {}).length === 0 && (
               <p className="text-slate-400 text-sm">Sin datos</p>
             )}
@@ -1331,13 +1501,18 @@ function Estadisticas() {
         <div className="bg-white border border-slate-200 p-4 rounded-2xl">
           <p className="text-sm font-semibold text-slate-600 mb-3">Motivos frecuentes</p>
           <div className="space-y-2">
-            {(stats.top_motivos || []).slice(0, 6).map(({ motivo, total }, i) => (
-              <div key={`${motivo}-${i}`} className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 w-5 text-right">{i + 1}.</span>
-                <span className="text-sm text-slate-600 flex-1 truncate">{motivo}</span>
-                <span className="text-sm font-bold text-slate-800">{total}</span>
-              </div>
-            ))}
+            {(stats.top_motivos || []).slice(0, 6).map(({ motivo, total }, i) => {
+              const motivoFmt = motivo
+                ? motivo.charAt(0).toUpperCase() + motivo.slice(1).toLowerCase()
+                : "—";
+              return (
+                <div key={`${motivo}-${i}`} className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400 w-5 text-right shrink-0">{i + 1}.</span>
+                  <span className="text-sm text-slate-600 flex-1 truncate">{motivoFmt}</span>
+                  <span className="text-sm font-semibold text-slate-800 shrink-0">{total}</span>
+                </div>
+              );
+            })}
             {(stats.top_motivos || []).length === 0 && (
               <p className="text-slate-400 text-sm">Sin datos</p>
             )}
@@ -1348,22 +1523,17 @@ function Estadisticas() {
       <div className="bg-white border border-slate-200 p-4 rounded-2xl">
         <p className="text-sm font-semibold text-slate-600 mb-3">Alertas operativas</p>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-            <p className="text-xs text-red-600">Incapacidades activas</p>
-            <p className="text-2xl font-bold text-red-700">{stats.incapacidades_activas || 0}</p>
-          </div>
-          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-3">
-            <p className="text-xs text-yellow-600">Seguimientos vencidos</p>
-            <p className="text-2xl font-bold text-yellow-700">{stats.seguimientos_vencidos || 0}</p>
-          </div>
-          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3">
-            <p className="text-xs text-cyan-600">Canalizaciones pendientes</p>
-            <p className="text-2xl font-bold text-cyan-700">{stats.canalizaciones_pendientes || 0}</p>
-          </div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-            <p className="text-xs text-blue-600">Pacientes recurrentes</p>
-            <p className="text-2xl font-bold text-blue-700">{stats.pacientes_recurrentes || 0}</p>
-          </div>
+          {[
+            { label: "Incapacidades activas",    value: stats.incapacidades_activas    || 0, numCls: (stats.incapacidades_activas    > 0) ? "text-red-600"   : "text-slate-700" },
+            { label: "Seguimientos vencidos",    value: stats.seguimientos_vencidos    || 0, numCls: (stats.seguimientos_vencidos    > 0) ? "text-amber-500" : "text-slate-700" },
+            { label: "Canalizaciones pendientes",value: stats.canalizaciones_pendientes|| 0, numCls: (stats.canalizaciones_pendientes> 0) ? "text-cyan-600"  : "text-slate-700" },
+            { label: "Pacientes recurrentes",    value: stats.pacientes_recurrentes    || 0, numCls: "text-blue-600" },
+          ].map(({ label, value, numCls }) => (
+            <div key={label} className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500 font-medium">{label}</p>
+              <p className={`text-2xl font-bold mt-1 ${numCls}`}>{value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -1411,6 +1581,7 @@ function Canalizaciones({ onAtenderTutoria }) {
   const [filtroInterno, setFiltroInterno] = useState("PENDIENTE");
   const [seccion, setSeccion] = useState("tutoria"); // tutoria | internas
   const [notasCanalizacion, setNotasCanalizacion] = useState({});
+  const [procesando, setProcesando] = useState(null);
   const { toast: showToast } = useToast();
 
   const cargarTutoria = useCallback(() => {
@@ -1428,6 +1599,7 @@ function Canalizaciones({ onAtenderTutoria }) {
   useEffect(() => { cargarTutoria(); cargarInternas(); }, [cargarTutoria, cargarInternas]);
 
   const marcarAtendidaInterna = async (can) => {
+    setProcesando(can.id);
     try {
       await api.put(`/consultorio/canalizaciones/${can.id}`, {
         estado: "ATENDIDA",
@@ -1438,41 +1610,104 @@ function Canalizaciones({ onAtenderTutoria }) {
       setNotasCanalizacion(n => ({ ...n, [can.id]: "" }));
       cargarInternas();
     } catch { showToast("Error al actualizar", "error"); }
+    finally { setProcesando(null); }
   };
 
-  const DESTINO_COLOR = { PSICOLOGIA: "blue", TUTORIA: "cyan", NUTRICION: "emerald", HOSPITAL: "red", OTRO: "slate" };
-  const pendientesTutoria = cansTutoria.filter(c => !c.consulta_medica_id).length;
+  const cerrarInterna = async (can) => {
+    setProcesando(`close-${can.id}`);
+    try {
+      await api.put(`/consultorio/canalizaciones/${can.id}`, {
+        estado: "CANCELADA",
+        notas_seguimiento: notasCanalizacion[can.id] || "Canalización cerrada sin atención.",
+      });
+      showToast("Canalización cerrada", "success");
+      cargarInternas();
+    } catch { showToast("Error al actualizar", "error"); }
+    finally { setProcesando(null); }
+  };
+
+  const DESTINO_META = {
+    PSICOLOGIA: { color: "blue",    icon: "🧠", label: "Psicología" },
+    TUTORIA:    { color: "cyan",    icon: "🎓", label: "Tutoría" },
+    NUTRICION:  { color: "emerald", icon: "🥗", label: "Nutrición" },
+    HOSPITAL:   { color: "red",     icon: "🏥", label: "Hospital" },
+    OTRO:       { color: "slate",   icon: "📤", label: "Otro" },
+  };
+
+  const pendientesTutoria  = cansTutoria.filter(c => !c.consulta_medica_id).length;
+  const pendientesInternas = cansInternas.filter(c => c.estado === "PENDIENTE").length;
 
   return (
     <div className="space-y-4">
+      {/* Resumen de pendientes */}
+      {(pendientesTutoria > 0 || pendientesInternas > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-rose-700/30 bg-rose-500/10 px-4 py-3 flex items-center gap-3">
+            <span className="text-2xl">🏥</span>
+            <div>
+              <p className="text-xs text-rose-300 font-medium">Referidos de Tutoría</p>
+              <p className="text-lg font-bold text-rose-100">
+                {pendientesTutoria}
+                <span className="text-xs font-normal text-rose-300 ml-1">
+                  pendiente{pendientesTutoria !== 1 ? "s" : ""}
+                </span>
+              </p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-blue-700/30 bg-blue-500/10 px-4 py-3 flex items-center gap-3">
+            <span className="text-2xl">➡️</span>
+            <div>
+              <p className="text-xs text-blue-300 font-medium">Canalizaciones internas</p>
+              <p className="text-lg font-bold text-blue-100">
+                {pendientesInternas}
+                <span className="text-xs font-normal text-blue-300 ml-1">
+                  pendiente{pendientesInternas !== 1 ? "s" : ""}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Selector de sección */}
       <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 text-sm">
-        <button onClick={() => setSeccion("tutoria")}
-          className={`flex-1 py-2 rounded-lg font-medium transition-all relative ${seccion === "tutoria" ? "bg-rose-600 text-white" : "text-slate-400 hover:text-white"}`}>
-          🏥 Referidos de Tutoría
-          {pendientesTutoria > 0 && (
-            <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-              {pendientesTutoria}
-            </span>
-          )}
-        </button>
-        <button onClick={() => setSeccion("internas")}
-          className={`flex-1 py-2 rounded-lg font-medium transition-all ${seccion === "internas" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"}`}>
-          ➡️ Canalizaciones internas
-        </button>
+        {[
+          { key: "tutoria",  label: "Referidos de Tutoría",   badge: pendientesTutoria,  icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg> },
+          { key: "internas", label: "Canalizaciones internas", badge: pendientesInternas, icon: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg> },
+        ].map(({ key, label, badge, icon }) => (
+          <button key={key} onClick={() => setSeccion(key)}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg font-medium transition-all ${
+              seccion === key
+                ? "bg-emerald-600 text-white shadow"
+                : "text-slate-300 hover:text-white border border-transparent hover:border-white/10"
+            }`}>
+            {icon}
+            {label}
+            {badge > 0 && (
+              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
+                seccion === key ? "bg-white/25 text-white" : "bg-amber-400/30 text-amber-300"
+              }`}>
+                {badge}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* ── Referidos de Tutoría ──────────────────────────────────────── */}
       {seccion === "tutoria" && (
         <div className="space-y-3">
-          <p className="text-xs text-slate-500">
-            Alumnos canalizados al médico por su tutor. Haz clic en <b className="text-white">Atender</b> para registrar la consulta y cerrar el referido automáticamente.
+          <p className="text-sm text-slate-400 mb-1">
+            Alumnos canalizados al médico por su tutor. Haz clic en{" "}
+            <span className="font-semibold text-slate-200">Atender</span>{" "}
+            para registrar la consulta y cerrar el referido automáticamente.
           </p>
 
           {cansTutoria.length === 0 && (
-            <div className="text-center py-12 text-slate-500">
-              <div className="text-4xl mb-2">✅</div>
-              <p>Sin referidos pendientes de Tutoría</p>
+            <div className="text-center py-16">
+              <div className="text-5xl mb-3">✅</div>
+              <p className="font-semibold text-slate-300">Sin referidos de Tutoría</p>
+              <p className="text-sm text-slate-500 mt-1">Todos los referidos han sido atendidos.</p>
             </div>
           )}
 
@@ -1480,35 +1715,47 @@ function Canalizaciones({ onAtenderTutoria }) {
             const atendido = !!can.consulta_medica_id;
             return (
               <div key={can.canalizacion_id}
-                className={`glass p-4 rounded-xl border ${atendido ? "border-emerald-700/30 opacity-70" : "border-rose-700/30"}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <Chip color={atendido ? "emerald" : "red"} text={atendido ? "Atendido" : "Pendiente"} />
-                      {can.alumno_carrera && <Chip color="slate" text={can.alumno_carrera} />}
-                    </div>
-                    <p className="text-sm text-white font-semibold truncate">{can.alumno_nombre}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {can.alumno_matricula && <span className="mr-2">Mat: {can.alumno_matricula}</span>}
-                      Tutor: {can.tutor_nombre}
-                    </p>
-                    {can.motivo && (
-                      <p className="text-xs text-slate-300 bg-slate-800/60 rounded-lg px-2 py-1 mt-2 italic">
-                        "{can.motivo}"
-                      </p>
-                    )}
-                    <p className="text-xs text-slate-500 mt-1">
-                      Enviado: {fmt(can.fecha_solicitud)}
-                      {atendido && " · ✓ Consulta registrada"}
-                    </p>
+                className={`rounded-xl border p-4 transition-all ${atendido
+                  ? "border-emerald-700/30 bg-emerald-500/5 opacity-70"
+                  : "border-rose-600/40 bg-rose-500/5"}`}>
+                <div className="flex items-start gap-3">
+                  {/* Icono de estado */}
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-base font-bold ${
+                    atendido ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"}`}>
+                    {atendido ? "✓" : "⚕️"}
                   </div>
-                  {!atendido && (
-                    <button
-                      onClick={() => onAtenderTutoria(can)}
-                      className="flex-shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors">
-                      🩺 Atender
-                    </button>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="text-sm text-white font-semibold truncate">{can.alumno_nombre}</p>
+                          <Chip color={atendido ? "emerald" : "red"} text={atendido ? "Atendido" : "Pendiente"} />
+                          {can.alumno_carrera && <Chip color="slate" text={can.alumno_carrera} />}
+                        </div>
+                        <p className="text-xs text-slate-400">
+                          {can.alumno_matricula && <span>Mat. {can.alumno_matricula} · </span>}
+                          Tutor: <span className="text-slate-300">{can.tutor_nombre}</span>
+                        </p>
+                        {can.motivo && (
+                          <div className="mt-2 rounded-lg bg-slate-800/50 border border-white/5 px-3 py-2">
+                            <p className="text-xs text-slate-500 mb-0.5">Motivo del referido</p>
+                            <p className="text-xs text-slate-200 italic">"{can.motivo}"</p>
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-500 mt-2">
+                          📅 Enviado el {fmt(can.fecha_solicitud)}
+                          {atendido && <span className="ml-2 text-emerald-400">· ✓ Consulta registrada</span>}
+                        </p>
+                      </div>
+                      {!atendido && (
+                        <button
+                          onClick={() => onAtenderTutoria(can)}
+                          className="flex-shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors whitespace-nowrap">
+                          🩺 Atender
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
@@ -1519,78 +1766,101 @@ function Canalizaciones({ onAtenderTutoria }) {
       {/* ── Canalizaciones internas ───────────────────────────────────── */}
       {seccion === "internas" && (
         <div className="space-y-3">
-          <div className="flex gap-2">
-            {["PENDIENTE", "ATENDIDA", ""].map((e, i) => (
-              <button key={i} onClick={() => setFiltroInterno(e)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-                  filtroInterno === e ? "bg-blue-600 text-white" : "bg-slate-700/40 text-slate-400 hover:text-white"
-                }`}>
-                {e || "Todas"}
+          {/* Filtros */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-500">Estado:</span>
+            {[
+              ["PENDIENTE", "Pendientes", "bg-yellow-500 text-white",  "bg-slate-700/40 text-slate-400"],
+              ["ATENDIDA",  "Atendidas",  "bg-emerald-600 text-white", "bg-slate-700/40 text-slate-400"],
+              ["",          "Todas",      "bg-slate-500 text-white",   "bg-slate-700/40 text-slate-400"],
+            ].map(([val, lbl, activeCls, inactiveCls]) => (
+              <button key={val} onClick={() => setFiltroInterno(val)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors hover:text-white ${filtroInterno === val ? activeCls : inactiveCls}`}>
+                {lbl}
               </button>
             ))}
+            <span className="ml-auto text-xs text-slate-500">
+              {cansInternas.length} resultado{cansInternas.length !== 1 ? "s" : ""}
+            </span>
           </div>
 
           {cansInternas.length === 0 && (
-            <div className="text-center py-12 text-slate-500">
-              <div className="text-4xl mb-2">✅</div>
-              <p>Sin canalizaciones {filtroInterno === "PENDIENTE" ? "pendientes" : ""}</p>
+            <div className="text-center py-16 text-slate-500">
+              <div className="text-5xl mb-3">✅</div>
+              <p className="font-medium">
+                Sin canalizaciones {filtroInterno === "PENDIENTE" ? "pendientes" : filtroInterno === "ATENDIDA" ? "atendidas" : ""}
+              </p>
             </div>
           )}
 
-          {cansInternas.map(can => (
-            <div key={can.id} className="glass p-4 rounded-xl">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Chip color={DESTINO_COLOR[can.destino] || "slate"} text={can.destino} />
-                    <Chip color={can.estado === "PENDIENTE" ? "yellow" : "emerald"} text={can.estado} />
+          {cansInternas.map(can => {
+            const meta      = DESTINO_META[can.destino] || DESTINO_META.OTRO;
+            const isPending = can.estado === "PENDIENTE";
+            const iconBg    = {
+              blue: "bg-blue-500/20", cyan: "bg-cyan-500/20",
+              emerald: "bg-emerald-500/20", red: "bg-red-500/20", slate: "bg-slate-500/20",
+            }[meta.color] || "bg-slate-500/20";
+            const estadoLabel = can.estado === "CANCELADA" ? "Cancelada" : can.estado === "ATENDIDA" ? "Atendida" : "Pendiente";
+            const estadoColor = can.estado === "ATENDIDA" ? "emerald" : can.estado === "CANCELADA" ? "slate" : "yellow";
+            return (
+              <div key={can.id} className={`rounded-xl border p-4 transition-all ${
+                isPending ? "border-yellow-700/30 bg-yellow-500/5" : "border-white/8 bg-slate-800/20 opacity-80"}`}>
+                <div className="flex items-start gap-3">
+                  {/* Icono de destino */}
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl ${iconBg}`}>
+                    {meta.icon}
                   </div>
-                  <p className="text-sm text-white font-medium">{can.paciente_nombre}</p>
-                  {can.motivo && <p className="text-xs text-slate-400 mt-0.5">{can.motivo}</p>}
-                  <p className="text-xs text-slate-500 mt-1">
-                    {fmtDT(can.fecha_canaliza)}
-                    {can.fecha_atencion && ` · Atendido: ${fmtDT(can.fecha_atencion)}`}
-                  </p>
-                  {can.notas_seguimiento && (
-                    <p className="text-xs text-emerald-300 bg-emerald-900/20 border border-emerald-700/30 rounded-lg px-2 py-1 mt-2">
-                      Seguimiento: {can.notas_seguimiento}
-                    </p>
-                  )}
-                  {can.estado === "PENDIENTE" && (
-                    <textarea
-                      value={notasCanalizacion[can.id] || ""}
-                      onChange={e => setNotasCanalizacion(n => ({ ...n, [can.id]: e.target.value }))}
-                      className="input-dark w-full resize-none mt-3 text-xs"
-                      rows={2}
-                      placeholder="Nota de seguimiento de la canalizacion..." />
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <Chip color={meta.color} text={meta.label} />
+                          <Chip color={estadoColor} text={estadoLabel} />
+                        </div>
+                        <p className="text-sm text-white font-medium">{can.paciente_nombre}</p>
+                        {can.motivo && <p className="text-xs text-slate-400 mt-0.5">{can.motivo}</p>}
+                        <p className="text-xs text-slate-500 mt-1.5">
+                          📅 {fmtDT(can.fecha_canaliza)}
+                          {can.fecha_atencion && (
+                            <span className="ml-2 text-emerald-400">· Atendido: {fmtDT(can.fecha_atencion)}</span>
+                          )}
+                        </p>
+                        {can.notas_seguimiento && (
+                          <div className="mt-2 rounded-lg bg-emerald-900/20 border border-emerald-700/30 px-3 py-1.5">
+                            <p className="text-xs text-emerald-300">📝 {can.notas_seguimiento}</p>
+                          </div>
+                        )}
+                        {isPending && (
+                          <textarea
+                            value={notasCanalizacion[can.id] || ""}
+                            onChange={e => setNotasCanalizacion(n => ({ ...n, [can.id]: e.target.value }))}
+                            className="input-dark w-full resize-none mt-3 text-xs"
+                            rows={2}
+                            placeholder="Nota de seguimiento (opcional)..." />
+                        )}
+                      </div>
+                      {isPending && (
+                        <div className="flex flex-col gap-2 flex-shrink-0 w-[100px]">
+                          <button
+                            onClick={() => marcarAtendidaInterna(can)}
+                            disabled={procesando === can.id}
+                            className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-50 w-full text-center">
+                            {procesando === can.id ? "..." : "✓ Atendida"}
+                          </button>
+                          <button
+                            onClick={() => cerrarInterna(can)}
+                            disabled={procesando === `close-${can.id}`}
+                            className="px-3 py-2 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-white/10 transition-colors disabled:opacity-50 w-full text-center">
+                            {procesando === `close-${can.id}` ? "..." : "Cerrar"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                {can.estado === "PENDIENTE" && (
-                  <div className="flex flex-col gap-2 ml-3 flex-shrink-0">
-                    <button onClick={() => marcarAtendidaInterna(can)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-700/40 hover:bg-emerald-700/70 text-emerald-300 text-xs font-medium">
-                    ✓ Atendida
-                    </button>
-                    <button onClick={async () => {
-                      try {
-                        await api.put(`/consultorio/canalizaciones/${can.id}`, {
-                          estado: "CANCELADA",
-                          notas_seguimiento: notasCanalizacion[can.id] || "Canalizacion cerrada sin atencion.",
-                        });
-                        showToast("Canalizacion cerrada", "success");
-                        cargarInternas();
-                      } catch {
-                        showToast("Error al actualizar", "error");
-                      }
-                    }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-white/10">
-                      Cerrar
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1680,29 +1950,48 @@ function ConsultasRecientes({ onVerPaciente, refreshKey = 0 }) {
       <p className="text-xs text-slate-500">{data.total} consultas encontradas</p>
 
       <div className="space-y-2">
-        {data.consultas.map(c => (
-          <div key={c.id} className="bg-white border border-slate-200 p-3 rounded-xl flex items-start justify-between hover:bg-slate-50 transition-colors">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-slate-800 font-semibold">{c.paciente_nombre}</span>
-                {c.paciente_tipo && (
-                  <Chip color={c.paciente_tipo === "ALUMNO" ? "blue" : "cyan"}
-                    text={c.paciente_tipo === "ALUMNO" ? "Alumno" : "Admin"} />
-                )}
-                {c.paciente_sexo && <Chip text={SEXO_LABEL[c.paciente_sexo] || c.paciente_sexo} />}
-                {c.paciente_matricula && (
-                  <span className="text-xs text-slate-400 font-mono">{c.paciente_matricula}</span>
-                )}
+        {data.consultas.map(c => {
+          // 1. Nombre en formato título
+          const nombre = c.paciente_nombre
+            ? c.paciente_nombre.toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase())
+            : "—";
+          // 2. Diagnóstico con primera letra mayúscula
+          const diagnostico = c.diagnostico
+            ? c.diagnostico.charAt(0).toUpperCase() + c.diagnostico.slice(1).toLowerCase()
+            : "—";
+          // 3. Etiqueta de tipo (neutral, gris sutil)
+          const tipoLabel = c.paciente_tipo === "ALUMNO" ? "Alumno" : c.paciente_tipo === "ADMINISTRATIVO" ? "Personal" : null;
+          // 4. Metadatos secundarios inline (matrícula • género)
+          const meta = [
+            c.paciente_matricula,
+            c.paciente_sexo ? SEXO_LABEL[c.paciente_sexo] : null,
+          ].filter(Boolean).join(" • ");
+          return (
+            <div key={c.id} className="bg-white border border-slate-200 px-4 py-3 rounded-xl flex items-center justify-between gap-4 hover:bg-slate-50 transition-colors">
+              <div className="flex-1 min-w-0">
+                {/* Línea 1: nombre + tag tipo + metadatos */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-slate-900 font-semibold">{nombre}</span>
+                  {tipoLabel && (
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                      {tipoLabel}
+                    </span>
+                  )}
+                  {meta && <span className="text-xs text-slate-400">{meta}</span>}
+                </div>
+                {/* Línea 2: diagnóstico */}
+                <p className="text-sm text-slate-700 font-medium mt-0.5 truncate">{diagnostico}</p>
+                {/* Línea 3: fecha atenuada */}
+                <p className="text-xs text-slate-400 mt-0.5">{fmtDT(c.fecha_consulta)}</p>
               </div>
-              <p className="text-xs text-slate-600 mt-0.5 truncate">{c.diagnostico}</p>
-              <p className="text-xs text-slate-400 mt-1">{fmtDT(c.fecha_consulta)}</p>
+              {/* CTA alineado al centro */}
+              <button onClick={() => onVerPaciente(c.paciente_id)}
+                className="text-xs text-blue-600 hover:text-blue-800 shrink-0 font-medium whitespace-nowrap transition-colors">
+                Ver expediente →
+              </button>
             </div>
-            <button onClick={() => onVerPaciente(c.paciente_id)}
-              className="text-xs text-blue-600 hover:text-blue-800 ml-3 flex-shrink-0 font-medium">
-              Ver expediente →
-            </button>
-          </div>
-        ))}
+          );
+        })}
         {data.consultas.length === 0 && (
           <p className="text-sm text-slate-400 text-center py-8">No se encontraron consultas</p>
         )}
@@ -1820,10 +2109,13 @@ export default function ConsultorioMedico() {
             <h1 className="text-2xl font-bold text-white">🏥 Consultorio Médico</h1>
             <p className="text-sm text-slate-400 mt-0.5">Universidad Tecnológica de Candelaria</p>
           </div>
-          <button onClick={() => setShowModalPaciente(true)}
-            className="btn-blue px-5 text-sm font-medium">
-            + Nueva Consulta
-          </button>
+          {/* Sólo visible fuera del inicio — la tarjeta grande ya cumple esa función */}
+          {tab !== "inicio" && (
+            <button onClick={() => setShowModalPaciente(true)}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">
+              + Nueva Consulta
+            </button>
+          )}
         </div>
 
         {/* Tabs */}
@@ -1836,14 +2128,8 @@ export default function ConsultorioMedico() {
               {label}
             </button>
           ))}
-          {pacienteSel && (
-            <button onClick={() => setTab("expediente")}
-              className={`flex-1 py-2 rounded-xl font-medium transition-all text-xs ${
-                tab === "expediente" ? "bg-emerald-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
-              }`}>
-              📁 {pacienteSel.nombre?.split(" ")[0]}
-            </button>
-          )}
+          {/* La pestaña dinámica del expediente se eliminó — el nombre del paciente
+              ya aparece como título dentro del propio bloque del expediente */}
         </div>
 
         {/* Contenido */}
@@ -1852,31 +2138,56 @@ export default function ConsultorioMedico() {
             <div className="space-y-6">
               <div className="glass p-6 rounded-2xl">
                 <h2 className="text-white font-semibold mb-4">Acciones rápidas</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
+
+                  {/* Nueva consulta */}
                   <button onClick={() => setShowModalPaciente(true)}
-                    className="p-4 rounded-xl bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/30 transition-colors text-left">
-                    <div className="text-2xl mb-2">🩺</div>
-                    <p className="text-white font-medium">Nueva consulta</p>
-                    <p className="text-xs text-slate-400 mt-1">Registrar atención médica</p>
+                    className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-emerald-500/40 hover:bg-emerald-500/8 transition-all text-left">
+                    <div className="w-11 h-11 rounded-xl bg-emerald-600 flex items-center justify-center mb-4">
+                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                    <p className="text-white font-semibold text-base">Nueva consulta</p>
+                    <p className="text-slate-400 text-sm mt-1 leading-snug group-hover:text-slate-300">Registra una nueva atención médica para alumnos o personal</p>
                   </button>
+
+                  {/* Ver estadísticas */}
                   <button onClick={() => setTab("estadisticas")}
-                    className="p-4 rounded-xl bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/30 transition-colors text-left">
-                    <div className="text-2xl mb-2">📊</div>
-                    <p className="text-white font-medium">Ver estadísticas</p>
-                    <p className="text-xs text-slate-400 mt-1">Consultas por mes, sexo y diagnóstico</p>
+                    className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/8 transition-all text-left">
+                    <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center mb-4">
+                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <p className="text-white font-semibold text-base">Ver estadísticas</p>
+                    <p className="text-slate-400 text-sm mt-1 leading-snug group-hover:text-slate-300">Consultas por mes, sexo y diagnóstico</p>
                   </button>
+
+                  {/* Canalizaciones pendientes */}
                   <button onClick={() => setTab("canalizaciones")}
-                    className="p-4 rounded-xl bg-yellow-600/20 border border-yellow-500/30 hover:bg-yellow-600/30 transition-colors text-left">
-                    <div className="text-2xl mb-2">➡️</div>
-                    <p className="text-white font-medium">Canalizaciones pendientes</p>
-                    <p className="text-xs text-slate-400 mt-1">Revisar referidos sin atender</p>
+                    className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-amber-500/40 hover:bg-amber-500/8 transition-all text-left">
+                    <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center mb-4">
+                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </div>
+                    <p className="text-white font-semibold text-base">Canalizaciones pendientes</p>
+                    <p className="text-slate-400 text-sm mt-1 leading-snug group-hover:text-slate-300">Revisar referidos sin atender</p>
                   </button>
+
+                  {/* Historial de consultas */}
                   <button onClick={() => setTab("consultas")}
-                    className="p-4 rounded-xl bg-slate-600/20 border border-slate-500/30 hover:bg-slate-600/30 transition-colors text-left">
-                    <div className="text-2xl mb-2">📋</div>
-                    <p className="text-white font-medium">Historial de consultas</p>
-                    <p className="text-xs text-slate-400 mt-1">Buscar y filtrar atenciones</p>
+                    className="group p-5 rounded-2xl bg-white/5 border border-white/10 hover:border-slate-500/40 hover:bg-slate-500/8 transition-all text-left">
+                    <div className="w-11 h-11 rounded-xl bg-slate-600 flex items-center justify-center mb-4">
+                      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-white font-semibold text-base">Historial de consultas</p>
+                    <p className="text-slate-400 text-sm mt-1 leading-snug group-hover:text-slate-300">Buscar y filtrar atenciones registradas</p>
                   </button>
+
                 </div>
               </div>
             </div>

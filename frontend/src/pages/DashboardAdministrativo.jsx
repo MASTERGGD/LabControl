@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
+import { todayISOInMexico } from '../utils/timezone';
+import { ModalPermisosComunicados } from './admin/Departamentos';
+
+const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 const CATEGORIAS = {
   ACADEMICO: 'Académico',
@@ -34,9 +38,10 @@ function StatCard({ label, value, sub, tone = 'blue', onClick }) {
       onClick={onClick}
       className={`w-full text-left rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:bg-white/8 ${tones[tone] || tones.blue}`}
     >
-      <p className="text-3xl font-black text-white leading-none tabular-nums">{value}</p>
+      <p className="text-3xl font-black leading-none tabular-nums"
+        style={{ color: (value === 0 || value === '0') ? '#9ca3af' : '#1f2937' }}>{value}</p>
       <p className="text-xs font-bold uppercase tracking-widest mt-3">{label}</p>
-      {sub && <p className="text-xs text-slate-500 mt-1">{sub}</p>}
+      {sub && <p className="text-xs mt-1" style={{ color: '#9ca3af' }}>{sub}</p>}
     </button>
   );
 }
@@ -54,21 +59,23 @@ function EstadoBadge({ estado }) {
   );
 }
 
-function QuickAction({ title, description, to, primary }) {
+function QuickAction({ title, description, to, onClick, primary }) {
   const navigate = useNavigate();
   return (
     <button
-      onClick={() => navigate(to)}
+      onClick={() => (onClick ? onClick() : navigate(to))}
       className={`w-full text-left rounded-2xl border p-4 transition-all hover:-translate-y-0.5 ${
         primary
-          ? 'border-blue-500/35 bg-blue-600/15 hover:bg-blue-600/20'
+          ? 'hover:brightness-110'
           : 'border-white/10 bg-white/4 hover:bg-white/7'
       }`}
+      style={primary ? { background: 'linear-gradient(135deg,#059669,#10b981)', border: '1px solid #047857' } : {}}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-white font-semibold">{title}</h3>
-          <p className="text-sm text-slate-400 mt-1">{description}</p>
+          <h3 className={`font-semibold ${primary ? 'text-white' : 'text-white'}`}>{title}</h3>
+          <p className={`text-sm mt-1 ${primary ? '' : 'text-slate-400'}`}
+            style={primary ? { color: 'rgba(255,255,255,0.85)' } : {}}>{description}</p>
         </div>
         <svg className="w-4 h-4 text-slate-500 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
@@ -98,6 +105,7 @@ export default function DashboardAdministrativo() {
   const [comunicados, setComunicados] = useState([]);
   const [pendientes, setPendientes] = useState(null);
   const [misEspacios, setMisEspacios] = useState([]);
+  const [modalPermisos, setModalPermisos] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const cargar = useCallback(async () => {
@@ -124,7 +132,7 @@ export default function DashboardAdministrativo() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const hoyIso = new Date().toISOString().slice(0, 10);
+  const hoyIso = todayISOInMexico();
 
   const stats = useMemo(() => {
     const base = {
@@ -174,7 +182,7 @@ export default function DashboardAdministrativo() {
 
   const depto = usuario?.departamento_nombre || 'Tu departamento';
   const claveDepto = usuario?.departamento_clave;
-  const primerNombre = usuario?.nombre?.split(' ')[0] || 'equipo';
+  const primerNombre = toTitleCase(usuario?.nombre?.split(' ')[0] || 'equipo');
   const cuenta = usuario?.email || 'Cuenta administrativa';
 
   return (
@@ -204,15 +212,7 @@ export default function DashboardAdministrativo() {
                 Hola, {primerNombre}. Desde aquí puedes emitir comunicados oficiales, cuidar borradores y revisar el seguimiento editorial de tu departamento.
               </p>
             </div>
-            <button
-              onClick={() => navigate('/admin/comunicados?nuevo=1')}
-              className="btn-blue flex items-center gap-2 self-start xl:self-center"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-              </svg>
-              Emitir comunicado
-            </button>
+            {/* Botón eliminado — la tarjeta "Emitir comunicado" del panel derecho cumple esta función */}
           </div>
         </div>
 
@@ -312,7 +312,7 @@ export default function DashboardAdministrativo() {
                       className="w-full text-left px-5 py-4 hover:bg-white/5 transition-colors">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <p className="text-white font-semibold truncate">{c.titulo}</p>
+                          <p className="text-white font-semibold truncate">{toTitleCase(c.titulo)}</p>
                           <p className="text-sm text-slate-500 mt-1 line-clamp-1">{c.contenido}</p>
                           <div className="flex flex-wrap gap-3 text-xs text-slate-600 mt-2">
                             <span>{CATEGORIAS[c.categoria] || c.categoria || 'General'}</span>
@@ -346,7 +346,7 @@ export default function DashboardAdministrativo() {
                     {borradores.slice(0, 4).map(c => (
                       <button key={c.id} onClick={() => navigate('/admin/comunicados?estado=BORRADOR')}
                         className="w-full text-left rounded-xl border border-white/8 bg-black/10 px-4 py-3 hover:bg-white/5">
-                        <p className="text-sm font-semibold text-white truncate">{c.titulo}</p>
+                        <p className="text-sm font-semibold text-white truncate">{toTitleCase(c.titulo)}</p>
                         <p className="text-xs text-slate-500 mt-1">{fmtDate(c.actualizado_en || c.creado_en)}</p>
                       </button>
                     ))}
@@ -371,7 +371,7 @@ export default function DashboardAdministrativo() {
                     {vencenPronto.map(c => (
                       <button key={c.id} onClick={() => navigate('/admin/comunicados?estado=PUBLICADO')}
                         className="w-full text-left rounded-xl border border-red-500/15 bg-red-500/8 px-4 py-3 hover:bg-red-500/12">
-                        <p className="text-sm font-semibold text-white truncate">{c.titulo}</p>
+                        <p className="text-sm font-semibold text-white truncate">{toTitleCase(c.titulo)}</p>
                         <p className="text-xs text-red-300 mt-1">
                           {c._dias === 0 ? 'Vence hoy' : `Vence en ${c._dias} día${c._dias !== 1 ? 's' : ''}`}
                         </p>
@@ -390,6 +390,13 @@ export default function DashboardAdministrativo() {
               to="/admin/comunicados?nuevo=1"
               primary
             />
+            {usuario?.departamento_id && (
+              <QuickAction
+                title="Permisos de comunicados"
+                description="Activar al personal que también puede emitir avisos."
+                onClick={() => setModalPermisos(true)}
+              />
+            )}
             <QuickAction
               title="Revisar borradores"
               description="Continuar comunicados que aún no se publican."
@@ -435,7 +442,7 @@ export default function DashboardAdministrativo() {
                         <span className="text-slate-500">{total}</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-white/8 overflow-hidden">
-                        <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.max(10, (total / Math.max(1, stats.total)) * 100)}%` }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(10, (total / Math.max(1, stats.total)) * 100)}%`, background: 'linear-gradient(90deg,#059669,#10b981)' }} />
                       </div>
                     </button>
                   ))}
@@ -468,6 +475,15 @@ export default function DashboardAdministrativo() {
           </div>
         </div>
       </div>
+      {modalPermisos && (
+        <ModalPermisosComunicados
+          departamento={{
+            id: usuario.departamento_id,
+            nombre: usuario.departamento_nombre || 'Mi departamento',
+          }}
+          onClose={() => setModalPermisos(false)}
+        />
+      )}
     </AdminLayout>
   );
 }

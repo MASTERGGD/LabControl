@@ -590,6 +590,7 @@ export default function MisComunicados() {
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
               className="input-dark !py-1.5 !text-sm pl-7 pr-3 w-44"
+              style={{ paddingLeft: 30, paddingRight: busqueda ? 28 : 12 }}
             />
             {busqueda && (
               <button onClick={() => setBusqueda('')}

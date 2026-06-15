@@ -47,27 +47,27 @@ const SECCIONES = [
     titulo: "Antecedentes escolares",
     campos: [
       { name: "bachillerato", label: "Bachillerato o escuela de procedencia", required: true },
-      { name: "bachillerato_ubicacion", label: "Lugar de ubicacion", required: true },
+      { name: "bachillerato_ubicacion", label: "Lugar de ubicaci?n", required: true },
       { name: "periodo_estudios", label: "Periodo de estudios", required: true },
       { name: "promedio", label: "Promedio general", type: "number", required: true, pattern: "promedio" },
-      { name: "area_bachillerato", label: "Area de bachillerato", type: "select", options: ["", "Fisico-Matematico", "Economico-Administrativo", "Ciencias Sociales", "Quimico-Biologico", "Humanidades", "General", "Otro"], required: true },
+      { name: "area_bachillerato", label: "?rea de bachillerato", type: "select", options: ["", "F?sico-Matem?tico", "Econ?mico-Administrativo", "Ciencias Sociales", "Qu?mico-Biol?gico", "Humanidades", "General", "Otro"], required: true },
     ],
   },
   {
     id: "economia",
-    titulo: "Situacion economica",
+    titulo: "Situaci?n econ?mica",
     campos: [
-      { name: "depende_de", label: "Depende economicamente de", type: "select", options: ["", "Papa", "Mama", "Independiente", "Otros"], required: true },
+      { name: "depende_de", label: "Depende econ?micamente de", type: "select", options: ["", "Pap?", "Mam?", "Independiente", "Otros"], required: true },
       { name: "responsable_nombre", label: "Nombre de la persona responsable", required: true },
       { name: "responsable_parentesco", label: "Parentesco", required: true },
-      { name: "responsable_ocupacion", label: "Ocupacion", required: true },
-      { name: "responsable_estudios", label: "Maximo nivel de estudios", required: true },
-      { name: "responsable_telefono", label: "Telefono de la persona responsable", pattern: "telefono" },
+      { name: "responsable_ocupacion", label: "Ocupaci?n", required: true },
+      { name: "responsable_estudios", label: "M?ximo nivel de estudios", required: true },
+      { name: "responsable_telefono", label: "Tel?fono de la persona responsable", pattern: "telefono" },
       { name: "ingreso_mensual", label: "Ingreso mensual familiar aproximado", type: "number", required: true },
       { name: "gasto_mensual", label: "Gasto mensual familiar aproximado", type: "number", required: true },
       { name: "dependientes", label: "Personas que dependen del jefe de familia", type: "number", required: true },
-      { name: "recibe_apoyo", label: "Recibe apoyo economico o beca", type: "boolean", required: true },
-      { name: "institucion_apoyo", label: "Institucion o programa de apoyo", dependsOn: ["recibe_apoyo", "SI"] },
+      { name: "recibe_apoyo", label: "Recibe apoyo econ?mico o beca", type: "boolean", required: true },
+      { name: "institucion_apoyo", label: "Instituci?n o programa de apoyo", dependsOn: ["recibe_apoyo", "SI"] },
     ],
   },
   {
@@ -75,23 +75,23 @@ const SECCIONES = [
     titulo: "Salud y condiciones relevantes",
     campos: [
       { name: "tiene_alergia", label: "Tiene alergia", type: "boolean", required: true },
-      { name: "alergia_cual", label: "Cual alergia", dependsOn: ["tiene_alergia", "SI"] },
+      { name: "alergia_cual", label: "Cu?l alergia", dependsOn: ["tiene_alergia", "SI"] },
       { name: "alergia_medicamento", label: "Medicamento por alergia", dependsOn: ["tiene_alergia", "SI"] },
-      { name: "enfermedad_cronica", label: "Tiene enfermedad cronica", type: "boolean", required: true },
-      { name: "enfermedad_cual", label: "Cual enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
+      { name: "enfermedad_cronica", label: "Tiene enfermedad cr?nica", type: "boolean", required: true },
+      { name: "enfermedad_cual", label: "Cu?l enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
       { name: "enfermedad_medicamento", label: "Medicamento por enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
       { name: "tiene_discapacidad", label: "Tiene discapacidad", type: "boolean", required: true },
       { name: "discapacidad_tipo", label: "Tipo de discapacidad", dependsOn: ["tiene_discapacidad", "SI"] },
       { name: "discapacidad_medicamento", label: "Medicamento o apoyo requerido", dependsOn: ["tiene_discapacidad", "SI"] },
-      { name: "informacion_relevante", label: "Informacion relevante", type: "textarea" },
+      { name: "informacion_relevante", label: "Informaci?n relevante", type: "textarea" },
     ],
   },
   {
     id: "confirmacion",
-    titulo: "Confirmacion",
+    titulo: "Confirmaci?n",
     campos: [
-      { name: "confirmo_veracidad", label: "Confirmo que la informacion proporcionada es correcta", type: "checkbox", required: true },
-      { name: "acepto_uso", label: "Acepto el uso institucional de la informacion para seguimiento academico y tutorial", type: "checkbox", required: true },
+      { name: "confirmo_veracidad", label: "Confirmo que la informaci?n proporcionada es correcta", type: "checkbox", required: true },
+      { name: "acepto_uso", label: "Acepto el uso institucional de la informaci?n para seguimiento acad?mico y tutorial", type: "checkbox", required: true },
     ],
   },
 ];
@@ -119,7 +119,7 @@ function validarCampo(campo, form) {
   }
   if (!normalizar(value)) return null;
   if (campo.pattern === "telefono" && !/^\d{10}$/.test(normalizar(value))) {
-    return "Debe tener 10 digitos";
+    return "Debe tener 10 dígitos";
   }
   if (campo.pattern === "cp" && !/^\d{5}$/.test(normalizar(value))) {
     return "Debe tener 5 digitos";
@@ -238,7 +238,7 @@ export default function AlumnoEstudioSocioeconomico() {
   const [apiError, setApiError]     = useState("");
   const [guardadoOk, setGuardadoOk] = useState(false);
 
-  if (usuario?.rol && usuario.rol !== "ALUMNO") {
+  if (usuario.rol && usuario.rol !== "ALUMNO") {
     return <Navigate to="/" replace />;
   }
 
@@ -260,7 +260,7 @@ export default function AlumnoEstudioSocioeconomico() {
       setNotaCorreccion(data.nota_correccion || "");
       setAlumnoInfo(data.alumno);
       const next = apiToForm(data);
-      if (!next.carrera && data.alumno?.carrera) next.carrera = data.alumno.carrera;
+      if (!next.carrera && data.alumno.carrera) next.carrera = data.alumno.carrera;
       setForm(next);
     } catch (e) {
       const detail = e.response?.data?.detail;
@@ -327,7 +327,7 @@ export default function AlumnoEstudioSocioeconomico() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center max-w-md w-full">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-2xl">📋</div>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-sm font-semibold text-slate-500">SIGA</div>
           <h2 className="text-xl font-bold mb-2">
             {fichaEstado === "ERROR" ? "Error al cargar" : "Sin ficha activa"}
           </h2>
@@ -365,8 +365,8 @@ export default function AlumnoEstudioSocioeconomico() {
             <h1 className="text-xl font-bold">Estudio socioeconómico</h1>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <span className="hidden text-slate-600 sm:inline">{alumnoInfo?.nombre || usuario?.nombre || "Alumno"}</span>
-            {alumnoInfo?.matricula && (
+            <span className="hidden text-slate-600 sm:inline">{alumnoInfo.nombre || usuario.nombre || "Alumno"}</span>
+            {alumnoInfo.matricula && (
               <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded-lg text-slate-500">{alumnoInfo.matricula}</span>
             )}
             <button type="button" onClick={logout} className="rounded-lg border border-slate-300 px-3 py-2 text-slate-700 hover:bg-slate-50">
@@ -450,10 +450,10 @@ export default function AlumnoEstudioSocioeconomico() {
           {!soloLectura && (
             <div className="flex flex-col gap-3 border-t border-slate-200 p-6 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">
-                {guardadoOk
-                  ? <span className="text-emerald-600 font-medium">✓ Guardado</span>
-                  : erroresSeccion.length
-                    ? `${erroresSeccion.length} campo(s) por corregir en esta sección.`
+                {guardadoOk ?
+                  <span className="text-emerald-600 font-medium">✓ Guardado</span>
+                  : erroresSeccion.length ?
+                    `${erroresSeccion.length} campo(s) por corregir en esta sección.`
                     : "Sección sin errores."}
               </p>
               <div className="flex gap-2">
@@ -481,7 +481,7 @@ export default function AlumnoEstudioSocioeconomico() {
                     disabled={calidad.errores.length > 0 || enviando}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    {enviando ? "Enviando…" : "Enviar estudio"}
+                    {enviando ? "Enviando..." : "Enviar estudio"}
                   </button>
                 )}
               </div>

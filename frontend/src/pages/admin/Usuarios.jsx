@@ -5,12 +5,13 @@ import { useToast } from '../../context/ToastContext';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
-const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'DOCENTE'];
+const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'DOCENTE'];
 
 // SUPER_ADMIN destaca en azul; todos los demás en gris neutro para reducir ruido visual
 const ROL_COLOR = {
   SUPER_ADMIN:         'bg-blue-900/70  text-blue-200  border border-blue-700/50',
   LAB_ADMIN:           'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  RESPONSABLE_LAB:     'bg-slate-700/60 text-slate-200 border border-slate-600/40',
   ADMINISTRATIVO:      'bg-slate-700/60 text-slate-200 border border-slate-600/40',
   TUTORIA_ADMIN:       'bg-slate-700/60 text-slate-200 border border-slate-600/40',
   SERVICIOS_ESCOLARES: 'bg-slate-700/60 text-slate-200 border border-slate-600/40',
@@ -20,6 +21,7 @@ const ROL_COLOR = {
 const ROL_LABEL = {
   SUPER_ADMIN:         'Super Admin',
   LAB_ADMIN:           'Admin Lab',
+  RESPONSABLE_LAB:     'Responsable Lab',
   ADMINISTRATIVO:      'Administrativo',
   TUTORIA_ADMIN:       'Tutoría',
   SERVICIOS_ESCOLARES: 'Escolares',
@@ -80,7 +82,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
     }
   };
 
-  const necesitaLab = form.rol === 'LAB_ADMIN';
+  const necesitaLab = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(form.rol);
   const necesitaDepartamento = form.rol === 'ADMINISTRATIVO';
 
   return (
@@ -131,7 +133,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                   onChange={v => setForm({
                     ...form,
                     rol: v,
-                    laboratorio_id: v === 'LAB_ADMIN' ? form.laboratorio_id : '',
+                    laboratorio_id: ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(v) ? form.laboratorio_id : '',
                     departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : '',
                   })}
                   options={ROLES.map(r => ({ value: r, label: r }))}
@@ -389,7 +391,7 @@ function ModalExcel({ onClose, onSave }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-slate-500 text-xs">Roles validos: SUPER_ADMIN, LAB_ADMIN, ADMINISTRATIVO, TUTORIA_ADMIN, SERVICIOS_ESCOLARES, DOCENTE</p>
+                <p className="text-slate-500 text-xs">Roles validos: SUPER_ADMIN, LAB_ADMIN, RESPONSABLE_LAB, ADMINISTRATIVO, TUTORIA_ADMIN, SERVICIOS_ESCOLARES, DOCENTE</p>
               </div>
 
               {/* Selector de archivo */}
@@ -735,6 +737,7 @@ export default function Usuarios() {
             onFocus={() => busqueda.length >= 2 && sugerencias.length > 0 && setShowSugerencias(true)}
             placeholder="Buscar nombre, email..."
             className="input-dark text-white text-sm rounded-xl pl-9 pr-9 py-2 w-60 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+            style={{ paddingLeft: 36, paddingRight: 36 }}
           />
           {busqueda && (
             <button onClick={() => { setBusqueda(''); setShowSugerencias(false); }}
@@ -907,9 +910,11 @@ export default function Usuarios() {
                           style={{
                             background: u.rol === 'SUPER_ADMIN' ? 'rgba(59,130,246,0.2)'
                               : u.rol === 'LAB_ADMIN' ? 'rgba(168,85,247,0.2)'
+                              : u.rol === 'RESPONSABLE_LAB' ? 'rgba(20,184,166,0.2)'
                               : 'rgba(16,185,129,0.2)',
                             color: u.rol === 'SUPER_ADMIN' ? '#93c5fd'
                               : u.rol === 'LAB_ADMIN' ? '#d8b4fe'
+                              : u.rol === 'RESPONSABLE_LAB' ? '#5eead4'
                               : '#6ee7b7',
                           }}>
                           {u.nombre.charAt(0).toUpperCase()}

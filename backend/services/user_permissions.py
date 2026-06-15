@@ -8,6 +8,7 @@ from models.usuario import RolUsuario, Usuario
 from models.usuario_permiso import UsuarioPermiso
 
 PERM_COMUNICADOS_WRITE = "comunicados:write"
+PERM_INVENTARIO_WRITE = "inventario:write"
 
 
 def es_responsable_departamento(db: Session, usuario: Usuario, departamento_id: int | None) -> bool:
@@ -78,10 +79,32 @@ def puede_emitir_comunicados(
     return tiene_permiso_departamento(db, usuario, PERM_COMUNICADOS_WRITE, departamento_id)
 
 
+def departamentos_inventario(db: Session, usuario: Usuario) -> list[int]:
+    return departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE)
+
+
+def puede_gestionar_inventario(
+    db: Session,
+    usuario: Usuario,
+    departamento_id: int | None = None,
+) -> bool:
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
+        return True
+    if departamento_id is None:
+        departamento_id = usuario.departamento_id
+    if es_responsable_departamento(db, usuario, departamento_id):
+        return True
+    return tiene_permiso_departamento(db, usuario, PERM_INVENTARIO_WRITE, departamento_id)
+
+
 def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
     permisos = set()
     if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.TUTORIA_ADMIN):
         permisos.add(PERM_COMUNICADOS_WRITE)
+    if usuario.rol == RolUsuario.RESPONSABLE_LAB:
+        permisos.add(PERM_INVENTARIO_WRITE)
     if departamentos_con_permiso(db, usuario, PERM_COMUNICADOS_WRITE):
         permisos.add(PERM_COMUNICADOS_WRITE)
+    if departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE):
+        permisos.add(PERM_INVENTARIO_WRITE)
     return sorted(permisos)
