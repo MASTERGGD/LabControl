@@ -306,3 +306,32 @@ body.theme-day .adeudo-detalle-modal button[style*="rgba(56,189,248"] {
   background: #e0f2fe !important;
   border-color: #7dd3fc !important;
 }
+
+/* Modal de reporte de dano dentro de sesion activa en tema dia. */
+body.theme-day .report-damage-day .text-white,
+body.theme-day .report-damage-day .text-slate-400 {
+  color: #334155 !important;
+}
+body.theme-day .report-damage-day h3.text-white {
+  color: #0f172a !important;
+}
+body.theme-day .report-damage-day .text-green-400 {
+  color: #047857 !important;
+}
+body.theme-day .report-damage-day .input-dark {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+body.theme-day .report-damage-day .border-gray-600 {
+  border-color: #cbd5e1 !important;
+}
+body.theme-day .report-damage-day .bg-orange-900\/40 {
+  background: #fff7ed !important;
+}
+body.theme-day .report-damage-day .text-orange-300 {
+  color: #c2410c !important;
+}
+body.theme-day .report-damage-day .bg-gray-700 {
+  background: #e2e8f0 !important;
+}

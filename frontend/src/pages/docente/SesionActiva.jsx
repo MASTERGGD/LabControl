@@ -44,6 +44,15 @@ function TarjetaPC({ pc, onClick, highlighted }) {
       })()
     : null;
 
+  const ocupadoDay = {
+    bg: '#f8fbff',
+    border: '#2563eb',
+    text: '#1e40af',
+    sub: '#334155',
+    avatar: 'linear-gradient(135deg,#2563eb,#4f46e5)',
+    glow: 'rgba(37,99,235,0.16)',
+  };
+
   return (
     <button
       onClick={() => clickable && onClick(pc)}
@@ -53,10 +62,10 @@ function TarjetaPC({ pc, onClick, highlighted }) {
         width: '100%',
         minHeight: ocupada ? 104 : 92,
         background: isDay
-          ? ocupada ? '#eff6ff' : mant ? '#fffbeb' : dano ? '#fef2f2' : baja ? '#f1f5f9' : '#ecfdf5'
+          ? ocupada ? ocupadoDay.bg : mant ? '#fffbeb' : dano ? '#fef2f2' : baja ? '#f1f5f9' : '#ecfdf5'
           : est.bg,
         border: `${ocupada ? '2.5px' : '1.5px'} solid ${isDay
-          ? ocupada ? '#3b82f6' : mant ? '#f59e0b' : dano ? '#fca5a5' : baja ? '#cbd5e1' : '#86efac'
+          ? ocupada ? ocupadoDay.border : mant ? '#f59e0b' : dano ? '#fca5a5' : baja ? '#cbd5e1' : '#86efac'
           : est.border}`,
         borderRadius: '1rem',
         padding: ocupada ? '14px 12px 12px' : '18px 12px 14px',
@@ -64,8 +73,8 @@ function TarjetaPC({ pc, onClick, highlighted }) {
         cursor: clickable ? 'pointer' : 'default',
         transition: 'all 0.2s cubic-bezier(.4,0,.2,1)',
         boxShadow: highlighted
-          ? '0 0 0 2px #60a5fa, 0 0 18px rgba(59,130,246,0.35)'
-          : isDay ? '0 10px 24px rgba(15,23,42,0.06)' : (ocupada ? `0 0 14px ${est.glow}` : 'none'),
+          ? `0 0 0 2px ${isDay ? '#93c5fd' : '#60a5fa'}, 0 0 18px ${isDay ? ocupadoDay.glow : 'rgba(59,130,246,0.35)'}`
+          : isDay ? (ocupada ? `0 12px 26px ${ocupadoDay.glow}` : '0 10px 24px rgba(15,23,42,0.06)') : (ocupada ? `0 0 14px ${est.glow}` : 'none'),
         opacity: baja ? 0.45 : 1,
         outline: 'none',
       }}
@@ -73,14 +82,16 @@ function TarjetaPC({ pc, onClick, highlighted }) {
         if (!clickable) return;
         e.currentTarget.style.transform = 'translateY(-2px) scale(1.03)';
         e.currentTarget.style.boxShadow = highlighted
-          ? '0 0 0 2px #60a5fa, 0 0 22px rgba(59,130,246,0.4)'
-          : `0 6px 20px ${est.glow || 'rgba(0,0,0,0.3)'}, 0 0 0 1px ${est.border}`;
+          ? `0 0 0 2px ${isDay ? '#93c5fd' : '#60a5fa'}, 0 0 22px ${isDay ? 'rgba(37,99,235,0.22)' : 'rgba(59,130,246,0.4)'}`
+          : isDay
+            ? `0 12px 30px ${ocupada ? 'rgba(37,99,235,0.18)' : 'rgba(15,23,42,0.10)'}, 0 0 0 1px ${ocupada ? '#93c5fd' : '#cbd5e1'}`
+            : `0 6px 20px ${est.glow || 'rgba(0,0,0,0.3)'}, 0 0 0 1px ${est.border}`;
       }}
       onMouseLeave={e => {
         e.currentTarget.style.transform = 'none';
         e.currentTarget.style.boxShadow = highlighted
-          ? '0 0 0 2px #60a5fa, 0 0 18px rgba(59,130,246,0.35)'
-          : (ocupada ? `0 0 14px ${est.glow}` : 'none');
+          ? `0 0 0 2px ${isDay ? '#93c5fd' : '#60a5fa'}, 0 0 18px ${isDay ? ocupadoDay.glow : 'rgba(59,130,246,0.35)'}`
+          : isDay ? (ocupada ? `0 12px 26px ${ocupadoDay.glow}` : '0 10px 24px rgba(15,23,42,0.06)') : (ocupada ? `0 0 14px ${est.glow}` : 'none');
       }}
       title={ocupada ? `${pc.alumno.nombre}\n${pc.alumno.matricula}` : pc.estado}
     >
@@ -90,7 +101,7 @@ function TarjetaPC({ pc, onClick, highlighted }) {
           position:'absolute', top:5, right:6,
           width:6, height:6, borderRadius:'50%',
           background:'#3b82f6',
-          boxShadow:'0 0 6px rgba(59,130,246,0.8)',
+          boxShadow:`0 0 6px ${isDay ? 'rgba(37,99,235,0.55)' : 'rgba(59,130,246,0.8)'}`,
         }}/>
       )}
 
@@ -100,16 +111,16 @@ function TarjetaPC({ pc, onClick, highlighted }) {
           {/* Avatar con iniciales */}
           <div style={{
             width:28, height:28, borderRadius:'50%',
-            background:'linear-gradient(135deg,#1d4ed8,#7c3aed)',
+            background:isDay ? ocupadoDay.avatar : 'linear-gradient(135deg,#1d4ed8,#7c3aed)',
             margin:'0 auto 5px',
             display:'flex', alignItems:'center', justifyContent:'center',
             fontSize:10, fontWeight:800, color:'#fff', letterSpacing:'0.02em',
-            boxShadow:'0 2px 8px rgba(59,130,246,0.35)',
+            boxShadow:`0 2px 8px ${isDay ? 'rgba(37,99,235,0.20)' : 'rgba(59,130,246,0.35)'}`,
           }}>
             {initials}
           </div>
-          <p style={{fontSize:12, fontWeight:800, color:isDay ? '#1d4ed8' : '#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
-          <p style={{fontSize:10, color:isDay ? '#1e3a8a' : 'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
+          <p style={{fontSize:12, fontWeight:800, color:isDay ? ocupadoDay.text : '#93c5fd', letterSpacing:'0.04em', margin:0}}>{pc.codigo.replace('--','-')}</p>
+          <p style={{fontSize:10, color:isDay ? ocupadoDay.sub : 'rgba(186,230,253,0.75)', lineHeight:1.2, margin:'2px 0 0',
             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
             {shortName}
           </p>
@@ -338,6 +349,8 @@ function ModalPCOcupada({ pc, sesionId, onClose, onLiberada, onObservacion, onRe
 // ─── Modal Reportar Daño (desde sesión) ───────────────────────────────────────
 
 function ModalReportarDano({ pc, sesion, onClose }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [form, setForm] = useState({
     tipo: 'DAÑO', prioridad: 'MEDIA', descripcion: '',
   });
@@ -368,9 +381,41 @@ function ModalReportarDano({ pc, sesion, onClose }) {
     }
   };
 
+  const estiloPrioridad = (valor) => {
+    const activo = form.prioridad === valor;
+    const base = {
+      ALTA: '#dc2626',
+      MEDIA: '#d97706',
+      BAJA: '#059669',
+    }[valor];
+
+    if (activo) {
+      return {
+        background: isDay ? `${base}14` : 'rgba(251,146,60,0.16)',
+        border: `1px solid ${isDay ? `${base}88` : '#f97316'}`,
+        color: isDay ? base : '#fdba74',
+        boxShadow: isDay ? `0 0 0 3px ${base}12` : 'none',
+      };
+    }
+
+    return {
+      background: isDay ? '#ffffff' : 'rgba(15,23,42,0.55)',
+      border: `1px solid ${isDay ? '#cbd5e1' : '#475569'}`,
+      color: isDay ? '#334155' : '#cbd5e1',
+      boxShadow: 'none',
+    };
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm shadow-2xl p-6">
+    <div className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{ background: isDay ? 'rgba(15,23,42,0.58)' : 'rgba(0,0,0,0.70)' }}>
+      <div className={`w-full max-w-sm shadow-2xl p-6 ${isDay ? 'report-damage-day' : ''}`}
+        style={{
+          background: isDay ? '#ffffff' : 'rgba(15,23,42,0.96)',
+          border: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.08)'}`,
+          borderRadius: '1rem',
+          color: isDay ? '#0f172a' : '#f8fafc',
+        }}>
         {guardado ? (
           <div className="text-center py-6">
             <div className="text-4xl mb-3">✅</div>
