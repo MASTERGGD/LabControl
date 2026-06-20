@@ -114,7 +114,7 @@ def _s_prestamo(p: Prestamo) -> dict:
         "condicion_salida":      p.condicion_salida,
         "condicion_retorno":     p.condicion_retorno,
         "vencido":               (
-            p.estado == "ACTIVO" and
+            p.estado in ("ACTIVO", "VENCIDO") and
             p.fecha_retorno_esperada and
             p.fecha_retorno_esperada < _utcnow()
         ),
@@ -301,7 +301,7 @@ def resumen_persona(
             "prestamos_activos":   sum(1 for p in prestamos if p.estado == "ACTIVO"),
             "prestamos_vencidos":  sum(
                 1 for p in prestamos
-                if p.estado == "ACTIVO" and p.fecha_retorno_esperada and p.fecha_retorno_esperada < now
+                if p.estado in ("ACTIVO", "VENCIDO") and p.fecha_retorno_esperada and p.fecha_retorno_esperada < now
             ),
             "tiene_adeudos_activos": any(a.estado in ("PENDIENTE", "EN_REVISION") for a in adeudos),
         },
@@ -377,7 +377,8 @@ def sincronizar_prestamos(
     """
     ahora = _utcnow()
     vencidos = db.query(Prestamo).filter(
-        Prestamo.estado == "ACTIVO",
+        Prestamo.fecha_retorno_real.is_(None),
+        Prestamo.estado.in_(["ACTIVO", "VENCIDO"]),
         Prestamo.fecha_retorno_esperada < ahora,
     ).all()
 

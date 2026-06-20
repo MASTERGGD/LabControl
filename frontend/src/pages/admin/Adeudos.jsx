@@ -9,6 +9,34 @@ import { useToast } from '../../context/ToastContext';
 const toTitleCase = s =>
   !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
+const resumenAdeudo = adeudo => {
+  const descripcion = String(adeudo?.descripcion || '').replace(/\s+/g, ' ').trim();
+  if (!descripcion) return '';
+
+  if (/Equipo devuelto dañado/i.test(descripcion)) {
+    const prestamo = descripcion.match(/Pr[eé]stamo #(\d+)/i)?.[1] || adeudo?.prestamo_id;
+    const equipo = descripcion.match(/Pr[eé]stamo #\d+\.?\s*(.*?)\s*\(c[oó]d\.?\s*([^)]+)\)/i);
+    const nota = descripcion.match(/Nota:\s*(.+)$/i)?.[1]?.replace(/\.$/, '');
+
+    if (equipo) {
+      return [
+        `Devolvió dañado el equipo ${equipo[1]} (${equipo[2]})${prestamo ? ` del préstamo #${prestamo}` : ''}.`,
+        nota ? `Observación: ${nota}.` : '',
+      ].filter(Boolean).join(' ');
+    }
+  }
+
+  if (/vencido hace/i.test(descripcion)) {
+    const prestamo = descripcion.match(/Pr[eé]stamo #(\d+)/i)?.[1] || adeudo?.prestamo_id;
+    const equipo = descripcion.match(/Pr[eé]stamo #\d+\s*[—-]\s*(.*?)\s*\(c[oó]d\.?\s*([^)]+)\)/i);
+    if (equipo) {
+      return `Préstamo vencido${prestamo ? ` #${prestamo}` : ''}: ${equipo[1]} (${equipo[2]}) no fue devuelto en la fecha acordada.`;
+    }
+  }
+
+  return descripcion;
+};
+
 // ── Badges ────────────────────────────────────────────────────────────────────
 const ESTADO_CLS = {
   PENDIENTE:   'bg-red-500/15    text-red-400    border-red-500/30',
@@ -289,7 +317,7 @@ function ModalResolver({ adeudo, onActualizado, onClose, estadoInicial }) {
           <p className="text-slate-500 text-xs">{PERSONA_ICON[adeudo.persona_tipo]} {adeudo.persona_tipo}</p>
           <p className="text-white font-medium">{adeudo.persona_nombre}</p>
           <p className="text-slate-400 font-mono text-xs">{adeudo.persona_identificador}</p>
-          <p className="text-slate-300 mt-2 text-xs">{adeudo.descripcion}</p>
+          <p className="text-slate-300 mt-2 text-xs leading-relaxed">{resumenAdeudo(adeudo)}</p>
         </div>
         <div className="space-y-4">
           <div>
@@ -329,7 +357,7 @@ function Section({ label, children }) {
   return (
     <div>
       <p style={{fontSize:9,fontWeight:700,letterSpacing:'0.14em',textTransform:'uppercase',
-        color:'#334155',marginBottom:8,paddingBottom:5,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+        color:'var(--text)',marginBottom:8,paddingBottom:5,borderBottom:'1px solid var(--border)'}}>
         {label}
       </p>
       {children}
@@ -343,8 +371,8 @@ function Field({ label, value }) {
   if (!value || value === '—') return null;
   return (
     <div>
-      <p style={{fontSize:9,color:'#475569',margin:'0 0 2px',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em'}}>{label}</p>
-      <p style={{fontSize:12,color:'#cbd5e1',margin:0,fontWeight:500,lineHeight:1.3}}>{value}</p>
+      <p style={{fontSize:9,color:'var(--text-muted)',margin:'0 0 2px',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>{label}</p>
+      <p style={{fontSize:12,color:'var(--text)',margin:0,fontWeight:600,lineHeight:1.3}}>{value}</p>
     </div>
   );
 }
@@ -397,14 +425,14 @@ function DrawerDetalle({ adeudo, onClose, onActualizado }) {
     <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'center',
         justifyContent:'center',background:'rgba(0,0,0,0.72)',backdropFilter:'blur(6px)'}}
       onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        style={{background:'#0f172a',border:'1px solid rgba(255,255,255,0.07)',
-          borderRadius:'1.25rem',boxShadow:'0 32px 80px rgba(0,0,0,0.7)',
+      <div className="adeudo-detalle-modal" onClick={e => e.stopPropagation()}
+        style={{background:'var(--surface)',border:'1px solid var(--border)',
+          borderRadius:'1.25rem',boxShadow:'0 32px 80px rgba(0,0,0,0.35)',
           width:'100%',maxWidth:480,margin:'0 16px',
           display:'flex',flexDirection:'column',maxHeight:'90vh',overflow:'hidden'}}>
 
         {/* ── HEADER ── */}
-        <div style={{padding:'20px 24px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0}}>
+        <div style={{padding:'20px 24px 16px',borderBottom:'1px solid var(--border)',flexShrink:0}}>
           <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:7,flexWrap:'wrap'}}>
@@ -414,22 +442,22 @@ function DrawerDetalle({ adeudo, onClose, onActualizado }) {
                   textTransform:'uppercase',letterSpacing:'0.1em'}}>
                   Adeudo {ESTADO_LBL[adeudo.estado]}
                 </span>
-                <span style={{fontSize:10,color:'#475569',background:'rgba(255,255,255,0.04)',
-                  border:'1px solid rgba(255,255,255,0.07)',borderRadius:6,padding:'1px 7px'}}>
+                <span style={{fontSize:10,color:'var(--text)',background:'var(--surface-2)',
+                  border:'1px solid var(--border)',borderRadius:6,padding:'1px 7px'}}>
                   #{adeudo.id}
                 </span>
               </div>
-              <p style={{fontSize:14,fontWeight:600,color:'#f1f5f9',margin:0,lineHeight:1.45,
+              <p style={{fontSize:14,fontWeight:700,color:'var(--text)',margin:0,lineHeight:1.45,
                 display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
-                {adeudo.descripcion}
+                {resumenAdeudo(adeudo)}
               </p>
             </div>
             <button onClick={onClose}
               style={{width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center',
-                borderRadius:8,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',
-                color:'#64748b',cursor:'pointer',flexShrink:0}}
-              onMouseEnter={e=>{e.currentTarget.style.color='#f1f5f9';e.currentTarget.style.background='rgba(255,255,255,0.12)'}}
-              onMouseLeave={e=>{e.currentTarget.style.color='#64748b';e.currentTarget.style.background='rgba(255,255,255,0.05)'}}>
+                borderRadius:8,background:'var(--surface-2)',border:'1px solid var(--border)',
+                color:'var(--text)',cursor:'pointer',flexShrink:0}}
+              onMouseEnter={e=>{e.currentTarget.style.filter='brightness(0.96)'}}
+              onMouseLeave={e=>{e.currentTarget.style.filter='none'}}>
               <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -744,6 +772,10 @@ export default function Adeudos() {
                         <div>
                           <span className="text-white font-medium text-sm leading-snug block">
                             {toTitleCase(a.persona_nombre)}
+                          </span>
+                          <span className="block text-xs text-slate-500 leading-snug mt-1 max-w-[320px]"
+                            style={{display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
+                            {resumenAdeudo(a)}
                           </span>
                           <div className="mt-1"><TipoBadge tipo={a.tipo} /></div>
                         </div>

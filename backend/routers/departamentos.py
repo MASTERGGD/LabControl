@@ -20,6 +20,7 @@ from services.auditoria import registrar as _audit, Accion, Recurso
 from models.usuario import RolUsuario, Usuario
 from services.user_permissions import (
     PERM_COMUNICADOS_WRITE,
+    PERM_INVENTARIO_VALIDATE,
     PERM_INVENTARIO_WRITE,
     es_responsable_departamento,
 )
@@ -186,6 +187,7 @@ class ResponsableIn(BaseModel):
 PERMISOS_DEPARTAMENTO = {
     PERM_COMUNICADOS_WRITE,
     PERM_INVENTARIO_WRITE,
+    PERM_INVENTARIO_VALIDATE,
 }
 
 
@@ -212,6 +214,7 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
     es_responsable = es_responsable_departamento(db, u, departamento_id)
     puede_comunicados = PERM_COMUNICADOS_WRITE in permisos_activos or es_responsable
     puede_inventario = PERM_INVENTARIO_WRITE in permisos_activos or es_responsable
+    puede_validar_inventario = PERM_INVENTARIO_VALIDATE in permisos_activos
     return {
         "id": u.id,
         "nombre": u.nombre,
@@ -222,9 +225,11 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
         "permisos_departamento": {
             PERM_COMUNICADOS_WRITE: puede_comunicados,
             PERM_INVENTARIO_WRITE: puede_inventario,
+            PERM_INVENTARIO_VALIDATE: puede_validar_inventario,
         },
         "puede_enviar_comunicados": puede_comunicados,
         "puede_gestionar_inventario": puede_inventario,
+        "puede_validar_inventario": puede_validar_inventario,
     }
 
 
@@ -321,7 +326,7 @@ def actualizar_permiso_departamental(
     ).first()
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado en este departamento")
-    if dep.responsable_id == usuario.id and not data.activo:
+    if dep.responsable_id == usuario.id and data.permiso != PERM_INVENTARIO_VALIDATE and not data.activo:
         raise HTTPException(status_code=400, detail="El responsable del departamento siempre conserva sus permisos")
 
     _upsert_permiso_departamento(

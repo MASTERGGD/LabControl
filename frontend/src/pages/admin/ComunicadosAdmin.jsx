@@ -13,6 +13,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const CATEGORIAS = [
@@ -122,6 +123,8 @@ const estadoVisible = comunicado => {
 function ModalComunicado({ comunicado, onClose, onSaved }) {
   const { toast: showToast } = useToast();
   const { usuario: usuarioActual } = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [form, setForm]   = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -562,8 +565,9 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 <button key={t} type="button"
                   onClick={() => set('dest_tipo', t)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    form.dest_tipo === t ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400 hover:text-white'
-                  }`}>
+                    form.dest_tipo === t ? 'bg-blue-600' : 'bg-white/5 text-slate-400 hover:text-white'
+                  }`}
+                  style={form.dest_tipo === t ? { color: '#ffffff' } : undefined}>
                   {esTutorAdmin && t === 'ROL'
                     ? 'Todos los docentes'
                     : esTutorAdmin && t === 'USUARIO'
@@ -611,11 +615,27 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                   <div className="flex flex-wrap gap-2">
                     {form.dest_usuarios.map(u => (
                       <span key={u.id}
-                        className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/15 px-3 py-1.5 text-xs text-blue-100">
+                        className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs"
+                        style={{
+                          background: isDay ? '#dbeafe' : 'rgba(59,130,246,0.15)',
+                          borderColor: isDay ? '#93c5fd' : 'rgba(59,130,246,0.3)',
+                          color: isDay ? '#1e3a8a' : '#dbeafe',
+                        }}>
                         <span className="max-w-[220px] truncate">{u.nombre}</span>
-                        {u.rol && <span className="text-blue-300/70">{u.rol}</span>}
+                        {u.rol && (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 font-semibold"
+                            style={{
+                              background: isDay ? '#eff6ff' : 'rgba(147,197,253,0.12)',
+                              color: isDay ? '#1d4ed8' : '#93c5fd',
+                            }}
+                          >
+                            {u.rol}
+                          </span>
+                        )}
                         <button type="button" onClick={() => quitarUsuario(u.id)}
-                          className="text-blue-200/70 hover:text-white transition-colors"
+                          className="transition-colors"
+                          style={{ color: isDay ? '#2563eb' : '#bfdbfe' }}
                           title="Quitar destinatario">
                           ×
                         </button>
@@ -631,7 +651,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                     onChange={e => setBusquedaUsuario(e.target.value)}
                     placeholder="Buscar por nombre, correo, rol o número de empleado"
                   />
-                  <div className="mt-2 rounded-xl border border-white/10 bg-slate-900/95 overflow-hidden">
+                  <div
+                    className="mt-2 rounded-xl overflow-hidden"
+                    style={{
+                      background: isDay ? '#ffffff' : 'rgba(15,23,42,0.95)',
+                      border: `1px solid ${isDay ? '#dbe3ef' : 'rgba(255,255,255,0.10)'}`,
+                    }}
+                  >
                     {cargandoUsuarios ? (
                       <p className="px-3 py-3 text-sm text-slate-500">Cargando usuarios...</p>
                     ) : usuariosFiltrados.length === 0 ? (
@@ -642,13 +668,23 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                       usuariosFiltrados.map(u => (
                         <button key={u.id} type="button"
                           onClick={() => agregarUsuario(u)}
-                          className="w-full px-3 py-2.5 text-left hover:bg-white/5 transition-colors border-b border-white/5 last:border-b-0">
+                          className="w-full px-3 py-2.5 text-left transition-colors last:border-b-0"
+                          style={{
+                            borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.05)'}`,
+                          }}>
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
-                              <p className="text-xs text-slate-500 truncate">{u.email}</p>
+                              <p className="text-sm font-medium truncate" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>{u.nombre}</p>
+                              <p className="text-xs truncate" style={{ color: isDay ? '#475569' : '#94a3b8' }}>{u.email}</p>
                             </div>
-                            <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-white/5 text-slate-400 shrink-0">
+                            <span
+                              className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0"
+                              style={{
+                                background: isDay ? '#f1f5f9' : 'rgba(255,255,255,0.05)',
+                                color: isDay ? '#334155' : '#cbd5e1',
+                                border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
+                              }}
+                            >
                               {u.rol}
                             </span>
                           </div>
@@ -1305,9 +1341,24 @@ export default function ComunicadosAdmin() {
 
   const cerrarLecturas = () => {
     if (!lecturas) return;
-    blendyRef.current?.untoggle(`lecturas-${lecturas.id}`, () => {
+
+    let cerrado = false;
+    const finalizar = () => {
+      if (cerrado) return;
+      cerrado = true;
       setLecturas(null);
-    });
+    };
+
+    try {
+      if (blendyRef.current?.untoggle) {
+        blendyRef.current.untoggle(`lecturas-${lecturas.id}`, finalizar);
+        window.setTimeout(finalizar, 320);
+      } else {
+        finalizar();
+      }
+    } catch {
+      finalizar();
+    }
   };
 
   const accion = async (id, endpoint, label) => {
@@ -1554,7 +1605,7 @@ export default function ComunicadosAdmin() {
               return (
                 <div key={c.id}
                   className="glass rounded-2xl px-5 py-4 cursor-pointer hover:bg-white/[0.03] transition-colors"
-                  onClick={() => setLecturas(c)}
+                  onClick={() => abrirLecturas(c)}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">

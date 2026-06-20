@@ -157,17 +157,22 @@ export default function AutocompleteInput({
       {sugerencias.length > 0 ? (
         <ul
           className="rounded-xl overflow-hidden shadow-2xl max-h-56 overflow-y-auto"
-          style={{ background: '#0d1b2e', border: '1px solid rgba(255,255,255,0.1)' }}
+          style={{
+            background: 'var(--dropdown-bg)',
+            border: '1px solid var(--dropdown-border)',
+            color: 'var(--dropdown-text)',
+          }}
         >
           {sugerencias.map((item, idx) => (
             <li
               key={item.id ?? idx}
               onMouseDown={() => handleSelect(item)}
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-              className={`px-3 py-2.5 cursor-pointer text-sm transition-colors
-                ${idx === activo
-                  ? 'bg-blue-500/20 text-blue-200'
-                  : 'text-slate-200 hover:bg-white/5'}`}
+              style={{
+                borderBottom: '1px solid var(--dropdown-row-border)',
+                background: idx === activo ? 'var(--dropdown-selected-bg)' : 'transparent',
+                color: idx === activo ? 'var(--dropdown-text-active)' : 'var(--dropdown-text)',
+              }}
+              className="px-3 py-2.5 cursor-pointer text-sm transition-colors hover:bg-[var(--dropdown-active-bg)]"
             >
               {renderItem ? renderItem(item) : String(item)}
             </li>
@@ -175,8 +180,12 @@ export default function AutocompleteInput({
         </ul>
       ) : (
         <div
-          className="rounded-xl px-3 py-3 text-sm text-slate-500 text-center"
-          style={{ background: '#0d1b2e', border: '1px solid rgba(255,255,255,0.08)' }}
+          className="rounded-xl px-3 py-3 text-sm text-center"
+          style={{
+            background: 'var(--dropdown-bg)',
+            border: '1px solid var(--dropdown-border)',
+            color: 'var(--dropdown-text-empty)',
+          }}
         >
           Sin resultados para «{value}»
         </div>
@@ -207,7 +216,8 @@ export default function AutocompleteInput({
           <button
             type="button"
             onClick={() => { onChange(''); setSugerencias([]); setAbierto(false); }}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-base leading-none"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-base leading-none"
+            style={{ color: 'var(--text-muted)' }}
           >×</button>
         )}
       </div>

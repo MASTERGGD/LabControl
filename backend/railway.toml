@@ -1,0 +1,13 @@
+# Railway service config: backend FastAPI
+# En Railway crea un servicio apuntando al root directory: backend
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "sh /app/start.sh"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

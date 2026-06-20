@@ -291,6 +291,257 @@ function ModalImportar({ onClose, onDone }) {
 
 // ─── Modal Activo ─────────────────────────────────────────────────────────────
 
+function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
+  const { toast } = useToast();
+  const [tipo, setTipo] = useState('CATEGORIA_ACTIVO');
+  const [editando, setEditando] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({
+    nombre: '',
+    clave: '',
+    prefijo_codigo: '',
+    alcance: 'AMBOS',
+    activo: true,
+  });
+
+  const items = useMemo(() => {
+    const fuente = tipo === 'CATEGORIA_ACTIVO'
+      ? (catalogo?.categorias_items || [])
+      : (catalogo?.tipos_ubicacion_items || []);
+    return [...fuente].sort((a, b) =>
+      `${a.base ? '0' : '1'}-${a.nombre}`.localeCompare(`${b.base ? '0' : '1'}-${b.nombre}`, 'es')
+    );
+  }, [catalogo, tipo]);
+
+  const resetForm = () => {
+    setEditando(null);
+    setError('');
+    setForm({ nombre: '', clave: '', prefijo_codigo: '', alcance: 'AMBOS', activo: true });
+  };
+
+  const editar = (item) => {
+    if (item.base || item.protegido || !item.id) return;
+    setEditando(item);
+    setError('');
+    setForm({
+      nombre: item.nombre || '',
+      clave: item.clave || '',
+      prefijo_codigo: item.prefijo_codigo || '',
+      alcance: item.alcance || 'AMBOS',
+      activo: item.activo !== false,
+    });
+  };
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    if (!form.nombre.trim()) {
+      setError('Escribe el nombre del elemento.');
+      return;
+    }
+    setGuardando(true);
+    setError('');
+    try {
+      if (editando?.id) {
+        await api.put(`/inventario/catalogo/${editando.id}`, {
+          nombre: form.nombre.trim(),
+          prefijo_codigo: tipo === 'CATEGORIA_ACTIVO' ? (form.prefijo_codigo.trim() || null) : null,
+          alcance: form.alcance,
+          activo: form.activo,
+        });
+        toast('Elemento de catalogo actualizado.', 'success');
+      } else {
+        await api.post('/inventario/catalogo', {
+          tipo,
+          nombre: form.nombre.trim(),
+          clave: form.clave.trim() || null,
+          prefijo_codigo: tipo === 'CATEGORIA_ACTIVO' ? (form.prefijo_codigo.trim() || null) : null,
+          alcance: form.alcance,
+          activo: form.activo,
+        });
+        toast('Elemento agregado al catalogo.', 'success');
+      }
+      resetForm();
+      await onDone();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo guardar el elemento.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="glass w-full max-w-5xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold text-white">Catalogos de inventario</h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Agrega categorias y tipos de ubicacion sin modificar el codigo del sistema.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto space-y-5">
+          <div className="flex flex-wrap gap-2">
+            {[
+              ['CATEGORIA_ACTIVO', 'Categorias de activo'],
+              ['TIPO_UBICACION', 'Tipos de ubicacion'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => { setTipo(value); resetForm(); }}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                  tipo === value
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+            <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+              <div className="grid grid-cols-[1fr_110px_100px_100px] gap-3 px-4 py-3 text-xs uppercase tracking-wide text-slate-400 border-b border-white/10">
+                <span>Elemento</span>
+                <span>Prefijo</span>
+                <span>Alcance</span>
+                <span>Accion</span>
+              </div>
+              <div className="max-h-[420px] overflow-y-auto divide-y divide-white/10">
+                {items.map(item => (
+                  <div key={`${item.base ? 'base' : 'custom'}-${item.clave}`} className="grid grid-cols-[1fr_110px_100px_100px] gap-3 px-4 py-3 items-center">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{item.nombre}</p>
+                      <p className="text-xs text-slate-400 font-mono">{item.clave}</p>
+                    </div>
+                    <span className="text-xs text-slate-300 font-mono">
+                      {item.prefijo_codigo || '-'}
+                    </span>
+                    <span className="text-xs text-slate-300">
+                      {item.alcance || 'AMBOS'}
+                    </span>
+                    {item.base || item.protegido || !item.id ? (
+                      <span className="rounded-full bg-slate-800 text-slate-400 text-[11px] px-2 py-1 text-center">
+                        Base
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => editar(item)}
+                        className="rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-2"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={guardar} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 space-y-4">
+              <div>
+                <h4 className="text-white font-semibold">{editando ? 'Editar elemento' : 'Nuevo elemento'}</h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  {tipo === 'CATEGORIA_ACTIVO'
+                    ? 'El prefijo se usa para generar codigos automaticos.'
+                    : 'Se usara en ubicaciones fisicas y formularios.'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Nombre</label>
+                <input
+                  value={form.nombre}
+                  onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                  className="w-full input-dark text-white px-3 py-2.5"
+                  placeholder={tipo === 'CATEGORIA_ACTIVO' ? 'Ej: Equipo de soldadura' : 'Ej: Laboratorio movil'}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Clave</label>
+                <input
+                  value={form.clave}
+                  onChange={e => setForm(f => ({ ...f, clave: e.target.value.toUpperCase() }))}
+                  disabled={Boolean(editando)}
+                  className="w-full input-dark text-white px-3 py-2.5 disabled:opacity-60"
+                  placeholder="Automatica si se deja vacia"
+                />
+              </div>
+
+              {tipo === 'CATEGORIA_ACTIVO' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Prefijo para codigo</label>
+                  <input
+                    value={form.prefijo_codigo}
+                    onChange={e => setForm(f => ({ ...f, prefijo_codigo: e.target.value.toUpperCase() }))}
+                    className="w-full input-dark text-white px-3 py-2.5"
+                    placeholder="Ej: SOL"
+                    maxLength={12}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Alcance</label>
+                <SelectDark
+                  value={form.alcance}
+                  onChange={v => setForm(f => ({ ...f, alcance: v }))}
+                  options={[
+                    { value: 'AMBOS', label: 'Laboratorio e institucional' },
+                    { value: 'LABORATORIO', label: 'Solo laboratorio' },
+                    { value: 'INSTITUCIONAL', label: 'Solo institucional' },
+                  ]}
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={form.activo}
+                  onChange={e => setForm(f => ({ ...f, activo: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-emerald-600"
+                />
+                Activo en formularios
+              </label>
+
+              {error && (
+                <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                  {typeof error === 'string' ? error : 'No se pudo guardar el elemento.'}
+                </p>
+              )}
+
+              <div className="flex gap-2">
+                {editando && (
+                  <button type="button" onClick={resetForm} className="flex-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white py-2.5 text-sm font-semibold">
+                    Cancelar edicion
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 text-sm font-semibold disabled:opacity-60"
+                >
+                  {guardando ? 'Guardando...' : (editando ? 'Actualizar' : 'Agregar')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalActivo({
   activo,
   labs,
@@ -300,6 +551,8 @@ function ModalActivo({
   puedeAsignarLaboratorio,
   puedeValidarInventario,
   ubicaciones,
+  categoriasInventario,
+  tiposUbicacionInventario,
   laboratorioContextoId,
   categoriaLabContexto,
   onClose,
@@ -381,16 +634,36 @@ function ModalActivo({
   const labSeleccionado = form.alcance === 'LABORATORIO' && form.laboratorio_id
     ? labs.find(l => String(l.id) === String(form.laboratorio_id))
     : null;
+  const categoriasCatalogo = categoriasInventario?.length
+    ? categoriasInventario
+    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), alcance: 'AMBOS' }));
+  const tiposUbicacionCatalogo = tiposUbicacionInventario?.length
+    ? tiposUbicacionInventario
+    : TIPOS_UBICACION.map(t => ({ clave: t, nombre: t.replace(/_/g, ' ') }));
+  const categoriaNombre = useMemo(() => {
+    const mapa = new Map(categoriasCatalogo.map(i => [i.clave, i.nombre || categoriaActivoLabel(i.clave)]));
+    return clave => mapa.get(clave) || categoriaActivoLabel(clave);
+  }, [categoriasCatalogo]);
   const categoriasDisponibles = useMemo(() => {
     const categoriaLab = (labSeleccionado?.categoria || categoriaLabContexto || '').toUpperCase();
-    const base = form.alcance === 'LABORATORIO'
-      ? (CATEGORIAS_POR_LAB[categoriaLab] || CATEGORIAS_BASE)
+    const permitidasPorAlcance = categoriasCatalogo
+      .filter(item => {
+        const alcanceItem = (item.alcance || 'AMBOS').toUpperCase();
+        return alcanceItem === 'AMBOS' || alcanceItem === form.alcance;
+      })
+      .map(item => item.clave);
+    const sugeridas = form.alcance === 'LABORATORIO'
+      ? (CATEGORIAS_POR_LAB[categoriaLab] || [])
       : CATEGORIAS_BASE;
+    const base = [
+      ...sugeridas.filter(c => permitidasPorAlcance.includes(c)),
+      ...permitidasPorAlcance.filter(c => !sugeridas.includes(c)),
+    ];
     if (esEdicion && form.categoria && !base.includes(form.categoria)) {
       return [form.categoria, ...base];
     }
     return base;
-  }, [categoriaLabContexto, esEdicion, form.alcance, form.categoria, labSeleccionado?.categoria]);
+  }, [categoriaLabContexto, categoriasCatalogo, esEdicion, form.alcance, form.categoria, labSeleccionado?.categoria]);
 
   useEffect(() => {
     if (!categoriasDisponibles.includes(form.categoria)) {
@@ -551,7 +824,7 @@ function ModalActivo({
                   {esEdicion ? form.estado_admin.replace(/_/g, ' ') : 'BORRADOR'}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  Los activos registrados se envían a revisión. Solo Super Admin puede validarlos oficialmente.
+                  Los activos registrados se envían a revisión. Solo Inventario Institucional puede validarlos oficialmente.
                 </p>
               </div>
             )}
@@ -688,7 +961,7 @@ function ModalActivo({
                   value={form.ubicacion_tipo}
                   onChange={v => handleChange({ target: { name: 'ubicacion_tipo', value: v } })}
                   disabled={camposTrazablesBloqueados}
-                  options={TIPOS_UBICACION.map(t => ({ value: t, label: t.replace(/_/g, ' ') }))}
+                  options={tiposUbicacionCatalogo.map(t => ({ value: t.clave, label: t.nombre || t.clave.replace(/_/g, ' ') }))}
                 />
               </div>
               <div>
@@ -711,7 +984,7 @@ function ModalActivo({
                 onChange={v => handleChange({ target: { name: 'categoria', value: v } })}
                 options={categoriasDisponibles.map(c => ({
                   value: c,
-                  label: categoriaActivoLabel(c),
+                  label: categoriaNombre(c),
                 }))}
               />
               {(labSeleccionado?.categoria || categoriaLabContexto) && CATEGORIAS_POR_LAB[(labSeleccionado?.categoria || categoriaLabContexto || '').toUpperCase()] && (
@@ -833,7 +1106,7 @@ function ModalActivo({
                   <SelectDark
                     value={formUbicacion.tipo}
                     onChange={v => setCampoUbicacion('tipo', v)}
-                    options={TIPOS_UBICACION.map(t => ({ value: t, label: t.replace(/_/g, ' ') }))}
+                    options={tiposUbicacionCatalogo.map(t => ({ value: t.clave, label: t.nombre || t.clave.replace(/_/g, ' ') }))}
                   />
                 </div>
                 {form.alcance === 'INSTITUCIONAL' && (
@@ -1202,7 +1475,7 @@ const VALIDACION_DECISION = {
   RECHAZADO: {
     titulo: 'No autorizar activo',
     etiqueta: 'Motivo de no autorización',
-    descripcion: 'El alta no procederá. El responsable no podrá modificarla hasta que Super Admin la reabra.',
+    descripcion: 'El alta no procederá. El responsable no podrá modificarla hasta que Inventario Institucional la reabra.',
     ayuda: 'Explica la causa administrativa, normativa o de duplicidad que impide autorizar el registro.',
     ejemplo: 'Ej. El activo ya está registrado con otro número patrimonial.',
     boton: 'No autorizar activo',
@@ -1537,8 +1810,8 @@ export default function Inventario() {
   const { usuario } = useAuth();
   const { can } = usePermission();
   const puedeEditarInventario = can('inventario:write');
-  const puedeValidarInventario = usuario?.rol === 'SUPER_ADMIN';
-  const puedeImportarInventario = can('inventario:import');
+  const puedeValidarInventario = can('inventario:validar');
+  const puedeImportarInventario = can('inventario:import') || puedeEditarInventario;
   const puedeExportarInventario = can('inventario:read');
   const puedeUsarPrestamos = can('prestamos:write');
   const puedeAsignarLaboratorio = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol);
@@ -1557,6 +1830,10 @@ export default function Inventario() {
   const [departamentosFormulario, setDepartamentosFormulario] = useState([]);
   const [departamentosFormularioGlobal, setDepartamentosFormularioGlobal] = useState(true);
   const [ubicaciones, setUbicaciones] = useState([]);
+  const [catalogoInventario, setCatalogoInventario] = useState({
+    categorias_items: CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), alcance: 'AMBOS', base: true, activo: true })),
+    tipos_ubicacion_items: TIPOS_UBICACION.map(t => ({ clave: t, nombre: t.replace(/_/g, ' '), alcance: 'AMBOS', base: true, activo: true })),
+  });
   const [stats, setStats]       = useState(null);
   const [mantenimientoAlertas, setMantenimientoAlertas] = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -1578,6 +1855,7 @@ export default function Inventario() {
   const [activoBaja, setActivoBaja]       = useState(null);
   const [activoExpediente, setActivoExpediente] = useState(null);
   const [modalImportar, setModalImportar] = useState(false);
+  const [modalCatalogo, setModalCatalogo] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [validandoId, setValidandoId] = useState(null);
   const [decisionValidacion, setDecisionValidacion] = useState(null);
@@ -1605,7 +1883,7 @@ export default function Inventario() {
       const mantParams = new URLSearchParams(params);
       mantParams.delete('solo_disponibles');
 
-      const [rA, rL, rD, rDW, rU, rS, rM] = await Promise.all([
+      const [rA, rL, rD, rDW, rU, rS, rM, rC] = await Promise.all([
         api.get(`/inventario/activos?${params}`),
         api.get('/laboratorios?solo_activos=false'),
         api.get('/inventario/departamentos-opciones?modo=lectura'),
@@ -1613,6 +1891,7 @@ export default function Inventario() {
         api.get('/inventario/ubicaciones'),
         api.get(`/inventario/estadisticas?${statsParams}`),
         api.get(`/inventario/mantenimiento-alertas?${mantParams}`),
+        api.get('/inventario/categorias'),
       ]);
       setActivos(rA.data);
       setLabs(rL.data);
@@ -1622,6 +1901,7 @@ export default function Inventario() {
       setUbicaciones(rU.data);
       setStats(rS.data);
       setMantenimientoAlertas(rM.data);
+      setCatalogoInventario(rC.data);
     } finally {
       setLoading(false);
     }
@@ -1646,6 +1926,9 @@ export default function Inventario() {
     ['BORRADOR', 'EN_REVISION', 'OBSERVADO', 'RECHAZADO'].includes(a.estado_admin || 'BORRADOR')
   );
   const conteosValidacion = stats?.por_estado_admin || {};
+  const categoriasFiltro = catalogoInventario.categorias_items?.length
+    ? catalogoInventario.categorias_items
+    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c) }));
 
   const filtrosAplicados = [
     filtroLab,
@@ -1804,6 +2087,17 @@ export default function Inventario() {
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
             Préstamos
           </button>}
+          {tabActivo === 'activos' && puedeValidarInventario && <button onClick={() => setModalCatalogo(true)}
+            className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{
+              background: 'rgba(59,130,246,0.18)',
+              border: '1px solid rgba(59,130,246,0.35)',
+            }}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h10M4 17h7"/>
+            </svg>
+            Catálogos inventario
+          </button>}
           {tabActivo === 'activos' && puedeImportarInventario && <button onClick={() => setModalImportar(true)}
             className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
             style={{
@@ -1903,7 +2197,7 @@ export default function Inventario() {
           </div>
           {!puedeValidarInventario && (
             <p className="text-xs text-slate-500 mt-2">
-              Los registros nuevos permanecen en borrador hasta que Super Admin los revise. Mientras tanto solo pueden consultarse y corregirse.
+              Los registros nuevos permanecen en borrador hasta que Inventario Institucional los revise. Mientras tanto solo pueden consultarse y corregirse.
             </p>
           )}
           {puedeValidarInventario && (
@@ -2053,7 +2347,7 @@ export default function Inventario() {
           onChange={setFiltroCat}
           className="w-44"
           placeholder="Todas las categorías"
-          options={[{ value: '', label: 'Todas las categorías' }, ...CATEGORIAS.map(c => ({ value: c, label: categoriaActivoLabel(c) }))]}
+          options={[{ value: '', label: 'Todas las categorías' }, ...categoriasFiltro.map(c => ({ value: c.clave, label: c.nombre || categoriaActivoLabel(c.clave) }))]}
         />
         <SelectDark
           value={filtroEstado}
@@ -2512,6 +2806,8 @@ export default function Inventario() {
           puedeAsignarLaboratorio={puedeAsignarLaboratorio}
           puedeValidarInventario={puedeValidarInventario}
           ubicaciones={ubicaciones}
+          categoriasInventario={catalogoInventario.categorias_items || []}
+          tiposUbicacionInventario={catalogoInventario.tipos_ubicacion_items || []}
           laboratorioContextoId={laboratorioContextoId}
           categoriaLabContexto={categoriaLabContexto}
           onClose={() => { setModalNuevo(false); setActivoEditar(null); }}
@@ -2523,6 +2819,13 @@ export default function Inventario() {
         <ModalImportar
           onClose={() => setModalImportar(false)}
           onDone={() => { setModalImportar(false); cargar(); }}
+        />
+      )}
+      {modalCatalogo && (
+        <ModalCatalogoInventario
+          catalogo={catalogoInventario}
+          onClose={() => setModalCatalogo(false)}
+          onDone={cargar}
         />
       )}
       {activoMover && (

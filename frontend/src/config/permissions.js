@@ -72,6 +72,7 @@ export const PERMISSIONS = {
   'inventario:write':       [SA, LA, RL],
   'inventario:delete':      [SA, LA, RL],
   'inventario:import':      [SA, LA, RL],
+  'inventario:validar':     [SA],
 
   // Préstamos
   'prestamos:read':         [SA, LA, RL, DO],

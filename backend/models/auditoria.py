@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON, Text, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from database import Base
@@ -16,6 +16,12 @@ class AuditLog(Base):
     el historial aunque el usuario sea eliminado.
     """
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_user_timestamp", "usuario_id", "timestamp"),
+        Index("ix_audit_logs_recurso_id_timestamp", "recurso", "recurso_id", "timestamp"),
+        Index("ix_audit_logs_accion_timestamp", "accion", "timestamp"),
+        Index("ix_audit_logs_exito_timestamp", "exito", "timestamp"),
+    )
 
     id             = Column(Integer, primary_key=True, index=True)
     timestamp      = Column(DateTime, default=_utcnow, index=True, nullable=False)

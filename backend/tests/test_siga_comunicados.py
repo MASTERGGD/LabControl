@@ -12,6 +12,7 @@ Cubre:
 import pytest
 from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
+from models.notificacion import Notificacion
 from models.usuario import Usuario, RolUsuario
 
 
@@ -171,10 +172,150 @@ class TestLecturaConfirmacion:
                          headers=auth_headers(tok_doc))
         assert r2.status_code in (200, 201)
 
+    def test_seguimiento_notifica_al_destinatario_en_mis_comunicados(self, client, db):
+        admin = _admin(db)
+        tok_admin = get_token(client, "admin@test.mx", "Test1234!")
+        destinatario = _usuario(db, "Silvia Martinez", "silvia@test.mx", RolUsuario.ADMINISTRATIVO)
+
+        r = _crear_comunicado(
+            client,
+            tok_admin,
+            "Con seguimiento",
+            destinatarios=[{"tipo": "USUARIO", "ref": str(destinatario.id)}],
+            requiere_retroalimentacion=True,
+        )
+        com_id = r.json()["id"]
+        client.post(f"/comunicados/{com_id}/publicar", json={}, headers=auth_headers(tok_admin))
+
+        tok_dest = get_token(client, "silvia@test.mx", "Test1234!")
+        respuesta = client.post(
+            f"/comunicados/{com_id}/responder",
+            data={"comentario": "Ya lo revise"},
+            headers=auth_headers(tok_dest),
+        )
+        assert respuesta.status_code in (200, 201)
+        respuesta_id = respuesta.json()["id"]
+
+        seguimiento = client.post(
+            f"/comunicados/{com_id}/respuestas/{respuesta_id}/mensajes",
+            json={"comentario": "Gracias por confirmar."},
+            headers=auth_headers(tok_admin),
+        )
+        assert seguimiento.status_code == 201
+
+        notif = db.query(Notificacion).filter(
+            Notificacion.usuario_id == destinatario.id,
+            Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+        ).first()
+        assert notif is not None
+        assert notif.url == f"/comunicados?id={com_id}"
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Mis comunicados y pendientes
 # ════════════════════════════════════════════════════════════════════════════
+
+def test_verificar_notificaciones_recupera_seguimiento_para_destinatario(client, db):
+    _admin(db)
+    tok_admin = get_token(client, "admin@test.mx", "Test1234!")
+    destinatario = _usuario(db, "Silvia Martinez", "silvia@test.mx", RolUsuario.ADMINISTRATIVO)
+
+    r = _crear_comunicado(
+        client,
+        tok_admin,
+        "Seguimiento recuperable",
+        destinatarios=[{"tipo": "USUARIO", "ref": str(destinatario.id)}],
+        requiere_retroalimentacion=True,
+    )
+    com_id = r.json()["id"]
+    client.post(f"/comunicados/{com_id}/publicar", json={}, headers=auth_headers(tok_admin))
+
+    tok_dest = get_token(client, "silvia@test.mx", "Test1234!")
+    respuesta = client.post(
+        f"/comunicados/{com_id}/responder",
+        data={"comentario": "Ya lo revise"},
+        headers=auth_headers(tok_dest),
+    )
+    assert respuesta.status_code in (200, 201)
+    respuesta_id = respuesta.json()["id"]
+
+    seguimiento = client.post(
+        f"/comunicados/{com_id}/respuestas/{respuesta_id}/mensajes",
+        json={"comentario": "Lo reviso administracion."},
+        headers=auth_headers(tok_admin),
+    )
+    assert seguimiento.status_code == 201
+
+    db.query(Notificacion).filter(
+        Notificacion.usuario_id == destinatario.id,
+        Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    verificar = client.post("/notificaciones/verificar", headers=auth_headers(tok_dest))
+    assert verificar.status_code == 200
+
+    notif = db.query(Notificacion).filter(
+        Notificacion.usuario_id == destinatario.id,
+        Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+    ).first()
+    assert notif is not None
+    assert notif.url == f"/comunicados?id={com_id}"
+
+
+def test_verificar_notificaciones_recupera_seguimiento_para_autor(client, db):
+    admin = _admin(db)
+    tok_admin = get_token(client, "admin@test.mx", "Test1234!")
+    destinatario = _usuario(db, "Silvia Martinez", "silvia@test.mx", RolUsuario.ADMINISTRATIVO)
+
+    r = _crear_comunicado(
+        client,
+        tok_admin,
+        "Seguimiento al admin",
+        destinatarios=[{"tipo": "USUARIO", "ref": str(destinatario.id)}],
+        requiere_retroalimentacion=True,
+    )
+    com_id = r.json()["id"]
+    client.post(f"/comunicados/{com_id}/publicar", json={}, headers=auth_headers(tok_admin))
+
+    tok_dest = get_token(client, "silvia@test.mx", "Test1234!")
+    primera = client.post(
+        f"/comunicados/{com_id}/responder",
+        data={"comentario": "Ya lo revise"},
+        headers=auth_headers(tok_dest),
+    )
+    assert primera.status_code in (200, 201)
+
+    seguimiento = client.post(
+        f"/comunicados/{com_id}/responder",
+        data={"comentario": "Veamos si llega la notificacion al admin"},
+        headers=auth_headers(tok_dest),
+    )
+    assert seguimiento.status_code in (200, 201)
+
+    notif = db.query(Notificacion).filter(
+        Notificacion.usuario_id == admin.id,
+        Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+        Notificacion.url == f"/admin/comunicados?id={com_id}",
+    ).first()
+    assert notif is not None
+
+    db.query(Notificacion).filter(
+        Notificacion.usuario_id == admin.id,
+        Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    verificar = client.post("/notificaciones/verificar", headers=auth_headers(tok_admin))
+    assert verificar.status_code == 200
+
+    recuperada = db.query(Notificacion).filter(
+        Notificacion.usuario_id == admin.id,
+        Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+        Notificacion.url == f"/admin/comunicados?id={com_id}",
+    ).first()
+    assert recuperada is not None
+
 
 class TestMisComunicados:
 

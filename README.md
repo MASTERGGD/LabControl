@@ -12,6 +12,9 @@ En desarrollo activo. Stack principal:
 - **Frontend:** React 18 · React Router · Tailwind CSS · PWA
 - **Infraestructura:** Docker Compose (db + backend + frontend)
 
+Para una demo publicada en Railway con PostgreSQL administrado, ver
+`docs/despliegue-demo-railway.md`.
+
 ## Módulos Principales
 
 | Módulo | Descripción |
@@ -268,6 +271,8 @@ DATABASE_URL=postgresql://labcontrol:labcontrol@db:5432/labcontrol
 SECRET_KEY=cambia-esta-clave-en-produccion-minimo-32-caracteres
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
+REACT_APP_IDLE_WARNING_MINUTES=40
+REACT_APP_IDLE_TIMEOUT_MINUTES=45
 APP_NAME=S I G A - UTECAN
 APP_ENV=development
 FRONTEND_URL=http://localhost:3000
@@ -283,6 +288,7 @@ COMUNICADOS_MAX_ADJUNTOS=5
 - CORS restringido a dominios autorizados en producción.
 - Adjuntos validados por cantidad, peso, MIME y firma real.
 - Cabeceras de seguridad HTTP via middleware.
+- Cierre automatico de sesion por inactividad en frontend. Ver `docs/seguridad-sesiones.md`.
 - `/health` y `/health/db` para monitoreo.
 
 **Checklist antes de deploy:**
@@ -293,6 +299,7 @@ COMUNICADOS_MAX_ADJUNTOS=5
 [ ] FRONTEND_URL con dominio HTTPS
 [ ] CORS_ORIGINS solo dominios autorizados
 [ ] DATABASE_URL apuntando a PostgreSQL de producción
+[ ] Tiempos de sesion revisados: ACCESS_TOKEN_EXPIRE_MINUTES y REACT_APP_IDLE_TIMEOUT_MINUTES
 [ ] Backups de base de datos y adjuntos probados
 [ ] HTTPS activo
 [ ] Migraciones Alembic probadas en staging

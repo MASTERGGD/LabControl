@@ -36,16 +36,16 @@ def upgrade() -> None:
         batch_op.create_foreign_key(
             'fk_adeudos_prestamo_id', 'prestamos', ['prestamo_id'], ['id']
         )
-
-        # Índices nuevos
-        batch_op.create_index('ix_adeudos_persona_identificador', ['persona_identificador'])
-        batch_op.create_index('ix_adeudos_persona_tipo',          ['persona_tipo'])
+    # Crear indices fuera del batch evita que SQLite intente reconstruirlos
+    # contra el nombre viejo de la columna durante migraciones desde cero.
+    op.create_index('ix_adeudos_persona_identificador', 'adeudos', ['persona_identificador'])
+    op.create_index('ix_adeudos_persona_tipo',          'adeudos', ['persona_tipo'])
 
 
 def downgrade() -> None:
+    op.drop_index('ix_adeudos_persona_tipo', table_name='adeudos')
+    op.drop_index('ix_adeudos_persona_identificador', table_name='adeudos')
     with op.batch_alter_table('adeudos', schema=None) as batch_op:
-        batch_op.drop_index('ix_adeudos_persona_tipo')
-        batch_op.drop_index('ix_adeudos_persona_identificador')
         batch_op.drop_constraint('fk_adeudos_prestamo_id', type_='foreignkey')
         batch_op.drop_column('prestamo_id')
         batch_op.drop_column('origen_tipo')

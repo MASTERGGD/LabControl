@@ -180,6 +180,24 @@ class TestPermisosDepartamento:
         }, headers=auth_headers(tok))
         assert r2.status_code == 200
 
+    def test_activar_permiso_validacion_inventario(self, client, db):
+        _admin(db)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        r = _crear_depto(client, tok, "Depto Inv Val", "DIV")
+        dep_id = r.json()["id"]
+        u = _usuario(db, "Validador", "validador_inv@test.mx", RolUsuario.ADMINISTRATIVO)
+        u.departamento_id = dep_id
+        db.commit()
+        r2 = client.patch(f"/departamentos/{dep_id}/permisos", json={
+            "usuario_id": u.id,
+            "permiso": "inventario:validar",
+            "activo": True,
+        }, headers=auth_headers(tok))
+        assert r2.status_code == 200
+        body = r2.json()
+        assert body["puede_validar_inventario"] is True
+        assert body["permisos_departamento"]["inventario:validar"] is True
+
     def test_activar_permiso_comunicados(self, client, db):
         _admin(db)
         tok = get_token(client, "admin@test.mx", "Test1234!")

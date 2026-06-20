@@ -203,8 +203,16 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const toggle = async (usuario, permiso, campo) => {
-    if (usuario.es_responsable) return;
+    if (usuario.es_responsable && permiso !== 'inventario:validar') return;
     const activo = !usuario[campo];
     setSavingId(usuario.id);
     try {
@@ -223,20 +231,34 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-2xl shadow-glass animate-fadeUp">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+    <div
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onMouseDown={onClose}
+    >
+      <div
+        className="glass w-full max-w-3xl shadow-glass animate-fadeUp max-h-[88vh] flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-permisos-departamento-title"
+        onMouseDown={event => event.stopPropagation()}
+      >
+        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between gap-4 shrink-0">
           <div>
-            <h3 className="font-semibold text-white">Permisos del departamento</h3>
+            <h3 id="modal-permisos-departamento-title" className="font-semibold text-white">Permisos del departamento</h3>
             <p className="text-xs text-slate-400 mt-0.5">{departamento.nombre}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white rounded-lg p-2 hover:bg-white/10 transition-colors shrink-0"
+            title="Cerrar"
+            aria-label="Cerrar permisos"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto min-h-0">
           {loading ? (
             <div className="h-40 rounded-xl bg-white/5 animate-pulse" />
           ) : usuarios.length === 0 ? (
@@ -244,7 +266,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
           ) : (
             <div className="divide-y divide-white/5">
               {usuarios.map(u => (
-                <div key={u.id} className="flex items-center gap-3 py-3">
+                <div key={u.id} className="flex items-center gap-3 py-3 flex-wrap sm:flex-nowrap">
                   <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
                     <span className="text-xs font-bold text-slate-300">{u.nombre?.[0]?.toUpperCase()}</span>
                   </div>
@@ -265,7 +287,17 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                       disabled={u.es_responsable || savingId === u.id}
                       onChange={() => toggle(u, 'inventario:write', 'puede_gestionar_inventario')}
                     />
-                    Inventario
+                    Captura inventario
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="accent-amber-500"
+                      checked={!!u.puede_validar_inventario}
+                      disabled={savingId === u.id}
+                      onChange={() => toggle(u, 'inventario:validar', 'puede_validar_inventario')}
+                    />
+                    Validar inventario
                   </label>
                   <label className={`flex items-center gap-2 text-sm ${u.es_responsable ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}>
                     <input
@@ -281,6 +313,11 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
               ))}
             </div>
           )}
+        </div>
+        <div className="px-6 py-4 border-t border-white/5 flex justify-end shrink-0">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-200 bg-white/10 hover:bg-white/15 transition-colors">
+            Cerrar
+          </button>
         </div>
       </div>
     </div>

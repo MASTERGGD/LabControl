@@ -700,7 +700,12 @@ def mapa_sesion(
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
     pcs = _snapshot_lab(s.laboratorio_id, db)
-    return {"pcs": pcs, "sesion_id": sesion_id, "laboratorio_id": s.laboratorio_id}
+    return {
+        "pcs": pcs,
+        "sesion_id": sesion_id,
+        "laboratorio_id": s.laboratorio_id,
+        "estado": s.estado,
+    }
 
 
 @router.post("/{sesion_id}/cerrar", summary="Cerrar sesión de clase")
@@ -783,6 +788,11 @@ async def cerrar_sesion(
     await manager.broadcast(s.laboratorio_id, {
         "tipo": "sesion_cerrada",
         "sesion_id": sesion_id,
+        "cerrada_por": {
+            "id": current_user.id,
+            "nombre": current_user.nombre,
+            "rol": current_user.rol.value if hasattr(current_user.rol, "value") else str(current_user.rol),
+        },
     })
 
     return _serializar_sesion(s, db)

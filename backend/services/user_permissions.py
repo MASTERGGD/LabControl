@@ -9,6 +9,7 @@ from models.usuario_permiso import UsuarioPermiso
 
 PERM_COMUNICADOS_WRITE = "comunicados:write"
 PERM_INVENTARIO_WRITE = "inventario:write"
+PERM_INVENTARIO_VALIDATE = "inventario:validar"
 
 
 def es_responsable_departamento(db: Session, usuario: Usuario, departamento_id: int | None) -> bool:
@@ -83,6 +84,24 @@ def departamentos_inventario(db: Session, usuario: Usuario) -> list[int]:
     return departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE)
 
 
+def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) -> bool:
+    try:
+        return db.query(UsuarioPermiso.id).filter(
+            UsuarioPermiso.usuario_id == usuario.id,
+            UsuarioPermiso.permiso == permiso,
+            UsuarioPermiso.activo == True,
+        ).first() is not None
+    except (OperationalError, ProgrammingError):
+        db.rollback()
+        return False
+
+
+def puede_validar_inventario(db: Session, usuario: Usuario) -> bool:
+    if usuario.rol == RolUsuario.SUPER_ADMIN:
+        return True
+    return tiene_permiso_en_alguna_area(db, usuario, PERM_INVENTARIO_VALIDATE)
+
+
 def puede_gestionar_inventario(
     db: Session,
     usuario: Usuario,
@@ -101,10 +120,14 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
     permisos = set()
     if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.TUTORIA_ADMIN):
         permisos.add(PERM_COMUNICADOS_WRITE)
+    if usuario.rol == RolUsuario.SUPER_ADMIN:
+        permisos.add(PERM_INVENTARIO_VALIDATE)
     if usuario.rol == RolUsuario.RESPONSABLE_LAB:
         permisos.add(PERM_INVENTARIO_WRITE)
     if departamentos_con_permiso(db, usuario, PERM_COMUNICADOS_WRITE):
         permisos.add(PERM_COMUNICADOS_WRITE)
     if departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE):
         permisos.add(PERM_INVENTARIO_WRITE)
+    if tiene_permiso_en_alguna_area(db, usuario, PERM_INVENTARIO_VALIDATE):
+        permisos.add(PERM_INVENTARIO_VALIDATE)
     return sorted(permisos)

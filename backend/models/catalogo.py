@@ -52,3 +52,25 @@ class CatalogoCarrera(Base):
     activo          = Column(Boolean, default=True, nullable=False)
     creado_en       = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     actualizado_en  = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+
+class CatalogoInventarioItem(Base):
+    __tablename__ = "catalogo_inventario"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    tipo            = Column(String(40), nullable=False, index=True)
+    clave           = Column(String(50), nullable=False, index=True)
+    nombre          = Column(String(150), nullable=False)
+    prefijo_codigo  = Column(String(12), nullable=True)
+    alcance         = Column(String(20), default="AMBOS", nullable=False)
+    activo          = Column(Boolean, default=True, nullable=False)
+    protegido       = Column(Boolean, default=False, nullable=False)
+    creado_por_id   = Column(Integer, ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True)
+    creado_en       = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    actualizado_en  = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    creado_por      = relationship("Usuario", foreign_keys=[creado_por_id])
+
+    __table_args__ = (
+        UniqueConstraint("tipo", "clave", name="uq_catalogo_inventario_tipo_clave"),
+    )

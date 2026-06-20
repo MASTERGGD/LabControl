@@ -12,7 +12,11 @@ Casos cubiertos:
 import pytest
 import datetime
 from tests.conftest import get_token, auth_headers
+from dependencies import hashear_password
+from models.departamento import Departamento
 from models.inventario import Prestamo
+from models.usuario import RolUsuario, Usuario
+from models.usuario_permiso import UsuarioPermiso
 
 
 class TestActivos:
@@ -72,6 +76,92 @@ class TestActivos:
         token = get_token(client, "docente@test.com", "DocentePass123")
         resp = self._crear_activo(client, token, lab.id)
         assert resp.status_code == 403
+
+    def test_validador_institucional_puede_validar_activo_departamental(self, client, db, admin_user):
+        """Un delegado de Inventario Institucional valida sin ser Super Admin."""
+        dep = Departamento(nombre="Finanzas", clave="FIN", activo=True)
+        capturista = Usuario(
+            nombre="Capturista Finanzas",
+            email="captura.fin@test.com",
+            password_hash=hashear_password("Test1234!"),
+            rol=RolUsuario.ADMINISTRATIVO,
+            activo=True,
+            departamento=dep,
+        )
+        validador = Usuario(
+            nombre="Inventario Institucional",
+            email="inventario.inst@test.com",
+            password_hash=hashear_password("Test1234!"),
+            rol=RolUsuario.ADMINISTRATIVO,
+            activo=True,
+            departamento=dep,
+        )
+        db.add_all([dep, capturista, validador])
+        db.flush()
+        db.add_all([
+            UsuarioPermiso(usuario_id=capturista.id, departamento_id=dep.id, permiso="inventario:write", activo=True),
+            UsuarioPermiso(usuario_id=validador.id, departamento_id=dep.id, permiso="inventario:validar", activo=True),
+        ])
+        db.commit()
+
+        token_captura = get_token(client, "captura.fin@test.com", "Test1234!")
+        creado = client.post(
+            "/inventario/activos",
+            json={
+                "alcance": "INSTITUCIONAL",
+                "departamento_id": dep.id,
+                "nombre": "Silla secretarial",
+                "categoria": "MOBILIARIO",
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token_captura),
+        )
+        assert creado.status_code == 201, creado.text
+        assert creado.json()["estado_admin"] == "BORRADOR"
+
+        token_validador = get_token(client, "inventario.inst@test.com", "Test1234!")
+        validado = client.post(
+            f"/inventario/activos/{creado.json()['id']}/validacion",
+            json={"estado_admin": "VALIDADO"},
+            headers=auth_headers(token_validador),
+        )
+        assert validado.status_code == 200, validado.text
+        assert validado.json()["estado_admin"] == "VALIDADO"
+
+    def test_catalogo_inventario_permite_categoria_personalizada(self, client, admin_user, lab):
+        """Inventario Institucional puede agregar categorias sin cambiar codigo."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        creada = client.post(
+            "/inventario/catalogo",
+            json={
+                "tipo": "CATEGORIA_ACTIVO",
+                "nombre": "Equipo de soldadura",
+                "clave": "EQUIPO_SOLDADURA",
+                "prefijo_codigo": "SOL",
+                "alcance": "LABORATORIO",
+            },
+            headers=auth_headers(token),
+        )
+        assert creada.status_code == 201, creada.text
+        assert creada.json()["clave"] == "EQUIPO_SOLDADURA"
+
+        catalogo = client.get("/inventario/categorias", headers=auth_headers(token))
+        assert catalogo.status_code == 200
+        assert "EQUIPO_SOLDADURA" in catalogo.json()["categorias"]
+
+        activo = client.post(
+            "/inventario/activos",
+            json={
+                "laboratorio_id": lab.id,
+                "nombre": "Soldadora de prueba",
+                "categoria": "EQUIPO_SOLDADURA",
+                "area": "LTI",
+                "estado": "OPERATIVO",
+            },
+            headers=auth_headers(token),
+        )
+        assert activo.status_code == 201, activo.text
+        assert activo.json()["codigo_inventario"].startswith("UTC-LTI-SOL-")
 
     def test_listar_activos_docente(self, client, admin_user, docente_user, lab):
         """DOCENTE sí puede listar activos (inventario:read)."""

@@ -7,7 +7,7 @@ Acceso: solo SUPER_ADMIN y LAB_ADMIN.
   GET  /auditoria/resumen   -- conteos por accion (para dashboard futuro)
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
@@ -19,6 +19,11 @@ from database import get_db
 from models.auditoria import AuditLog
 from models.usuario import RolUsuario
 from dependencies import get_current_user
+from services.audit_retention import (
+    MIN_RETENTION_DAYS,
+    archive_old_logs,
+    retention_status,
+)
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -28,8 +33,13 @@ router = APIRouter(prefix="/auditoria", tags=["Auditoria"])
 
 
 def _solo_admin(current_user=Depends(get_current_user)):
-    from fastapi import HTTPException, status
     if current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN):
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+    return current_user
+
+
+def _solo_super_admin(current_user=Depends(get_current_user)):
+    if current_user.rol != RolUsuario.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Acceso denegado")
     return current_user
 
@@ -152,6 +162,39 @@ def resumen_auditoria(
         .all()
     )
     return {"dias": dias, "conteos": [{"accion": r.accion, "total": r.total} for r in rows]}
+
+
+@router.get("/retencion")
+def estado_retencion_auditoria(
+    db: Session = Depends(get_db),
+    current_user=Depends(_solo_super_admin),
+    dias_retencion: Optional[int] = Query(None, ge=MIN_RETENTION_DAYS, le=3650),
+):
+    """Estado de almacenamiento de la bitacora operativa y archivos historicos."""
+    return retention_status(db, retention_days=dias_retencion)
+
+
+@router.post("/retencion/archivar")
+def archivar_retencion_auditoria(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(_solo_super_admin),
+    dry_run: bool = Query(True, description="true solo calcula; false archiva y elimina de la tabla operativa"),
+    dias_retencion: Optional[int] = Query(None, ge=MIN_RETENTION_DAYS, le=3650),
+    limite: Optional[int] = Query(None, ge=1, le=50000),
+):
+    """Archiva logs antiguos en JSONL comprimido y limpia la tabla operativa."""
+    try:
+        return archive_old_logs(
+            db,
+            usuario=current_user,
+            request=request,
+            retention_days=dias_retencion,
+            limit=limite,
+            dry_run=dry_run,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/export")

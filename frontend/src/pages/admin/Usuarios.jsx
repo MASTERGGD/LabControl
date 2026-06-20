@@ -87,7 +87,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-lg shadow-2xl">
+      <div className="glass w-full max-w-3xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
           <h3 className="font-semibold text-white">{esEdicion ? 'Editar usuario' : 'Nuevo usuario'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
@@ -97,7 +97,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
           <div className="grid grid-cols-1 gap-4">
             {/* Nombre */}
             <div>
@@ -166,7 +166,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                 placeholder="— Ninguno —"
                 options={[
                   { value: '', label: '— Ninguno —' },
-                  ...departamentos.map(d => ({ value: d.id, label: `${d.nombre} (${d.clave})` })),
+                  ...departamentos.map(d => ({ value: d.id, label: `${d.nombre} (${d.clave})`, wrap: true })),
                 ]}
               />
             </div>

@@ -8,6 +8,13 @@ const api = axios.create({
   baseURL: API_BASE,
 });
 
+const SESSION_KEYS = [
+  'token',
+  'usuario',
+  'labcontrol_session_id',
+  'labcontrol_last_activity',
+];
+
 // ── Adjuntar token en cada petición ──────────────────────────────────────────
 api.interceptors.request.use(config => {
   const token = sessionStorage.getItem('token');
@@ -20,8 +27,7 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('usuario');
+      SESSION_KEYS.forEach(key => sessionStorage.removeItem(key));
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }

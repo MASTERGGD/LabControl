@@ -79,6 +79,7 @@ PERMISSIONS: dict[str, frozenset[RolUsuario]] = {
     "inventario:write":         frozenset({SA, LA, RL}),        # crear / editar activo
     "inventario:delete":        frozenset({SA, LA, RL}),        # dar de baja activo
     "inventario:import":        frozenset({SA, LA, RL}),        # importar Excel
+    "inventario:validar":       frozenset({SA}),                # revisar / validar inventario institucional
 
     # ── Préstamos ────────────────────────────────────────────────────────────────
     "prestamos:read":           frozenset({SA, LA, RL, DO}),   # ver préstamos

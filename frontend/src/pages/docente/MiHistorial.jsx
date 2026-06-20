@@ -1,31 +1,43 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import { MEXICO_TIME_ZONE } from '../../utils/timezone';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function parseUtc(iso) {
+  if (!iso) return null;
+  const raw = String(iso);
+  return new Date(/[zZ]$|[+-]\d\d:\d\d$/.test(raw) ? raw : `${raw}Z`);
+}
+
 function fmtFecha(iso) {
   if (!iso) return '—';
-  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+  const d = parseUtc(iso);
   return d.toLocaleDateString('es-MX', {
+    timeZone: MEXICO_TIME_ZONE,
     day: '2-digit', month: 'short', year: 'numeric',
   });
 }
 
 function fmtHora(iso) {
   if (!iso) return '—';
-  const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
-  // Ajustar a México (UTC-6)
-  const mx = new Date(d.getTime() - 6 * 60 * 60 * 1000);
-  return mx.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const d = parseUtc(iso);
+  return d.toLocaleTimeString('es-MX', {
+    timeZone: MEXICO_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
 }
 
 function fmtDuracion(inicio, fin) {
   if (!inicio || !fin) return '—';
-  const a = new Date(inicio + (inicio.endsWith('Z') ? '' : 'Z'));
-  const b = new Date(fin + (fin.endsWith('Z') ? '' : 'Z'));
+  const a = parseUtc(inicio);
+  const b = parseUtc(fin);
   const mins = Math.round((b - a) / 60000);
   if (mins < 60) return `${mins} min`;
   const h = Math.floor(mins / 60);
@@ -40,6 +52,8 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 function SesionCard({ sesion, onVerDetalle }) {
   const duracion = fmtDuracion(sesion.inicio, sesion.fin_real);
   const esLibre  = sesion.tipo_sesion === 'LIBRE';
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
 
   return (
     <div
@@ -96,7 +110,11 @@ function SesionCard({ sesion, onVerDetalle }) {
           </div>
 
           {sesion.overtime_min > 0 && (
-            <span className="text-xs bg-orange-900/40 border border-orange-700/50 text-orange-300 px-2 py-1 rounded-lg">
+            <span className={`text-xs font-semibold border px-2 py-1 rounded-lg ${
+              isDay
+                ? 'bg-orange-100 border-orange-400 text-orange-900'
+                : 'bg-orange-900/40 border-orange-700/50 text-orange-300'
+            }`}>
               +{sesion.overtime_min}min extra
             </span>
           )}
@@ -125,6 +143,8 @@ function PanelDetalle({ sesion, onClose }) {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
   const { token }                   = useAuth();
+  const { themeKey }                = useTheme();
+  const isDay                       = themeKey === 'day';
 
   useEffect(() => {
     setLoading(true);
@@ -191,7 +211,7 @@ function PanelDetalle({ sesion, onClose }) {
           {[
             { label: 'Alumnos registrados', valor: sesion.total_alumnos ?? 0, color: 'text-green-400' },
             { label: 'Duración real',        valor: duracion,                  color: 'text-blue-400'  },
-            { label: 'Tiempo extra',             valor: sesion.overtime_min > 0 ? `+${sesion.overtime_min} min` : '—', color: sesion.overtime_min > 0 ? 'text-orange-400' : 'text-slate-500' },
+            { label: 'Tiempo extra',             valor: sesion.overtime_min > 0 ? `+${sesion.overtime_min} min` : '—', color: sesion.overtime_min > 0 ? (isDay ? 'text-orange-800' : 'text-orange-400') : 'text-slate-500' },
           ].map(m => (
             <div key={m.label} className="text-center glass-sm rounded-xl py-2 px-3">
               <p className={`text-lg font-bold ${m.color}`}>{m.valor}</p>

@@ -27,11 +27,18 @@ from models.inventario import (
 )
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
+from models.usuario_permiso import UsuarioPermiso
 from models.adeudo import Adeudo
 from models.auditoria import AuditLog
+from models.catalogo import CatalogoInventarioItem
 from dependencies import get_current_user, require_roles
 from rls import assert_lab_write, assert_resource_access
-from services.user_permissions import departamentos_inventario, puede_gestionar_inventario
+from services.user_permissions import (
+    PERM_INVENTARIO_VALIDATE,
+    departamentos_inventario,
+    puede_gestionar_inventario,
+    puede_validar_inventario,
+)
 import datetime
 
 
@@ -61,6 +68,10 @@ ESTADOS_MOVIMIENTO = ["SOLICITADO", "AUTORIZADO", "RECHAZADO", "ENTREGADO", "REC
 ESTADOS_PRESTAMO = ["ACTIVO", "DEVUELTO", "VENCIDO"]
 CONDICIONES = ["EXCELENTE", "BUENO", "REGULAR", "DAÑADO"]
 ESTADOS_INCIDENTE_CERRADOS = ("REPARADO", "DADO_DE_BAJA", "CERRADO_SIN_ADEUDO")
+CATALOGO_TIPO_CATEGORIA = "CATEGORIA_ACTIVO"
+CATALOGO_TIPO_UBICACION = "TIPO_UBICACION"
+CATALOGO_TIPOS = [CATALOGO_TIPO_CATEGORIA, CATALOGO_TIPO_UBICACION]
+CATALOGO_ALCANCES = ["LABORATORIO", "INSTITUCIONAL", "AMBOS"]
 
 
 def _es_rol_laboratorio(usuario: Usuario) -> bool:
@@ -93,7 +104,7 @@ def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario) -> None:
 
 
 def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[int] | None:
-    if _es_admin_inventario_global(usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
         return None
     ids = set(departamentos_inventario(db, usuario))
     if usuario.rol == RolUsuario.ADMINISTRATIVO and usuario.departamento_id:
@@ -106,7 +117,7 @@ def _resolver_departamento_inventario(
     usuario: Usuario,
     departamento_id: int | None,
 ) -> int:
-    if _es_admin_inventario_global(usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
         if departamento_id is None:
             raise HTTPException(status_code=422, detail="departamento_id es requerido")
         return departamento_id
@@ -127,7 +138,7 @@ def _asegurar_write_inventario_departamento(
     usuario: Usuario,
     departamento_id: int | None,
 ) -> None:
-    if _es_admin_inventario_global(usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
         return
     if not departamento_id or not puede_gestionar_inventario(db, usuario, departamento_id):
         raise HTTPException(status_code=403, detail="No tienes permiso para gestionar inventario de este departamento")
@@ -139,7 +150,7 @@ def _asegurar_acceso_activo_departamental(
     usuario: Usuario,
 ) -> None:
     assert_resource_access(activo, usuario)
-    if _es_admin_inventario_global(usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
         return
     permitidos = departamentos_inventario(db, usuario)
     if not activo or activo.departamento_id not in permitidos:
@@ -257,6 +268,22 @@ class UbicacionInventarioIn(BaseModel):
     activo: bool = True
 
 
+class CatalogoInventarioIn(BaseModel):
+    tipo: str = Field(..., description=f"Uno de: {CATALOGO_TIPOS}")
+    nombre: str = Field(..., min_length=2, max_length=150)
+    clave: Optional[str] = Field(None, max_length=50)
+    prefijo_codigo: Optional[str] = Field(None, max_length=12)
+    alcance: str = Field(default="AMBOS", description=f"Uno de: {CATALOGO_ALCANCES}")
+    activo: bool = True
+
+
+class CatalogoInventarioUpdate(BaseModel):
+    nombre: Optional[str] = Field(None, min_length=2, max_length=150)
+    prefijo_codigo: Optional[str] = Field(None, max_length=12)
+    alcance: Optional[str] = Field(None, description=f"Uno de: {CATALOGO_ALCANCES}")
+    activo: Optional[bool] = None
+
+
 class MovimientoInventarioCreate(BaseModel):
     tipo: str = Field(..., description=f"Uno de: {TIPOS_MOVIMIENTO}")
     departamento_destino_id: Optional[int] = None
@@ -357,6 +384,107 @@ def _normalizar(texto: str) -> str:
         if unicodedata.category(c) != "Mn"
     )
 
+def _normalizar_clave_catalogo(texto: str) -> str:
+    base = _normalizar(texto or "")
+    chars = []
+    anterior_sep = False
+    for char in base:
+        if char.isalnum():
+            chars.append(char)
+            anterior_sep = False
+        elif not anterior_sep:
+            chars.append("_")
+            anterior_sep = True
+    clave = "".join(chars).strip("_")
+    return (clave or "OTRO")[:50]
+
+
+def _catalogo_base_items(tipo: str) -> list[dict]:
+    if tipo == CATALOGO_TIPO_CATEGORIA:
+        return [
+            {
+                "id": None,
+                "tipo": tipo,
+                "clave": clave,
+                "nombre": clave.replace("_", " ").title(),
+                "prefijo_codigo": TIPO_CODIGO.get(clave, "OTR"),
+                "alcance": "AMBOS",
+                "activo": True,
+                "protegido": True,
+                "base": True,
+            }
+            for clave in CATEGORIAS
+        ]
+    if tipo == CATALOGO_TIPO_UBICACION:
+        return [
+            {
+                "id": None,
+                "tipo": tipo,
+                "clave": clave,
+                "nombre": clave.replace("_", " ").title(),
+                "prefijo_codigo": None,
+                "alcance": "AMBOS",
+                "activo": True,
+                "protegido": True,
+                "base": True,
+            }
+            for clave in TIPOS_UBICACION
+        ]
+    return []
+
+
+def _serializar_catalogo_inventario(item: CatalogoInventarioItem) -> dict:
+    return {
+        "id": item.id,
+        "tipo": item.tipo,
+        "clave": item.clave,
+        "nombre": item.nombre,
+        "prefijo_codigo": item.prefijo_codigo,
+        "alcance": item.alcance,
+        "activo": item.activo,
+        "protegido": item.protegido,
+        "base": False,
+        "creado_por_id": item.creado_por_id,
+        "creado_en": item.creado_en.isoformat() if item.creado_en else None,
+        "actualizado_en": item.actualizado_en.isoformat() if item.actualizado_en else None,
+    }
+
+
+def _catalogo_items(db: Session, tipo: str, solo_activos: bool = True) -> list[dict]:
+    items = _catalogo_base_items(tipo)
+    q = db.query(CatalogoInventarioItem).filter(CatalogoInventarioItem.tipo == tipo)
+    if solo_activos:
+        q = q.filter(CatalogoInventarioItem.activo == True)
+    custom = [_serializar_catalogo_inventario(i) for i in q.order_by(CatalogoInventarioItem.nombre).all()]
+    por_clave = {i["clave"]: i for i in items}
+    for item in custom:
+        por_clave[item["clave"]] = item
+    return sorted(por_clave.values(), key=lambda i: (not i.get("base"), i["nombre"]))
+
+
+def _catalogo_claves(db: Session, tipo: str) -> list[str]:
+    return [i["clave"] for i in _catalogo_items(db, tipo, solo_activos=True)]
+
+
+def _catalogo_prefijo_categoria(db: Session, categoria: str) -> str:
+    clave = (categoria or "").upper()
+    item = db.query(CatalogoInventarioItem).filter(
+        CatalogoInventarioItem.tipo == CATALOGO_TIPO_CATEGORIA,
+        CatalogoInventarioItem.clave == clave,
+        CatalogoInventarioItem.activo == True,
+    ).first()
+    if item and item.prefijo_codigo:
+        return item.prefijo_codigo.upper()
+    return TIPO_CODIGO.get(clave, "OTR")
+
+
+def _asegurar_permiso_catalogo_inventario(db: Session, usuario: Usuario) -> None:
+    if not puede_validar_inventario(db, usuario):
+        raise HTTPException(
+            status_code=403,
+            detail="Solo Inventario Institucional puede administrar este catalogo",
+        )
+
 
 def _buscar_lab(nombre_excel: str, labs_dict: dict, db, current_user):
     """
@@ -398,7 +526,7 @@ def _buscar_lab(nombre_excel: str, labs_dict: dict, db, current_user):
 
 def _generar_codigo(db: Session, categoria: str, area: str = None) -> str:
     """Genera el siguiente número de inventario libre en formato UTC-[ÁREA]-[TIPO]-[SEQ]."""
-    tipo      = TIPO_CODIGO.get(categoria.upper(), "OTR")
+    tipo      = _catalogo_prefijo_categoria(db, categoria)
     area_code = (area or "UTC").upper().strip().replace(" ", "")[:10]
     prefix    = f"UTC-{area_code}-{tipo}-"
     existentes = db.query(Activo.codigo_inventario).filter(
@@ -764,6 +892,30 @@ def _destinatarios_validacion_activo(a: Activo, db: Session) -> set[int]:
         dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first()
         if dep and dep.responsable_id:
             destinatarios.add(dep.responsable_id)
+    return destinatarios
+
+
+def _destinatarios_revision_institucional(db: Session, excluir_usuario_id: int | None = None) -> set[int]:
+    destinatarios = {
+        uid
+        for (uid,) in db.query(Usuario.id).filter(
+            Usuario.activo == True,
+            Usuario.rol == RolUsuario.SUPER_ADMIN,
+        ).all()
+    }
+    destinatarios.update(
+        uid
+        for (uid,) in db.query(UsuarioPermiso.usuario_id).join(
+            Usuario,
+            Usuario.id == UsuarioPermiso.usuario_id,
+        ).filter(
+            UsuarioPermiso.permiso == PERM_INVENTARIO_VALIDATE,
+            UsuarioPermiso.activo == True,
+            Usuario.activo == True,
+        ).all()
+    )
+    if excluir_usuario_id:
+        destinatarios.discard(excluir_usuario_id)
     return destinatarios
 
 
@@ -1175,8 +1327,9 @@ def crear_ubicacion(
     _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN)),
 ):
     tipo = data.tipo.upper()
-    if tipo not in TIPOS_UBICACION:
-        raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {TIPOS_UBICACION}")
+    tipos_ubicacion_validos = _catalogo_claves(db, CATALOGO_TIPO_UBICACION)
+    if tipo not in tipos_ubicacion_validos:
+        raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {tipos_ubicacion_validos}")
     if data.departamento_id and not db.query(Departamento).filter(Departamento.id == data.departamento_id).first():
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
     ubicacion = UbicacionInventario(
@@ -1682,14 +1835,15 @@ def crear_activo(
     estado_admin = (data.estado_admin or "VALIDADO").upper()
     if estado_admin not in ESTADOS_ADMIN_ACTIVO:
         raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
-    if current_user.rol != RolUsuario.SUPER_ADMIN:
+    if not puede_validar_inventario(db, current_user):
         estado_admin = "BORRADOR"
     unidad_medida = (data.unidad_medida or "PIEZA").upper()
     if unidad_medida not in UNIDADES_MEDIDA:
         raise HTTPException(status_code=422, detail=f"Unidad de medida invalida. Use: {UNIDADES_MEDIDA}")
 
-    if data.categoria.upper() not in CATEGORIAS:
-        raise HTTPException(status_code=422, detail=f"Categoría inválida. Use: {CATEGORIAS}")
+    categorias_validas = _catalogo_claves(db, CATALOGO_TIPO_CATEGORIA)
+    if data.categoria.upper() not in categorias_validas:
+        raise HTTPException(status_code=422, detail=f"Categoria invalida. Use: {categorias_validas}")
     if alcance == "LABORATORIO":
         if not data.laboratorio_id:
             raise HTTPException(status_code=422, detail="laboratorio_id es requerido para activos de laboratorio")
@@ -1739,6 +1893,9 @@ def crear_activo(
         payload["responsable_id"] = None
     if payload.get("ubicacion_tipo"):
         payload["ubicacion_tipo"] = payload["ubicacion_tipo"].upper()
+        tipos_ubicacion_validos = _catalogo_claves(db, CATALOGO_TIPO_UBICACION)
+        if payload["ubicacion_tipo"] not in tipos_ubicacion_validos:
+            raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {tipos_ubicacion_validos}")
     a = Activo(**payload, codigo_inventario=codigo, fecha_adquisicion=_utcnow())
     db.add(a)
     db.commit()
@@ -1747,6 +1904,19 @@ def crear_activo(
               usuario=current_user, recurso_id=a.id,
               detalle={"codigo": a.codigo_inventario, "nombre": a.nombre, "categoria": a.categoria},
               request=request)
+    if (a.estado_admin or "").upper() in ("BORRADOR", "EN_REVISION", "OBSERVADO"):
+        from routers.notificaciones import crear_notificacion
+        for usuario_id in _destinatarios_revision_institucional(db, current_user.id):
+            crear_notificacion(
+                db,
+                usuario_id,
+                "INVENTARIO_REVISION",
+                "Activo pendiente de revision",
+                f"{a.codigo_inventario} · {a.nombre} fue registrado y requiere validacion institucional.",
+                f"/admin/inventario?tab=revision&estado_admin={a.estado_admin}&buscar={a.codigo_inventario}",
+                enviar_email=False,
+            )
+        db.commit()
     return _serializar_activo(a, db)
 
 
@@ -1824,8 +1994,9 @@ def editar_activo(
                 raise HTTPException(status_code=409, detail=f"Ya existe un activo con numero oficial '{campos['numero_oficial']}'")
     if "categoria" in campos:
         campos["categoria"] = campos["categoria"].upper()
-        if campos["categoria"] not in CATEGORIAS:
-            raise HTTPException(status_code=422, detail=f"Categoria invalida. Use: {CATEGORIAS}")
+        categorias_validas = _catalogo_claves(db, CATALOGO_TIPO_CATEGORIA)
+        if campos["categoria"] not in categorias_validas:
+            raise HTTPException(status_code=422, detail=f"Categoria invalida. Use: {categorias_validas}")
     if "alcance" in campos:
         campos["alcance"] = campos["alcance"].upper()
         if campos["alcance"] not in ALCANCES_ACTIVO:
@@ -1839,10 +2010,10 @@ def editar_activo(
         if campos["tipo_inventario"] not in TIPOS_INVENTARIO:
             raise HTTPException(status_code=422, detail=f"Tipo de inventario invalido. Use: {TIPOS_INVENTARIO}")
     if "estado_admin" in campos:
-        if current_user.rol != RolUsuario.SUPER_ADMIN:
+        if not puede_validar_inventario(db, current_user):
             raise HTTPException(
                 status_code=403,
-                detail="Solo Super Admin puede cambiar el estado administrativo del activo",
+                detail="Solo Inventario Institucional puede cambiar el estado administrativo del activo",
             )
         campos["estado_admin"] = campos["estado_admin"].upper()
         if campos["estado_admin"] not in ESTADOS_ADMIN_ACTIVO:
@@ -1872,6 +2043,9 @@ def editar_activo(
         raise HTTPException(status_code=404, detail="Responsable no encontrado")
     if "ubicacion_tipo" in campos and campos["ubicacion_tipo"]:
         campos["ubicacion_tipo"] = campos["ubicacion_tipo"].upper()
+        tipos_ubicacion_validos = _catalogo_claves(db, CATALOGO_TIPO_UBICACION)
+        if campos["ubicacion_tipo"] not in tipos_ubicacion_validos:
+            raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {tipos_ubicacion_validos}")
     tipo_final = campos.get("tipo_inventario", a.tipo_inventario or "ACTIVO")
     if tipo_final == "ACTIVO":
         campos["cantidad"] = 1
@@ -1895,10 +2069,10 @@ def cambiar_validacion_activo(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    if current_user.rol != RolUsuario.SUPER_ADMIN:
+    if not puede_validar_inventario(db, current_user):
         raise HTTPException(
             status_code=403,
-            detail="Solo Super Admin puede revisar y validar activos",
+            detail="Solo Super Admin o Inventario Institucional puede revisar y validar activos",
         )
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     _asegurar_acceso_activo_departamental(db, a, current_user)
@@ -3409,16 +3583,117 @@ def estadisticas_incidentes(
     }
 
 
-@router.get("/categorias", summary="Categorías disponibles")
-def listar_categorias(_: Usuario = Depends(get_current_user)):
+@router.get("/catalogo", summary="Catalogo configurable de inventario")
+def listar_catalogo_inventario(
+    tipo: Optional[str] = None,
+    solo_activos: bool = False,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_current_user),
+):
+    tipos = [tipo.upper()] if tipo else CATALOGO_TIPOS
+    for t in tipos:
+        if t not in CATALOGO_TIPOS:
+            raise HTTPException(status_code=422, detail=f"Tipo de catalogo invalido. Use: {CATALOGO_TIPOS}")
     return {
-        "categorias": CATEGORIAS,
+        "items": [
+            item
+            for t in tipos
+            for item in _catalogo_items(db, t, solo_activos=solo_activos)
+        ]
+    }
+
+
+@router.post("/catalogo", status_code=status.HTTP_201_CREATED, summary="Crear item del catalogo de inventario")
+def crear_catalogo_inventario(
+    data: CatalogoInventarioIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _asegurar_permiso_catalogo_inventario(db, current_user)
+    tipo = data.tipo.upper()
+    if tipo not in CATALOGO_TIPOS:
+        raise HTTPException(status_code=422, detail=f"Tipo de catalogo invalido. Use: {CATALOGO_TIPOS}")
+    alcance = (data.alcance or "AMBOS").upper()
+    if alcance not in CATALOGO_ALCANCES:
+        raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {CATALOGO_ALCANCES}")
+    clave = _normalizar_clave_catalogo(data.clave or data.nombre)
+    base_claves = {i["clave"] for i in _catalogo_base_items(tipo)}
+    if clave in base_claves:
+        raise HTTPException(status_code=409, detail="Ese elemento ya existe como catalogo base")
+    if db.query(CatalogoInventarioItem).filter(
+        CatalogoInventarioItem.tipo == tipo,
+        CatalogoInventarioItem.clave == clave,
+    ).first():
+        raise HTTPException(status_code=409, detail=f"Ya existe un elemento con clave '{clave}'")
+    prefijo = None
+    if tipo == CATALOGO_TIPO_CATEGORIA:
+        prefijo = _normalizar_clave_catalogo(data.prefijo_codigo or clave)[:12]
+    item = CatalogoInventarioItem(
+        tipo=tipo,
+        clave=clave,
+        nombre=data.nombre.strip(),
+        prefijo_codigo=prefijo,
+        alcance=alcance,
+        activo=data.activo,
+        protegido=False,
+        creado_por_id=current_user.id,
+        creado_en=_utcnow(),
+        actualizado_en=_utcnow(),
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serializar_catalogo_inventario(item)
+
+
+@router.put("/catalogo/{item_id}", summary="Actualizar item del catalogo de inventario")
+def actualizar_catalogo_inventario(
+    item_id: int,
+    data: CatalogoInventarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _asegurar_permiso_catalogo_inventario(db, current_user)
+    item = db.query(CatalogoInventarioItem).filter(CatalogoInventarioItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Elemento de catalogo no encontrado")
+    if item.protegido:
+        raise HTTPException(status_code=409, detail="Los elementos base no se pueden editar")
+    cambios = data.model_dump(exclude_unset=True)
+    if "nombre" in cambios and cambios["nombre"] is not None:
+        item.nombre = cambios["nombre"].strip()
+    if "prefijo_codigo" in cambios and item.tipo == CATALOGO_TIPO_CATEGORIA:
+        item.prefijo_codigo = _normalizar_clave_catalogo(cambios["prefijo_codigo"] or item.clave)[:12]
+    if "alcance" in cambios and cambios["alcance"] is not None:
+        alcance = cambios["alcance"].upper()
+        if alcance not in CATALOGO_ALCANCES:
+            raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {CATALOGO_ALCANCES}")
+        item.alcance = alcance
+    if "activo" in cambios and cambios["activo"] is not None:
+        item.activo = cambios["activo"]
+    item.actualizado_en = _utcnow()
+    db.commit()
+    db.refresh(item)
+    return _serializar_catalogo_inventario(item)
+
+
+@router.get("/categorias", summary="Categorías disponibles")
+def listar_categorias(
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_current_user),
+):
+    categorias_items = _catalogo_items(db, CATALOGO_TIPO_CATEGORIA, solo_activos=True)
+    tipos_ubicacion_items = _catalogo_items(db, CATALOGO_TIPO_UBICACION, solo_activos=True)
+    return {
+        "categorias": [i["clave"] for i in categorias_items],
+        "categorias_items": categorias_items,
         "estados": ESTADOS_ACTIVO,
         "condiciones": CONDICIONES,
         "alcances": ALCANCES_ACTIVO,
         "tipos_inventario": TIPOS_INVENTARIO,
         "estados_admin": ESTADOS_ADMIN_ACTIVO,
-        "tipos_ubicacion": TIPOS_UBICACION,
+        "tipos_ubicacion": [i["clave"] for i in tipos_ubicacion_items],
+        "tipos_ubicacion_items": tipos_ubicacion_items,
         "tipos_movimiento": TIPOS_MOVIMIENTO,
         "estados_movimiento": ESTADOS_MOVIMIENTO,
         "estados_baja": ESTADOS_BAJA,
@@ -3733,7 +4008,7 @@ async def importar_activos(
         departamento_txt = _v(row, 15)
         alcance_excel = _v(row, 16).upper()
         estado_admin = _v(row, 17).upper() or estado_admin_default
-        if current_user.rol != RolUsuario.SUPER_ADMIN:
+        if not puede_validar_inventario(db, current_user):
             estado_admin = "BORRADOR"
 
         fila_errs = []
@@ -3741,7 +4016,7 @@ async def importar_activos(
             fila_errs.append("Nombre/descripción requerido (columna B)")
 
         # Normalizar categoría
-        if categoria not in CATEGORIAS:
+        if categoria not in _catalogo_claves(db, CATALOGO_TIPO_CATEGORIA):
             categoria = "OTRO"
 
         # Normalizar estado

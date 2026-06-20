@@ -85,6 +85,73 @@ function HealthItem({ title, value, status, detail, icon }) {
   );
 }
 
+function ConfirmDeleteModal({ filename, onCancel, onConfirm, busy }) {
+  if (!filename) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm px-4">
+      <div
+        className="w-full max-w-md rounded-2xl border shadow-2xl"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+      >
+        <div className="px-5 py-4 border-b flex items-start justify-between gap-4" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-500">Eliminar respaldo</p>
+            <h3 className="text-lg font-bold mt-1" style={{ color: 'var(--text)' }}>Confirmar eliminacion</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="p-2 rounded-lg hover:bg-black/5 disabled:opacity-50"
+            style={{ color: 'var(--text-muted)' }}
+            aria-label="Cerrar"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3">
+            <p className="text-sm font-semibold text-red-600">Esta accion no se puede deshacer.</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--text)' }}>
+              Se eliminara definitivamente el respaldo:
+            </p>
+            <p className="mt-2 text-xs font-mono break-all" style={{ color: 'var(--text-muted)' }}>
+              {filename}
+            </p>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Usa esta accion solo cuando ya tengas otro respaldo valido o cuando estes limpiando copias antiguas.
+          </p>
+        </div>
+
+        <div className="px-5 py-4 border-t flex justify-end gap-2" style={{ borderColor: 'var(--border)' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50"
+            style={{ background: 'var(--surface-2)', color: 'var(--text)' }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-500 disabled:opacity-50"
+            style={{ color: '#fff' }}
+          >
+            {busy ? 'Eliminando...' : 'Eliminar respaldo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const IconDatabase = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6c0 1.657 3.582 3 8 3s8-1.343 8-3-3.582-3-8-3-8 1.343-8 3zm0 0v6c0 1.657 3.582 3 8 3s8-1.343 8-3V6m-16 6v6c0 1.657 3.582 3 8 3s8-1.343 8-3v-6"/>
@@ -118,6 +185,7 @@ export default function RespaldosSistema() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [workingFile, setWorkingFile] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,12 +251,18 @@ export default function RespaldosSistema() {
     }
   };
 
-  const remove = async filename => {
-    if (!window.confirm(`Eliminar definitivamente ${filename}?`)) return;
+  const requestRemove = filename => {
+    setDeleteTarget(filename);
+  };
+
+  const remove = async () => {
+    const filename = deleteTarget;
+    if (!filename) return;
     setWorkingFile(filename);
     try {
       await api.delete(`/system/backups/${encodeURIComponent(filename)}`);
       toast('Respaldo eliminado.', 'success');
+      setDeleteTarget('');
       await load();
     } catch (error) {
       toast(errorMessage(error, 'No se pudo eliminar el respaldo.'), 'error');
@@ -215,7 +289,7 @@ export default function RespaldosSistema() {
             onClick={generate}
             disabled={generating}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: 'var(--accent-primary)' }}
+            style={{ background: 'var(--accent-primary)', color: '#fff' }}
           >
             <svg className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               {generating
@@ -285,7 +359,7 @@ export default function RespaldosSistema() {
                           <button onClick={() => download(item.filename)} disabled={busy} className="p-2 rounded-lg disabled:opacity-40" style={{ color: 'var(--accent-primary)', background: 'var(--surface-2)' }} title="Descargar" aria-label="Descargar">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
                           </button>
-                          <button onClick={() => remove(item.filename)} disabled={busy} className="p-2 rounded-lg text-red-500 disabled:opacity-40" style={{ background: 'var(--surface-2)' }} title="Eliminar" aria-label="Eliminar">
+                          <button onClick={() => requestRemove(item.filename)} disabled={busy} className="p-2 rounded-lg text-red-500 disabled:opacity-40" style={{ background: 'var(--surface-2)' }} title="Eliminar" aria-label="Eliminar">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12m-10 0l1 13h6l1-13M9 7V4h6v3"/></svg>
                           </button>
                         </div>
@@ -298,6 +372,12 @@ export default function RespaldosSistema() {
           </div>
         </section>
       </div>
+      <ConfirmDeleteModal
+        filename={deleteTarget}
+        onCancel={() => setDeleteTarget('')}
+        onConfirm={remove}
+        busy={Boolean(workingFile && workingFile === deleteTarget)}
+      />
     </AdminLayout>
   );
 }

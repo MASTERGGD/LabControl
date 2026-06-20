@@ -205,6 +205,7 @@ export default function CumplimientoDocente() {
             onClick={generarReporte}
             disabled={cargando}
             className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+            style={{ color: '#fff' }}
           >
             {cargando ? (
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">

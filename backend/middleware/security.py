@@ -50,7 +50,7 @@ _CSP_DIRECTIVES = "; ".join([
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data: blob:",
-    "connect-src 'self' ws: wss: http://localhost:8000 http://localhost:3000",
+    "connect-src 'self' https: ws: wss: http://localhost:8000 http://localhost:3000",
     "worker-src 'self'",
     "manifest-src 'self'",
     "frame-ancestors 'none'",

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * SelectDark — dropdown 100 % personalizado que respeta el Dark Theme.
@@ -27,9 +28,31 @@ export default function SelectDark({
 }) {
   const [open, setOpen]     = useState(false);
   const [active, setActive] = useState(-1);    // fila resaltada con teclado
+  const [menuStyle, setMenuStyle] = useState({});
   const wrapRef  = useRef(null);
   const listRef  = useRef(null);
   const triggerRef = useRef(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const gap = 6;
+    const preferredMax = 224;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
+    const spaceAbove = rect.top - gap - 8;
+    const opensUp = spaceBelow < 120 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(120, Math.min(preferredMax, opensUp ? spaceAbove : spaceBelow));
+
+    setMenuStyle({
+      position: 'fixed',
+      left: `${rect.left}px`,
+      top: `${opensUp ? rect.top - maxHeight - gap : rect.bottom + gap}px`,
+      width: `${rect.width}px`,
+      maxHeight: `${maxHeight}px`,
+      zIndex: 10000,
+    });
+  }, []);
 
   // ── etiqueta que se muestra en el trigger ────────────────────────────────
   const selectedOpt = options.find(o => String(o.value) === String(value));
@@ -38,7 +61,9 @@ export default function SelectDark({
   // ── cerrar al hacer clic fuera ───────────────────────────────────────────
   useEffect(() => {
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+      const insideTrigger = wrapRef.current?.contains(e.target);
+      const insideMenu = listRef.current?.contains(e.target);
+      if (!insideTrigger && !insideMenu) {
         setOpen(false);
         setActive(-1);
       }
@@ -46,6 +71,19 @@ export default function SelectDark({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+
+    const onReposition = () => updateMenuPosition();
+    window.addEventListener('resize', onReposition);
+    window.addEventListener('scroll', onReposition, true);
+    return () => {
+      window.removeEventListener('resize', onReposition);
+      window.removeEventListener('scroll', onReposition, true);
+    };
+  }, [open, updateMenuPosition]);
 
   // ── scroll automático al ítem activo ────────────────────────────────────
   useEffect(() => {
@@ -61,6 +99,7 @@ export default function SelectDark({
     if (nextOpen) {
       const idx = options.findIndex(o => String(o.value) === String(value));
       setActive(idx >= 0 ? idx : 0);
+      requestAnimationFrame(updateMenuPosition);
     } else {
       setActive(-1);
     }
@@ -80,6 +119,7 @@ export default function SelectDark({
         setOpen(true);
         const idx = options.findIndex(o => String(o.value) === String(value));
         setActive(idx >= 0 ? idx : 0);
+        requestAnimationFrame(updateMenuPosition);
       }
       return;
     }
@@ -155,12 +195,12 @@ export default function SelectDark({
       </button>
 
       {/* ── Menú flotante ─────────────────────────────────────────────────── */}
-      {open && (
+      {open && createPortal(
         <ul
           ref={listRef}
           role="listbox"
           className={`
-            absolute z-[9999] w-full mt-1.5
+            w-full
             rounded-xl overflow-hidden overflow-y-auto
             shadow-2xl animate-fadeUp
             ${menuClass}
@@ -170,7 +210,7 @@ export default function SelectDark({
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             border: '1px solid var(--dropdown-border)',
-            maxHeight: '14rem',
+            ...menuStyle,
           }}
         >
           {options.length === 0 ? (
@@ -205,7 +245,10 @@ export default function SelectDark({
                   }}
                   className="px-4 py-2.5 cursor-pointer select-none transition-colors duration-100 flex items-center justify-between gap-2 text-sm"
                 >
-                  <span className="truncate min-w-0">
+                  <span
+                    className={`${opt.wrap ? 'whitespace-normal break-words leading-snug' : 'truncate'} min-w-0`}
+                    title={typeof opt.label === 'string' ? opt.label : undefined}
+                  >
                     {opt.label}
                     {opt.sublabel && (
                       <span className="ml-2 text-[11px] opacity-50">{opt.sublabel}</span>
@@ -220,7 +263,8 @@ export default function SelectDark({
               );
             })
           )}
-        </ul>
+        </ul>,
+        document.body
       )}
 
       {/* Campo oculto para accesibilidad / form submit */}

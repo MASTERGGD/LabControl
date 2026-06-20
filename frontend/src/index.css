@@ -270,3 +270,39 @@ body.theme-day .space-booking-pending.space-booking-own .space-booking-reason,
 body.theme-day .space-booking-pending.space-booking-own .space-booking-person {
   color: #9a3412 !important;
 }
+
+/* Contraste del drawer de adeudos en tema dia.
+   El componente usa algunos estilos inline heredados del tema oscuro; estas
+   reglas evitan texto casi blanco sobre superficie clara. */
+body.theme-day .adeudo-detalle-modal {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+body.theme-day .adeudo-detalle-modal p[style*="#f1f5f9"],
+body.theme-day .adeudo-detalle-modal p[style*="#cbd5e1"],
+body.theme-day .adeudo-detalle-modal p[style*="rgb(241, 245, 249)"],
+body.theme-day .adeudo-detalle-modal p[style*="rgb(203, 213, 225)"] {
+  color: var(--text) !important;
+}
+body.theme-day .adeudo-detalle-modal p[style*="#64748b"],
+body.theme-day .adeudo-detalle-modal p[style*="#475569"],
+body.theme-day .adeudo-detalle-modal span[style*="#475569"],
+body.theme-day .adeudo-detalle-modal p[style*="rgb(100, 116, 139)"],
+body.theme-day .adeudo-detalle-modal p[style*="rgb(71, 85, 105)"],
+body.theme-day .adeudo-detalle-modal span[style*="rgb(71, 85, 105)"] {
+  color: var(--text-muted) !important;
+}
+body.theme-day .adeudo-detalle-modal div[style*="rgba(255,255,255,0.03)"] {
+  background: var(--surface-2) !important;
+  border-color: var(--border) !important;
+}
+body.theme-day .adeudo-detalle-modal button[style*="rgba(139,92,246"] {
+  color: #5b21b6 !important;
+  background: #ede9fe !important;
+  border-color: #c4b5fd !important;
+}
+body.theme-day .adeudo-detalle-modal button[style*="rgba(56,189,248"] {
+  color: #075985 !important;
+  background: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+}

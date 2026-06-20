@@ -33,6 +33,7 @@ from models.inventario import Prestamo, Incidente, Activo
 from models.sesion import SesionClase
 from models.horario import Reservacion
 from models.laboratorio import Laboratorio
+from models.comunicado import Comunicado, ComunicadoRespuesta, ComunicadoRespuestaMensaje
 from services.email import enviar_notificacion
 
 logger = logging.getLogger("labcontrol.notificaciones")
@@ -338,4 +339,85 @@ def verificar_eventos(
                 )
                 generadas += 1
 
-   
+    # 5. Seguimientos de comunicados dirigidos al usuario actual.
+    #    Sirve como respaldo si el comentario se guardo, pero la notificacion
+    #    no se genero en el momento por una version anterior o un fallo puntual.
+    hace_30_dias = ahora - datetime.timedelta(days=30)
+    seguimientos = (
+        db.query(ComunicadoRespuestaMensaje, Comunicado, Usuario)
+        .join(ComunicadoRespuesta, ComunicadoRespuestaMensaje.respuesta_id == ComunicadoRespuesta.id)
+        .join(Comunicado, ComunicadoRespuesta.comunicado_id == Comunicado.id)
+        .join(Usuario, Usuario.id == ComunicadoRespuestaMensaje.usuario_id)
+        .filter(ComunicadoRespuesta.usuario_id == current_user.id)
+        .filter(ComunicadoRespuestaMensaje.usuario_id != current_user.id)
+        .filter(ComunicadoRespuestaMensaje.creado_en >= hace_30_dias)
+        .order_by(ComunicadoRespuestaMensaje.creado_en.desc())
+        .limit(20)
+        .all()
+    )
+
+    for _mensaje, comunicado, autor in seguimientos:
+        titulo_com = (comunicado.titulo or "Comunicado")[:60]
+        titulo_notificacion = f"Seguimiento: {titulo_com}"
+        texto = f"{autor.nombre} agrego un comentario en '{titulo_com}'"
+        url = f"/comunicados?id={comunicado.id}"
+        existe = db.query(Notificacion).filter(
+            Notificacion.usuario_id == current_user.id,
+            Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+            Notificacion.titulo == titulo_notificacion,
+            Notificacion.url == url,
+        ).first()
+        if existe:
+            continue
+
+        crear_notificacion(
+            db=db,
+            usuario_id=current_user.id,
+            tipo="COMUNICADO_SEGUIMIENTO",
+            titulo=titulo_notificacion,
+            mensaje=texto,
+            url=url,
+        )
+        generadas += 1
+
+    seguimientos_autor = (
+        db.query(ComunicadoRespuestaMensaje, Comunicado, Usuario)
+        .join(ComunicadoRespuesta, ComunicadoRespuestaMensaje.respuesta_id == ComunicadoRespuesta.id)
+        .join(Comunicado, ComunicadoRespuesta.comunicado_id == Comunicado.id)
+        .join(Usuario, Usuario.id == ComunicadoRespuestaMensaje.usuario_id)
+        .filter(Comunicado.autor_id == current_user.id)
+        .filter(ComunicadoRespuestaMensaje.usuario_id != current_user.id)
+        .filter(ComunicadoRespuestaMensaje.creado_en >= hace_30_dias)
+        .order_by(ComunicadoRespuestaMensaje.creado_en.desc())
+        .limit(20)
+        .all()
+    )
+
+    for _mensaje, comunicado, autor in seguimientos_autor:
+        titulo_com = (comunicado.titulo or "Comunicado")[:60]
+        titulo_notificacion = f"Seguimiento: {titulo_com}"
+        texto = f"{autor.nombre} agrego un comentario en tu comunicado '{titulo_com}'"
+        url = f"/admin/comunicados?id={comunicado.id}"
+        existe = db.query(Notificacion).filter(
+            Notificacion.usuario_id == current_user.id,
+            Notificacion.tipo == "COMUNICADO_SEGUIMIENTO",
+            Notificacion.titulo == titulo_notificacion,
+            Notificacion.url == url,
+        ).first()
+        if existe:
+            continue
+
+        crear_notificacion(
+            db=db,
+            usuario_id=current_user.id,
+            tipo="COMUNICADO_SEGUIMIENTO",
+            titulo=titulo_notificacion,
+            mensaje=texto,
+            url=url,
+        )
+        generadas += 1
+
+    if generadas:
+        db.commit()
+
+    return {"ok": True, "generadas": generadas}

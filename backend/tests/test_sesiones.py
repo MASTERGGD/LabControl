@@ -50,6 +50,34 @@ class TestSesiones:
         resp = self._abrir_sesion(client, token, lab.id)
         assert resp.status_code == 201
 
+    def test_mapa_reporta_cuando_la_sesion_ya_fue_cerrada(self, client, admin_user, lab):
+        """El polling del mapa permite detectar cierres hechos desde otra ventana."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        abrir = self._abrir_sesion(client, token, lab.id)
+        assert abrir.status_code == 201
+        sesion_id = abrir.json()["id"]
+
+        mapa_abierto = client.get(
+            f"/sesiones/{sesion_id}/mapa",
+            headers=auth_headers(token),
+        )
+        assert mapa_abierto.status_code == 200
+        assert mapa_abierto.json()["estado"] == "ABIERTA"
+
+        cerrar = client.post(
+            f"/sesiones/{sesion_id}/cerrar",
+            json={"observacion_general": None},
+            headers=auth_headers(token),
+        )
+        assert cerrar.status_code == 200
+
+        mapa_cerrado = client.get(
+            f"/sesiones/{sesion_id}/mapa",
+            headers=auth_headers(token),
+        )
+        assert mapa_cerrado.status_code == 200
+        assert mapa_cerrado.json()["estado"] == "CERRADA"
+
     def test_admin_puede_abrir_sesion_libre_sin_identidad_academica(self, client, admin_user, lab):
         """Uso libre no requiere carrera ni cuatrimestre académico."""
         token = get_token(client, "admin@test.com", "AdminPass123")

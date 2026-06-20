@@ -5,6 +5,7 @@ import api from '../../hooks/useApi';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
 import { useTheme } from '../../context/ThemeContext';
+import { useToast } from '../../context/ToastContext';
 
 // ─── Estilos visuales por estado de PC ────────────────────────────────────────
 const PC_ESTILOS = {
@@ -436,7 +437,7 @@ function ModalReportarDano({ pc, sesion, onClose }) {
 
 // ─── Modal Cerrar Sesión ───────────────────────────────────────────────────────
 
-function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
+function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosingError }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [obs, setObs]         = useState('');
@@ -472,9 +473,11 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada }) {
         });
       }
       // 2. Cerrar la sesión
+      onClosing?.();
       await api.post(`/sesiones/${sesion.id}/cerrar`, { observacion_general: obs || null });
       onCerrada();
     } catch (err) {
+      onClosingError?.();
       setError(formatApiError(err, 'Error al cerrar sesión'));
       setLoading(false);
     }
@@ -1678,7 +1681,10 @@ export default function SesionActiva() {
   const location     = useLocation();
   const { usuario }  = useAuth();
   const { themeKey } = useTheme();
+  const { toast: showToast } = useToast();
   const isDay = themeKey === 'day';
+  const esDocente = usuario?.rol === 'DOCENTE';
+  const rutaSalida = esDocente ? '/docente' : '/lab';
 
   const [sesion, setSesion]         = useState(null);
   const [pcs, setPcs]               = useState([]);
@@ -1698,14 +1704,29 @@ export default function SesionActiva() {
   const pollRef      = useRef(null);
   const wsTimerRef   = useRef(null);
   const countdownRef = useRef(null);
+  const cierreSolicitadoRef = useRef(false);
+
+  const salirDeSesion = useCallback((mensaje = null) => {
+    if (mensaje) {
+      showToast(mensaje, 'info', {
+        title: 'Sesión finalizada',
+        duration: 6000,
+      });
+    }
+    navigate(rutaSalida, { replace: true });
+  }, [navigate, rutaSalida, showToast]);
 
   // ── Polling HTTP fallback ──────────────────────────────────────────────────
   const cargarMapa = useCallback(async () => {
     try {
       const { data } = await api.get(`/sesiones/${sesionId}/mapa`);
+      if (data.estado && data.estado !== 'ABIERTA') {
+        salirDeSesion('La sesión fue cerrada desde otra ventana.');
+        return;
+      }
       setPcs(data.pcs || []);
     } catch { /* silencioso */ }
-  }, [sesionId]);
+  }, [sesionId, salirDeSesion]);
 
   const iniciarPolling = useCallback(() => {
     if (pollRef.current) return;
@@ -1723,12 +1744,15 @@ export default function SesionActiva() {
   const cargarSesion = useCallback(async () => {
     try {
       const { data } = await api.get(`/sesiones/${sesionId}`);
+      if (data.estado !== 'ABIERTA') {
+        salirDeSesion('Esta sesión ya había finalizado.');
+        return;
+      }
       setSesion(data);
     } catch {
-      if (usuario?.rol === 'DOCENTE') navigate('/docente');
-      else navigate('/admin/laboratorios');
+      navigate(rutaSalida, { replace: true });
     }
-  }, [sesionId, navigate, usuario]);
+  }, [sesionId, navigate, rutaSalida, salirDeSesion]);
 
   useEffect(() => { cargarSesion(); }, [cargarSesion]);
 
@@ -1780,13 +1804,18 @@ export default function SesionActiva() {
 
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
-      if (msg.tipo === 'estado_inicial') {
+      if (msg.tipo === 'estado_inicial' || msg.tipo === 'snapshot') {
         setPcs(msg.pcs);
       } else if (msg.tipo === 'pc_actualizada') {
         setPcs(prev => prev.map(p => p.pc_id === msg.pc.pc_id ? { ...p, ...msg.pc } : p));
       } else if (msg.tipo === 'sesion_cerrada') {
-        if (usuario?.rol === 'DOCENTE') navigate('/docente');
-        else navigate('/admin/laboratorios');
+        if (Number(msg.sesion_id) !== Number(sesionId)) return;
+        if (cierreSolicitadoRef.current) return;
+        const autor = msg.cerrada_por?.nombre;
+        salirDeSesion(autor
+          ? `${autor} cerró la sesión desde otra ventana.`
+          : 'La sesión fue cerrada desde otra ventana.'
+        );
       } else if (msg.tipo === 'ping') {
         ws.send('ping');
       }
@@ -1804,7 +1833,7 @@ export default function SesionActiva() {
       detenerPolling();
       ws.close();
     };
-  }, [sesion, navigate, iniciarPolling, detenerPolling]);
+  }, [sesion, sesionId, iniciarPolling, detenerPolling, salirDeSesion]);
 
   // Filtrar PCs por estado + búsqueda
   const pcsFiltradas = pcs.filter(pc => {
@@ -1838,10 +1867,7 @@ export default function SesionActiva() {
     setSelectedPc(pc);
   };
 
-  const handleSesionCerrada = () => {
-    if (usuario?.rol === 'DOCENTE') navigate('/docente');
-    else navigate('/admin/laboratorios');
-  };
+  const handleSesionCerrada = () => navigate(rutaSalida, { replace: true });
 
   if (!sesion) {
     return (
@@ -1923,6 +1949,24 @@ export default function SesionActiva() {
         </div>
 
         <div className="flex items-center gap-2">
+          {!esDocente && (
+            <button
+              onClick={() => navigate(rutaSalida)}
+              className={`rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                isDay
+                  ? 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-300'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10'
+              }`}
+              style={{ padding: '6px 14px' }}
+              title="Salir de esta vista sin cerrar la sesión"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M15 19l-7-7 7-7"/>
+              </svg>
+              Volver
+            </button>
+          )}
           <button onClick={() => setModalQR(true)}
             className="rounded-lg text-xs font-semibold transition-colors bg-emerald-600 hover:bg-emerald-700 text-white"
             style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#047857', border: '1px solid #065f46' } : { color: '#ffffff' }) }}>
@@ -1946,8 +1990,9 @@ export default function SesionActiva() {
             className={`rounded-lg text-xs font-semibold transition-colors ${
               isDay ? 'bg-red-700 hover:bg-red-800 text-white shadow-sm' : 'bg-red-700 hover:bg-red-600 text-white'
             }`}
-            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#b91c1c', border: '1px solid #991b1b' } : { color: '#ffffff' }) }}>
-            Cerrar
+            style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#b91c1c', border: '1px solid #991b1b' } : { color: '#ffffff' }) }}
+            title={esDocente ? 'Finalizar la sesión' : 'Finalizar la clase para todos los usuarios'}>
+            {esDocente ? 'Cerrar' : 'Cerrar clase'}
           </button>
         </div>
       </header>
@@ -2026,7 +2071,7 @@ export default function SesionActiva() {
                 )}
                 <div
                   className="grid gap-3 2xl:gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))' }}
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))' }}
                 >
                   {filas[fila].sort((a,b) => a.numero - b.numero).map(pc => {
                     const highlighted = !!(busqueda && (
@@ -2043,7 +2088,7 @@ export default function SesionActiva() {
           </div>
         ) : (
           /* Sin filas definidas — grid plano */
-          <div className="grid gap-3 2xl:gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))' }}>
+          <div className="grid gap-3 2xl:gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(112px, 1fr))' }}>
             {pcsFiltradas.sort((a,b) => a.numero - b.numero).map(pc => (
               <TarjetaPC key={pc.pc_id} pc={pc} onClick={handlePcClick} highlighted={false}/>
             ))}
@@ -2141,6 +2186,8 @@ export default function SesionActiva() {
         <ModalCerrarSesion sesion={sesion} pcs={pcs}
           onClose={() => setModalCerrar(false)}
           onCerrada={handleSesionCerrada}
+          onClosing={() => { cierreSolicitadoRef.current = true; }}
+          onClosingError={() => { cierreSolicitadoRef.current = false; }}
         />
       )}
       {modalObs !== null && (

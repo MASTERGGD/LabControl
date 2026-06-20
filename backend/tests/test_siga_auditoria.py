@@ -9,8 +9,10 @@ Cubre:
 - Permisos: solo SUPER_ADMIN accede
 """
 import pytest
+from datetime import datetime, timedelta
 from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
+from models.auditoria import AuditLog
 from models.usuario import Usuario, RolUsuario
 
 
@@ -89,6 +91,83 @@ class TestListadoAuditoria:
 # ════════════════════════════════════════════════════════════════════════════
 # Logs se generan al hacer acciones
 # ════════════════════════════════════════════════════════════════════════════
+
+class TestRetencionAuditoria:
+
+    def test_estado_retencion_super_admin(self, client, db):
+        _admin(db)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        r = client.get("/auditoria/retencion", headers=auth_headers(tok))
+        assert r.status_code == 200
+        data = r.json()
+        assert "retention_days" in data
+        assert "archivables" in data
+
+    def test_archivar_dry_run_no_elimina_logs(self, client, db, tmp_path, monkeypatch):
+        monkeypatch.setenv("AUDIT_ARCHIVE_DIR", str(tmp_path))
+        _admin(db)
+        old = AuditLog(
+            timestamp=datetime.utcnow() - timedelta(days=400),
+            accion="LOGIN_OK",
+            recurso="SISTEMA",
+            exito=True,
+        )
+        db.add(old)
+        db.commit()
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+
+        r = client.post(
+            "/auditoria/retencion/archivar?dry_run=true&dias_retencion=365",
+            headers=auth_headers(tok),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["dry_run"] is True
+        assert data["seleccionados"] >= 1
+        assert db.query(AuditLog).filter(AuditLog.id == old.id).first() is not None
+
+    def test_archivar_elimina_operativo_y_crea_archivo(self, client, db, tmp_path, monkeypatch):
+        monkeypatch.setenv("AUDIT_ARCHIVE_DIR", str(tmp_path))
+        _admin(db)
+        old = AuditLog(
+            timestamp=datetime.utcnow() - timedelta(days=400),
+            accion="EDITAR_USUARIO",
+            recurso="USUARIO",
+            recurso_id=123,
+            detalle={"campo": "nombre"},
+            exito=True,
+        )
+        recent = AuditLog(
+            timestamp=datetime.utcnow(),
+            accion="LOGIN_OK",
+            recurso="SISTEMA",
+            exito=True,
+        )
+        db.add_all([old, recent])
+        db.commit()
+        old_id = old.id
+        recent_id = recent.id
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+
+        r = client.post(
+            "/auditoria/retencion/archivar?dry_run=false&dias_retencion=365&limite=10",
+            headers=auth_headers(tok),
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["archivados"] >= 1
+        assert data["archivo"]
+        assert data["sha256"]
+        assert db.query(AuditLog).filter(AuditLog.id == old_id).first() is None
+        assert db.query(AuditLog).filter(AuditLog.id == recent_id).first() is not None
+        assert list(tmp_path.glob("audit_logs_*.jsonl.gz"))
+
+    def test_lab_admin_no_puede_archivar_retencion(self, client, db):
+        _usuario(db, "LA", "la@test.mx", RolUsuario.LAB_ADMIN)
+        tok = get_token(client, "la@test.mx", "Test1234!")
+        r = client.post("/auditoria/retencion/archivar", headers=auth_headers(tok))
+        assert r.status_code == 403
+
 
 class TestGeneracionLogs:
 

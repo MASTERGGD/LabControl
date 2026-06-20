@@ -213,7 +213,7 @@ function AppRoutes() {
 
       {/* Admin: Inventario y Préstamos */}
       <Route path="/admin/inventario" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO']} permisosPermitidos="inventario:write">
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO']} permisosPermitidos={['inventario:write', 'inventario:validar']}>
           <Inventario />
         </RutaProtegida>
       }/>

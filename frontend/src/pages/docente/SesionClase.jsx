@@ -290,6 +290,8 @@ const CHECKS_REQ = [
 
 function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
   const { usuario } = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [form, setForm] = useState({
     materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
   });
@@ -344,24 +346,38 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-2xl">
-        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+      <div
+        className="w-full max-w-md shadow-2xl rounded-2xl overflow-hidden"
+        style={{
+          background: isDay ? '#ffffff' : 'rgba(15,23,42,0.94)',
+          border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
+          color: isDay ? '#0f172a' : '#f8fafc',
+        }}
+      >
+        <div
+          className="p-5 flex items-center justify-between"
+          style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)'}` }}
+        >
           <div>
-            <h2 className="font-bold text-white">Reservar horario</h2>
-            <p className="text-sm text-slate-400 mt-0.5">{DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}</p>
+            <h2 className="font-bold" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>Reservar horario</h2>
+            <p className="text-sm mt-0.5" style={{ color: isDay ? '#475569' : '#cbd5e1' }}>
+              {DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}
+            </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+          <button
+            onClick={onClose}
+            className="text-2xl leading-none transition-colors"
+            style={{ color: isDay ? '#475569' : '#cbd5e1' }}
+          >×</button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           {/* Materia */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">
+            <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
               Materia *
-              <span style={{ color: '#9ca3af' }} className="font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
+              <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
             </label>
-            <div className="[&_input]:bg-gray-700 [&_input]:text-white [&_input]:border-gray-600
-                            [&_input:focus]:ring-green-500 [&_ul]:bg-gray-800 [&_ul]:border-gray-600
-                            [&_li]:text-gray-200 [&_li:hover]:bg-gray-700 [&_div]:text-slate-400">
+            <div className="[&_input:focus]:ring-green-500">
               <AutocompleteInput
                 endpoint="/catalogo/materias/buscar"
                 placeholder="Ej. Bases de Datos, Inglés…"
@@ -376,7 +392,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                   <div>
                     <p className="font-medium leading-tight">{m.nombre}</p>
                     {(m.carrera || m.cuatrimestre_oficial) && (
-                      <p className="text-xs text-slate-400 leading-tight">
+                      <p className="text-xs leading-tight" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
                         {[m.carrera, m.cuatrimestre_oficial ? `${m.cuatrimestre_oficial}° cuat.` : ''].filter(Boolean).join(' · ')}
                       </p>
                     )}
@@ -388,12 +404,26 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             {materiaInfo && (materiaInfo.carrera || materiaInfo.cuatrimestre_oficial) && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {materiaInfo.carrera && (
-                  <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{
+                      background: isDay ? '#dbeafe' : 'rgba(30,58,138,0.5)',
+                      color: isDay ? '#1d4ed8' : '#93c5fd',
+                      border: `1px solid ${isDay ? '#93c5fd' : 'rgba(29,78,216,0.5)'}`,
+                    }}
+                  >
                     🎓 {materiaInfo.carrera}
                   </span>
                 )}
                 {materiaInfo.cuatrimestre_oficial && (
-                  <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full font-medium">
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full font-medium"
+                    style={{
+                      background: isDay ? '#ede9fe' : 'rgba(88,28,135,0.5)',
+                      color: isDay ? '#6d28d9' : '#c4b5fd',
+                      border: `1px solid ${isDay ? '#c4b5fd' : 'rgba(126,34,206,0.5)'}`,
+                    }}
+                  >
                     {materiaInfo.cuatrimestre_oficial}° cuatrimestre
                   </span>
                 )}
@@ -407,25 +437,38 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
           {/* Grupo */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Grupo *</label>
+            <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Grupo *</label>
             <input required type="text" placeholder="Ej. A, B, C…"
               value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
-              className="w-full input-dark text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
+              className="w-full input-dark px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
           </div>
 
           {/* ── Requerimientos ── */}
-          <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.6)', border:'1px solid rgba(255,255,255,0.07)' }}>
-            <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold flex items-center gap-1.5">
+          <div
+            className="rounded-xl p-4 space-y-3"
+            style={{
+              background: isDay ? '#f8fafc' : 'rgba(30,41,59,0.6)',
+              border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.07)'}`,
+            }}
+          >
+            <p
+              className="text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5"
+              style={{ color: isDay ? '#334155' : '#cbd5e1' }}
+            >
               <span>📋</span> Requerimientos para la clase
-              <span style={{ color: '#9ca3af' }} className="normal-case font-normal">(opcional)</span>
+              <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="normal-case font-normal">(opcional)</span>
             </p>
             <div className="grid grid-cols-2 gap-2">
               {CHECKS_REQ.map(c => (
                 <label key={c.key}
                   className="flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition-colors select-none"
                   style={{
-                    background: checks[c.key] ? 'rgba(59,130,246,0.12)' : 'rgba(15,23,42,0.5)',
-                    border: `1px solid ${checks[c.key] ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                    background: checks[c.key]
+                      ? (isDay ? '#dbeafe' : 'rgba(59,130,246,0.12)')
+                      : (isDay ? '#ffffff' : 'rgba(15,23,42,0.5)'),
+                    border: `1px solid ${checks[c.key]
+                      ? (isDay ? '#60a5fa' : 'rgba(59,130,246,0.4)')
+                      : (isDay ? '#cbd5e1' : 'rgba(255,255,255,0.06)')}`,
                   }}
                 >
                   <input
@@ -435,7 +478,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                     className="accent-blue-500 w-3.5 h-3.5 shrink-0"
                   />
                   <span className="text-xs leading-tight"
-                    style={{ color: checks[c.key] ? '#1e3a8a' : '#cbd5e1' }}>
+                    style={{ color: checks[c.key] ? (isDay ? '#1d4ed8' : '#bfdbfe') : (isDay ? '#334155' : '#cbd5e1') }}>
                     {c.label}
                   </span>
                 </label>
@@ -453,12 +496,19 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             {/* Toggle instalador — solo cuando Software específico está marcado */}
             {checks.software && (
               <label className="flex items-start gap-3 cursor-pointer rounded-xl px-4 py-3 transition-colors select-none"
-                style={{ background: tieneInstalador ? 'rgba(234,179,8,0.12)' : 'rgba(15,23,42,0.5)', border: `1px solid ${tieneInstalador ? 'rgba(234,179,8,0.4)' : 'rgba(255,255,255,0.08)'}` }}>
+                style={{
+                  background: tieneInstalador
+                    ? (isDay ? '#fef3c7' : 'rgba(234,179,8,0.12)')
+                    : (isDay ? '#ffffff' : 'rgba(15,23,42,0.5)'),
+                  border: `1px solid ${tieneInstalador
+                    ? (isDay ? '#f59e0b' : 'rgba(234,179,8,0.4)')
+                    : (isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)')}`,
+                }}>
                 <input type="checkbox" checked={tieneInstalador} onChange={() => setTieneInstalador(v => !v)}
                   className="accent-yellow-400 w-4 h-4 shrink-0" style={{ marginTop: '3px' }} />
                 <div>
-                  <p className="text-sm text-slate-200 font-medium">💾 Tengo el instalador disponible</p>
-                  <p className="text-xs text-slate-500 leading-tight mt-0.5">Puedo compartirlo con el administrador del laboratorio</p>
+                  <p className="text-sm font-medium" style={{ color: isDay ? '#0f172a' : '#e2e8f0' }}>💾 Tengo el instalador disponible</p>
+                  <p className="text-xs leading-tight mt-0.5" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>Puedo compartirlo con el administrador del laboratorio</p>
                 </div>
               </label>
             )}
@@ -475,13 +525,28 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             )}
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
+          {error && (
+            <p
+              className="text-sm rounded-lg px-3 py-2"
+              style={{
+                background: isDay ? '#fef2f2' : 'rgba(127,29,29,0.3)',
+                border: `1px solid ${isDay ? '#fca5a5' : '#991b1b'}`,
+                color: isDay ? '#991b1b' : '#fca5a5',
+              }}
+            >
+              {error}
+            </p>
+          )}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 rounded-lg py-2 text-sm"
-              style={{ color: '#e5e7eb' }}>Cancelar</button>
+              className="flex-1 rounded-lg py-2 text-sm font-medium transition-colors"
+              style={{
+                background: isDay ? '#f1f5f9' : '#374151',
+                color: isDay ? '#334155' : '#e5e7eb',
+                border: `1px solid ${isDay ? '#e2e8f0' : 'transparent'}`,
+              }}>Cancelar</button>
             <button type="submit" disabled={saving}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg py-2 text-sm font-semibold">
+              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-70 text-white rounded-lg py-2 text-sm font-semibold">
               {saving ? 'Reservando…' : '✓ Reservar'}
             </button>
           </div>
@@ -1756,6 +1821,8 @@ function ModalSolicitarSala({ onClose }) {
 export default function SesionClase() {
   const navigate    = useNavigate();
   const { usuario } = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const esMobil     = useEsMobil();
 
   const [laboratorios, setLaboratorios]       = useState([]);
@@ -1914,18 +1981,18 @@ export default function SesionClase() {
       {/* Encabezado */}
       <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
         <div>
-          <h1 className="text-xl font-bold text-white">
+          <h1 className="text-xl font-bold" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>
             {esMobil ? 'Mi horario' : 'Mi horario semanal'}
           </h1>
           {!esMobil && (
-            <p className="text-sm text-slate-400 mt-1">
+            <p className="text-sm mt-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
               Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.
             </p>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <button onClick={() => setModalLibre(true)}
-            className="flex items-center gap-2 input-dark hover:bg-gray-600 text-white px-3 py-2 text-sm font-medium transition-colors shrink-0 rounded-lg">
+            className="flex items-center gap-2 input-dark px-3 py-2 text-sm font-medium transition-colors shrink-0 rounded-lg">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
@@ -1935,9 +2002,17 @@ export default function SesionClase() {
       </div>
 
       {/* Filtros */}
-      <div className="glass p-3 mb-4 flex flex-wrap gap-2 items-center" style={{ position: 'relative', zIndex: 2 }}>
+      <div
+        className="p-3 mb-4 flex flex-wrap gap-2 items-center rounded-2xl"
+        style={{
+          position: 'relative',
+          zIndex: 2,
+          background: isDay ? '#ffffff' : 'rgba(15,23,42,0.7)',
+          border: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)'}`,
+        }}
+      >
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <label className="text-xs font-medium text-slate-400 shrink-0">Lab</label>
+          <label className="text-xs font-medium shrink-0" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Lab</label>
           <SelectDark
             value={labId}
             onChange={setLabId}
@@ -1946,14 +2021,19 @@ export default function SesionClase() {
           />
         </div>
         <div className="flex items-center gap-2" style={{ marginLeft: '16px' }}>
-          <span className="text-sm text-slate-500">Cuatrimestre</span>
+          <span className="text-sm" style={{ color: isDay ? '#475569' : '#94a3b8' }}>Cuatrimestre</span>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
-            style={{ background:'rgba(59,130,246,0.15)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
+            style={{
+              background: isDay ? '#dbeafe' : 'rgba(59,130,246,0.15)',
+              color: isDay ? '#0b5ed7' : '#93c5fd',
+              border: `1px solid ${isDay ? '#93c5fd' : 'rgba(59,130,246,0.25)'}`,
+            }}>
             📅 {cuatrimestre}
           </span>
         </div>
         <button onClick={recargar}
-          className="ml-auto text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors">
+          className="ml-auto text-xs flex items-center gap-1 transition-colors"
+          style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>

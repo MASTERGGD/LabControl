@@ -26,6 +26,13 @@ DATABASE_URL = _raw_url
 _is_sqlite    = DATABASE_URL.startswith("sqlite")
 _connect_args = {"check_same_thread": False} if _is_sqlite else {}
 
+_app_env = os.getenv("APP_ENV", "development").lower()
+if _app_env in ("production", "prod") and _is_sqlite:
+    raise RuntimeError(
+        "SQLite no esta permitido en produccion. Configura DATABASE_URL con una "
+        "base PostgreSQL administrada antes de arrancar SIGA."
+    )
+
 # -- Engine -------------------------------------------------------------------
 # pool_pre_ping=True: verifica la conexion antes de usarla (evita errores tras
 # una reconexion o reinicio del servidor de base de datos)

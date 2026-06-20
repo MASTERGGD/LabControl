@@ -39,7 +39,8 @@ except Exception:
   echo "PostgreSQL listo."
 fi
 
-echo "Arrancando servidor (wsproto WebSocket)..."
+PORT="${PORT:-8000}"
+echo "Arrancando servidor (wsproto WebSocket) en puerto ${PORT}..."
 # --reload desactivado: watchfiles + WSL2 + NTFS = crash garantizado.
 # Para ver cambios en desarrollo: docker-compose restart backend
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --ws wsproto
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --ws wsproto

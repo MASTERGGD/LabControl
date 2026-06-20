@@ -893,6 +893,7 @@ async def responder_comunicado(
         lectura.leido_en = now
 
     respuesta = _get_respuesta(db, comunicado_id, usuario.id)
+    es_seguimiento = respuesta is not None
     if not respuesta:
         respuesta = ComunicadoRespuesta(
             comunicado_id=comunicado_id,
@@ -936,11 +937,14 @@ async def responder_comunicado(
 
     # 1. Notificar al autor/emisor si no es quien responde
     if c.autor_id and c.autor_id != usuario.id:
+        tipo_notificacion = "COMUNICADO_SEGUIMIENTO" if es_seguimiento else "COMUNICADO_RESPUESTA"
+        titulo_notificacion = ("Seguimiento" if es_seguimiento else "Nueva respuesta") + f": {titulo_com}"
+        accion = "agrego un comentario en" if es_seguimiento else "respondio a"
         crear_notificacion(
             db=db,
             usuario_id=c.autor_id,
-            tipo="COMUNICADO_RESPUESTA",
-            titulo=f"Nueva respuesta: {titulo_com}",
+            tipo=tipo_notificacion,
+            titulo=titulo_notificacion,
             mensaje=f"{usuario.nombre} respondió a tu comunicado «{titulo_com}»",
             url=f"/admin/comunicados?id={comunicado_id}",
         )
@@ -961,9 +965,12 @@ async def responder_comunicado(
                     tipo="COMUNICADO_RESPUESTA",
                     titulo=f"Nueva respuesta: {titulo_com}",
                     mensaje=f"{usuario.nombre} agregó una respuesta en «{titulo_com}»",
-                    url=f"/admin/comunicados?id={comunicado_id}",
+                    url=f"/comunicados?id={comunicado_id}",
                 )
                 notificados.add(pid)
+
+    if notificados:
+        db.commit()
 
     return _serializar_respuesta(respuesta)
 
@@ -1503,8 +1510,12 @@ def responder_seguimiento(
             tipo="COMUNICADO_SEGUIMIENTO",
             titulo=f"Seguimiento: {titulo_com}",
             mensaje=f"{usuario.nombre} agregó un comentario en «{titulo_com}»",
-            url=f"/admin/comunicados?id={comunicado_id}",
+            url=f"/comunicados?id={comunicado_id}",
         )
+        notificados.add(respuesta.usuario_id)
+
+    if notificados:
+        db.commit()
 
     return _serializar_respuesta(respuesta)
 

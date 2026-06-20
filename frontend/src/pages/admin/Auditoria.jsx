@@ -142,6 +142,9 @@ export default function Auditoria() {
   const [loading,    setLoading]    = useState(false);
   const [detalle,    setDetalle]    = useState(null);
   const [exportando, setExportando] = useState(false);
+  const [retencion,  setRetencion]  = useState(null);
+  const [retencionLoading, setRetencionLoading] = useState(false);
+  const [archivando, setArchivando] = useState(false);
 
   // Filtros
   const [buscar,      setBuscar]      = useState('');
@@ -155,6 +158,19 @@ export default function Auditoria() {
 
   useEffect(() => {
     api.get('/auditoria/acciones').then(r => setOpciones(r.data)).catch(() => {});
+  }, []);
+
+  const cargarRetencion = useCallback(async () => {
+    setRetencionLoading(true);
+    try {
+      const { data } = await api.get('/auditoria/retencion');
+      setRetencion(data);
+    } catch {
+      // La bitacora puede verla LAB_ADMIN, pero retencion solo SUPER_ADMIN.
+      setRetencion(null);
+    } finally {
+      setRetencionLoading(false);
+    }
   }, []);
 
   const cargar = useCallback(async (p = 1) => {
@@ -181,6 +197,33 @@ export default function Auditoria() {
   }, [buscar, accion, recurso, exito, fechaInicio, fechaFin]); // eslint-disable-line
 
   useEffect(() => { cargar(1); }, []); // eslint-disable-line
+  useEffect(() => { cargarRetencion(); }, [cargarRetencion]);
+
+  const archivarRetencion = async (dryRun = true) => {
+    if (!dryRun) {
+      const ok = window.confirm(
+        'Se archivaran los registros antiguos en un archivo comprimido y se eliminaran de la tabla operativa. Continuar?'
+      );
+      if (!ok) return;
+    }
+    setArchivando(true);
+    try {
+      const { data } = await api.post('/auditoria/retencion/archivar', null, {
+        params: { dry_run: dryRun },
+      });
+      if (dryRun) {
+        addToast(`Simulacion lista: ${data.seleccionados} registro(s) antiguos detectados`, 'success');
+      } else {
+        addToast(`Archivados ${data.archivados} registro(s) de bitacora`, 'success');
+        cargar(1);
+      }
+      cargarRetencion();
+    } catch (err) {
+      addToast(err?.response?.data?.detail || 'Error al procesar retencion de bitacora', 'error');
+    } finally {
+      setArchivando(false);
+    }
+  };
 
   const exportar = async () => {
     setExportando(true);
@@ -254,6 +297,59 @@ export default function Auditoria() {
             {exportando ? 'Exportando...' : 'Exportar Excel'}
           </button>
         </div>
+
+        {retencion && (
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-emerald-400 font-semibold">
+                  Retencion y almacenamiento
+                </p>
+                <h2 className="text-white font-semibold mt-1">Bitacora operativa controlada</h2>
+                <p className="text-slate-400 text-sm mt-1 max-w-3xl">
+                  Se conservan {retencion.retention_days} dias en la base principal. Los registros mas antiguos
+                  pueden archivarse en JSONL comprimido para no inflar la tabla de auditoria.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => archivarRetencion(true)}
+                  disabled={archivando || retencionLoading}
+                  className="px-3 py-2 rounded-xl border border-slate-700 text-slate-200 text-xs font-semibold hover:bg-white/5 disabled:opacity-50"
+                >
+                  Simular archivado
+                </button>
+                <button
+                  onClick={() => archivarRetencion(false)}
+                  disabled={archivando || retencionLoading || !retencion.archivables}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  {archivando ? 'Procesando...' : 'Archivar antiguos'}
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-slate-500 text-[11px] uppercase">Operativos</p>
+                <p className="text-white text-xl font-bold">{retencion.total_operativo?.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="text-amber-300 text-[11px] uppercase">Listos para archivar</p>
+                <p className="text-amber-200 text-xl font-bold">{retencion.archivables?.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-slate-500 text-[11px] uppercase">Archivos historicos</p>
+                <p className="text-white text-xl font-bold">{retencion.archives_count?.toLocaleString()}</p>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-slate-500 text-[11px] uppercase">Corte</p>
+                <p className="text-slate-200 text-xs mt-1">
+                  {retencion.cutoff ? new Date(retencion.cutoff).toLocaleDateString('es-MX') : 'Sin fecha'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filtros */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">

@@ -13,15 +13,17 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-    # Agregar tipo_sesion
-    op.add_column('sesiones_clase',
-        sa.Column('tipo_sesion', sa.String(), nullable=True, server_default='CLASE')
-    )
-    # Hacer materia y grupo nullable
-    op.alter_column('sesiones_clase', 'materia', nullable=True)
-    op.alter_column('sesiones_clase', 'grupo',   nullable=True)
+    with op.batch_alter_table('sesiones_clase', schema=None) as batch_op:
+        # Agregar tipo_sesion
+        batch_op.add_column(
+            sa.Column('tipo_sesion', sa.String(), nullable=True, server_default='CLASE')
+        )
+        # Hacer materia y grupo nullable
+        batch_op.alter_column('materia', existing_type=sa.String(), nullable=True)
+        batch_op.alter_column('grupo',   existing_type=sa.String(), nullable=True)
 
 def downgrade():
-    op.alter_column('sesiones_clase', 'materia', nullable=False)
-    op.alter_column('sesiones_clase', 'grupo',   nullable=False)
-    op.drop_column('sesiones_clase', 'tipo_sesion')
+    with op.batch_alter_table('sesiones_clase', schema=None) as batch_op:
+        batch_op.alter_column('materia', existing_type=sa.String(), nullable=False)
+        batch_op.alter_column('grupo',   existing_type=sa.String(), nullable=False)
+        batch_op.drop_column('tipo_sesion')
