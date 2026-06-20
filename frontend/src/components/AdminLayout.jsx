@@ -605,7 +605,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
   const isGroupActive = group => group.items.some(isItemActive);
 
   const isGroupOpen = group => {
-    if (group.root || mobile) return true;
+    if (group.root) return true;
     if (Object.prototype.hasOwnProperty.call(openGroups, group.key)) {
       return openGroups[group.key] !== false;
     }
@@ -1022,7 +1022,9 @@ export default function AdminLayout({ children }) {
           {/* Izquierda: hamburguesa móvil */}
           <button
             className="md:hidden p-2 text-slate-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors"
-            onClick={() => setMenuMovil(true)}
+            onClick={() => setMenuMovil(v => !v)}
+            aria-label={menuMovil ? 'Cerrar menu' : 'Abrir menu'}
+            aria-expanded={menuMovil}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16"/>

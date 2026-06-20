@@ -1332,7 +1332,8 @@ function GridMobile({ slots, onSlotClick }) {
       {/* ── Tabs de días ── */}
       <div style={{
         display: 'flex', gap: '6px', marginBottom: '12px',
-        overflowX: 'auto', paddingBottom: '4px',
+        overflowX: 'auto', paddingBottom: '6px',
+        scrollbarWidth: 'none',
       }}>
         {dias.map(d => {
           const tieneMio = slots.some(s => s.dia_semana === d && s.estado_vista === 'MIO');
@@ -1340,18 +1341,24 @@ function GridMobile({ slots, onSlotClick }) {
           return (
             <button key={d} onClick={() => setDiaActivo(d)} style={{
               flexShrink: 0,
-              padding: '7px 14px',
+              minWidth: '66px',
+              padding: '7px 10px',
               borderRadius: '10px',
               border: activo ? '1px solid rgba(99,102,241,0.7)' : '1px solid rgba(255,255,255,0.08)',
               background: activo ? 'rgba(79,70,229,0.40)' : 'rgba(255,255,255,0.04)',
               color: activo ? '#e0e7ff' : '#94a3b8',
               fontWeight: activo ? 700 : 500,
-              fontSize: '13px',
               cursor: 'pointer',
               position: 'relative',
               fontFamily: 'inherit',
+              lineHeight: 1.05,
             }}>
-              {DIAS_LABEL[d]}
+              <span style={{ display: 'block', fontSize: '11px', opacity: 0.75, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                {DIAS_CORTO[d]}
+              </span>
+              <span style={{ display: 'block', fontSize: '12px', marginTop: '2px', whiteSpace: 'nowrap' }}>
+                {DIAS_LABEL[d]}
+              </span>
               {tieneMio && (
                 <span style={{
                   position: 'absolute', top: '4px', right: '4px',
