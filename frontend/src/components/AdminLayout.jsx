@@ -607,14 +607,15 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
   const isGroupOpen = group => {
     if (group.root) return true;
     if (Object.prototype.hasOwnProperty.call(openGroups, group.key)) {
-      return openGroups[group.key] !== false;
+      return openGroups[group.key] === true;
     }
+    if (mobile) return isGroupActive(group);
     return true;
   };
 
-  const toggleGroup = key => {
+  const toggleGroup = (key, currentlyOpen = false) => {
     setOpenGroups(prev => {
-      const next = { ...prev, [key]: prev[key] === false ? true : false };
+      const next = { ...prev, [key]: !currentlyOpen };
       localStorage.setItem(storageKey, JSON.stringify(next));
       return next;
     });
@@ -741,7 +742,8 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
                 {!group.root && (
                   <button
                     type="button"
-                    onClick={() => toggleGroup(group.key)}
+                    onClick={() => toggleGroup(group.key, open)}
+                    aria-expanded={open}
                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold tracking-wide transition-colors ${
                       active ? 'text-emerald-300 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
                     }`}
@@ -1034,7 +1036,7 @@ export default function AdminLayout({ children }) {
           {/* Logo centrado en móvil */}
           <NavLink to={homePath} className="md:hidden flex items-center gap-2">
             <BrandMark size="w-6 h-6" imageSize="w-[76%] h-[76%]" />
-            <span className="text-white font-bold text-sm">SIGA</span>
+            <span className="font-bold text-sm" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>SIGA</span>
           </NavLink>
 
           {/* Espacio vacío desktop izquierda */}
