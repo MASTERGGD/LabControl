@@ -550,8 +550,18 @@ function PanelAdminPC({ pc, labId, onClose, onEditar, canEdit }) {
           {pc.fila && <p style={{fontSize:11, color:isDay ? '#64748b' : '#475569', margin:'2px 0 0'}}>Fila {pc.fila} · #{pc.numero}</p>}
         </div>
         <button onClick={onClose}
-          style={{background:'none', border:'none', cursor:'pointer', color:isDay ? '#475569' : '#64748b', padding:4, borderRadius:8}}
-          className="hover:text-white transition-colors">
+          title="Cerrar panel"
+          aria-label="Cerrar panel"
+          style={{
+            background: isDay ? '#f1f5f9' : 'rgba(15,23,42,0.92)',
+            border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(148,163,184,0.35)'}`,
+            cursor:'pointer',
+            color:isDay ? '#0f172a' : '#e2e8f0',
+            padding:8,
+            borderRadius:10,
+            boxShadow:'0 8px 18px rgba(0,0,0,0.20)',
+          }}
+          className="hover:scale-105 transition">
           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -838,6 +848,15 @@ export default function LaboratorioDetalle() {
   const [filtroEstado, setFiltroEstado] = useState('TODOS');
   const [selectedPc, setSelectedPc]       = useState(null);
 
+  useEffect(() => {
+    if (!selectedPc) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setSelectedPc(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedPc]);
+
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
@@ -1032,7 +1051,7 @@ export default function LaboratorioDetalle() {
 
       {/* Panel detalle PC — desktop */}
       {selectedPc && (
-        <aside className="hidden lg:block fixed top-0 right-0 h-full w-80 z-30 overflow-auto"
+        <aside className="hidden lg:block fixed top-0 right-0 h-full w-80 z-50 overflow-auto"
                style={{background:isDay ? '#ffffff' : 'rgba(6,10,24,0.97)', borderLeft:`1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
                  boxShadow:'-8px 0 32px rgba(0,0,0,0.4)'}}>
           <PanelAdminPC pc={selectedPc} labId={labId}
