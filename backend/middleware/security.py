@@ -49,7 +49,7 @@ _CSP_DIRECTIVES = "; ".join([
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://api.qrserver.com",
     "connect-src 'self' https: ws: wss: http://localhost:8000 http://localhost:3000",
     "worker-src 'self'",
     "manifest-src 'self'",
