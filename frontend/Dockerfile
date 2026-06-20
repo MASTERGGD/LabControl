@@ -46,3 +46,6 @@ COPY tailwind.config.js postcss.config.js ./
 RUN npm install
 EXPOSE 3000
 CMD ["npm", "start"]
+
+# Etapa final por defecto para plataformas como Railway.
+FROM prod AS final
