@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import datetime
+import os
 from pathlib import Path
 from typing import Optional, List
 
@@ -16,7 +17,7 @@ from sqlalchemy import func, extract, or_
 from sqlalchemy.orm import Session, aliased
 
 from database import get_db
-from dependencies import get_current_user
+from dependencies import crear_access_token, decodificar_token, get_current_user
 from models.usuario import Usuario, RolUsuario
 from models.consultorio import Paciente, ConsultaMedica, CanalizacionMedica
 from models.catalogo import CatalogoAlumno
@@ -40,6 +41,34 @@ router = APIRouter(prefix="/consultorio", tags=["Consultorio"])
 
 ROLES_MEDICO   = {RolUsuario.MEDICO}
 ROLES_CONSULTA = {RolUsuario.MEDICO, RolUsuario.SUPER_ADMIN}
+
+
+def _frontend_base_url() -> str:
+    return (
+        os.getenv("FRONTEND_URL")
+        or os.getenv("PUBLIC_APP_URL")
+        or os.getenv("REACT_APP_PUBLIC_APP_URL")
+        or "http://localhost:3000"
+    ).rstrip("/")
+
+
+def _token_validacion_consulta(consulta_id: int) -> str:
+    return crear_access_token({
+        "typ": "consulta_validacion",
+        "cid": str(consulta_id),
+    })
+
+
+def _url_validacion_consulta(consulta_id: int) -> str:
+    return f"{_frontend_base_url()}/validar/consulta/{_token_validacion_consulta(consulta_id)}"
+
+
+def _nombre_publico(nombre: str | None) -> str:
+    partes = [p for p in (nombre or "").strip().split() if p]
+    if not partes:
+        return "Paciente"
+    iniciales = " ".join(f"{p[0]}." for p in partes[1:3])
+    return f"{partes[0]} {iniciales}".strip()
 
 
 def _require_medico(user: Usuario):
@@ -1482,7 +1511,7 @@ def _build_pdf_receta(consulta_id: int, db: Session) -> bytes:
     story.append(HRFlowable(width="100%", thickness=0.5, color=_C_LINEA, spaceAfter=8))
 
     # QR de validación interna
-    qr_payload = f"SIGA-UTECAN|CONSULTA|{c.id}|{c.id:05d}"
+    qr_payload = _url_validacion_consulta(c.id)
     qr_w = QrCodeWidget(qr_payload)
     qr_sz = 2 * cm
     qr_w.barWidth = qr_sz;  qr_w.barHeight = qr_sz
@@ -1584,3 +1613,39 @@ def exportar_pdf_receta(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/consultas/validacion/{token}", summary="Validar emision publica de una nota medica")
+def validar_emision_consulta(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = decodificar_token(token)
+    except Exception:
+        raise HTTPException(401, "Codigo de validacion invalido")
+
+    if payload.get("typ") != "consulta_validacion":
+        raise HTTPException(401, "Codigo de validacion invalido")
+
+    try:
+        consulta_id = int(payload.get("cid"))
+    except (TypeError, ValueError):
+        raise HTTPException(401, "Codigo de validacion invalido")
+
+    c = db.get(ConsultaMedica, consulta_id)
+    if not c:
+        raise HTTPException(404, "Nota medica no encontrada")
+
+    pac = db.get(Paciente, c.paciente_id)
+    medico = db.get(Usuario, c.atendido_por)
+    nombre_paciente = c.paciente_nombre_snapshot or (pac.nombre if pac else None)
+    tipo_paciente = c.paciente_tipo_snapshot or (pac.tipo if pac else None)
+
+    return {
+        "valido": True,
+        "folio": f"{c.id:05d}",
+        "fecha_consulta": as_mx(c.fecha_consulta).isoformat() if c.fecha_consulta else None,
+        "paciente": _nombre_publico(nombre_paciente),
+        "tipo_paciente": tipo_paciente,
+        "medico": medico.nombre if medico else "Medico Universitario",
+        "institucion": "Universidad Tecnologica de Candelaria",
+        "sistema": "SIGA UTECAN",
+    }

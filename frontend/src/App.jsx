@@ -49,6 +49,7 @@ import AlumnoEstudioSocioeconomico from './pages/alumno/AlumnoEstudioSocioeconom
 import SEAlumnos from './pages/servicios_escolares/SEAlumnos';
 import SEFichas from './pages/servicios_escolares/SEFichas';
 import AutoAsignacion from './pages/AutoAsignacion';
+import ValidarConsulta from './pages/ValidarConsulta';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -115,6 +116,7 @@ function AppRoutes() {
       {/* Pública */}
       <Route path="/login" element={<Login />} />
       <Route path="/autoasignacion/:token" element={<AutoAsignacion />} />
+      <Route path="/validar/consulta/:token" element={<ValidarConsulta />} />
 
       {/* Cambio de contraseña obligatorio (requiere sesión, sin rol) */}
       <Route path="/cambiar-password" element={<CambiarPasswordObligatorio />} />
