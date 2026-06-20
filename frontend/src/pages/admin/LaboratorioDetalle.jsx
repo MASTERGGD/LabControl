@@ -324,7 +324,7 @@ function ModalBulk({ labId, onClose, onSave }) {
       const { data } = await api.post(`/laboratorios/${labId}/computadoras/bulk`, form);
       setResultado(data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error en carga masiva');
+      setError(getApiErrorMessage(err, 'Error en carga masiva'));
     } finally {
       setLoading(false);
     }
@@ -679,8 +679,8 @@ function ModalCargaMasiva({ labId, onClose, onSave }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [cantidad, setCantidad] = useState(10);
-  const [prefijoFila, setPrefijoFila] = useState('');
-  const [filas, setFilas] = useState('');
+  const [prefijoCodigo, setPrefijoCodigo] = useState('PC');
+  const [filas, setFilas] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -690,12 +690,12 @@ function ModalCargaMasiva({ labId, onClose, onSave }) {
     try {
       await api.post(`/laboratorios/${labId}/computadoras/bulk`, {
         cantidad: Number(cantidad),
-        prefijo_fila: prefijoFila || null,
-        filas: filas ? filas.split(',').map(f => f.trim().toUpperCase()).filter(Boolean) : null,
+        prefijo_codigo: prefijoCodigo.trim() || 'PC',
+        filas: filas ? Number(filas) : null,
       });
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al crear PCs');
+      setError(getApiErrorMessage(err, 'Error al crear PCs'));
     } finally { setLoading(false); }
   };
 
@@ -718,11 +718,19 @@ function ModalCargaMasiva({ labId, onClose, onSave }) {
               className="w-full input-dark"/>
           </div>
           <div>
+            <label className="block text-sm theme-text mb-1">Prefijo de codigo *</label>
+            <input type="text" value={prefijoCodigo} onChange={e => setPrefijoCodigo(e.target.value)}
+              required maxLength={10}
+              placeholder="PC"
+              className="w-full input-dark"/>
+            <p className="text-xs theme-muted mt-1">Se generaran codigos como {(prefijoCodigo || 'PC').replace(/-+$/,'')}-01.</p>
+          </div>
+          <div>
             <label className="block text-sm theme-text mb-1">
-              Filas <span className="theme-muted">(separadas por coma, ej: A,B,C)</span>
+              Numero de filas
             </label>
-            <input type="text" value={filas} onChange={e => setFilas(e.target.value)}
-              placeholder="A, B, C"
+            <input type="number" min="1" max="20" value={filas} onChange={e => setFilas(e.target.value)}
+              required
               className="w-full input-dark"/>
             <p className="text-xs theme-muted mt-1">Las PCs se distribuirán equitativamente entre las filas</p>
           </div>
