@@ -550,6 +550,8 @@ function ModalConsulta({ paciente, consulta, canalizacionTutoria, seguimientoDe,
 // ─── Modal: Buscar / Crear Paciente ───────────────────────────────────────────
 function ModalPaciente({ onSelect, onClose }) {
   const { toast: showToast } = useToast();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === "day";
   const [tab, setTab] = useState("buscar");
   // Búsquedas independientes por tab
   const [qPaciente, setQPaciente] = useState("");
@@ -660,7 +662,14 @@ function ModalPaciente({ onSelect, onClose }) {
     SUPER_ADMIN: "Admin", LAB_ADMIN: "Admin Lab", TUTORIA_ADMIN: "Tutoría" };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div
+      className="fixed inset-0 flex items-center justify-center z-50 p-4"
+      style={{
+        background: isDay ? "rgba(15, 23, 42, 0.16)" : "rgba(2, 6, 23, 0.5)",
+        backdropFilter: isDay ? "blur(1px)" : "blur(3px)",
+        WebkitBackdropFilter: isDay ? "blur(1px)" : "blur(3px)",
+      }}
+    >
       <div className="glass w-full max-w-xl shadow-glass animate-fadeUp">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
           <h3 className="font-semibold text-white">👤 Seleccionar Paciente</h3>
