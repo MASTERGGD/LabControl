@@ -391,9 +391,10 @@ function ModalReportarDano({ pc, sesion, onClose }) {
 
     if (activo) {
       return {
-        background: isDay ? `${base}14` : 'rgba(251,146,60,0.16)',
+        background: isDay ? `${base}12` : 'rgba(251,146,60,0.16)',
         border: `1px solid ${isDay ? `${base}88` : '#f97316'}`,
-        color: isDay ? base : '#fdba74',
+        color: isDay ? '#0f172a' : '#fdba74',
+        fontWeight: 700,
         boxShadow: isDay ? `0 0 0 3px ${base}12` : 'none',
       };
     }
@@ -448,8 +449,8 @@ function ModalReportarDano({ pc, sesion, onClose }) {
                 <div className="flex gap-2">
                   {[['ALTA','🔴 Alta'],['MEDIA','🟡 Media'],['BAJA','🟢 Baja']].map(([v, l]) => (
                     <button key={v} type="button" onClick={() => setForm({...form, prioridad: v})}
-                      className={`flex-1 py-2 rounded-lg border text-xs font-medium transition
-                        ${form.prioridad === v ? 'border-orange-500 bg-orange-900/40 text-orange-300' : 'border-gray-600 text-slate-400 hover:border-gray-500'}`}>
+                      className="flex-1 py-2 rounded-lg text-xs transition"
+                      style={estiloPrioridad(v)}>
                       {l}
                     </button>
                   ))}
@@ -464,7 +465,12 @@ function ModalReportarDano({ pc, sesion, onClose }) {
               {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
               <div className="flex gap-3">
                 <button type="button" onClick={onClose}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+                  className="flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors"
+                  style={{
+                    background: isDay ? '#f1f5f9' : '#374151',
+                    border: `1px solid ${isDay ? '#cbd5e1' : '#4b5563'}`,
+                    color: isDay ? '#0f172a' : '#ffffff',
+                  }}>
                   Cancelar
                 </button>
                 <button type="submit" disabled={loading}
