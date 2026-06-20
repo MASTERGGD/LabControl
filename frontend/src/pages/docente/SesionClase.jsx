@@ -1303,7 +1303,7 @@ function GridSemanal({ slots, onSlotClick }) {
 
 // ─── Vista móvil: un día a la vez con tabs ────────────────────────────────────
 
-function GridMobile({ slots, onSlotClick }) {
+function GridMobile({ slots, onSlotClick, isDay = false }) {
   const dias = [...new Set(slots.map(s => s.dia_semana))].sort();
   const gruposConsecutivos = detectarGruposConsecutivos(slots);
 
@@ -1318,14 +1318,32 @@ function GridMobile({ slots, onSlotClick }) {
     .filter(s => s.dia_semana === diaActivo)
     .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
 
-  const COLOR = {
-    LIBRE:       { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.30)',  txt: '#6ee7b7' },
-    MIO:         { bg: 'rgba(79,70,229,0.40)',    border: 'rgba(99,102,241,0.60)',  txt: '#e0e7ff' },
-    OCUPADO:     { bg: 'rgba(30,64,175,0.30)',    border: 'rgba(37,99,235,0.35)',   txt: '#93c5fd' },
-    EN_DISPUTA:  { bg: 'rgba(180,83,9,0.35)',     border: 'rgba(217,119,6,0.50)',   txt: '#fcd34d' },
-    YO_SOLICITE: { bg: 'rgba(194,65,12,0.30)',    border: 'rgba(234,88,12,0.45)',   txt: '#fdba74' },
-    BLOQUEADO:   { bg: 'rgba(88,28,135,0.25)',    border: 'rgba(109,40,217,0.35)',  txt: '#c4b5fd' },
+  const COLOR = isDay ? {
+    LIBRE:       { bg: '#dcfce7', border: '#86efac', txt: '#047857', hour: '#166534', meta: '#065f46' },
+    MIO:         { bg: '#e0e7ff', border: '#818cf8', txt: '#1e1b4b', hour: '#1d4ed8', meta: '#4338ca' },
+    OCUPADO:     { bg: '#dbeafe', border: '#93c5fd', txt: '#1e3a8a', hour: '#1d4ed8', meta: '#1e40af' },
+    EN_DISPUTA:  { bg: '#fef3c7', border: '#fbbf24', txt: '#78350f', hour: '#92400e', meta: '#b45309' },
+    YO_SOLICITE: { bg: '#ffedd5', border: '#fb923c', txt: '#7c2d12', hour: '#c2410c', meta: '#c2410c' },
+    BLOQUEADO:   { bg: '#f3e8ff', border: '#c084fc', txt: '#581c87', hour: '#7e22ce', meta: '#6b21a8' },
+  } : {
+    LIBRE:       { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.30)',  txt: '#6ee7b7', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
+    MIO:         { bg: 'rgba(79,70,229,0.40)',    border: 'rgba(99,102,241,0.60)',  txt: '#e0e7ff', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
+    OCUPADO:     { bg: 'rgba(30,64,175,0.30)',    border: 'rgba(37,99,235,0.35)',   txt: '#93c5fd', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
+    EN_DISPUTA:  { bg: 'rgba(180,83,9,0.35)',     border: 'rgba(217,119,6,0.50)',   txt: '#fcd34d', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
+    YO_SOLICITE: { bg: 'rgba(194,65,12,0.30)',    border: 'rgba(234,88,12,0.45)',   txt: '#fdba74', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
+    BLOQUEADO:   { bg: 'rgba(88,28,135,0.25)',    border: 'rgba(109,40,217,0.35)',  txt: '#c4b5fd', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
   };
+  const badge = isDay
+    ? {
+        primary: { background: '#dbeafe', color: '#1e40af' },
+        action: { background: '#047857', color: '#ffffff' },
+        reserve: { background: '#bbf7d0', color: '#166534' },
+      }
+    : {
+        primary: { background: 'rgba(30,58,138,0.8)', color: '#bfdbfe' },
+        action: { background: 'rgba(6,78,59,0.8)', color: '#6ee7b7' },
+        reserve: { background: 'rgba(6,78,59,0.6)', color: '#6ee7b7' },
+      };
 
   return (
     <div>
@@ -1344,9 +1362,9 @@ function GridMobile({ slots, onSlotClick }) {
               minWidth: '66px',
               padding: '7px 10px',
               borderRadius: '10px',
-              border: activo ? '1px solid rgba(99,102,241,0.7)' : '1px solid rgba(255,255,255,0.08)',
-              background: activo ? 'rgba(79,70,229,0.40)' : 'rgba(255,255,255,0.04)',
-              color: activo ? '#e0e7ff' : '#94a3b8',
+              border: activo ? `1px solid ${isDay ? '#818cf8' : 'rgba(99,102,241,0.7)'}` : `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
+              background: activo ? (isDay ? '#e0e7ff' : 'rgba(79,70,229,0.40)') : (isDay ? '#ffffff' : 'rgba(255,255,255,0.04)'),
+              color: activo ? (isDay ? '#3730a3' : '#e0e7ff') : (isDay ? '#475569' : '#94a3b8'),
               fontWeight: activo ? 700 : 500,
               cursor: 'pointer',
               position: 'relative',
@@ -1363,7 +1381,7 @@ function GridMobile({ slots, onSlotClick }) {
                 <span style={{
                   position: 'absolute', top: '4px', right: '4px',
                   width: '6px', height: '6px', borderRadius: '50%',
-                  background: '#6366f1',
+                  background: isDay ? '#4f46e5' : '#6366f1',
                 }} />
               )}
             </button>
@@ -1390,18 +1408,18 @@ function GridMobile({ slots, onSlotClick }) {
                 background: c.bg, border: `1px solid ${c.border}`,
                 borderRadius: '14px', padding: '14px 16px',
                 cursor: isClickable ? 'pointer' : 'default',
-                boxShadow: slot.estado_vista === 'MIO' ? '0 4px 16px rgba(79,70,229,0.25)' : 'none',
+                boxShadow: slot.estado_vista === 'MIO' ? (isDay ? '0 4px 16px rgba(79,70,229,0.18)' : '0 4px 16px rgba(79,70,229,0.25)') : 'none',
                 fontFamily: 'inherit',
               }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                 {/* Hora */}
-                <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: '#60a5fa' }}>
+                <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 800, color: c.hour }}>
                   {slot.hora_inicio} – {slot.hora_fin}
                 </span>
                 {/* Badges */}
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
                   {slot.estado_vista === 'MIO' && grupo?.total > 1 && (
-                    <span style={{ fontSize: '11px', background: 'rgba(30,58,138,0.8)', color: '#bfdbfe', borderRadius: '999px', padding: '2px 8px', fontWeight: 700 }}>
+                    <span style={{ fontSize: '11px', ...badge.primary, borderRadius: '999px', padding: '2px 8px', fontWeight: 700 }}>
                       P{grupo.pos}/{grupo.total}
                     </span>
                   )}
@@ -1411,33 +1429,33 @@ function GridMobile({ slots, onSlotClick }) {
                     </span>
                   )}
                   {slot.estado_vista === 'MIO' && (grupo ? grupo.esInicio : true) && (
-                    <span style={{ fontSize: '11px', background: 'rgba(6,78,59,0.8)', color: '#6ee7b7', borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
+                    <span style={{ fontSize: '11px', ...badge.action, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
                       ▶ Iniciar
                     </span>
                   )}
                   {slot.estado_vista === 'MIO' && grupo && !grupo.esInicio && (
-                    <span style={{ fontSize: '11px', color: 'rgba(147,197,253,0.7)' }}>↑ continúa</span>
+                    <span style={{ fontSize: '11px', color: c.meta, fontWeight: isDay ? 700 : 400 }}>↑ continúa</span>
                   )}
                   {slot.estado_vista === 'LIBRE' && (
-                    <span style={{ fontSize: '11px', background: 'rgba(6,78,59,0.6)', color: '#6ee7b7', borderRadius: '999px', padding: '2px 10px' }}>
+                    <span style={{ fontSize: '11px', ...badge.reserve, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
                       + Reservar
                     </span>
                   )}
                   {slot.estado_vista === 'OCUPADO' && (
-                    <span style={{ fontSize: '11px', color: '#93c5fd', opacity: 0.6 }}>↗</span>
+                    <span style={{ fontSize: '11px', color: c.meta, opacity: isDay ? 1 : 0.6 }}>↗</span>
                   )}
                   {slot.estado_vista === 'YO_SOLICITE' && (
                     <span style={{ fontSize: '11px', background: 'rgba(124,45,18,0.7)', color: '#fdba74', borderRadius: '999px', padding: '2px 8px' }}>Pendiente</span>
                   )}
                   {slot.estado_vista === 'BLOQUEADO' && (
-                    <span style={{ fontSize: '11px', color: '#c4b5fd', opacity: 0.7 }}>🚫 Bloqueado</span>
+                    <span style={{ fontSize: '11px', color: c.meta, opacity: 1, fontWeight: isDay ? 700 : 400 }}>🚫 Bloqueado</span>
                   )}
                 </div>
               </div>
 
               {/* Materia */}
               {slot.estado_vista === 'MIO' && (
-                <p style={{ margin: 0, fontSize: '10px', color: 'rgba(224,231,255,0.55)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: '2px' }}>
+                <p style={{ margin: 0, fontSize: '10px', color: c.meta, fontWeight: 800, letterSpacing: '0.04em', marginBottom: '2px' }}>
                   ★ MI RESERVA
                 </p>
               )}
@@ -1455,9 +1473,9 @@ function GridMobile({ slots, onSlotClick }) {
                   )}
                 </div>
               ) : slot.estado_vista === 'LIBRE' ? (
-                <p style={{ margin: 0, fontSize: '14px', color: '#6ee7b7', opacity: 0.8 }}>Disponible para reservar</p>
+                <p style={{ margin: 0, fontSize: '14px', color: c.txt, opacity: 1, fontWeight: isDay ? 600 : 400 }}>Disponible para reservar</p>
               ) : slot.estado_vista === 'BLOQUEADO' ? (
-                <p style={{ margin: 0, fontSize: '14px', color: '#c4b5fd', opacity: 0.8 }}>
+                <p style={{ margin: 0, fontSize: '14px', color: c.txt, opacity: 1, fontWeight: isDay ? 600 : 400 }}>
                   {slot.bloqueo?.motivo || 'No disponible'}
                 </p>
               ) : null}
@@ -1466,7 +1484,7 @@ function GridMobile({ slots, onSlotClick }) {
 
               {/* Duración total si hay grupo consecutivo */}
               {grupo && grupo.total > 1 && grupo.esInicio && (
-                <p style={{ margin: '5px 0 0', fontSize: '11px', color: 'rgba(147,197,253,0.65)' }}>
+                <p style={{ margin: '5px 0 0', fontSize: '11px', color: c.meta, fontWeight: isDay ? 600 : 400 }}>
                   🕐 Clase de {grupo.total} períodos · hasta {grupo.horaFinGrupo} ({grupo.duracionMin} min)
                 </p>
               )}
@@ -2080,7 +2098,7 @@ export default function SesionClase() {
             <Leyenda />
           </div>
           {esMobil
-            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} />
+            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} isDay={isDay} />
             : <GridSemanal slots={slots} onSlotClick={handleSlotClick} />
           }
         </>
