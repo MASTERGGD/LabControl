@@ -41,6 +41,7 @@ class UsuarioResponse(BaseModel):
     departamento_clave: str | None = None
     permisos: list[str] = []
     activo: bool
+    acceso_consultorio: bool = False
     debe_cambiar_password: bool = False
 
     model_config = ConfigDict(from_attributes=True)
