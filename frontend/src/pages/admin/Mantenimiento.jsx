@@ -1707,6 +1707,7 @@ const EVENTO_STYLE = {
 function TabHistorial({ laboratorios }) {
   const { toast } = useToast();
   const [activos,    setActivos]    = useState([]);
+  const [pcs,        setPcs]        = useState([]);
   const [filtroLab,  setFiltroLab]  = useState('');
   const [activoSel,  setActivoSel]  = useState('');
   const [historial,  setHistorial]  = useState(null);
@@ -1718,24 +1719,69 @@ function TabHistorial({ laboratorios }) {
       .then(r => setActivos(r.data)).catch(() => {});
   }, []);
 
-  const cargarHistorial = useCallback(async (id) => {
-    if (!id) { setHistorial(null); return; }
+  useEffect(() => {
+    if (!laboratorios?.length) { setPcs([]); return; }
+
+    Promise.all(
+      laboratorios.map(lab =>
+        api.get(`/laboratorios/${lab.id}/computadoras?solo_activas=true`)
+          .then(r => r.data)
+          .catch(() => [])
+      )
+    ).then(results => setPcs(results.flat()));
+  }, [laboratorios]);
+
+  const cargarHistorial = useCallback(async (value) => {
+    if (!value) { setHistorial(null); return; }
+    const [tipo, id] = String(value).split(':');
+    const endpoint = tipo === 'PC'
+      ? `/inventario/computadoras/${id}/historial`
+      : `/inventario/activos/${id}/historial`;
     setLoading(true);
     try {
-      const { data } = await api.get(`/inventario/activos/${id}/historial`);
+      const { data } = await api.get(endpoint);
       setHistorial(data);
     } catch { toast('Error al cargar historial', 'error'); setHistorial(null); }
     finally { setLoading(false); }
-  }, []);
+  }, [toast]);
 
   const activosFiltrados = activos.filter(a =>
     !filtroLab || String(a.laboratorio_id) === String(filtroLab)
   );
+  const pcsFiltradas = pcs.filter(pc =>
+    !filtroLab || String(pc.laboratorio_id) === String(filtroLab)
+  );
+  const equiposFiltrados = [
+    ...pcsFiltradas.map(pc => ({
+      value: `PC:${pc.id}`,
+      label: `${pc.codigo} · Puesto de laboratorio${pc.fila ? ` · Fila ${pc.fila}` : ''}`,
+      tipo: 'PC',
+      data: pc,
+    })),
+    ...activosFiltrados.map(a => ({
+      value: `ACTIVO:${a.id}`,
+      label: `${a.nombre} · ${a.codigo_inventario || 'Sin codigo'}`,
+      tipo: 'ACTIVO',
+      data: a,
+    })),
+  ].sort((a, b) => a.label.localeCompare(b.label, 'es'));
 
   const eventos = (historial?.eventos || []).filter(e =>
     !filtroTipo || e.tipo_evento === filtroTipo
   );
-  const activoHistorial = historial?.activo || activos.find(a => String(a.id) === String(activoSel)) || {};
+  const equipoSeleccionado = equiposFiltrados.find(e => e.value === activoSel);
+  const activoHistorial = historial?.activo
+    || (equipoSeleccionado?.tipo === 'PC'
+      ? {
+          nombre: equipoSeleccionado.data.codigo,
+          codigo: equipoSeleccionado.data.codigo,
+          categoria: 'Puesto de laboratorio',
+          estado: equipoSeleccionado.data.estado,
+          laboratorio_id: equipoSeleccionado.data.laboratorio_id,
+          fila: equipoSeleccionado.data.fila,
+        }
+      : equipoSeleccionado?.data)
+    || {};
 
   const formatFechaLarga = (iso) => {
     if (!iso) return '—';
@@ -1763,7 +1809,7 @@ function TabHistorial({ laboratorios }) {
             value={activoSel}
             onChange={v => { setActivoSel(v); cargarHistorial(v); }}
             placeholder="Selecciona un equipo..."
-            options={[{ value: '', label: 'Selecciona un equipo...' }, ...activosFiltrados.map(a => ({ value: a.id, label: `${a.nombre} · ${a.codigo_inventario}` }))]}
+            options={[{ value: '', label: 'Selecciona un equipo...' }, ...equiposFiltrados.map(e => ({ value: e.value, label: e.label }))]}
           />
         </div>
         {historial && (

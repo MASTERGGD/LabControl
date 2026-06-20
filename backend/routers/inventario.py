@@ -4557,3 +4557,79 @@ def historial_activo(
         "total_eventos": len(eventos),
         "eventos": eventos,
     }
+
+
+@router.get("/computadoras/{pc_id}/historial", summary="Historial completo de una computadora")
+def historial_computadora(
+    pc_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    pc = db.query(Computadora).filter(Computadora.id == pc_id).first()
+    if not pc:
+        raise HTTPException(status_code=404, detail="Computadora no encontrada")
+    if _es_rol_laboratorio(current_user) and current_user.laboratorio_id != pc.laboratorio_id:
+        raise HTTPException(status_code=404, detail="Computadora no encontrada")
+
+    lab = db.query(Laboratorio).filter(Laboratorio.id == pc.laboratorio_id).first()
+    eventos = []
+
+    for i in db.query(Incidente).filter(Incidente.computadora_id == pc_id).all():
+        rep_nombre = None
+        if i.reportado_por_id:
+            u = db.query(Usuario).filter(Usuario.id == i.reportado_por_id).first()
+            if u:
+                rep_nombre = u.nombre
+        eventos.append({
+            "tipo_evento": "INCIDENTE",
+            "fecha": i.fecha_reporte.isoformat() if i.fecha_reporte else None,
+            "fecha_fin": i.fecha_resolucion.isoformat() if i.fecha_resolucion else None,
+            "titulo": f"{i.tipo.capitalize()} - {i.estado}",
+            "descripcion": i.descripcion,
+            "estado": i.estado,
+            "prioridad": i.prioridad,
+            "notas": i.notas_seguimiento,
+            "costo": i.costo_reparacion,
+            "usuario": rep_nombre,
+            "id_ref": i.id,
+        })
+
+    for mp in db.query(MantenimientoPreventivo).filter(MantenimientoPreventivo.computadora_id == pc_id).all():
+        comp_nombre = None
+        if mp.completado_por_id:
+            u = db.query(Usuario).filter(Usuario.id == mp.completado_por_id).first()
+            if u:
+                comp_nombre = u.nombre
+        eventos.append({
+            "tipo_evento": "MANTENIMIENTO_PREVENTIVO",
+            "fecha": mp.fecha_programada.isoformat() if mp.fecha_programada else None,
+            "fecha_fin": mp.fecha_completado.isoformat() if mp.fecha_completado else None,
+            "titulo": "Preventivo - " + mp.tipo.replace("_", " ").title(),
+            "descripcion": mp.descripcion,
+            "estado": mp.estado,
+            "notas": mp.notas_result,
+            "costo": mp.costo,
+            "duracion_min": mp.duracion_min,
+            "usuario": comp_nombre,
+            "id_ref": mp.id,
+        })
+
+    eventos.sort(key=lambda e: e["fecha"] or "", reverse=True)
+    return {
+        "computadora_id": pc_id,
+        "activo": {
+            "id": pc.id,
+            "nombre": pc.codigo,
+            "codigo": pc.codigo,
+            "codigo_inventario": pc.activo.codigo_inventario if pc.activo else None,
+            "categoria": "Puesto de laboratorio",
+            "marca": pc.activo.marca if pc.activo else None,
+            "modelo": pc.activo.modelo if pc.activo else None,
+            "estado": pc.estado,
+            "laboratorio_id": pc.laboratorio_id,
+            "laboratorio_nombre": lab.nombre if lab else None,
+            "fila": pc.fila,
+        },
+        "total_eventos": len(eventos),
+        "eventos": eventos,
+    }
