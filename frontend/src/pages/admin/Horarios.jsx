@@ -1252,13 +1252,6 @@ export default function Horarios() {
                     if (esInactivo) return;
                     if (esBloqueado) { setSlotBloqueo(slot); return; }
                     if (esReservado) { setSlotDetalle(slot); return; }
-                    if (esSuperAdmin) {
-                      // Capa 2: limpiar cualquier drag state residual antes de abrir el modal
-                      setIsDragging(false);
-                      setSelectedCells(new Set());
-                      setSlotBloquear(slot);
-                      return;
-                    }
                     setSlotEditar(slot);
                   }}>
 
@@ -1280,13 +1273,35 @@ export default function Horarios() {
                       </span>
                       <div className="flex items-center justify-between mt-auto">
                         {esSuperAdmin ? (
-                          <span className="hidden group-hover:inline-flex items-center gap-1 text-xs transition-opacity"
-                            style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                            </svg>
-                            Bloquear
-                          </span>
+                          <div className="hidden group-hover:flex items-center gap-1">
+                            <span className="inline-flex items-center gap-1 text-xs transition-opacity"
+                              style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                              Editar
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setIsDragging(false);
+                                setSelectedCells(new Set());
+                                setSlotBloquear(slot);
+                              }}
+                              className="inline-flex items-center gap-1 text-xs rounded-md px-1.5 py-0.5 transition-colors"
+                              style={{
+                                color: isDay ? '#7c3aed' : '#c4b5fd',
+                                background: isDay ? '#f5f3ff' : 'rgba(109,40,217,0.16)',
+                                border: `1px solid ${isDay ? '#ddd6fe' : 'rgba(139,92,246,0.28)'}`,
+                              }}
+                              title="Bloquear turno">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                              </svg>
+                              Bloquear
+                            </button>
+                          </div>
                         ) : (
                           <span className="hidden group-hover:inline-flex text-xs" style={{ color: isDay ? '#94a3b8' : '#475569' }}>Libre</span>
                         )}
