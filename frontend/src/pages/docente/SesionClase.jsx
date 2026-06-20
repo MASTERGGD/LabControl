@@ -1885,6 +1885,7 @@ export default function SesionClase() {
   useEffect(() => { window.scrollTo(0, 0); }, [labId]);
 
   const recargar = () => { cargarGrid(); cargarSesionActiva(); cargarSolicRecibidas(); };
+  const laboratorioSeleccionado = laboratorios.find(l => String(l.id) === String(labId));
 
   const handleCeder = async (reservacion_id) => {
     setAccionando(reservacion_id);
@@ -2014,20 +2015,28 @@ export default function SesionClase() {
         style={{
           position: 'relative',
           zIndex: 2,
+          flexDirection: esMobil ? 'column' : 'row',
+          alignItems: esMobil ? 'stretch' : 'center',
           background: isDay ? '#ffffff' : 'rgba(15,23,42,0.7)',
           border: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)'}`,
         }}
       >
-        <div className="flex items-center gap-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-1 min-w-0" style={{ width: esMobil ? '100%' : undefined }}>
           <label className="text-xs font-medium shrink-0" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Lab</label>
           <SelectDark
             value={labId}
             onChange={setLabId}
             className="flex-1 min-w-0"
-            options={laboratorios.map(l => ({ value: l.id, label: l.nombre }))}
+            size={esMobil ? 'sm' : 'md'}
+            options={laboratorios.map(l => ({ value: l.id, label: l.nombre, wrap: true }))}
           />
         </div>
-        <div className="flex items-center gap-2" style={{ marginLeft: '16px' }}>
+        {esMobil && laboratorioSeleccionado?.nombre && (
+          <p className="w-full -mt-1 mb-1 text-xs leading-snug" style={{ color: isDay ? '#475569' : '#cbd5e1' }}>
+            {laboratorioSeleccionado.nombre}
+          </p>
+        )}
+        <div className="flex items-center gap-2" style={{ marginLeft: esMobil ? 0 : '16px', width: esMobil ? '100%' : undefined }}>
           <span className="text-sm" style={{ color: isDay ? '#475569' : '#94a3b8' }}>Cuatrimestre</span>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
             style={{
@@ -2040,7 +2049,7 @@ export default function SesionClase() {
         </div>
         <button onClick={recargar}
           className="ml-auto text-xs flex items-center gap-1 transition-colors"
-          style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
+          style={{ marginLeft: esMobil ? 0 : 'auto', alignSelf: esMobil ? 'flex-end' : undefined, color: isDay ? '#334155' : '#cbd5e1' }}>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
