@@ -132,6 +132,21 @@ class TestCrudHorarios:
         }, headers=auth_headers(tok))
         assert r.status_code == 422
 
+    def test_crear_horario_solapado_409(self, client, db):
+        tok, lab = self._setup(client, db)
+        client.post("/horarios", json={
+            "laboratorio_id": lab.id, "dia_semana": 2,
+            "hora_inicio": "08:00", "hora_fin": "16:00",
+            "cuatrimestre": "ENE-ABR-2026",
+        }, headers=auth_headers(tok))
+        r = client.post("/horarios", json={
+            "laboratorio_id": lab.id, "dia_semana": 2,
+            "hora_inicio": "09:00", "hora_fin": "09:45",
+            "cuatrimestre": "ENE-ABR-2026",
+        }, headers=auth_headers(tok))
+        assert r.status_code == 409
+        assert "encima" in r.json()["detail"]
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Carga masiva (bulk)
@@ -155,6 +170,29 @@ class TestBulkHorarios:
         # bulk devuelve dict resumen: {creados, omitidos, dias_creados, dias_omitidos}
         assert isinstance(data, dict)
         assert data.get("creados", 0) + data.get("omitidos", 0) == 5
+
+    def test_bulk_omite_horarios_solapados(self, client, db):
+        _usuario(db, "Admin", "admin@test.mx", RolUsuario.SUPER_ADMIN)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        lab = _lab(db)
+        client.post("/horarios", json={
+            "laboratorio_id": lab.id,
+            "dia_semana": 2,
+            "hora_inicio": "08:00",
+            "hora_fin": "16:00",
+            "cuatrimestre": "MAY-AGO-2026",
+        }, headers=auth_headers(tok))
+        r = client.post("/horarios/bulk", json={
+            "laboratorio_id": lab.id,
+            "cuatrimestre": "MAY-AGO-2026",
+            "dias": [2, 3],
+            "hora_inicio": "09:00",
+            "hora_fin": "09:45",
+        }, headers=auth_headers(tok))
+        assert r.status_code == 201
+        data = r.json()
+        assert data["creados"] == 1
+        assert data["omitidos"] == 1
 
 
 # ════════════════════════════════════════════════════════════════════════════

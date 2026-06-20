@@ -204,6 +204,74 @@ def _identidad_label(materia: str, carrera: str, cuat_mat: str, grupo: str) -> s
     return " · ".join(partes)
 
 
+def _hora_a_minutos(hora: str) -> int:
+    h, m = hora.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _validar_rango_horario(hora_inicio: str, hora_fin: str):
+    if _hora_a_minutos(hora_fin) <= _hora_a_minutos(hora_inicio):
+        raise HTTPException(status_code=422, detail="hora_fin debe ser mayor que hora_inicio")
+
+
+def _buscar_horario_solapado(
+    db: Session,
+    laboratorio_id: int,
+    dia_semana: int,
+    cuatrimestre: str,
+    hora_inicio: str,
+    hora_fin: str,
+    excluir_id: Optional[int] = None,
+) -> Optional[HorarioDisponible]:
+    inicio = _hora_a_minutos(hora_inicio)
+    fin = _hora_a_minutos(hora_fin)
+    q = db.query(HorarioDisponible).filter(
+        HorarioDisponible.laboratorio_id == laboratorio_id,
+        HorarioDisponible.dia_semana == dia_semana,
+        HorarioDisponible.cuatrimestre == cuatrimestre,
+        HorarioDisponible.activo == True,
+    )
+    if excluir_id:
+        q = q.filter(HorarioDisponible.id != excluir_id)
+
+    for h in q.all():
+        h_inicio = _hora_a_minutos(h.hora_inicio)
+        h_fin = _hora_a_minutos(h.hora_fin)
+        if inicio < h_fin and fin > h_inicio:
+            return h
+    return None
+
+
+def _validar_sin_solape(
+    db: Session,
+    laboratorio_id: int,
+    dia_semana: int,
+    cuatrimestre: str,
+    hora_inicio: str,
+    hora_fin: str,
+    excluir_id: Optional[int] = None,
+):
+    _validar_rango_horario(hora_inicio, hora_fin)
+    solapado = _buscar_horario_solapado(
+        db,
+        laboratorio_id,
+        dia_semana,
+        cuatrimestre,
+        hora_inicio,
+        hora_fin,
+        excluir_id=excluir_id,
+    )
+    if solapado:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El horario se encima con un turno existente "
+                f"({solapado.hora_inicio}-{solapado.hora_fin}). "
+                "Edita o elimina ese turno antes de crear otro."
+            ),
+        )
+
+
 def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
     suplente = db.query(Usuario).filter(Usuario.id == r.docente_suplente_id).first() if r.docente_suplente_id else None
@@ -296,6 +364,15 @@ def crear_horario(
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 
+    _validar_sin_solape(
+        db,
+        data.laboratorio_id,
+        data.dia_semana,
+        data.cuatrimestre,
+        data.hora_inicio,
+        data.hora_fin,
+    )
+
     # Verificar duplicado
     dup = db.query(HorarioDisponible).filter(
         HorarioDisponible.laboratorio_id == data.laboratorio_id,
@@ -331,9 +408,23 @@ def bulk_horarios(
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 
+    _validar_rango_horario(data.hora_inicio, data.hora_fin)
+
     creados = []
     omitidos = []
     for dia in data.dias:
+        solapado = _buscar_horario_solapado(
+            db,
+            data.laboratorio_id,
+            dia,
+            data.cuatrimestre,
+            data.hora_inicio,
+            data.hora_fin,
+        )
+        if solapado:
+            omitidos.append(f"{DIAS[dia]} ({solapado.hora_inicio}-{solapado.hora_fin})")
+            continue
+
         dup = db.query(HorarioDisponible).filter(
             HorarioDisponible.laboratorio_id == data.laboratorio_id,
             HorarioDisponible.dia_semana == dia,
@@ -401,6 +492,18 @@ def cargar_periodos_utecan(
     omitidos = 0
     for dia in data.dias:
         for inicio, fin in PERIODOS_UTECAN:
+            solapado = _buscar_horario_solapado(
+                db,
+                data.laboratorio_id,
+                dia,
+                data.cuatrimestre,
+                inicio,
+                fin,
+            )
+            if solapado:
+                omitidos += 1
+                continue
+
             dup = db.query(HorarioDisponible).filter(
                 HorarioDisponible.laboratorio_id == data.laboratorio_id,
                 HorarioDisponible.dia_semana == dia,
@@ -441,7 +544,18 @@ def editar_horario(
     if not h:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
 
-    for campo, valor in data.model_dump(exclude_none=True).items():
+    nuevos = data.model_dump(exclude_none=True)
+    _validar_sin_solape(
+        db,
+        h.laboratorio_id,
+        nuevos.get("dia_semana", h.dia_semana),
+        h.cuatrimestre,
+        nuevos.get("hora_inicio", h.hora_inicio),
+        nuevos.get("hora_fin", h.hora_fin),
+        excluir_id=h.id,
+    )
+
+    for campo, valor in nuevos.items():
         setattr(h, campo, valor)
     db.commit()
     db.refresh(h)
