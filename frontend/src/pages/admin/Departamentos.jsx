@@ -547,7 +547,12 @@ export default function Departamentos() {
                     >
                       {abrevClave(dep.clave)}
                     </span>
-                    <h3 className="text-white font-semibold truncate mt-2">{dep.nombre}</h3>
+                    <h3
+                      className="text-white font-semibold mt-2 leading-snug line-clamp-2 min-h-[2.75rem] break-words"
+                      title={dep.nombre}
+                    >
+                      {dep.nombre}
+                    </h3>
                     {dep.descripcion && (
                       <p className="text-sm text-slate-400 mt-1 line-clamp-2">{dep.descripcion}</p>
                     )}
