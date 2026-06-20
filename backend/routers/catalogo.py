@@ -314,7 +314,7 @@ async def importar_alumnos(
     cambios_sensibles = []   # [{matricula, nombre, campo, antes, despues}]
 
     # Campos considerados sensibles: cambios que el admin debe revisar antes de confirmar
-    CAMPOS_SENSIBLES = ("cuatrimestre", "carrera", "grupo")
+    CAMPOS_SENSIBLES = ("cuatrimestre", "carrera", "grupo", "periodo")
 
     # Plantilla: fila 1=título, 2=leyenda, 3=cabeceras, 4=ejemplo → datos desde fila 5
     for row_idx, row in enumerate(ws.iter_rows(min_row=5, values_only=True), start=5):
@@ -370,6 +370,7 @@ async def importar_alumnos(
                 "carrera":          carrera,
                 "cuatrimestre":     cuatrimestre,
                 "grupo":            grupo,
+                "periodo":          periodo,
             }
             hay_cambio = False
             for campo, nuevo_val in incoming.items():
@@ -394,6 +395,7 @@ async def importar_alumnos(
                     existente.carrera          = carrera
                     existente.cuatrimestre     = cuatrimestre
                     existente.grupo            = grupo
+                    existente.periodo          = periodo
                     existente.activo           = True
             else:
                 sin_cambios += 1
