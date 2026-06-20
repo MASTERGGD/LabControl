@@ -6,7 +6,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import SelectDark from '../../components/SelectDark';
-import { dateToLocalISO } from '../../utils/timezone';
+import { dateToLocalISO, formatDateTimeInMexico } from '../../utils/timezone';
 
 // ─── Configuración de tipos, prioridades y estados ────────────────────────────
 
@@ -1785,7 +1785,7 @@ function TabHistorial({ laboratorios }) {
 
   const formatFechaLarga = (iso) => {
     if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    return formatDateTimeInMexico(iso, { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
   };
 
   return (
