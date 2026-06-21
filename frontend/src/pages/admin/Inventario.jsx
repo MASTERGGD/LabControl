@@ -1774,15 +1774,16 @@ function PanelRevisionInventario({
               }`}
             />
           </div>
-          <div className="w-full lg:w-56">
+          <div className="w-full lg:w-72">
             <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Departamento</label>
             <SelectDark
               value={filtros.departamento}
               onChange={v => setFiltros(f => ({ ...f, departamento: v }))}
               placeholder="Todos"
+              menuMinWidth={420}
               options={[
                 { value: '', label: 'Todos' },
-                ...departamentos.map(([value, label]) => ({ value, label })),
+                ...departamentos.map(([value, label]) => ({ value, label, wrap: true })),
               ]}
             />
           </div>

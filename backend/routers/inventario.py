@@ -1360,7 +1360,7 @@ def departamentos_opciones_inventario(
     if modo not in ("lectura", "escritura"):
         raise HTTPException(status_code=422, detail="modo debe ser lectura o escritura")
 
-    scope_global = _es_admin_inventario_global(current_user)
+    scope_global = _es_admin_inventario_global(current_user) or puede_validar_inventario(db, current_user)
     query = db.query(Departamento)
     if activo is not None:
         query = query.filter(Departamento.activo == activo)

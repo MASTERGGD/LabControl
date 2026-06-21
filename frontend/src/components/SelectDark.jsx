@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
  *   disabled    {bool}
  *   className   {string}                 Clases extra para el trigger
  *   menuClass   {string}                 Clases extra para el panel flotante
+ *   menuMinWidth {number}                Ancho minimo del panel flotante en px
  *   size        {'sm'|'md'}              Tamaño del trigger (md por defecto)
  */
 export default function SelectDark({
@@ -24,6 +25,7 @@ export default function SelectDark({
   disabled = false,
   className = '',
   menuClass = '',
+  menuMinWidth = 0,
   size = 'md',
 }) {
   const [open, setOpen]     = useState(false);
@@ -38,21 +40,26 @@ export default function SelectDark({
     if (!rect) return;
 
     const gap = 6;
-    const preferredMax = 224;
+    const preferredMax = 320;
     const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
     const spaceAbove = rect.top - gap - 8;
     const opensUp = spaceBelow < 120 && spaceAbove > spaceBelow;
     const maxHeight = Math.max(120, Math.min(preferredMax, opensUp ? spaceAbove : spaceBelow));
+    const width = Math.min(
+      Math.max(rect.width, Number(menuMinWidth) || 0),
+      window.innerWidth - 16,
+    );
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
 
     setMenuStyle({
       position: 'fixed',
-      left: `${rect.left}px`,
+      left: `${left}px`,
       top: `${opensUp ? rect.top - maxHeight - gap : rect.bottom + gap}px`,
-      width: `${rect.width}px`,
+      width: `${width}px`,
       maxHeight: `${maxHeight}px`,
       zIndex: 10000,
     });
-  }, []);
+  }, [menuMinWidth]);
 
   // ── etiqueta que se muestra en el trigger ────────────────────────────────
   const selectedOpt = options.find(o => String(o.value) === String(value));
