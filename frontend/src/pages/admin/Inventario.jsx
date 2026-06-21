@@ -36,7 +36,7 @@ const CATEGORIAS_POR_LAB = {
 const CATEGORIAS = Array.from(new Set([...CATEGORIAS_BASE, ...Object.values(CATEGORIAS_POR_LAB).flat()]));
 const ALCANCES   = ['LABORATORIO','INSTITUCIONAL'];
 const ESTADOS_ADMIN = ['BORRADOR','EN_REVISION','OBSERVADO','VALIDADO','RECHAZADO','BAJA_SOLICITADA'];
-const TIPOS_MOVIMIENTO = ['TRANSFERENCIA_DEPARTAMENTO','CAMBIO_UBICACION','CAMBIO_RESGUARDANTE','MANTENIMIENTO','BAJA'];
+const TIPOS_MOVIMIENTO = ['TRANSFERENCIA_DEPARTAMENTO','CAMBIO_UBICACION','CAMBIO_RESGUARDANTE','BAJA'];
 const TIPOS_UBICACION = ['EDIFICIO','OFICINA','AULA','LABORATORIO','ALMACEN','BIBLIOTECA','CONSULTORIO','TALLER','EXTERIOR','OTRO'];
 const ESTADOS    = ['OPERATIVO','MANTENIMIENTO','DAÑADO','BAJA'];
 const categoriaLabLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : '';
@@ -1288,7 +1288,7 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
       <div className="glass w-full max-w-2xl shadow-2xl">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between bg-gray-800">
           <div>
-            <h3 className="font-semibold text-white">Movimiento de inventario</h3>
+            <h3 className="font-semibold text-white">Movimiento patrimonial</h3>
             <p className="text-xs text-slate-400 mt-0.5">{activo.codigo_inventario} · {activo.nombre}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
@@ -1303,7 +1303,8 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
               ? 'bg-blue-50 border-blue-300 text-blue-950'
               : 'bg-blue-950/30 border-blue-900 text-blue-100'
           }`}>
-            Este registro actualiza el activo y deja trazabilidad en el expediente: origen, destino, responsable, fecha y motivo.
+            Este registro cambia datos patrimoniales del activo y deja trazabilidad en el expediente: origen, destino, responsable, fecha y motivo.
+            Para reparaciones o preventivos usa el modulo de Mantenimiento.
           </div>
 
           <div>

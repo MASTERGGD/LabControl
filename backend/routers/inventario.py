@@ -63,7 +63,8 @@ ESTADOS_LEVANTAMIENTO = ["ABIERTO", "CERRADO", "CANCELADO"]
 ESTADOS_REVISION_LEVANTAMIENTO = ["LOCALIZADO", "NO_LOCALIZADO", "OTRA_UBICACION", "DANADO", "PROPUESTO_BAJA", "DATOS_INCOMPLETOS"]
 UNIDADES_MEDIDA = ["PIEZA", "CAJA", "PAQUETE", "JUEGO", "METRO", "LITRO", "KILO", "SERVICIO", "OTRO"]
 TIPOS_UBICACION = ["EDIFICIO", "OFICINA", "AULA", "LABORATORIO", "ALMACEN", "BIBLIOTECA", "CONSULTORIO", "TALLER", "EXTERIOR", "OTRO"]
-TIPOS_MOVIMIENTO = ["TRANSFERENCIA_DEPARTAMENTO", "CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE", "PRESTAMO_TEMPORAL", "RETORNO", "BAJA", "MANTENIMIENTO", "AJUSTE_INVENTARIO"]
+TIPOS_MOVIMIENTO = ["TRANSFERENCIA_DEPARTAMENTO", "CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE", "PRESTAMO_TEMPORAL", "RETORNO", "BAJA", "AJUSTE_INVENTARIO"]
+TIPOS_MOVIMIENTO_LEGACY = ["MANTENIMIENTO"]
 ESTADOS_MOVIMIENTO = ["SOLICITADO", "AUTORIZADO", "RECHAZADO", "ENTREGADO", "RECIBIDO", "CANCELADO"]
 ESTADOS_PRESTAMO = ["ACTIVO", "DEVUELTO", "VENCIDO"]
 CONDICIONES = ["EXCELENTE", "BUENO", "REGULAR", "DAÑADO"]
@@ -1080,6 +1081,11 @@ def _asegurar_acceso_levantamiento(db: Session, l: LevantamientoInventario | Non
 
 
 def _validar_destinos_movimiento(data: MovimientoInventarioCreate, db: Session):
+    if data.tipo.upper() in TIPOS_MOVIMIENTO_LEGACY:
+        raise HTTPException(
+            status_code=422,
+            detail="Mantenimiento ya no es un movimiento patrimonial. Usa incidentes o mantenimiento preventivo."
+        )
     if data.tipo.upper() not in TIPOS_MOVIMIENTO:
         raise HTTPException(status_code=422, detail=f"Tipo de movimiento invalido. Use: {TIPOS_MOVIMIENTO}")
     if data.departamento_destino_id and not db.query(Departamento).filter(Departamento.id == data.departamento_destino_id).first():
