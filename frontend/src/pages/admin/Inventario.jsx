@@ -2950,7 +2950,7 @@ export default function Inventario() {
       ) : (
         /* Vista tabla */
         <div className="glass overflow-x-auto">
-          <table className="w-full min-w-[1220px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-white/5 text-slate-400 text-xs uppercase tracking-wider">
               <tr>
                 <th className="text-left px-4 py-3">Activo</th>
@@ -2959,10 +2959,14 @@ export default function Inventario() {
                 <th className="text-left px-4 py-3">Responsable</th>
                 <th className="text-left px-4 py-3">Ubicación</th>
                 <th className="text-left px-4 py-3">Estado</th>
-                <th className="text-left px-4 py-3">Mant.</th>
+                <th className="hidden xl:table-cell text-left px-4 py-3">Mant.</th>
                 <th className="text-left px-4 py-3">Validación</th>
-                <th className="text-left px-4 py-3">Préstamo</th>
-                <th className="text-right px-4 py-3">Acciones</th>
+                <th className="hidden xl:table-cell text-left px-4 py-3">Préstamo</th>
+                <th className={`sticky right-0 z-10 text-right px-4 py-3 w-[150px] ${
+                  isDay ? 'bg-slate-50' : 'bg-slate-950'
+                }`}>
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -3018,7 +3022,7 @@ export default function Inventario() {
                       {a.estado}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs">
+                  <td className="hidden xl:table-cell px-4 py-3 text-xs">
                     {a.mantenimiento?.estado_alerta && a.mantenimiento.estado_alerta !== 'OK' ? (
                       <button
                         type="button"
@@ -3059,15 +3063,17 @@ export default function Inventario() {
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-400">
+                  <td className="hidden xl:table-cell px-4 py-3 text-xs text-slate-400">
                     {a.prestado ? (
                       <span className="text-yellow-400 font-medium">● Prestado</span>
                     ) : (
                       <span className="text-slate-600">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
+                  <td className={`sticky right-0 z-10 px-4 py-3 align-top ${
+                    isDay ? 'bg-slate-50 shadow-[-12px_0_18px_rgba(15,23,42,0.08)]' : 'bg-slate-950 shadow-[-12px_0_18px_rgba(0,0,0,0.35)]'
+                  }`}>
+                    <div className="flex items-center justify-end gap-1 flex-wrap max-w-[150px] ml-auto">
                       {activoEditable && <button onClick={() => setActivoEditar(a)}
                         className="p-1.5 text-slate-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors"
                         title="Editar activo">
