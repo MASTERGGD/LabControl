@@ -1655,7 +1655,67 @@ function PanelRevisionInventario({
   onExpediente,
   isDay,
 }) {
-  const conteos = activos.reduce((acc, a) => {
+  const [filtros, setFiltros] = useState({
+    q: '',
+    departamento: '',
+    laboratorio: '',
+    estado: '',
+    fecha: '',
+  });
+
+  const departamentos = useMemo(() => {
+    const map = new Map();
+    activos.forEach(a => {
+      const key = a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__';
+      const label = a.departamento_nombre || 'Sin departamento';
+      map.set(key, label);
+    });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [activos]);
+
+  const laboratorios = useMemo(() => {
+    const map = new Map();
+    activos.forEach(a => {
+      if (!a.laboratorio_id && !a.laboratorio_nombre) return;
+      const key = a.laboratorio_id ? String(a.laboratorio_id) : a.laboratorio_nombre;
+      map.set(key, a.laboratorio_nombre || `Laboratorio ${a.laboratorio_id}`);
+    });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [activos]);
+
+  const activosFiltrados = useMemo(() => {
+    const q = filtros.q.trim().toLowerCase();
+    return activos.filter(a => {
+      const texto = [
+        a.nombre,
+        a.codigo_inventario,
+        a.numero_oficial,
+        a.numero_serie,
+        a.marca,
+        a.modelo,
+        a.departamento_nombre,
+        a.laboratorio_nombre,
+        a.ubicacion_label,
+        a.ubicacion_nombre,
+        a.responsable_nombre,
+        a.registrado_por_nombre,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const depKey = a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__';
+      const labKey = a.laboratorio_id ? String(a.laboratorio_id) : a.laboratorio_nombre;
+      const fechaBase = (a.validacion_fecha || a.registrado_fecha || '').slice(0, 10);
+      return (
+        (!q || texto.includes(q)) &&
+        (!filtros.departamento || depKey === filtros.departamento) &&
+        (!filtros.laboratorio || labKey === filtros.laboratorio) &&
+        (!filtros.estado || (a.estado_admin || 'BORRADOR') === filtros.estado) &&
+        (!filtros.fecha || fechaBase === filtros.fecha)
+      );
+    });
+  }, [activos, filtros]);
+
+  const filtrosActivos = filtros.q || filtros.departamento || filtros.laboratorio || filtros.estado || filtros.fecha;
+
+  const conteos = activosFiltrados.reduce((acc, a) => {
     const key = a.estado_admin || 'VALIDADO';
     acc[key] = (acc[key] || 0) + 1;
     return acc;
@@ -1681,6 +1741,101 @@ function PanelRevisionInventario({
 
   return (
     <div className="space-y-5">
+      <div
+        className="rounded-xl border p-4"
+        style={{
+          background: isDay ? '#FFFFFF' : 'rgba(15,23,42,0.55)',
+          borderColor: isDay ? 'rgba(15,23,42,0.10)' : 'rgba(255,255,255,0.08)',
+        }}
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="flex-1 min-w-[220px]">
+            <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Buscar activo</label>
+            <input
+              value={filtros.q}
+              onChange={e => setFiltros(f => ({ ...f, q: e.target.value }))}
+              placeholder="Codigo, serie, nombre, responsable..."
+              className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                isDay
+                  ? 'bg-white border-slate-300 text-slate-950 placeholder:text-slate-400 focus:border-emerald-500'
+                  : 'bg-slate-950/60 border-white/10 text-white placeholder:text-slate-500 focus:border-emerald-500'
+              }`}
+            />
+          </div>
+          <div className="w-full lg:w-56">
+            <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Departamento</label>
+            <SelectDark
+              value={filtros.departamento}
+              onChange={v => setFiltros(f => ({ ...f, departamento: v }))}
+              placeholder="Todos"
+              options={[
+                { value: '', label: 'Todos' },
+                ...departamentos.map(([value, label]) => ({ value, label })),
+              ]}
+            />
+          </div>
+          <div className="w-full lg:w-56">
+            <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Laboratorio</label>
+            <SelectDark
+              value={filtros.laboratorio}
+              onChange={v => setFiltros(f => ({ ...f, laboratorio: v }))}
+              placeholder="Todos"
+              options={[
+                { value: '', label: 'Todos' },
+                ...laboratorios.map(([value, label]) => ({ value, label })),
+              ]}
+            />
+          </div>
+          <div className="w-full lg:w-44">
+            <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Estado</label>
+            <SelectDark
+              value={filtros.estado}
+              onChange={v => setFiltros(f => ({ ...f, estado: v }))}
+              placeholder="Todos"
+              options={[
+                { value: '', label: 'Todos' },
+                { value: 'BORRADOR', label: 'Borrador' },
+                { value: 'EN_REVISION', label: 'En revision' },
+                { value: 'OBSERVADO', label: 'Observado' },
+                { value: 'RECHAZADO', label: 'No autorizado' },
+              ]}
+            />
+          </div>
+          <div className="w-full lg:w-44">
+            <label className={`block text-xs font-semibold mb-1.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Dia</label>
+            <input
+              type="date"
+              value={filtros.fecha}
+              onChange={e => setFiltros(f => ({ ...f, fecha: e.target.value }))}
+              className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${
+                isDay
+                  ? 'bg-white border-slate-300 text-slate-950 focus:border-emerald-500'
+                  : 'bg-slate-950/60 border-white/10 text-white focus:border-emerald-500'
+              }`}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltros({ q: '', departamento: '', laboratorio: '', estado: '', fecha: '' })}
+            className={`rounded-xl border px-4 py-2 text-sm font-semibold transition-colors ${
+              filtrosActivos
+                ? isDay
+                  ? 'border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200'
+                  : 'border-white/10 bg-slate-800 text-white hover:bg-slate-700'
+                : isDay
+                  ? 'border-slate-200 bg-slate-50 text-slate-400'
+                  : 'border-white/5 bg-slate-900/40 text-slate-600'
+            }`}
+            disabled={!filtrosActivos}
+          >
+            Limpiar
+          </button>
+        </div>
+        <p className={`mt-3 text-xs ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+          Mostrando {activosFiltrados.length} de {activos.length} activo(s) pendientes. La fecha usa el registro inicial o la ultima revision del activo.
+        </p>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {['BORRADOR', 'EN_REVISION', 'OBSERVADO', 'RECHAZADO'].map(estado => (
           <div key={estado} className="glass p-4">
@@ -1694,14 +1849,14 @@ function PanelRevisionInventario({
         ))}
       </div>
 
-      {activos.length === 0 ? (
+      {activosFiltrados.length === 0 ? (
         <div className="text-center py-16 text-slate-500">
           <p className="text-4xl mb-3">OK</p>
-          <p>No hay activos pendientes de revision.</p>
+          <p>{activos.length === 0 ? 'No hay activos pendientes de revision.' : 'No hay activos con esos filtros.'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {activos.map(a => (
+          {activosFiltrados.map(a => (
             <div
               key={a.id}
               className="rounded-xl p-4 border"
@@ -1730,6 +1885,8 @@ function PanelRevisionInventario({
                 <p>Ubicacion: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.ubicacion_label || a.ubicacion_nombre || 'Sin ubicacion'}</span></p>
                 <p>Categoria: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{categoriaActivoLabel(a.categoria)}</span></p>
                 <p>Serie: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.numero_serie || 'Sin serie'}</span></p>
+                <p>Registro: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{formatFechaCorta(a.registrado_fecha) || 'Sin fecha'}</span></p>
+                <p>Revisor: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.validacion_revisor || 'Sin revisar'}</span></p>
               </div>
               {a.validacion_motivo && (
                 <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">

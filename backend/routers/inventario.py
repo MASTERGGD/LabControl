@@ -865,6 +865,7 @@ def _meta_validacion_activo(a: Activo, db: Session) -> dict:
     return {
         "registrado_por_id": creacion.usuario_id if creacion else None,
         "registrado_por_nombre": creacion.usuario_nombre if creacion else None,
+        "registrado_fecha": _iso(creacion.timestamp) if creacion else None,
         "validacion_motivo": detalle.get("observaciones"),
         "validacion_revisor": validacion.usuario_nombre if validacion else None,
         "validacion_fecha": _iso(validacion.timestamp) if validacion else None,
