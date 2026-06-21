@@ -15,6 +15,9 @@ En desarrollo activo. Stack principal:
 Para una demo publicada en Railway con PostgreSQL administrado, ver
 `docs/despliegue-demo-railway.md`.
 
+Para presentar el flujo patrimonial del modulo de inventario, ver
+`docs/manual-inventario-demo.md`.
+
 ## Módulos Principales
 
 | Módulo | Descripción |
