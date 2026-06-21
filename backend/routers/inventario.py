@@ -1961,7 +1961,7 @@ def editar_activo(
                 "Super Admin debe reabrirlo como borrador o en revision."
             ),
         )
-    campos = data.model_dump(exclude_none=True)
+    campos = data.model_dump(exclude_unset=True)
     campos_con_trazabilidad = {
         "alcance",
         "laboratorio_id",
@@ -1987,7 +1987,7 @@ def editar_activo(
             ),
         )
     if "numero_oficial" in campos:
-        campos["numero_oficial"] = campos["numero_oficial"].strip() or None
+        campos["numero_oficial"] = (campos["numero_oficial"] or "").strip() or None
         if campos["numero_oficial"]:
             duplicado = db.query(Activo).filter(
                 Activo.numero_oficial == campos["numero_oficial"],
@@ -2053,6 +2053,18 @@ def editar_activo(
         tipos_ubicacion_validos = _catalogo_claves(db, CATALOGO_TIPO_UBICACION)
         if campos["ubicacion_tipo"] not in tipos_ubicacion_validos:
             raise HTTPException(status_code=422, detail=f"Tipo de ubicacion invalido. Use: {tipos_ubicacion_validos}")
+    if "ubicacion_nombre" in campos:
+        campos["ubicacion_nombre"] = (campos["ubicacion_nombre"] or "").strip() or None
+    if "resguardante_externo_nombre" in campos:
+        campos["resguardante_externo_nombre"] = (campos["resguardante_externo_nombre"] or "").strip() or None
+    if campos.get("ubicacion_id"):
+        campos["ubicacion_nombre"] = None
+    elif campos.get("ubicacion_nombre"):
+        campos["ubicacion_id"] = None
+    if campos.get("responsable_id"):
+        campos["resguardante_externo_nombre"] = None
+    elif campos.get("resguardante_externo_nombre"):
+        campos["responsable_id"] = None
     tipo_final = campos.get("tipo_inventario", a.tipo_inventario or "ACTIVO")
     if tipo_final == "ACTIVO":
         campos["cantidad"] = 1

@@ -743,6 +743,14 @@ function ModalActivo({
     setLoading(true);
     try {
       const payload = { ...form };
+      const camposTrazables = [
+        'laboratorio_id',
+        'departamento_id',
+        'ubicacion_id',
+        'responsable_id',
+        'resguardante_externo_nombre',
+        'ubicacion_nombre',
+      ];
       if (!puedeAsignarLaboratorio) {
         payload.alcance = 'INSTITUCIONAL';
         delete payload.laboratorio_id;
@@ -775,7 +783,13 @@ function ModalActivo({
       payload.unidad_medida = 'PIEZA';
       delete payload.stock_minimo;
       ['laboratorio_id','departamento_id','ubicacion_id','responsable_id','marca','modelo','numero_serie','especificaciones','observaciones','resguardante_externo_nombre','ubicacion_nombre'].forEach(k => {
-        if (!payload[k]) delete payload[k];
+        if (payload[k] === '' || payload[k] === undefined || payload[k] === null) {
+          if (esEdicion && !camposTrazablesBloqueados && camposTrazables.includes(k)) {
+            payload[k] = null;
+          } else {
+            delete payload[k];
+          }
+        }
       });
       if (esEdicion) {
         await api.put(`/inventario/activos/${activo.id}`, payload);
@@ -965,11 +979,14 @@ function ModalActivo({
                 className="w-full input-dark text-white  px-3 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase placeholder-normal"/>
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Resguardante</label>
+              <label className="block text-sm text-slate-400 mb-1">Resguardante fisico</label>
               <input name="resguardante_externo_nombre" value={form.resguardante_externo_nombre} onChange={handleChange}
                 disabled={camposTrazablesBloqueados}
-                placeholder="Nombre del responsable"
+                placeholder="Persona que recibe o cuida el bien"
                 className="w-full input-dark text-white  px-3 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"/>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Puede quedar vacio en borrador; Inventario lo confirma antes de validar.
+              </p>
             </div>
           </div>
 
@@ -1996,6 +2013,7 @@ export default function Inventario() {
   const puedeImportarInventario = can('inventario:import') || puedeEditarInventario;
   const puedeExportarInventario = can('inventario:read');
   const puedeUsarPrestamos = can('prestamos:write');
+  const puedeGestionarMovimientos = puedeEditarInventario || puedeValidarInventario;
   const puedeAsignarLaboratorio = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol)
     || puedeValidarInventario;
   const isDay = themeKey === 'day';
@@ -2728,7 +2746,7 @@ export default function Inventario() {
                     </svg>
                     Editar
                   </button>}
-                  {puedeEditarInventario && activoValidado && <button onClick={() => setActivoMover(a)}
+                  {puedeGestionarMovimientos && activoValidado && <button onClick={() => setActivoMover(a)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600/90 hover:bg-blue-600 text-white transition-colors">
                     Mover
                   </button>}
@@ -2908,7 +2926,7 @@ export default function Inventario() {
                       </button>
                       {activoValidado ? (
                         <>
-                          {puedeEditarInventario && <button onClick={() => setActivoMover(a)}
+                          {puedeGestionarMovimientos && <button onClick={() => setActivoMover(a)}
                             className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-gray-600 rounded-lg transition-colors"
                             title="Mover activo">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
