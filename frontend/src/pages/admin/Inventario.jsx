@@ -42,6 +42,11 @@ const ESTADOS    = ['OPERATIVO','MANTENIMIENTO','DAÑADO','BAJA'];
 const categoriaLabLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : '';
 const categoriaActivoLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : '';
 const formatFechaCorta = iso => iso ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '';
+const responsablePatrimonialLabel = (activo) => {
+  const esLaboratorio = (activo?.alcance || '').toUpperCase() === 'LABORATORIO';
+  if (esLaboratorio) return activo?.laboratorio_nombre || 'Laboratorio sin asignar';
+  return activo?.departamento_nombre || 'Sin departamento responsable';
+};
 const mantenimientoTone = estado => {
   if (estado === 'VENCIDO') return 'bg-red-500/15 text-red-300 border-red-500/30';
   if (estado === 'PROXIMO') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
@@ -851,6 +856,9 @@ function ModalActivo({
                   Se asignará automáticamente a {labContexto.nombre}.
                 </p>
               )}
+              <p className="text-xs text-slate-500 mt-1.5">
+                Para activos de laboratorio, el laboratorio es el responsable operativo; no requiere departamento responsable.
+              </p>
             </div>
           )}
 
@@ -870,7 +878,7 @@ function ModalActivo({
                 : 'bg-blue-950/30 border-blue-900 text-blue-100'
             }`}>
               {form.alcance === 'LABORATORIO'
-                ? 'Ubicacion, resguardante y adscripcion se cambian desde Movimiento para conservar el historial del activo.'
+                ? 'Ubicacion y resguardante se cambian desde Movimiento para conservar el historial del activo. El responsable operativo es el laboratorio.'
                 : 'Departamento, ubicacion, resguardante y adscripcion se cambian desde Movimiento para conservar el historial del activo.'}
             </div>
           )}
@@ -1666,6 +1674,7 @@ function PanelRevisionInventario({
   const departamentos = useMemo(() => {
     const map = new Map();
     activos.forEach(a => {
+      if ((a.alcance || '').toUpperCase() === 'LABORATORIO') return;
       const key = a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__';
       const label = a.departamento_nombre || 'Sin departamento';
       map.set(key, label);
@@ -1700,7 +1709,9 @@ function PanelRevisionInventario({
         a.responsable_nombre,
         a.registrado_por_nombre,
       ].filter(Boolean).join(' ').toLowerCase();
-      const depKey = a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__';
+      const depKey = (a.alcance || '').toUpperCase() === 'LABORATORIO'
+        ? ''
+        : (a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__');
       const labKey = a.laboratorio_id ? String(a.laboratorio_id) : a.laboratorio_nombre;
       const fechaBase = (a.validacion_fecha || a.registrado_fecha || '').slice(0, 10);
       return (
@@ -1881,7 +1892,7 @@ function PanelRevisionInventario({
               </div>
 
               <div className="grid grid-cols-2 gap-2 mt-4 text-xs text-slate-500">
-                <p>Depto: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.departamento_nombre || 'Sin departamento'}</span></p>
+                <p>Responsable: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{responsablePatrimonialLabel(a)}</span></p>
                 <p>Ubicacion: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.ubicacion_label || a.ubicacion_nombre || 'Sin ubicacion'}</span></p>
                 <p>Categoria: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{categoriaActivoLabel(a.categoria)}</span></p>
                 <p>Serie: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.numero_serie || 'Sin serie'}</span></p>
@@ -2800,7 +2811,7 @@ export default function Inventario() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-300 text-xs">
-                    <p>{a.departamento_nombre || a.laboratorio_nombre || <span className="text-slate-600">Sin responsable</span>}</p>
+                    <p>{responsablePatrimonialLabel(a)}</p>
                     {(a.responsable_nombre || a.resguardante_externo_nombre) && (
                       <p className="text-slate-500 mt-0.5">{a.responsable_nombre || a.resguardante_externo_nombre}</p>
                     )}
