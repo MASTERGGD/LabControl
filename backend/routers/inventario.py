@@ -1976,7 +1976,9 @@ def editar_activo(
         campo for campo in campos_con_trazabilidad
         if campo in campos and campos[campo] != getattr(a, campo)
     ]
-    if cambios_trazables:
+    estado_admin_actual = (a.estado_admin or "VALIDADO").upper()
+    permite_correccion_directa = estado_admin_actual in ("BORRADOR", "EN_REVISION", "OBSERVADO")
+    if cambios_trazables and not permite_correccion_directa:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -2004,7 +2006,11 @@ def editar_activo(
             raise HTTPException(status_code=422, detail=f"Alcance invalido. Use: {ALCANCES_ACTIVO}")
         if _es_rol_laboratorio(current_user) and campos["alcance"] != "LABORATORIO":
             raise HTTPException(status_code=403, detail="Solo Super Admin puede convertir activos a institucionales")
-        if not _es_admin_inventario_global(current_user) and campos["alcance"] != "INSTITUCIONAL":
+        if (
+            not _es_admin_inventario_global(current_user)
+            and not puede_validar_inventario(db, current_user)
+            and campos["alcance"] != "INSTITUCIONAL"
+        ):
             raise HTTPException(status_code=403, detail="El inventario departamental debe mantenerse como institucional")
     if "tipo_inventario" in campos:
         campos["tipo_inventario"] = campos["tipo_inventario"].upper()

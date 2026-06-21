@@ -619,7 +619,9 @@ function ModalActivo({
   const [formUbicacion, setFormUbicacion] = useState(ubicacionInicial);
   const [guardandoUbicacion, setGuardandoUbicacion] = useState(false);
   const [errorUbicacion, setErrorUbicacion] = useState('');
-  const camposTrazablesBloqueados = esEdicion;
+  const estadoAdminOriginal = String(activo?.estado_admin || 'VALIDADO').toUpperCase();
+  const activoEnCorreccion = ['BORRADOR', 'EN_REVISION', 'OBSERVADO'].includes(estadoAdminOriginal);
+  const camposTrazablesBloqueados = esEdicion && !activoEnCorreccion;
 
   useEffect(() => {
     setUbicacionesLocales(ubicaciones);
@@ -755,7 +757,7 @@ function ModalActivo({
           payload.estado_admin = 'BORRADOR';
         }
       }
-      if (esEdicion) {
+      if (camposTrazablesBloqueados) {
         [
           'alcance',
           'laboratorio_id',
@@ -880,6 +882,16 @@ function ModalActivo({
               {form.alcance === 'LABORATORIO'
                 ? 'Ubicacion y resguardante se cambian desde Movimiento para conservar el historial del activo. El responsable operativo es el laboratorio.'
                 : 'Departamento, ubicacion, resguardante y adscripcion se cambian desde Movimiento para conservar el historial del activo.'}
+            </div>
+          )}
+
+          {esEdicion && activoEnCorreccion && (
+            <div className={`rounded-xl px-4 py-3 text-xs border ${
+              isDayModal
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100'
+            }`}>
+              Este activo aun no es inventario oficial. Puedes corregir datos de la carga masiva aqui; al validarlo, los cambios de ubicacion, resguardante o responsable se haran por Movimiento.
             </div>
           )}
 
@@ -1984,7 +1996,8 @@ export default function Inventario() {
   const puedeImportarInventario = can('inventario:import') || puedeEditarInventario;
   const puedeExportarInventario = can('inventario:read');
   const puedeUsarPrestamos = can('prestamos:write');
-  const puedeAsignarLaboratorio = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol);
+  const puedeAsignarLaboratorio = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol)
+    || puedeValidarInventario;
   const isDay = themeKey === 'day';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();

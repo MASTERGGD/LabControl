@@ -227,7 +227,7 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/admin/mantenimiento" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB']} permisosPermitidos="inventario:validar">
           <Mantenimiento />
         </RutaProtegida>
       }/>
