@@ -84,6 +84,10 @@ def departamentos_inventario(db: Session, usuario: Usuario) -> list[int]:
     return departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE)
 
 
+def departamentos_validacion_inventario(db: Session, usuario: Usuario) -> list[int]:
+    return departamentos_con_permiso(db, usuario, PERM_INVENTARIO_VALIDATE)
+
+
 def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) -> bool:
     try:
         return db.query(UsuarioPermiso.id).filter(
@@ -99,7 +103,15 @@ def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) ->
 def puede_validar_inventario(db: Session, usuario: Usuario) -> bool:
     if usuario.rol == RolUsuario.SUPER_ADMIN:
         return True
+    if departamentos_validacion_inventario(db, usuario):
+        return True
     return tiene_permiso_en_alguna_area(db, usuario, PERM_INVENTARIO_VALIDATE)
+
+
+def puede_validar_inventario_global(db: Session, usuario: Usuario) -> bool:
+    if usuario.rol == RolUsuario.SUPER_ADMIN:
+        return True
+    return tiene_permiso_departamento(db, usuario, PERM_INVENTARIO_VALIDATE, None)
 
 
 def puede_gestionar_inventario(
@@ -128,6 +140,6 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
         permisos.add(PERM_COMUNICADOS_WRITE)
     if departamentos_con_permiso(db, usuario, PERM_INVENTARIO_WRITE):
         permisos.add(PERM_INVENTARIO_WRITE)
-    if tiene_permiso_en_alguna_area(db, usuario, PERM_INVENTARIO_VALIDATE):
+    if puede_validar_inventario(db, usuario):
         permisos.add(PERM_INVENTARIO_VALIDATE)
     return sorted(permisos)

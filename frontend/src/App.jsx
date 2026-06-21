@@ -50,6 +50,7 @@ import SEAlumnos from './pages/servicios_escolares/SEAlumnos';
 import SEFichas from './pages/servicios_escolares/SEFichas';
 import AutoAsignacion from './pages/AutoAsignacion';
 import ValidarConsulta from './pages/ValidarConsulta';
+import ValidarActivo from './pages/ValidarActivo';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -117,6 +118,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/autoasignacion/:token" element={<AutoAsignacion />} />
       <Route path="/validar/consulta/:token" element={<ValidarConsulta />} />
+      <Route path="/validar/activo/:token" element={<ValidarActivo />} />
 
       {/* Cambio de contraseña obligatorio (requiere sesión, sin rol) */}
       <Route path="/cambiar-password" element={<CambiarPasswordObligatorio />} />

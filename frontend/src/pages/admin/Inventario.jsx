@@ -2029,6 +2029,7 @@ export default function Inventario() {
   const [activos, setActivos]   = useState([]);
   const [labs, setLabs]         = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  const [inventarioScopeGlobal, setInventarioScopeGlobal] = useState(true);
   const [departamentosFormulario, setDepartamentosFormulario] = useState([]);
   const [departamentosFormularioGlobal, setDepartamentosFormularioGlobal] = useState(true);
   const [ubicaciones, setUbicaciones] = useState([]);
@@ -2098,6 +2099,7 @@ export default function Inventario() {
       setActivos(rA.data);
       setLabs(rL.data);
       setDepartamentos(rD.data.items || []);
+      setInventarioScopeGlobal(Boolean(rD.data.scope_global));
       setDepartamentosFormulario(rDW.data.items || []);
       setDepartamentosFormularioGlobal(Boolean(rDW.data.scope_global));
       setUbicaciones(rU.data);
@@ -2289,7 +2291,7 @@ export default function Inventario() {
             onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
             Préstamos
           </button>}
-          {tabActivo === 'activos' && puedeValidarInventario && <button onClick={() => setModalCatalogo(true)}
+          {tabActivo === 'activos' && puedeValidarInventario && inventarioScopeGlobal && <button onClick={() => setModalCatalogo(true)}
             className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all"
             style={{
               background: 'rgba(59,130,246,0.18)',

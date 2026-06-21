@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from services.auditoria import registrar, Accion, Recurso
 import openpyxl, io, unicodedata
+import os
 import uuid
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -31,13 +32,15 @@ from models.usuario_permiso import UsuarioPermiso
 from models.adeudo import Adeudo
 from models.auditoria import AuditLog
 from models.catalogo import CatalogoInventarioItem
-from dependencies import get_current_user, require_roles
+from dependencies import crear_access_token, decodificar_token, get_current_user, require_roles
 from rls import assert_lab_write, assert_resource_access
 from services.user_permissions import (
     PERM_INVENTARIO_VALIDATE,
+    departamentos_validacion_inventario,
     departamentos_inventario,
     puede_gestionar_inventario,
     puede_validar_inventario,
+    puede_validar_inventario_global,
 )
 import datetime
 
@@ -46,6 +49,25 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 router = APIRouter(prefix="/inventario", tags=["Inventario y Préstamos"])
+
+def _frontend_base_url() -> str:
+    return (
+        os.getenv("FRONTEND_URL")
+        or os.getenv("PUBLIC_APP_URL")
+        or os.getenv("REACT_APP_PUBLIC_APP_URL")
+        or "http://localhost:3000"
+    ).rstrip("/")
+
+
+def _token_validacion_activo(activo_id: int) -> str:
+    return crear_access_token({
+        "typ": "activo_validacion",
+        "aid": str(activo_id),
+    })
+
+
+def _url_validacion_activo(activo_id: int) -> str:
+    return f"{_frontend_base_url()}/validar/activo/{_token_validacion_activo(activo_id)}"
 
 CATEGORIAS = [
     "COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT",
@@ -105,9 +127,10 @@ def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario) -> None:
 
 
 def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[int] | None:
-    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
         return None
     ids = set(departamentos_inventario(db, usuario))
+    ids.update(departamentos_validacion_inventario(db, usuario))
     if usuario.rol == RolUsuario.ADMINISTRATIVO and usuario.departamento_id:
         ids.add(usuario.departamento_id)
     return sorted(ids)
@@ -118,11 +141,11 @@ def _resolver_departamento_inventario(
     usuario: Usuario,
     departamento_id: int | None,
 ) -> int:
-    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
         if departamento_id is None:
             raise HTTPException(status_code=422, detail="departamento_id es requerido")
         return departamento_id
-    permitidos = departamentos_inventario(db, usuario)
+    permitidos = sorted(set(departamentos_inventario(db, usuario)) | set(departamentos_validacion_inventario(db, usuario)))
     if departamento_id:
         if departamento_id not in permitidos:
             raise HTTPException(status_code=403, detail="Solo puedes gestionar inventario de tu departamento")
@@ -139,7 +162,9 @@ def _asegurar_write_inventario_departamento(
     usuario: Usuario,
     departamento_id: int | None,
 ) -> None:
-    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
+        return
+    if departamento_id and departamento_id in departamentos_validacion_inventario(db, usuario):
         return
     if not departamento_id or not puede_gestionar_inventario(db, usuario, departamento_id):
         raise HTTPException(status_code=403, detail="No tienes permiso para gestionar inventario de este departamento")
@@ -151,9 +176,9 @@ def _asegurar_acceso_activo_departamental(
     usuario: Usuario,
 ) -> None:
     assert_resource_access(activo, usuario)
-    if _es_admin_inventario_global(usuario) or puede_validar_inventario(db, usuario):
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
         return
-    permitidos = departamentos_inventario(db, usuario)
+    permitidos = _departamentos_visibles_inventario(db, usuario) or []
     if not activo or activo.departamento_id not in permitidos:
         raise HTTPException(status_code=404, detail="Activo no encontrado")
 
@@ -480,7 +505,7 @@ def _catalogo_prefijo_categoria(db: Session, categoria: str) -> str:
 
 
 def _asegurar_permiso_catalogo_inventario(db: Session, usuario: Usuario) -> None:
-    if not puede_validar_inventario(db, usuario):
+    if not (_es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario)):
         raise HTTPException(
             status_code=403,
             detail="Solo Inventario Institucional puede administrar este catalogo",
@@ -754,13 +779,7 @@ def _etiqueta_activo_pdf(activo_data: dict, styles: dict):
     numero = activo_data.get("numero_oficial")
     ubicacion = activo_data.get("ubicacion_label") or activo_data.get("ubicacion_nombre") or "Sin ubicacion"
     responsable = activo_data.get("responsable_nombre") or activo_data.get("resguardante_externo_nombre") or "Sin resguardante"
-    qr_payload = "|".join([
-        "SIGA-UTECAN",
-        "ACTIVO",
-        str(activo_data.get("id") or ""),
-        str(codigo),
-        str(numero or ""),
-    ])
+    qr_payload = _url_validacion_activo(int(activo_data.get("id") or 0))
     qr = _qr_drawing(qr_payload, 2.15 * cm)
     texto = Table(
         [
@@ -835,6 +854,49 @@ def _generar_pdf_etiquetas(activos_data: list[dict]) -> io.BytesIO:
     return buffer
 
 
+@router.get("/activos/validacion/{token}", summary="Validar activo por QR")
+def validar_activo_qr(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = decodificar_token(token)
+        if payload.get("typ") != "activo_validacion":
+            raise ValueError("tipo invalido")
+        activo_id = int(payload.get("aid") or 0)
+    except Exception:
+        raise HTTPException(status_code=401, detail="QR de activo invalido")
+
+    activo = db.query(Activo).filter(Activo.id == activo_id).first()
+    if not activo:
+        raise HTTPException(status_code=404, detail="Activo no encontrado")
+
+    lab = db.query(Laboratorio).filter(Laboratorio.id == activo.laboratorio_id).first() if activo.laboratorio_id else None
+    dep = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first() if activo.departamento_id else None
+    ubicacion = db.query(UbicacionInventario).filter(UbicacionInventario.id == activo.ubicacion_id).first() if activo.ubicacion_id else None
+    responsable = db.query(Usuario).filter(Usuario.id == activo.responsable_id).first() if activo.responsable_id else None
+
+    return {
+        "sistema": "SIGA UTECAN",
+        "valido": True,
+        "id": activo.id,
+        "codigo_inventario": activo.codigo_inventario,
+        "numero_oficial": activo.numero_oficial,
+        "nombre": activo.nombre,
+        "categoria": activo.categoria,
+        "marca": activo.marca,
+        "modelo": activo.modelo,
+        "numero_serie": activo.numero_serie,
+        "estado": activo.estado,
+        "estado_admin": activo.estado_admin,
+        "activo": activo.activo,
+        "alcance": activo.alcance,
+        "laboratorio": lab.nombre if lab else None,
+        "departamento": dep.nombre if dep else None,
+        "ubicacion": (ubicacion.nombre if ubicacion else None) or activo.ubicacion_nombre,
+        "resguardante": (responsable.nombre if responsable else None) or activo.resguardante_externo_nombre,
+        "fecha_alta": activo.fecha_alta.isoformat() if activo.fecha_alta else None,
+        "ultima_revision": activo.fecha_revision.isoformat() if activo.fecha_revision else None,
+    }
+
+
 def _iso(dt) -> str | None:
     return dt.isoformat() if dt else None
 
@@ -897,7 +959,11 @@ def _destinatarios_validacion_activo(a: Activo, db: Session) -> set[int]:
     return destinatarios
 
 
-def _destinatarios_revision_institucional(db: Session, excluir_usuario_id: int | None = None) -> set[int]:
+def _destinatarios_revision_institucional(
+    db: Session,
+    activo: Activo,
+    excluir_usuario_id: int | None = None,
+) -> set[int]:
     destinatarios = {
         uid
         for (uid,) in db.query(Usuario.id).filter(
@@ -913,9 +979,26 @@ def _destinatarios_revision_institucional(db: Session, excluir_usuario_id: int |
         ).filter(
             UsuarioPermiso.permiso == PERM_INVENTARIO_VALIDATE,
             UsuarioPermiso.activo == True,
+            UsuarioPermiso.departamento_id.is_(None),
             Usuario.activo == True,
         ).all()
     )
+    if activo.departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first()
+        if dep and dep.responsable_id:
+            destinatarios.add(dep.responsable_id)
+        destinatarios.update(
+            uid
+            for (uid,) in db.query(UsuarioPermiso.usuario_id).join(
+                Usuario,
+                Usuario.id == UsuarioPermiso.usuario_id,
+            ).filter(
+                UsuarioPermiso.permiso == PERM_INVENTARIO_VALIDATE,
+                UsuarioPermiso.departamento_id == activo.departamento_id,
+                UsuarioPermiso.activo == True,
+                Usuario.activo == True,
+            ).all()
+        )
     if excluir_usuario_id:
         destinatarios.discard(excluir_usuario_id)
     return destinatarios
@@ -1366,14 +1449,14 @@ def departamentos_opciones_inventario(
     if modo not in ("lectura", "escritura"):
         raise HTTPException(status_code=422, detail="modo debe ser lectura o escritura")
 
-    scope_global = _es_admin_inventario_global(current_user) or puede_validar_inventario(db, current_user)
+    scope_global = _es_admin_inventario_global(current_user) or puede_validar_inventario_global(db, current_user)
     query = db.query(Departamento)
     if activo is not None:
         query = query.filter(Departamento.activo == activo)
 
     if not scope_global:
         if modo == "escritura":
-            ids = departamentos_inventario(db, current_user)
+            ids = sorted(set(departamentos_inventario(db, current_user)) | set(departamentos_validacion_inventario(db, current_user)))
         else:
             ids = _departamentos_visibles_inventario(db, current_user) or []
         if not ids:
@@ -1913,7 +1996,7 @@ def crear_activo(
               request=request)
     if (a.estado_admin or "").upper() in ("BORRADOR", "EN_REVISION", "OBSERVADO"):
         from routers.notificaciones import crear_notificacion
-        for usuario_id in _destinatarios_revision_institucional(db, current_user.id):
+        for usuario_id in _destinatarios_revision_institucional(db, a, current_user.id):
             crear_notificacion(
                 db,
                 usuario_id,
