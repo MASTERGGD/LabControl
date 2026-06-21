@@ -165,8 +165,8 @@ export default function HistorialAlumno() {
             </svg>
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-white">Historial por Alumno</h1>
-            <p className="text-slate-400 text-sm">Consulta qué laboratorios usó, cuántas horas y en qué materias</p>
+            <h1 className="text-2xl font-bold text-white">Historial de laboratorio</h1>
+            <p className="text-slate-400 text-sm">Revisa asistencia, sesiones, materias y horas de uso por alumno</p>
           </div>
         </div>
 

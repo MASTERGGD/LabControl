@@ -365,11 +365,11 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>,
   },
   {
-    label: 'Consulta Persona', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN'], inGroup: true,
+    label: 'Adeudos y préstamos', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z"/></svg>,
   },
   {
-    label: 'Historial Alumno', path: '/admin/historial-alumno', roles: ['SUPER_ADMIN'], inGroup: true,
+    label: 'Historial de laboratorio', path: '/admin/historial-alumno', roles: ['SUPER_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>,
   },
   {
@@ -510,7 +510,8 @@ const BREADCRUMB_MAP = {
   '/admin/auditoria':          [{ label: 'Bitácora de Auditoría' }],
   '/admin/respaldos':          [{ label: 'Respaldo y Continuidad' }],
   '/admin/adeudos':           [{ label: 'Adeudos' }],
-  '/admin/consulta-persona':  [{ label: 'Consulta de Persona' }],
+  '/admin/consulta-persona':  [{ label: 'Adeudos y préstamos' }],
+  '/admin/historial-alumno':  [{ label: 'Historial de laboratorio' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
   '/comunicados':             [{ label: 'Mis Comunicados' }],

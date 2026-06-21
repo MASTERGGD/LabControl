@@ -85,9 +85,9 @@ export default function ConsultaPersona() {
           </svg>
         </button>
         <div>
-          <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Consulta de Persona</h1>
+          <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Adeudos y préstamos</h1>
           <p className={`${isDay ? 'text-slate-700' : 'text-slate-400'} text-sm`}>
-            Busca alumnos, docentes o personal por nombre, matrícula o número de empleado
+            Consulta adeudos, préstamos y trazabilidad de alumnos, docentes o personal
           </p>
         </div>
       </div>
@@ -97,7 +97,7 @@ export default function ConsultaPersona() {
         {!seleccionado ? (
           <AutocompleteInput
             endpoint="/catalogo/buscar-personas"
-            placeholder="Escribe nombre, matrícula o número de empleado…"
+            placeholder="Escribe nombre, matrícula o número de empleado..."
             value={busqueda}
             onChange={setBusqueda}
             onSelect={handleSeleccionar}
