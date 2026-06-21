@@ -267,6 +267,14 @@ def resumen_persona(
     cat = db.query(CatalogoAlumno).filter(
         CatalogoAlumno.matricula == identificador
     ).first()
+    if cat and not nombre:
+        nombre = " ".join(
+            part for part in [
+                cat.apellido_paterno,
+                cat.apellido_materno,
+                cat.nombres,
+            ] if part
+        ).strip()
 
     usuario_personal = None
     if not cat:
