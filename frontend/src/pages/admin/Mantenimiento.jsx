@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -1008,7 +1008,14 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
             <ComboboxActivo
               activos={activos}
               value={form.activo_id}
-              onChange={val => setForm({...form, activo_id: val})}
+              onChange={val => {
+                const activo = activos.find(a => String(a.id) === String(val));
+                setForm({
+                  ...form,
+                  activo_id: val,
+                  laboratorio_id: activo?.laboratorio_id ? String(activo.laboratorio_id) : form.laboratorio_id,
+                });
+              }}
             />
           </div>
 
@@ -1100,16 +1107,106 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 const TIPOS_MP = [
-  { key: 'LIMPIEZA_FISICA',    label: 'Limpieza física',    emoji: '🧹' },
-  { key: 'REVISION_SOFTWARE',  label: 'Revisión software',  emoji: '💻' },
-  { key: 'ACTUALIZACION',      label: 'Actualización',      emoji: '⬆️' },
-  { key: 'REVISION_HARDWARE',  label: 'Revisión hardware',  emoji: '🔩' },
-  { key: 'FORMATEO',           label: 'Formateo',           emoji: '💿' },
-  { key: 'RESPALDO',           label: 'Respaldo',           emoji: '💾' },
-  { key: 'INSPECCION',         label: 'Inspección',         emoji: '🔍' },
-  { key: 'OTRO',               label: 'Otro',               emoji: '📌' },
+  { key: 'LIMPIEZA_FISICA', label: 'Limpieza fisica', emoji: '\uD83E\uDDF9' },
+  { key: 'REVISION_SOFTWARE', label: 'Revision software', emoji: '\uD83D\uDCBB' },
+  { key: 'ACTUALIZACION', label: 'Actualizacion', emoji: '\u2B06\uFE0F' },
+  { key: 'REVISION_HARDWARE', label: 'Revision hardware', emoji: '\uD83D\uDD29' },
+  { key: 'FORMATEO', label: 'Formateo', emoji: '\uD83D\uDCBF' },
+  { key: 'RESPALDO', label: 'Respaldo', emoji: '\uD83D\uDCBE' },
+  { key: 'INSPECCION', label: 'Inspeccion', emoji: '\uD83D\uDD0D' },
+  { key: 'REPARACION_MOBILIARIO', label: 'Reparacion de mobiliario', emoji: '\uD83D\uDEE0\uFE0F' },
+  { key: 'AJUSTE_MOBILIARIO', label: 'Ajuste de mobiliario', emoji: '\uD83E\uDE91' },
+  { key: 'SUSTITUCION_PARTES', label: 'Sustitucion de partes', emoji: '\uD83D\uDD27' },
+  { key: 'LIMPIEZA_GENERAL', label: 'Limpieza general', emoji: '\uD83E\uDDFC' },
+  { key: 'ELECTRICO', label: 'Revision electrica', emoji: '\u26A1' },
+  { key: 'CLIMATIZACION', label: 'Climatizacion', emoji: '\u2744\uFE0F' },
+  { key: 'PLOMERIA', label: 'Plomeria', emoji: '\uD83D\uDCA7' },
+  { key: 'PINTURA', label: 'Pintura', emoji: '\uD83C\uDFA8' },
+  { key: 'SEGURIDAD', label: 'Seguridad', emoji: '\uD83D\uDEE1\uFE0F' },
+  { key: 'CALIBRACION', label: 'Calibracion', emoji: '\u2699\uFE0F' },
+  { key: 'DESINFECCION', label: 'Desinfeccion', emoji: '\uD83E\uDDFC' },
+  { key: 'OTRO', label: 'Otro', emoji: '\uD83D\uDCCC' },
 ];
 
+const TIPOS_POR_AREA_MP = {
+  TI: ['LIMPIEZA_FISICA', 'REVISION_SOFTWARE', 'ACTUALIZACION', 'REVISION_HARDWARE', 'FORMATEO', 'RESPALDO', 'INSPECCION', 'OTRO'],
+  MOBILIARIO: ['INSPECCION', 'REPARACION_MOBILIARIO', 'AJUSTE_MOBILIARIO', 'SUSTITUCION_PARTES', 'LIMPIEZA_GENERAL', 'OTRO'],
+  INFRAESTRUCTURA: ['INSPECCION', 'ELECTRICO', 'CLIMATIZACION', 'PLOMERIA', 'PINTURA', 'SEGURIDAD', 'OTRO'],
+  LABORATORIO: ['INSPECCION', 'LIMPIEZA_FISICA', 'REVISION_HARDWARE', 'CALIBRACION', 'DESINFECCION', 'OTRO'],
+  GENERAL: ['INSPECCION', 'LIMPIEZA_GENERAL', 'LIMPIEZA_FISICA', 'ELECTRICO', 'CLIMATIZACION', 'SEGURIDAD', 'OTRO'],
+};
+
+const CHECKLIST_MP = {
+  LIMPIEZA_FISICA: ['Retirar polvo externo', 'Limpiar perifericos', 'Verificar ventilacion'],
+  REVISION_SOFTWARE: ['Revisar actualizaciones', 'Verificar antivirus', 'Probar aplicaciones base'],
+  ACTUALIZACION: ['Actualizar sistema', 'Actualizar aplicaciones', 'Reiniciar y validar'],
+  REVISION_HARDWARE: ['Revisar conexiones', 'Probar componentes', 'Registrar hallazgos'],
+  FORMATEO: ['Respaldar informacion autorizada', 'Instalar imagen base', 'Validar acceso'],
+  RESPALDO: ['Confirmar origen de datos', 'Ejecutar respaldo', 'Verificar restauracion'],
+  INSPECCION: ['Inspeccion visual', 'Registrar estado', 'Tomar evidencia si aplica'],
+  REPARACION_MOBILIARIO: ['Identificar pieza danada', 'Reparar o reforzar', 'Validar uso seguro'],
+  AJUSTE_MOBILIARIO: ['Revisar estabilidad', 'Ajustar tornilleria', 'Validar ergonomia'],
+  SUSTITUCION_PARTES: ['Confirmar refaccion', 'Sustituir parte', 'Registrar cambio'],
+  LIMPIEZA_GENERAL: ['Limpiar superficie', 'Retirar residuos', 'Validar condiciones de uso'],
+  ELECTRICO: ['Revisar contacto/cableado', 'Verificar carga', 'Registrar riesgo'],
+  CLIMATIZACION: ['Revisar encendido', 'Limpiar filtros', 'Validar temperatura'],
+  PLOMERIA: ['Revisar fuga', 'Asegurar sellado', 'Validar funcionamiento'],
+  PINTURA: ['Preparar superficie', 'Aplicar retoque', 'Validar acabado'],
+  SEGURIDAD: ['Revisar condiciones de riesgo', 'Corregir bloqueo o senalizacion', 'Registrar evidencia'],
+  CALIBRACION: ['Verificar parametros', 'Calibrar equipo', 'Registrar resultado'],
+  DESINFECCION: ['Aplicar protocolo', 'Validar area tratada', 'Registrar responsable'],
+  OTRO: ['Describir actividad', 'Registrar evidencia', 'Cerrar observaciones'],
+};
+
+function tipoMantInfo(tipo) {
+  return TIPOS_MP.find(t => t.key === tipo) || { emoji: '\uD83D\uDD27', label: tipo || 'Mantenimiento' };
+}
+
+function contextoMantenimiento(activo) {
+  if (!activo) {
+    return {
+      grupo: 'GENERAL',
+      area: 'Servicios generales / Inventario',
+      ayuda: 'Sin activo especifico, se programa como mantenimiento general del area o laboratorio seleccionado.',
+    };
+  }
+
+  const categoria = String(activo.categoria || '').toUpperCase();
+  if (['COMPUTADORA', 'AUDIOVISUAL', 'IMPRESORA', 'EQUIPO_RED', 'EQUIPO_COMPUTO'].includes(categoria)) {
+    return {
+      grupo: 'TI',
+      area: 'Soporte TI / Responsable de laboratorio',
+      ayuda: 'Aplica para computadoras, perifericos, red, software y equipos tecnologicos.',
+    };
+  }
+  if (['MOBILIARIO', 'OFICINA'].includes(categoria)) {
+    return {
+      grupo: 'MOBILIARIO',
+      area: 'Servicios generales / Mobiliario',
+      ayuda: 'Aplica para mesas, sillas, escritorios, estantes y mobiliario institucional.',
+    };
+  }
+  if (['INFRAESTRUCTURA', 'ELECTRICO', 'CLIMATIZACION', 'AIRE_ACONDICIONADO'].includes(categoria)) {
+    return {
+      grupo: 'INFRAESTRUCTURA',
+      area: 'Infraestructura / Servicios generales',
+      ayuda: 'Aplica para electricidad, clima, pintura, plomeria y condiciones fisicas del espacio.',
+    };
+  }
+  if (['EQUIPO_LABORATORIO', 'CRISTALERIA', 'HERRAMIENTA', 'INSTRUMENTAL'].includes(categoria)) {
+    return {
+      grupo: 'LABORATORIO',
+      area: 'Responsable del laboratorio / Area especializada',
+      ayuda: 'Aplica para equipo especializado, calibracion, limpieza tecnica o revision operativa.',
+    };
+  }
+
+  return {
+    grupo: activo.laboratorio_id ? 'LABORATORIO' : 'MOBILIARIO',
+    area: activo.laboratorio_id ? 'Responsable del laboratorio' : 'Servicios generales / Inventario',
+    ayuda: 'El sistema sugiere un flujo general; ajusta el tipo segun el activo real.',
+  };
+}
 const PERIODOS_MP = [
   { key: 'SEMANAL',     label: 'Semanal'     },
   { key: 'MENSUAL',     label: 'Mensual'     },
@@ -1151,11 +1248,34 @@ function ModalNuevoMant({ laboratorios, activos, activoInicialId, onClose, onCre
     descripcion: '', checklist: '',
   });
   const [saving, setSaving] = useState(false);
-  const [checkItems, setCheckItems] = useState(['']);
+  const [checkItems, setCheckItems] = useState(CHECKLIST_MP.LIMPIEZA_FISICA || ['']);
 
   const activosFiltrados = activos.filter(a =>
     !form.laboratorio_id || String(a.laboratorio_id) === String(form.laboratorio_id)
   );
+  const activoSeleccionado = useMemo(
+    () => activos.find(a => String(a.id) === String(form.activo_id)),
+    [activos, form.activo_id]
+  );
+  const contexto = useMemo(() => contextoMantenimiento(activoSeleccionado), [activoSeleccionado]);
+  const tiposDisponibles = useMemo(
+    () => (TIPOS_POR_AREA_MP[contexto.grupo] || TIPOS_POR_AREA_MP.MOBILIARIO).map(key => tipoMantInfo(key)),
+    [contexto.grupo]
+  );
+
+  useEffect(() => {
+    const permitido = tiposDisponibles.some(t => t.key === form.tipo);
+    if (!permitido) {
+      const siguiente = tiposDisponibles[0]?.key || 'INSPECCION';
+      setForm(f => ({ ...f, tipo: siguiente }));
+      setCheckItems(CHECKLIST_MP[siguiente] || ['']);
+    }
+  }, [form.tipo, tiposDisponibles]);
+
+  const cambiarTipo = (tipo) => {
+    setForm(f => ({ ...f, tipo }));
+    setCheckItems(CHECKLIST_MP[tipo] || ['']);
+  };
 
   const handleGuardar = async (e) => {
     e.preventDefault();
@@ -1193,9 +1313,15 @@ function ModalNuevoMant({ laboratorios, activos, activoInicialId, onClose, onCre
             <label className="block text-xs text-slate-400 mb-1">Tipo de mantenimiento *</label>
             <SelectDark
               value={form.tipo}
-              onChange={v => setForm({...form, tipo: v})}
-              options={TIPOS_MP.map(t => ({ value: t.key, label: `${t.emoji} ${t.label}` }))}
+              onChange={cambiarTipo}
+              options={tiposDisponibles.map(t => ({ value: t.key, label: `${t.emoji} ${t.label}` }))}
             />
+          </div>
+
+          <div className="col-span-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wide text-emerald-300 font-semibold">Area sugerida de atencion</p>
+            <p className="text-sm text-white font-semibold mt-0.5">{contexto.area}</p>
+            <p className="text-xs text-slate-400 mt-1">{contexto.ayuda}</p>
           </div>
 
           {esLabAdmin ? (
@@ -1226,7 +1352,14 @@ function ModalNuevoMant({ laboratorios, activos, activoInicialId, onClose, onCre
             <ComboboxActivo
               activos={activosFiltrados}
               value={form.activo_id}
-              onChange={val => setForm({...form, activo_id: val})}
+              onChange={val => {
+                const activo = activos.find(a => String(a.id) === String(val));
+                setForm({
+                  ...form,
+                  activo_id: val,
+                  laboratorio_id: activo?.laboratorio_id ? String(activo.laboratorio_id) : form.laboratorio_id,
+                });
+              }}
               placeholder="Buscar equipo por nombre o código…"
               sinActivoLabel="— Todo el laboratorio —"
             />
@@ -1323,7 +1456,7 @@ function DrawerCompletarMant({ mant, onClose, onActualizado }) {
   const [duracion, setDuracion] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const tipoInfo = TIPOS_MP.find(t => t.key === mant.tipo) || { emoji: '🔧', label: mant.tipo };
+  const tipoInfo = tipoMantInfo(mant.tipo);
 
   const handleCompletar = async () => {
     setSaving(true);
@@ -1583,7 +1716,7 @@ function TabPreventivo({ laboratorios, activoInicialId, abrirNuevoInicial }) {
             </thead>
             <tbody>
               {mantenimientos.map((m, idx) => {
-                const tipoInfo = TIPOS_MP.find(t => t.key === m.tipo) || { emoji:'🔧', label: m.tipo };
+                const tipoInfo = tipoMantInfo(m.tipo);
                 const badge    = ESTADOS_MP_BADGE[m.estado] || ESTADOS_MP_BADGE.PENDIENTE;
                 const dias     = diasParaVencer(m.fecha_limite);
                 const vencido  = dias !== null && dias < 0;
@@ -1650,7 +1783,7 @@ function TabPreventivo({ laboratorios, activoInicialId, abrirNuevoInicial }) {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <button
-                        onClick={() => setConfirmElim({ id: m.id, nombre: (TIPOS_MP.find(t=>t.key===m.tipo)?.label || m.tipo) + (m.activo_nombre ? ` — ${m.activo_nombre}` : '') })}
+                        onClick={() => setConfirmElim({ id: m.id, nombre: tipoMantInfo(m.tipo).label + (m.activo_nombre ? ` — ${m.activo_nombre}` : '') })}
                         className="text-slate-600 hover:text-red-400 transition-colors p-1" title="Eliminar">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>

@@ -4239,8 +4239,12 @@ async def importar_activos(
 # MANTENIMIENTO PREVENTIVO
 # ══════════════════════════════════════════════════════════════════════════════
 
-TIPOS_MANT = ["LIMPIEZA_FISICA","REVISION_SOFTWARE","ACTUALIZACION","REVISION_HARDWARE",
-              "FORMATEO","RESPALDO","INSPECCION","OTRO"]
+TIPOS_MANT = [
+    "LIMPIEZA_FISICA","REVISION_SOFTWARE","ACTUALIZACION","REVISION_HARDWARE",
+    "FORMATEO","RESPALDO","INSPECCION","REPARACION_MOBILIARIO","AJUSTE_MOBILIARIO",
+    "SUSTITUCION_PARTES","LIMPIEZA_GENERAL","ELECTRICO","CLIMATIZACION","PLOMERIA",
+    "PINTURA","SEGURIDAD","CALIBRACION","DESINFECCION","OTRO",
+]
 PERIODOS   = ["SEMANAL","MENSUAL","TRIMESTRAL","SEMESTRAL","ANUAL","UNICO"]
 ESTADOS_MP = ["PENDIENTE","EN_PROCESO","COMPLETADO","OMITIDO"]
 
@@ -4270,10 +4274,18 @@ class MantPrevUpdate(BaseModel):
 
 def _serializar_mp(mp: MantenimientoPreventivo, db: Session) -> dict:
     activo_nombre = None
+    activo_categoria = None
+    activo_alcance = None
+    activo_responsable = None
+    activo_ubicacion = None
     if mp.activo_id:
         a = db.query(Activo).filter(Activo.id == mp.activo_id).first()
         if a:
             activo_nombre = f"{a.nombre} ({a.codigo_inventario})"
+            activo_categoria = a.categoria
+            activo_alcance = a.alcance
+            activo_responsable = a.resguardante_externo_nombre
+            activo_ubicacion = a.ubicacion_nombre
     from models.laboratorio import Computadora
     pc_codigo = None
     if mp.computadora_id:
@@ -4294,6 +4306,10 @@ def _serializar_mp(mp: MantenimientoPreventivo, db: Session) -> dict:
         "id":               mp.id,
         "activo_id":        mp.activo_id,
         "activo_nombre":    activo_nombre,
+        "activo_categoria": activo_categoria,
+        "activo_alcance":   activo_alcance,
+        "activo_responsable": activo_responsable,
+        "activo_ubicacion": activo_ubicacion,
         "computadora_id":   mp.computadora_id,
         "pc_codigo":        pc_codigo,
         "laboratorio_id":   mp.laboratorio_id,
@@ -4366,12 +4382,19 @@ def crear_mantenimiento(
     elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         raise HTTPException(status_code=403, detail="Selecciona un activo de tu departamento para programar mantenimiento")
 
+    tipo = data.tipo.upper()
+    periodicidad = data.periodicidad.upper()
+    if tipo not in TIPOS_MANT:
+        raise HTTPException(status_code=422, detail="Tipo de mantenimiento no valido")
+    if periodicidad not in PERIODOS:
+        raise HTTPException(status_code=422, detail="Periodicidad no valida")
+
     mp = MantenimientoPreventivo(
         activo_id        = data.activo_id,
         computadora_id   = data.computadora_id,
         laboratorio_id   = data.laboratorio_id or (activo.laboratorio_id if activo else None),
-        tipo             = data.tipo.upper(),
-        periodicidad     = data.periodicidad.upper(),
+        tipo             = tipo,
+        periodicidad     = periodicidad,
         fecha_programada = datetime.datetime.fromisoformat(data.fecha_programada),
         fecha_limite     = datetime.datetime.fromisoformat(data.fecha_limite) if data.fecha_limite else None,
         descripcion      = data.descripcion,
