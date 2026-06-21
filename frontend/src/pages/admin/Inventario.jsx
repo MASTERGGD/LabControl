@@ -41,6 +41,7 @@ const TIPOS_UBICACION = ['EDIFICIO','OFICINA','AULA','LABORATORIO','ALMACEN','BI
 const ESTADOS    = ['OPERATIVO','MANTENIMIENTO','DAÑADO','BAJA'];
 const categoriaLabLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : '';
 const categoriaActivoLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : '';
+const estadoAdminLabel = e => e ? e.replace(/_/g, ' ').toLowerCase().replace(/(?:^|\s)\S/g, ch => ch.toUpperCase()) : 'Sin estado';
 const formatFechaCorta = iso => iso ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '';
 const responsablePatrimonialLabel = (activo) => {
   const esLaboratorio = (activo?.alcance || '').toUpperCase() === 'LABORATORIO';
@@ -2004,6 +2005,153 @@ function PanelRevisionInventario({
   );
 }
 
+function PanelEstadoInventario({ stats, departamentos, categoriasFiltro, onFiltroCategoria, onFiltroDepartamento, onFiltroEstadoAdmin }) {
+  if (!stats) return null;
+
+  const total = stats.total_activos || 0;
+  const estadoAdmin = stats.por_estado_admin || {};
+  const categorias = Object.entries(stats.por_categoria || {})
+    .map(([clave, totalCategoria]) => ({
+      clave,
+      label: categoriasFiltro.find(c => c.clave === clave)?.nombre || categoriaActivoLabel(clave),
+      total: totalCategoria,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+  const departamentosMap = new Map((departamentos || []).map(d => [String(d.id), d.nombre]));
+  const porDepartamento = Object.entries(stats.por_departamento || {})
+    .map(([id, totalDepartamento]) => ({
+      id,
+      label: departamentosMap.get(String(id)) || (Number(id) === 0 ? 'Sin departamento' : `Depto. ${id}`),
+      total: totalDepartamento,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6);
+  const pendientes = ['BORRADOR', 'EN_REVISION', 'OBSERVADO', 'RECHAZADO']
+    .reduce((acc, estado) => acc + (estadoAdmin[estado] || 0), 0);
+  const validados = estadoAdmin.VALIDADO || total;
+  const alertas = [
+    { label: 'Pendientes de validar', value: pendientes, estado: 'BORRADOR', tone: pendientes ? 'text-amber-300' : 'text-slate-500' },
+    { label: 'Bajas pendientes', value: stats.bajas_pendientes || 0, estado: 'BAJA_SOLICITADA', tone: (stats.bajas_pendientes || 0) ? 'text-red-300' : 'text-slate-500' },
+    { label: 'No localizados', value: stats.no_localizados || 0, tone: (stats.no_localizados || 0) ? 'text-orange-300' : 'text-slate-500' },
+    { label: 'Mant. vencidos', value: stats.mantenimientos_vencidos || 0, tone: (stats.mantenimientos_vencidos || 0) ? 'text-red-300' : 'text-slate-500' },
+  ];
+
+  return (
+    <section className="glass mb-6 overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white">Panel de estado de inventario</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Vista ejecutiva del corte actual: validacion, categorias, departamentos y alertas operativas.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
+          <span className="text-2xl font-bold text-emerald-300">{total}</span>
+          <span className="text-xs text-emerald-100/80">activos en alcance</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 p-5">
+        <div className="xl:col-span-3 rounded-xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Inventario oficial</p>
+          <div className="mt-4 space-y-3">
+            {[
+              { label: 'Validados', value: validados, color: 'bg-emerald-400' },
+              { label: 'Operativos', value: stats.operativos || 0, color: 'bg-green-400' },
+              { label: 'Mantenimiento', value: stats.en_mantenimiento || 0, color: 'bg-amber-400' },
+              { label: 'Danados', value: stats.danados || 0, color: 'bg-red-400' },
+            ].map(item => {
+              const pct = total ? Math.min(100, Math.round((item.value / total) * 100)) : 0;
+              return (
+                <div key={item.label}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-slate-300">{item.label}</span>
+                    <span className="font-semibold text-white">{item.value}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/8 overflow-hidden">
+                    <div className={`h-full ${item.color}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="xl:col-span-3 rounded-xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Categorias principales</p>
+          <div className="mt-3 space-y-2">
+            {categorias.length === 0 ? (
+              <p className="text-sm text-slate-500">Sin categorias registradas.</p>
+            ) : categorias.map(item => (
+              <button
+                key={item.clave}
+                type="button"
+                onClick={() => onFiltroCategoria(item.clave)}
+                className="w-full flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/8 transition-colors"
+              >
+                <span className="text-sm text-slate-200 truncate">{item.label}</span>
+                <span className="text-sm font-bold text-white">{item.total}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="xl:col-span-3 rounded-xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Por departamento</p>
+          <div className="mt-3 space-y-2">
+            {porDepartamento.length === 0 ? (
+              <p className="text-sm text-slate-500">Sin departamentos en el alcance.</p>
+            ) : porDepartamento.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => Number(item.id) > 0 && onFiltroDepartamento(item.id)}
+                className="w-full flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/8 transition-colors disabled:cursor-default disabled:hover:bg-transparent"
+                disabled={Number(item.id) === 0}
+              >
+                <span className="text-sm text-slate-200 truncate">{item.label}</span>
+                <span className="text-sm font-bold text-white">{item.total}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="xl:col-span-3 rounded-xl border border-white/10 bg-slate-950/35 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Alertas y validacion</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {alertas.map(item => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => item.estado && onFiltroEstadoAdmin(item.estado)}
+                disabled={!item.estado}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left hover:bg-white/8 transition-colors disabled:cursor-default disabled:hover:bg-white/5"
+              >
+                <p className={`text-xl font-bold ${item.tone}`}>{item.value}</p>
+                <p className="text-[11px] text-slate-400 leading-tight">{item.label}</p>
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 space-y-1.5">
+            {Object.entries(estadoAdmin).map(([estado, value]) => (
+              <button
+                key={estado}
+                type="button"
+                onClick={() => onFiltroEstadoAdmin(estado)}
+                className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-xs text-slate-300 hover:bg-white/8 transition-colors"
+              >
+                <span>{estadoAdminLabel(estado)}</span>
+                <span className="font-semibold text-white">{value}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Inventario() {
   const { themeKey } = useTheme();
   const { toast } = useToast();
@@ -2461,6 +2609,15 @@ export default function Inventario() {
           </div>
         </div>
       )}
+
+      <PanelEstadoInventario
+        stats={stats}
+        departamentos={departamentos}
+        categoriasFiltro={categoriasFiltro}
+        onFiltroCategoria={setFiltroCat}
+        onFiltroDepartamento={setFiltroDepartamento}
+        onFiltroEstadoAdmin={setFiltroEstadoAdmin}
+      />
 
       {/* Stats */}
       {stats && (

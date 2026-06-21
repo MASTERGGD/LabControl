@@ -3920,6 +3920,7 @@ def estadisticas(
         "operativos": sum(1 for a in activos if a.estado == "OPERATIVO"),
         "en_mantenimiento": sum(1 for a in activos if a.estado == "MANTENIMIENTO"),
         "dañados": sum(1 for a in activos if a.estado == "DAÑADO"),
+        "danados": sum(1 for a in activos if a.estado == "DAÑADO"),
         "prestamos_totales":  len(prestamos),
         "prestamos_activos":  sum(1 for p in prestamos if p.estado == "ACTIVO"),
         "prestamos_vencidos": sum(1 for p in prestamos if p.estado == "VENCIDO"),
