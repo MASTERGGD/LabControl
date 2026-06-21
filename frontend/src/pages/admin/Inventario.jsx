@@ -1656,6 +1656,7 @@ function ModalDecisionValidacion({
 
 function PanelRevisionInventario({
   activos,
+  departamentosCatalogo = [],
   loading,
   validandoId,
   onCambiarEstado,
@@ -1673,14 +1674,14 @@ function PanelRevisionInventario({
 
   const departamentos = useMemo(() => {
     const map = new Map();
+    departamentosCatalogo.forEach(d => map.set(String(d.id), d.nombre));
     activos.forEach(a => {
       if ((a.alcance || '').toUpperCase() === 'LABORATORIO') return;
-      const key = a.departamento_id ? String(a.departamento_id) : '__SIN_DEPTO__';
-      const label = a.departamento_nombre || 'Sin departamento';
-      map.set(key, label);
+      if (a.departamento_id) map.set(String(a.departamento_id), a.departamento_nombre || `Departamento ${a.departamento_id}`);
+      else map.set('__SIN_DEPTO__', 'Sin departamento responsable');
     });
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [activos]);
+  }, [activos, departamentosCatalogo]);
 
   const laboratorios = useMemo(() => {
     const map = new Map();
@@ -2385,6 +2386,7 @@ export default function Inventario() {
       {tabActivo === 'revision' && (
         <PanelRevisionInventario
           activos={activosRevision}
+          departamentosCatalogo={departamentos}
           loading={loading}
           validandoId={validandoId}
           onCambiarEstado={cambiarEstadoValidacion}
