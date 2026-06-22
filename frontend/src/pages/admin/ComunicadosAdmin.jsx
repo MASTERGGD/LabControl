@@ -103,6 +103,14 @@ const rangoPeriodo = value => {
 const toTitleCase = s =>
   s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
+const TZ = 'America/Mexico_City';
+const fmtMX = (s, opts = {}) => {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleString('es-MX', { timeZone: TZ, hour12: false, ...opts });
+};
+
 const fueActualizado = comunicado => {
   if (!comunicado?.actualizado_en) return false;
   const base = comunicado.fecha_publicacion || comunicado.creado_en;
@@ -850,7 +858,7 @@ function PanelLecturas({ comunicado, onClose, blendyId }) {
             {comunicado.fecha_publicacion && (
               <>
                 <span className="text-slate-500">Publicado el</span>
-                <span className="text-slate-300">{comunicado.fecha_publicacion.slice(0,16).replace('T',' ')}</span>
+                <span className="text-slate-300">{fmtMX(comunicado.fecha_publicacion)}</span>
               </>
             )}
           </div>
@@ -982,7 +990,7 @@ function PanelLecturas({ comunicado, onClose, blendyId }) {
                                       </div>
                                     )}
                                     <p className="text-[11px] opacity-60 mt-1">
-                                      {m.creado_en ? m.creado_en.slice(0,16).replace('T',' ') : 'Enviado'}
+                                      {m.creado_en ? fmtMX(m.creado_en) : 'Enviado'}
                                     </p>
                                   </div>
                                 </div>
@@ -1677,7 +1685,7 @@ export default function ComunicadosAdmin() {
                           </span>
                         )}
                         {actualizado && (
-                          <span>Actualizado {c.actualizado_en?.slice(0,16).replace('T',' ')}</span>
+                          <span>Actualizado {fmtMX(c.actualizado_en)}</span>
                         )}
                         {c.email_ultimo_envio && (
                           <span>Correos {c.email_enviados || 0} enviados · {c.email_fallidos || 0} fallidos</span>
@@ -1818,16 +1826,4 @@ export default function ComunicadosAdmin() {
       {lecturas && (
         <PanelLecturas
           comunicado={lecturas}
-          onClose={cerrarLecturas}
-          blendyId={`lecturas-${lecturas.id}`}
-        />
-      )}
-
-      {panelRespaldos && (
-        <PanelRespaldos
-          onClose={() => setPanelRespaldos(false)}
-        />
-      )}
-    </AdminLayout>
-  );
-}
+          onClose={cerrarLect

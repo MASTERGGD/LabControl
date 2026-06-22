@@ -112,6 +112,14 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
+def _iso(dt: datetime.datetime | None) -> str | None:
+    """Devuelve el datetime en formato ISO-8601 con sufijo 'Z' (UTC explícito).
+    El frontend puede entonces convertirlo correctamente a la zona horaria local."""
+    if dt is None:
+        return None
+    return dt.isoformat() + "Z"
+
+
 def _normalizar_texto(valor: str | None) -> str:
     if not valor:
         return ""
@@ -301,18 +309,18 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         "notificar_email":      c.notificar_email,
         "email_enviados":       c.email_enviados,
         "email_fallidos":       c.email_fallidos,
-        "email_ultimo_envio":   c.email_ultimo_envio.isoformat() if c.email_ultimo_envio else None,
-        "fecha_limite_respuesta": c.fecha_limite_respuesta.isoformat() if c.fecha_limite_respuesta else None,
+        "email_ultimo_envio":   _iso(c.email_ultimo_envio),
+        "fecha_limite_respuesta": _iso(c.fecha_limite_respuesta),
         "fijado":                c.fijado,
         "area_emisora":          c.area_emisora,
         "departamento_emisor_id": c.departamento_emisor_id,
         "departamento_emisor_nombre": c.departamento_emisor.nombre if c.departamento_emisor else None,
-        "fecha_publicacion":     c.fecha_publicacion.isoformat() if c.fecha_publicacion else None,
-        "fecha_expiracion":      c.fecha_expiracion.isoformat() if c.fecha_expiracion else None,
+        "fecha_publicacion":     _iso(c.fecha_publicacion),
+        "fecha_expiracion":      _iso(c.fecha_expiracion),
         "autor_id":              c.autor_id,
         "autor_nombre":          c.autor.nombre if c.autor else "Sistema",
-        "creado_en":             c.creado_en.isoformat() if c.creado_en else None,
-        "actualizado_en":        c.actualizado_en.isoformat() if c.actualizado_en else None,
+        "creado_en":             _iso(c.creado_en),
+        "actualizado_en":        _iso(c.actualizado_en),
         "destinatarios":         [
             {"tipo": d.tipo_destinatario, "ref": d.destinatario_ref}
             for d in c.destinatarios
@@ -322,8 +330,8 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         # campos de lectura
         "leido":       lectura is not None and lectura.leido_en is not None,
         "confirmado":  lectura is not None and lectura.confirmado_en is not None,
-        "leido_en":    lectura.leido_en.isoformat() if lectura and lectura.leido_en else None,
-        "confirmado_en": lectura.confirmado_en.isoformat() if lectura and lectura.confirmado_en else None,
+        "leido_en":    _iso(lectura.leido_en) if lectura else None,
+        "confirmado_en": _iso(lectura.confirmado_en) if lectura else None,
         "respuesta":   _serializar_respuesta(respuesta),
     }
 
@@ -375,7 +383,7 @@ def _serializar_adjunto(a: ComunicadoAdjunto | ComunicadoRespuestaAdjunto) -> di
         "tamano_bytes": a.tamano_bytes,
         "tamano_mb": round((a.tamano_bytes or 0) / (1024 * 1024), 2),
         "sha256": a.sha256,
-        "creado_en": a.creado_en.isoformat() if a.creado_en else None,
+        "creado_en": _iso(a.creado_en),
     }
 
 
@@ -388,7 +396,7 @@ def _serializar_respuesta(r: ComunicadoRespuesta | None) -> dict | None:
             "usuario_id": m.usuario_id,
             "usuario_nombre": m.usuario.nombre if m.usuario else None,
             "comentario": m.comentario,
-            "creado_en": m.creado_en.isoformat() if m.creado_en else None,
+            "creado_en": _iso(m.creado_en),
         }
         for m in r.mensajes
     ]
@@ -398,7 +406,7 @@ def _serializar_respuesta(r: ComunicadoRespuesta | None) -> dict | None:
             "usuario_id": r.usuario_id,
             "usuario_nombre": r.usuario.nombre if r.usuario else None,
             "comentario": r.comentario,
-            "creado_en": r.creado_en.isoformat() if r.creado_en else None,
+            "creado_en": _iso(r.creado_en),
         }]
     return {
         "id": r.id,
@@ -409,9 +417,9 @@ def _serializar_respuesta(r: ComunicadoRespuesta | None) -> dict | None:
         "estado": r.estado,
         "revisado_por_id": r.revisado_por_id,
         "revisado_por_nombre": r.revisado_por.nombre if r.revisado_por else None,
-        "revisado_en": r.revisado_en.isoformat() if r.revisado_en else None,
-        "creado_en": r.creado_en.isoformat() if r.creado_en else None,
-        "actualizado_en": r.actualizado_en.isoformat() if r.actualizado_en else None,
+        "revisado_en": _iso(r.revisado_en),
+        "creado_en": _iso(r.creado_en),
+        "actualizado_en": _iso(r.actualizado_en),
         "adjuntos": [_serializar_adjunto(a) for a in r.adjuntos],
     }
 
@@ -492,12 +500,12 @@ def _serializar_respaldo(r: ComunicadoRespaldo) -> dict:
         "tamano_mb": round((r.tamano_bytes or 0) / (1024 * 1024), 2),
         "sha256": r.sha256,
         "total_comunicados": r.total_comunicados,
-        "fecha_inicio": r.fecha_inicio.isoformat() if r.fecha_inicio else None,
-        "fecha_fin": r.fecha_fin.isoformat() if r.fecha_fin else None,
+        "fecha_inicio": _iso(r.fecha_inicio),
+        "fecha_fin": _iso(r.fecha_fin),
         "criterios": json.loads(r.criterios) if r.criterios else None,
         "creado_por_id": r.creado_por_id,
         "creado_por_nombre": r.creado_por.nombre if r.creado_por else "Sistema",
-        "creado_en": r.creado_en.isoformat() if r.creado_en else None,
+        "creado_en": _iso(r.creado_en),
         "disponible": Path(r.ruta_archivo).exists(),
     }
 
@@ -505,7 +513,7 @@ def _serializar_respaldo(r: ComunicadoRespaldo) -> dict:
 def _manifest_comunicados(comunicados: list[Comunicado]) -> dict:
     return {
         "version": 1,
-        "generado_en": _utcnow().isoformat(),
+        "generado_en": _iso(_utcnow()),
         "total_comunicados": len(comunicados),
         "comunicados": [
             {
@@ -520,18 +528,18 @@ def _manifest_comunicados(comunicados: list[Comunicado]) -> dict:
                 "notificar_email": c.notificar_email,
                 "email_enviados": c.email_enviados,
                 "email_fallidos": c.email_fallidos,
-                "email_ultimo_envio": c.email_ultimo_envio.isoformat() if c.email_ultimo_envio else None,
-                "fecha_limite_respuesta": c.fecha_limite_respuesta.isoformat() if c.fecha_limite_respuesta else None,
+                "email_ultimo_envio": _iso(c.email_ultimo_envio),
+                "fecha_limite_respuesta": _iso(c.fecha_limite_respuesta),
                 "fijado": c.fijado,
                 "area_emisora": c.area_emisora,
                 "departamento_emisor_id": c.departamento_emisor_id,
                 "departamento_emisor_nombre": c.departamento_emisor.nombre if c.departamento_emisor else None,
-                "fecha_publicacion": c.fecha_publicacion.isoformat() if c.fecha_publicacion else None,
-                "fecha_expiracion": c.fecha_expiracion.isoformat() if c.fecha_expiracion else None,
+                "fecha_publicacion": _iso(c.fecha_publicacion),
+                "fecha_expiracion": _iso(c.fecha_expiracion),
                 "autor_id": c.autor_id,
                 "autor_nombre": c.autor.nombre if c.autor else "Sistema",
-                "creado_en": c.creado_en.isoformat() if c.creado_en else None,
-                "actualizado_en": c.actualizado_en.isoformat() if c.actualizado_en else None,
+                "creado_en": _iso(c.creado_en),
+                "actualizado_en": _iso(c.actualizado_en),
                 "destinatarios": [
                     {
                         "tipo_destinatario": d.tipo_destinatario,
@@ -544,9 +552,9 @@ def _manifest_comunicados(comunicados: list[Comunicado]) -> dict:
                         "usuario_id": l.usuario_id,
                         "usuario_nombre": l.usuario.nombre if l.usuario else None,
                         "usuario_email": l.usuario.email if l.usuario else None,
-                        "leido_en": l.leido_en.isoformat() if l.leido_en else None,
-                        "confirmado_en": l.confirmado_en.isoformat() if l.confirmado_en else None,
-                        "creado_en": l.creado_en.isoformat() if l.creado_en else None,
+                        "leido_en": _iso(l.leido_en),
+                        "confirmado_en": _iso(l.confirmado_en),
+                        "creado_en": _iso(l.creado_en),
                     }
                     for l in c.lecturas
                 ],
@@ -1696,8 +1704,8 @@ def get_lecturas(
             "rol":           u.rol.value,
             "leido":         lec is not None and lec.leido_en is not None,
             "confirmado":    lec is not None and lec.confirmado_en is not None,
-            "leido_en":      lec.leido_en.isoformat() if lec and lec.leido_en else None,
-            "confirmado_en": lec.confirmado_en.isoformat() if lec and lec.confirmado_en else None,
+            "leido_en":      _iso(lec.leido_en) if lec else None,
+            "confirmado_en": _iso(lec.confirmado_en) if lec else None,
             "respuesta_estado": respuesta.estado if respuesta else "PENDIENTE",
             "respuesta": _serializar_respuesta(respuesta),
         })
@@ -1708,12 +1716,4 @@ def get_lecturas(
     revisados = sum(1 for r in resultado if r["respuesta_estado"] == "REVISADO")
     return {
         "comunicado_id": comunicado_id,
-        "titulo":        c.titulo,
-        "total":         len(resultado),
-        "leidos":        leidos,
-        "pendientes":    pendientes,
-        "respondidos":   respondidos,
-        "sin_responder": len(resultado) - respondidos,
-        "revisados":     revisados,
-        "detalle":       resultado,
-    }
+        "titulo":       

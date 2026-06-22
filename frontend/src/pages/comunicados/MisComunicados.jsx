@@ -43,8 +43,23 @@ const EXTENSIONES_EVIDENCIA = '.pdf, .jpg, .jpeg, .png, .webp';
 const CHIP_CATEGORIA_CLARO = 'bg-teal-50 text-teal-800 border-teal-200';
 const toTitleCase = s =>
   s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
-const formatFecha = s =>
-  s ? s.slice(0,16).replace('T', ' ') : '';
+const TZ = 'America/Mexico_City';
+// Convierte cualquier timestamp ISO (con o sin 'Z') a hora de México
+const fmtMX = (s, opts = {}) => {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleString('es-MX', { timeZone: TZ, hour12: false, ...opts });
+};
+// Para fechas sin hora (fecha_publicacion, fecha_expiracion, etc.)
+const formatFecha = s => {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s.slice(0,16).replace('T',' ');
+  return d.toLocaleString('es-MX', { timeZone: TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit' });
+};
 
 const fueActualizado = comunicado => {
   if (!comunicado?.actualizado_en) return false;
@@ -280,13 +295,13 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
               {c.fecha_publicacion && (
                 <>
                   <span className="text-slate-500">Publicado el</span>
-                  <span className="text-slate-900">{c.fecha_publicacion?.slice(0,16).replace('T',' ')}</span>
+                  <span className="text-slate-900">{fmtMX(c.fecha_publicacion)}</span>
                 </>
               )}
               {c.fecha_limite_respuesta && (
                 <>
                   <span className="text-slate-500">Limite respuesta</span>
-                  <span className="text-slate-900">{c.fecha_limite_respuesta?.slice(0,16).replace('T',' ')}</span>
+                  <span className="text-slate-900">{fmtMX(c.fecha_limite_respuesta)}</span>
                 </>
               )}
             </div>
@@ -303,25 +318,25 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
                 {actualizado && (
                   <>
                     <span className="text-slate-500">Actualizado el</span>
-                    <span className="text-slate-900">{c.actualizado_en?.slice(0,16).replace('T',' ')}</span>
+                    <span className="text-slate-900">{fmtMX(c.actualizado_en)}</span>
                   </>
                 )}
                 {c.fecha_expiracion && (
                   <>
                     <span className="text-slate-500">Expira el</span>
-                    <span className="text-slate-900">{c.fecha_expiracion?.slice(0,16).replace('T',' ')}</span>
+                    <span className="text-slate-900">{fmtMX(c.fecha_expiracion)}</span>
                   </>
                 )}
                 {(c.leido_en || leidoLocal) && (
                   <>
                     <span className="text-slate-500">Visto</span>
-                    <span className="text-slate-900">{c.leido_en ? c.leido_en?.slice(0,16).replace('T',' ') : 'Automaticamente al abrir'}</span>
+                    <span className="text-slate-900">{c.leido_en ? fmtMX(c.leido_en) : 'Automaticamente al abrir'}</span>
                   </>
                 )}
                 {(c.confirmado_en || confirmadoLocal) && (
                   <>
                     <span className="text-slate-500">Confirmado</span>
-                    <span className="text-slate-900">{c.confirmado_en ? c.confirmado_en?.slice(0,16).replace('T',' ') : 'Automaticamente al abrir'}</span>
+                    <span className="text-slate-900">{c.confirmado_en ? fmtMX(c.confirmado_en) : 'Automaticamente al abrir'}</span>
                   </>
                 )}
               </div>
@@ -343,25 +358,25 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
             {c.fecha_publicacion && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-500 w-28 flex-shrink-0">Publicado el</span>
-                <span className="text-slate-300">{c.fecha_publicacion?.slice(0,16).replace('T',' ')}</span>
+                <span className="text-slate-300">{fmtMX(c.fecha_publicacion)}</span>
               </div>
             )}
             {actualizado && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-500 w-28 flex-shrink-0">Actualizado el</span>
-                <span className="text-blue-300">{c.actualizado_en?.slice(0,16).replace('T',' ')}</span>
+                <span className="text-blue-300">{fmtMX(c.actualizado_en)}</span>
               </div>
             )}
             {c.fecha_expiracion && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-500 w-28 flex-shrink-0">Expira el</span>
-                <span className="text-slate-300">{c.fecha_expiracion?.slice(0,16).replace('T',' ')}</span>
+                <span className="text-slate-300">{fmtMX(c.fecha_expiracion)}</span>
               </div>
             )}
             {c.fecha_limite_respuesta && (
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-slate-500 w-28 flex-shrink-0">Límite respuesta</span>
-                <span className="text-slate-300">{c.fecha_limite_respuesta?.slice(0,16).replace('T',' ')}</span>
+                <span className="text-slate-300">{fmtMX(c.fecha_limite_respuesta)}</span>
               </div>
             )}
           </section>
@@ -392,7 +407,7 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
                         </p>
                         <p className="text-sm whitespace-pre-line">{m.comentario}</p>
                         <p className="text-[11px] opacity-60 mt-1 text-right">
-                          {m.creado_en ? m.creado_en.slice(0,16).replace('T',' ') : 'Enviado'}
+                          {m.creado_en ? fmtMX(m.creado_en) : 'Enviado'}
                         </p>
                       </div>
                     </div>
@@ -439,12 +454,12 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
             <section className="hidden">
               {(c.leido_en || leidoLocal) && (
                 <p className="text-xs text-slate-500">
-                  ✓✓ Visto {c.leido_en ? `el ${c.leido_en?.slice(0,16).replace('T',' ')}` : 'automáticamente al abrir'}
+                  ✓✓ Visto {c.leido_en ? `el ${fmtMX(c.leido_en)}` : 'automáticamente al abrir'}
                 </p>
               )}
               {(c.confirmado_en || confirmadoLocal) && (
                 <p className="text-xs text-slate-500">
-                  ✓✓ Confirmado {c.confirmado_en ? `el ${c.confirmado_en?.slice(0,16).replace('T',' ')}` : 'automáticamente al abrir'}
+                  ✓✓ Confirmado {c.confirmado_en ? `el ${fmtMX(c.confirmado_en)}` : 'automáticamente al abrir'}
                 </p>
               )}
             </section>
@@ -724,21 +739,4 @@ function TarjetaComunicado({ c, onClick }) {
                       <span> · {toTitleCase(c.area_emisora)}</span>
                     )}
                   </>
-                : toTitleCase(c.area_emisora)
-              }
-            </p>
-          )}
-          {actualizado && (
-            <p className="text-xs mt-1" style={{ color: colorMeta }}>Actualizado {formatFecha(c.actualizado_en)}</p>
-          )}
-        </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-xs" style={{ color: colorMeta }}>
-            {c.fecha_publicacion?.slice(0,10)}
-          </p>
-          {c.leido && <p className={`text-xs font-semibold mt-1 ${isDay ? 'text-emerald-600' : 'text-emerald-400'}`}>Leído</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
+                : toTitleCase(
