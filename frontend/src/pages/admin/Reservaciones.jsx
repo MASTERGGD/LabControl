@@ -882,6 +882,194 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
 
 // ─── Leyenda ──────────────────────────────────────────────────────────────────
 
+function GridMobileAdmin({ slots, onSlotClick, isDay = false }) {
+  const dias = [...new Set(slots.map(s => s.dia_semana))].sort((a, b) => a - b);
+  const hoy = new Date().getDay();
+  const hoyIdx = hoy === 0 ? 5 : hoy - 1;
+  const [diaActivo, setDiaActivo] = useState(dias.includes(hoyIdx) ? hoyIdx : (dias[0] ?? 0));
+
+  useEffect(() => {
+    if (dias.length > 0 && !dias.includes(diaActivo)) {
+      setDiaActivo(dias.includes(hoyIdx) ? hoyIdx : dias[0]);
+    }
+  }, [dias, diaActivo, hoyIdx]);
+
+  const slotsDia = slots
+    .filter(s => s.dia_semana === diaActivo)
+    .sort((a, b) => String(a.hora_inicio).localeCompare(String(b.hora_inicio)));
+
+  const surface = isDay
+    ? {
+        tabBg: '#F8FAFC',
+        tabBorder: '#E2E8F0',
+        tabText: '#475569',
+        tabActiveBg: '#DBEAFE',
+        tabActiveBorder: '#60A5FA',
+        tabActiveText: '#1D4ED8',
+        emptyBg: '#F8FAFC',
+        emptyBorder: '#CBD5E1',
+        emptyText: '#475569',
+      }
+    : {
+        tabBg: 'rgba(15,23,42,0.78)',
+        tabBorder: 'rgba(148,163,184,0.18)',
+        tabText: '#CBD5E1',
+        tabActiveBg: 'rgba(37,99,235,0.25)',
+        tabActiveBorder: 'rgba(96,165,250,0.65)',
+        tabActiveText: '#DBEAFE',
+        emptyBg: 'rgba(15,23,42,0.70)',
+        emptyBorder: 'rgba(148,163,184,0.18)',
+        emptyText: '#CBD5E1',
+      };
+
+  const estadoLabel = {
+    LIBRE: '+ Reservar',
+    MIO: 'Mi reserva',
+    OCUPADO: 'Ocupado',
+    EN_DISPUTA: 'En disputa',
+    YO_SOLICITE: 'Solicitado',
+  };
+
+  const estadoStyle = {
+    LIBRE: {
+      bg: isDay ? '#ECFDF5' : 'rgba(6,78,59,0.45)',
+      border: '#10B981',
+      text: isDay ? '#047857' : '#6EE7B7',
+      badgeBg: isDay ? '#D1FAE5' : 'rgba(16,185,129,0.22)',
+    },
+    MIO: {
+      bg: isDay ? '#EEF2FF' : 'rgba(79,70,229,0.28)',
+      border: '#6366F1',
+      text: isDay ? '#312E81' : '#C7D2FE',
+      badgeBg: isDay ? '#E0E7FF' : 'rgba(99,102,241,0.25)',
+    },
+    OCUPADO: {
+      bg: isDay ? '#EFF6FF' : 'rgba(30,45,69,0.92)',
+      border: '#3B82F6',
+      text: isDay ? '#1D4ED8' : '#BFDBFE',
+      badgeBg: isDay ? '#DBEAFE' : 'rgba(59,130,246,0.22)',
+    },
+    EN_DISPUTA: {
+      bg: isDay ? '#FFFBEB' : 'rgba(120,53,15,0.35)',
+      border: '#F59E0B',
+      text: isDay ? '#92400E' : '#FDE68A',
+      badgeBg: isDay ? '#FEF3C7' : 'rgba(245,158,11,0.22)',
+    },
+    YO_SOLICITE: {
+      bg: isDay ? '#FFF7ED' : 'rgba(124,45,18,0.30)',
+      border: '#F97316',
+      text: isDay ? '#9A3412' : '#FED7AA',
+      badgeBg: isDay ? '#FFEDD5' : 'rgba(249,115,22,0.22)',
+    },
+  };
+
+  const formatDocente = (nombre) => (
+    nombre ? nombre.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : null
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {dias.map(dia => {
+          const active = dia === diaActivo;
+          return (
+            <button
+              key={dia}
+              type="button"
+              onClick={() => setDiaActivo(dia)}
+              className="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition"
+              style={{
+                background: active ? surface.tabActiveBg : surface.tabBg,
+                border: `1px solid ${active ? surface.tabActiveBorder : surface.tabBorder}`,
+                color: active ? surface.tabActiveText : surface.tabText,
+                minWidth: 76,
+              }}
+            >
+              <span className="block text-[10px] uppercase tracking-wide">{DIAS_CORTO[dia] || 'Dia'}</span>
+              <span className="block leading-tight">{DIAS_LABEL[dia] || 'Dia'}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {slotsDia.length === 0 ? (
+        <div
+          className="rounded-2xl px-4 py-8 text-center text-sm"
+          style={{ background: surface.emptyBg, border: `1px solid ${surface.emptyBorder}`, color: surface.emptyText }}
+        >
+          No hay horarios para este dia.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {slotsDia.map(slot => {
+            const style = estadoStyle[slot.estado_vista] || estadoStyle.OCUPADO;
+            const clickable = ['LIBRE', 'MIO', 'OCUPADO', 'EN_DISPUTA', 'YO_SOLICITE'].includes(slot.estado_vista);
+            const docente = formatDocente(slot.reservacion?.docente_nombre);
+            const materia = slot.reservacion?.materia;
+            const grupo = slot.reservacion?.grupo;
+
+            return (
+              <button
+                key={`${slot.dia_semana}-${slot.hora_inicio}-${slot.horario_id || slot.slot_id || ''}`}
+                type="button"
+                onClick={() => clickable && onSlotClick(slot)}
+                className="w-full rounded-2xl p-4 text-left transition active:scale-[0.99]"
+                style={{
+                  background: style.bg,
+                  border: `1px solid ${style.border}`,
+                  boxShadow: isDay ? '0 8px 18px rgba(15,23,42,0.06)' : '0 10px 24px rgba(0,0,0,0.22)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm font-bold tracking-wide" style={{ color: style.text }}>
+                      {slot.hora_inicio} - {slot.hora_fin}
+                    </p>
+                    <p className="mt-2 text-base font-semibold leading-tight" style={{ color: isDay ? '#0F172A' : '#F8FAFC' }}>
+                      {materia || 'Disponible para reservar'}
+                    </p>
+                    {docente && (
+                      <p className="mt-1 truncate text-sm" style={{ color: isDay ? '#475569' : '#CBD5E1' }}>
+                        {docente}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span
+                      className="rounded-full px-2.5 py-1 text-xs font-semibold"
+                      style={{ background: style.badgeBg, color: style.text }}
+                    >
+                      {estadoLabel[slot.estado_vista] || slot.estado_vista}
+                    </span>
+                    {grupo && (
+                      <span
+                        className="rounded-lg px-2 py-1 text-xs font-bold"
+                        style={{
+                          background: isDay ? '#FFFFFF' : 'rgba(255,255,255,0.10)',
+                          color: isDay ? '#475569' : '#E2E8F0',
+                        }}
+                      >
+                        {grupo}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {slot.estado_vista === 'MIO' && slot.solicitudes_n > 0 && (
+                  <p className="mt-3 text-xs font-semibold" style={{ color: isDay ? '#A16207' : '#FDE68A' }}>
+                    {slot.solicitudes_n} solicitud(es) esperando revision.
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Leyenda({ esDocente }) {
   const items = [
     { color: '#10b981', label: 'Disponible',  dot: true },
@@ -985,7 +1173,7 @@ export default function Reservaciones() {
   return (
     <AdminLayout>
       {/* Fondo oscuro slate-950 */}
-      <div className="p-6 space-y-5 min-h-screen" style={{ background: isDay ? '#F8FAFC' : 'rgb(2 6 23)' }}>
+      <div className="p-4 md:p-6 space-y-5 min-h-screen" style={{ background: isDay ? '#F8FAFC' : 'rgb(2 6 23)' }}>
 
         {/* Encabezado */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -1058,7 +1246,7 @@ export default function Reservaciones() {
         </div>
 
         {/* Layout: Grid + Panel conflictos */}
-        <div className={`flex gap-5 ${verConflictos ? 'items-start' : ''}`}>
+        <div className={`flex flex-col lg:flex-row gap-5 ${verConflictos ? 'items-start' : ''}`}>
 
           {/* Grid semanal — glass container */}
           <div className="flex-1 min-w-0 space-y-3">
@@ -1123,8 +1311,12 @@ export default function Reservaciones() {
               </div>
             ) : (
               <>
+                <div className="block md:hidden">
+                  <GridMobileAdmin slots={slots} onSlotClick={handleSlotClick} isDay={isDay} />
+                </div>
+
                 {/* Contenedor del grid con backdrop-blur */}
-                <div style={{
+                <div className="hidden md:block" style={{
                   background: 'rgba(255,255,255,0.02)',
                   backdropFilter: 'blur(12px)',
                   WebkitBackdropFilter: 'blur(12px)',
@@ -1157,7 +1349,7 @@ export default function Reservaciones() {
 
           {/* Panel de conflictos (admin) */}
           {esAdmin && verConflictos && (
-            <div className="w-80 shrink-0">
+            <div className="w-full lg:w-80 shrink-0">
               <PanelConflictos laboratorio_id={labId} onResuelto={recargar} />
             </div>
           )}
