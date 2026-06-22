@@ -1,9 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import { getPublicApiBase } from '../utils/publicApiBase';
-
-const API_BASE = getPublicApiBase();
+import { getPublicJson } from '../utils/publicApiBase';
 
 function etiqueta(valor) {
   return valor ? String(valor).replace(/_/g, ' ') : 'Sin dato';
@@ -30,9 +27,8 @@ export default function ValidarActivo() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    axios
-      .get(`${API_BASE}/inventario/activos/validacion/${token}`)
-      .then(res => setData(res.data))
+    getPublicJson(`/inventario/activos/validacion/${token}`)
+      .then(res => setData(res))
       .catch(err => setError(err.response?.data?.detail || 'No se pudo validar este activo.'))
       .finally(() => setLoading(false));
   }, [token]);

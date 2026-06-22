@@ -35,8 +35,15 @@ function proximaOcurrencia(diaSemana, horaInicio) {
 function fmtCountdown(ms) {
   if (ms <= 0) return 'En curso';
   const totalMin = Math.floor(ms / 60_000);
-  const h = Math.floor(totalMin / 60);
+  const dias = Math.floor(totalMin / 1_440);
+  const h = Math.floor((totalMin % 1_440) / 60);
   const m = totalMin % 60;
+
+  if (dias > 0) {
+    const textoDias = dias === 1 ? '1 dia' : `${dias} dias`;
+    return h > 0 ? `${textoDias} ${h}h` : textoDias;
+  }
+
   if (h > 0) return `${h}h ${m}m`;
   return `${m} min`;
 }

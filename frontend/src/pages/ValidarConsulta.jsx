@@ -1,9 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import { getPublicApiBase } from '../utils/publicApiBase';
-
-const API_BASE = getPublicApiBase();
+import { getPublicJson } from '../utils/publicApiBase';
 
 function formatearFecha(iso) {
   if (!iso) return 'Fecha no disponible';
@@ -27,9 +24,8 @@ export default function ValidarConsulta() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    axios
-      .get(`${API_BASE}/consultorio/consultas/validacion/${token}`)
-      .then(res => setData(res.data))
+    getPublicJson(`/consultorio/consultas/validacion/${token}`)
+      .then(res => setData(res))
       .catch(err => {
         setError(err.response?.data?.detail || 'No se pudo validar esta nota medica.');
       })
