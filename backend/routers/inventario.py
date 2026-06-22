@@ -872,6 +872,8 @@ def validar_activo_qr(token: str, db: Session = Depends(get_db)):
     dep = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first() if activo.departamento_id else None
     ubicacion = db.query(UbicacionInventario).filter(UbicacionInventario.id == activo.ubicacion_id).first() if activo.ubicacion_id else None
     responsable = db.query(Usuario).filter(Usuario.id == activo.responsable_id).first() if activo.responsable_id else None
+    fecha_alta = getattr(activo, "fecha_alta", None) or activo.fecha_adquisicion
+    ultima_revision = getattr(activo, "fecha_revision", None)
 
     return {
         "sistema": "SIGA UTECAN",
@@ -892,8 +894,8 @@ def validar_activo_qr(token: str, db: Session = Depends(get_db)):
         "departamento": dep.nombre if dep else None,
         "ubicacion": (ubicacion.nombre if ubicacion else None) or activo.ubicacion_nombre,
         "resguardante": (responsable.nombre if responsable else None) or activo.resguardante_externo_nombre,
-        "fecha_alta": activo.fecha_alta.isoformat() if activo.fecha_alta else None,
-        "ultima_revision": activo.fecha_revision.isoformat() if activo.fecha_revision else None,
+        "fecha_alta": fecha_alta.isoformat() if fecha_alta else None,
+        "ultima_revision": ultima_revision.isoformat() if ultima_revision else None,
     }
 
 
