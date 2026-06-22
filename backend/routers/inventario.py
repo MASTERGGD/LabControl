@@ -3848,7 +3848,7 @@ def estadisticas(
                 "total_activos": 0, "operativos": 0, "en_mantenimiento": 0,
                 "bajas": 0, "prestamos_activos": 0, "prestamos_vencidos": 0,
                 "institucionales": 0, "bajas_pendientes": 0, "no_localizados": 0,
-                "por_categoria": {}, "por_departamento": {}, "por_estado_admin": {},
+                "por_categoria": {}, "por_departamento": {}, "por_responsable": [], "por_estado_admin": {},
             }
         if departamento_id:
             if departamento_id not in departamentos_visibles:
@@ -3894,10 +3894,38 @@ def estadisticas(
 
     por_categoria = {}
     por_departamento = {}
+    por_responsable = {}
     for a in activos:
         por_categoria[a.categoria] = por_categoria.get(a.categoria, 0) + 1
         key = a.departamento_id or 0
         por_departamento[key] = por_departamento.get(key, 0) + 1
+        if (a.alcance or "").upper() == "LABORATORIO" and a.laboratorio_id:
+            lab = db.query(Laboratorio).filter(Laboratorio.id == a.laboratorio_id).first()
+            responsable_key = f"LAB-{a.laboratorio_id}"
+            por_responsable.setdefault(responsable_key, {
+                "tipo": "LABORATORIO",
+                "id": a.laboratorio_id,
+                "nombre": lab.nombre if lab else f"Laboratorio {a.laboratorio_id}",
+                "total": 0,
+            })
+        elif a.departamento_id:
+            dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first()
+            responsable_key = f"DEP-{a.departamento_id}"
+            por_responsable.setdefault(responsable_key, {
+                "tipo": "DEPARTAMENTO",
+                "id": a.departamento_id,
+                "nombre": dep.nombre if dep else f"Departamento {a.departamento_id}",
+                "total": 0,
+            })
+        else:
+            responsable_key = "SIN-RESPONSABLE"
+            por_responsable.setdefault(responsable_key, {
+                "tipo": "SIN_RESPONSABLE",
+                "id": None,
+                "nombre": "Sin responsable patrimonial",
+                "total": 0,
+            })
+        por_responsable[responsable_key]["total"] += 1
 
     solicitudes_prestamo = {}
     for prestamo in prestamos:
@@ -3942,6 +3970,11 @@ def estadisticas(
         "mantenimientos_vencidos": sum(1 for m in mantenimientos if m.fecha_limite and m.fecha_limite < ahora),
         "mantenimientos_proximos": sum(1 for m in mantenimientos if m.fecha_limite and ahora <= m.fecha_limite <= en_7),
         "por_departamento": por_departamento,
+        "por_responsable": sorted(
+            por_responsable.values(),
+            key=lambda item: item["total"],
+            reverse=True,
+        ),
     }
 
 

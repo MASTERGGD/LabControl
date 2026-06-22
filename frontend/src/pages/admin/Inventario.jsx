@@ -2005,7 +2005,14 @@ function PanelRevisionInventario({
   );
 }
 
-function PanelEstadoInventario({ stats, departamentos, categoriasFiltro, onFiltroCategoria, onFiltroDepartamento, onFiltroEstadoAdmin }) {
+function PanelEstadoInventario({
+  stats,
+  categoriasFiltro,
+  onFiltroCategoria,
+  onFiltroDepartamento,
+  onFiltroLaboratorio,
+  onFiltroEstadoAdmin,
+}) {
   if (!stats) return null;
 
   const total = stats.total_activos || 0;
@@ -2018,13 +2025,7 @@ function PanelEstadoInventario({ stats, departamentos, categoriasFiltro, onFiltr
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 6);
-  const departamentosMap = new Map((departamentos || []).map(d => [String(d.id), d.nombre]));
-  const porDepartamento = Object.entries(stats.por_departamento || {})
-    .map(([id, totalDepartamento]) => ({
-      id,
-      label: departamentosMap.get(String(id)) || (Number(id) === 0 ? 'Sin departamento' : `Depto. ${id}`),
-      total: totalDepartamento,
-    }))
+  const porResponsable = (stats.por_responsable || [])
     .sort((a, b) => b.total - a.total)
     .slice(0, 6);
   const pendientes = ['BORRADOR', 'EN_REVISION', 'OBSERVADO', 'RECHAZADO']
@@ -2043,7 +2044,7 @@ function PanelEstadoInventario({ stats, departamentos, categoriasFiltro, onFiltr
         <div>
           <h2 className="text-lg font-bold text-white">Panel de estado de inventario</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Vista ejecutiva del corte actual: validacion, categorias, departamentos y alertas operativas.
+            Vista ejecutiva del corte actual: validacion, categorias, responsables y alertas operativas.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2">
@@ -2098,19 +2099,27 @@ function PanelEstadoInventario({ stats, departamentos, categoriasFiltro, onFiltr
         </div>
 
         <div className="xl:col-span-3 rounded-xl border border-white/10 bg-slate-950/35 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Por departamento</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Por responsable</p>
           <div className="mt-3 space-y-2">
-            {porDepartamento.length === 0 ? (
-              <p className="text-sm text-slate-500">Sin departamentos en el alcance.</p>
-            ) : porDepartamento.map(item => (
+            {porResponsable.length === 0 ? (
+              <p className="text-sm text-slate-500">Sin responsables en el alcance.</p>
+            ) : porResponsable.map(item => (
               <button
-                key={item.id}
+                key={`${item.tipo}-${item.id || 'sin'}`}
                 type="button"
-                onClick={() => Number(item.id) > 0 && onFiltroDepartamento(item.id)}
+                onClick={() => {
+                  if (item.tipo === 'LABORATORIO' && item.id) onFiltroLaboratorio(item.id);
+                  if (item.tipo === 'DEPARTAMENTO' && item.id) onFiltroDepartamento(item.id);
+                }}
                 className="w-full flex items-center justify-between gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/8 transition-colors disabled:cursor-default disabled:hover:bg-transparent"
-                disabled={Number(item.id) === 0}
+                disabled={!item.id || item.tipo === 'SIN_RESPONSABLE'}
               >
-                <span className="text-sm text-slate-200 truncate">{item.label}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm text-slate-200 truncate">{item.nombre}</span>
+                  <span className="block text-[10px] uppercase tracking-wide text-slate-500">
+                    {item.tipo === 'LABORATORIO' ? 'Laboratorio' : item.tipo === 'DEPARTAMENTO' ? 'Departamento' : 'Sin asignacion'}
+                  </span>
+                </span>
                 <span className="text-sm font-bold text-white">{item.total}</span>
               </button>
             ))}
@@ -2612,10 +2621,10 @@ export default function Inventario() {
 
       <PanelEstadoInventario
         stats={stats}
-        departamentos={departamentos}
         categoriasFiltro={categoriasFiltro}
         onFiltroCategoria={setFiltroCat}
         onFiltroDepartamento={setFiltroDepartamento}
+        onFiltroLaboratorio={setFiltroLab}
         onFiltroEstadoAdmin={setFiltroEstadoAdmin}
       />
 
