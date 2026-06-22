@@ -37,22 +37,35 @@ export function getPublicApiBase() {
   return getPublicApiCandidates()[0];
 }
 
+function responseError(res, base) {
+  const err = new Error(res.data?.detail || `Respuesta ${res.status} desde ${base}`);
+  err.response = res;
+  return err;
+}
+
 export async function getPublicJson(path) {
   const errors = [];
 
   for (const base of getPublicApiCandidates()) {
     try {
-      const res = await axios.get(`${base}${path}`, { timeout: PUBLIC_API_TIMEOUT_MS });
+      const res = await axios.get(`${base}${path}`, {
+        timeout: PUBLIC_API_TIMEOUT_MS,
+        validateStatus: () => true,
+      });
       if (!res.data || typeof res.data !== 'object') {
         errors.push(new Error(`Respuesta no JSON desde ${base}`));
         continue;
       }
+      if (res.status < 200 || res.status >= 300) {
+        errors.push(responseError(res, base));
+        continue;
+      }
       return res.data;
     } catch (err) {
-      if (err.response) throw err;
       errors.push(err);
     }
   }
 
-  throw new Error('No se pudo conectar con el servidor de validacion.');
+  const apiError = errors.find(err => err.response?.data?.detail);
+  throw apiError || new Error('No se pudo conectar con el servidor de validacion.');
 }
