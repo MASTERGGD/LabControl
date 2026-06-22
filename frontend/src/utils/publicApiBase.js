@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const PUBLIC_API_TIMEOUT_MS = 5000;
+
 const RAILWAY_BACKEND_FALLBACKS = [
   'https://labcontrol-production.up.railway.app',
   'https://labcontrol-production-8cba.up.railway.app',
@@ -16,12 +18,14 @@ function addCandidate(candidates, url) {
 
 export function getPublicApiCandidates() {
   const candidates = [];
+  const isRailwayHost = window.location.hostname.endsWith('.up.railway.app');
 
   addCandidate(candidates, process.env.REACT_APP_API_URL);
 
-  if (window.location.hostname.endsWith('.up.railway.app')) {
+  if (isRailwayHost) {
     addCandidate(candidates, window.location.origin);
     RAILWAY_BACKEND_FALLBACKS.forEach(url => addCandidate(candidates, url));
+    return candidates;
   }
 
   addCandidate(candidates, `${window.location.protocol}//${window.location.hostname}:8000`);
@@ -38,7 +42,7 @@ export async function getPublicJson(path) {
 
   for (const base of getPublicApiCandidates()) {
     try {
-      const res = await axios.get(`${base}${path}`);
+      const res = await axios.get(`${base}${path}`, { timeout: PUBLIC_API_TIMEOUT_MS });
       if (!res.data || typeof res.data !== 'object') {
         errors.push(new Error(`Respuesta no JSON desde ${base}`));
         continue;
@@ -50,5 +54,5 @@ export async function getPublicJson(path) {
     }
   }
 
-  throw errors[0] || new Error('No se pudo conectar con el servidor.');
+  throw new Error('No se pudo conectar con el servidor de validacion.');
 }
