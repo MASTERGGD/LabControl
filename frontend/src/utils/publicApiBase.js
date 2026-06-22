@@ -39,6 +39,10 @@ export async function getPublicJson(path) {
   for (const base of getPublicApiCandidates()) {
     try {
       const res = await axios.get(`${base}${path}`);
+      if (!res.data || typeof res.data !== 'object') {
+        errors.push(new Error(`Respuesta no JSON desde ${base}`));
+        continue;
+      }
       return res.data;
     } catch (err) {
       if (err.response) throw err;
