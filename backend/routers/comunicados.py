@@ -273,6 +273,13 @@ def _fecha_publicacion_bloqueada(c: Comunicado) -> bool:
     return not c.fecha_publicacion or c.fecha_publicacion <= _utcnow()
 
 
+def _debe_publicarse_ahora(fecha_publicacion: datetime.datetime | None, ahora: datetime.datetime) -> bool:
+    if not fecha_publicacion:
+        return True
+    es_inicio_dia = fecha_publicacion.time() == datetime.time(0, 0, 0)
+    return es_inicio_dia and fecha_publicacion.date() <= ahora.date()
+
+
 def _rango_periodo(periodo: str) -> tuple[datetime.datetime, datetime.datetime] | None:
     try:
         year_raw, periodo_raw = periodo.split("-", 1)
@@ -330,8 +337,8 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         # campos de lectura
         "leido":       lectura is not None and lectura.leido_en is not None,
         "confirmado":  lectura is not None and lectura.confirmado_en is not None,
-        "leido_en":    _iso(lectura.leido_en),
-        "confirmado_en": _iso(lectura.confirmado_en),
+        "leido_en":    _iso(lectura.leido_en) if lectura else None,
+        "confirmado_en": _iso(lectura.confirmado_en) if lectura else None,
         "respuesta":   _serializar_respuesta(respuesta),
     }
 
@@ -1640,10 +1647,11 @@ def publicar_comunicado(
     if not c.destinatarios:
         raise HTTPException(400, "Define al menos un destinatario antes de publicar")
 
+    ahora = _utcnow()
     c.estado = EstadoComunicado.PUBLICADO
-    if not c.fecha_publicacion:
-        c.fecha_publicacion = _utcnow()
-    c.actualizado_en = _utcnow()
+    if _debe_publicarse_ahora(c.fecha_publicacion, ahora):
+        c.fecha_publicacion = ahora
+    c.actualizado_en = ahora
     if c.notificar_email and _esta_activo(c):
         enviados, fallidos = _enviar_email_comunicado(db, c)
         c.email_enviados = enviados
@@ -1704,8 +1712,8 @@ def get_lecturas(
             "rol":           u.rol.value,
             "leido":         lec is not None and lec.leido_en is not None,
             "confirmado":    lec is not None and lec.confirmado_en is not None,
-            "leido_en":      _iso(lec.leido_en),
-            "confirmado_en": _iso(lec.confirmado_en),
+            "leido_en":      _iso(lec.leido_en) if lec else None,
+            "confirmado_en": _iso(lec.confirmado_en) if lec else None,
             "respuesta_estado": respuesta.estado if respuesta else "PENDIENTE",
             "respuesta": _serializar_respuesta(respuesta),
         })
