@@ -44,18 +44,16 @@ const CHIP_CATEGORIA_CLARO = 'bg-teal-50 text-teal-800 border-teal-200';
 const toTitleCase = s =>
   s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
 const TZ = 'America/Mexico_City';
-// Convierte cualquier timestamp ISO (con o sin 'Z') a hora de México
 const fmtMX = (s, opts = {}) => {
   if (!s) return '';
   const d = new Date(s);
   if (isNaN(d)) return s;
   return d.toLocaleString('es-MX', { timeZone: TZ, hour12: false, ...opts });
 };
-// Para fechas sin hora (fecha_publicacion, fecha_expiracion, etc.)
 const formatFecha = s => {
   if (!s) return '';
   const d = new Date(s);
-  if (isNaN(d)) return s.slice(0,16).replace('T',' ');
+  if (isNaN(d)) return fmtMX(s);
   return d.toLocaleString('es-MX', { timeZone: TZ, hour12: false,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit' });
@@ -739,4 +737,21 @@ function TarjetaComunicado({ c, onClick }) {
                       <span> · {toTitleCase(c.area_emisora)}</span>
                     )}
                   </>
-                : toTitleCase(
+                : toTitleCase(c.area_emisora)
+              }
+            </p>
+          )}
+          {actualizado && (
+            <p className="text-xs mt-1" style={{ color: colorMeta }}>Actualizado {formatFecha(c.actualizado_en)}</p>
+          )}
+        </div>
+        <div className="text-right flex-shrink-0">
+          <p className="text-xs" style={{ color: colorMeta }}>
+            {c.fecha_publicacion?.slice(0,10)}
+          </p>
+          {c.leido && <p className={`text-xs font-semibold mt-1 ${isDay ? 'text-emerald-600' : 'text-emerald-400'}`}>Leído</p>}
+        </div>
+      </div>
+    </div>
+  );
+}

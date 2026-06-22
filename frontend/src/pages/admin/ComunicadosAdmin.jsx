@@ -1826,4 +1826,16 @@ export default function ComunicadosAdmin() {
       {lecturas && (
         <PanelLecturas
           comunicado={lecturas}
-          onClose={cerrarLect
+          onClose={cerrarLecturas}
+          blendyId={`lecturas-${lecturas.id}`}
+        />
+      )}
+
+      {panelRespaldos && (
+        <PanelRespaldos
+          onClose={() => setPanelRespaldos(false)}
+        />
+      )}
+    </AdminLayout>
+  );
+}

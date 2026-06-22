@@ -112,9 +112,9 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def _iso(dt: datetime.datetime | None) -> str | None:
-    """Devuelve el datetime en formato ISO-8601 con sufijo 'Z' (UTC explícito).
-    El frontend puede entonces convertirlo correctamente a la zona horaria local."""
+def _iso(dt: "datetime.datetime | None") -> "str | None":
+    """Devuelve el datetime en ISO-8601 con sufijo 'Z' (UTC explícito)
+    para que el frontend pueda convertirlo a la zona horaria local."""
     if dt is None:
         return None
     return dt.isoformat() + "Z"
@@ -330,8 +330,8 @@ def _serializar(c: Comunicado, lectura: ComunicadoLectura | None = None) -> dict
         # campos de lectura
         "leido":       lectura is not None and lectura.leido_en is not None,
         "confirmado":  lectura is not None and lectura.confirmado_en is not None,
-        "leido_en":    _iso(lectura.leido_en) if lectura else None,
-        "confirmado_en": _iso(lectura.confirmado_en) if lectura else None,
+        "leido_en":    _iso(lectura.leido_en),
+        "confirmado_en": _iso(lectura.confirmado_en),
         "respuesta":   _serializar_respuesta(respuesta),
     }
 
@@ -1704,8 +1704,8 @@ def get_lecturas(
             "rol":           u.rol.value,
             "leido":         lec is not None and lec.leido_en is not None,
             "confirmado":    lec is not None and lec.confirmado_en is not None,
-            "leido_en":      _iso(lec.leido_en) if lec else None,
-            "confirmado_en": _iso(lec.confirmado_en) if lec else None,
+            "leido_en":      _iso(lec.leido_en),
+            "confirmado_en": _iso(lec.confirmado_en),
             "respuesta_estado": respuesta.estado if respuesta else "PENDIENTE",
             "respuesta": _serializar_respuesta(respuesta),
         })
@@ -1716,4 +1716,12 @@ def get_lecturas(
     revisados = sum(1 for r in resultado if r["respuesta_estado"] == "REVISADO")
     return {
         "comunicado_id": comunicado_id,
-        "titulo":       
+        "titulo":        c.titulo,
+        "total":         len(resultado),
+        "leidos":        leidos,
+        "pendientes":    pendientes,
+        "respondidos":   respondidos,
+        "sin_responder": len(resultado) - respondidos,
+        "revisados":     revisados,
+        "detalle":       resultado,
+    }
