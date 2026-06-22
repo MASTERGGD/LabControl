@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import { getPublicApiBase } from '../utils/publicApiBase';
 
-const API_BASE =
-  process.env.REACT_APP_API_URL ||
-  `${window.location.protocol}//${window.location.hostname}:8000`;
+const API_BASE = getPublicApiBase();
 
 function etiqueta(valor) {
   return valor ? String(valor).replace(/_/g, ' ') : 'Sin dato';
