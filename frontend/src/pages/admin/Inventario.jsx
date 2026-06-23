@@ -2893,6 +2893,13 @@ export default function Inventario() {
             const cat = CATEGORIA_ICONO[a.categoria] || CATEGORIA_ICONO.OTRO;
             const activoValidado = (a.estado_admin || 'VALIDADO') === 'VALIDADO';
             const activoEditable = puedeEditarInventario && (a.estado_admin !== 'RECHAZADO' || puedeValidarInventario);
+            const computadoraDeLaboratorio = a.categoria === 'COMPUTADORA' && a.alcance === 'LABORATORIO';
+            const pendientesInstitucionales = a.alcance !== 'LABORATORIO'
+              ? [
+                  (!a.ubicacion_label && !a.ubicacion_nombre) ? 'Pendiente de ubicacion' : null,
+                  (!a.responsable_nombre && !a.resguardante_externo_nombre) ? 'Pendiente de resguardante' : null,
+                ].filter(Boolean)
+              : [];
             // Icono de herramienta cambia de color según estado
             const herramientaColor = a.categoria === 'HERRAMIENTA'
               ? (a.estado === 'OPERATIVO' ? 'bg-emerald-900/50 border-emerald-700'
@@ -2946,13 +2953,18 @@ export default function Inventario() {
                   {a.numero_oficial && (
                     <p className="text-[11px] text-slate-500 mt-0.5 font-mono">Oficial: {a.numero_oficial}</p>
                   )}
-                  {a.categoria === 'COMPUTADORA' && (
+                  {computadoraDeLaboratorio && (
                     <p className={`text-[11px] mt-1 font-semibold ${a.computadora_id ? 'text-blue-500' : 'text-amber-500'}`}>
                       {a.computadora_id
                         ? `Asignada como ${a.computadora_codigo}${a.computadora_fila ? ` · Fila ${a.computadora_fila}` : ''}`
                         : 'Sin asignar a un puesto PC'}
                     </p>
                   )}
+                  {pendientesInstitucionales.map(pendiente => (
+                    <p key={pendiente} className="text-[11px] mt-1 font-semibold text-amber-500">
+                      {pendiente}
+                    </p>
+                  ))}
                   {(a.marca || a.modelo) && (
                     <p className="text-xs text-slate-500 mt-0.5">
                       {[a.marca, a.modelo].filter(Boolean)
@@ -3120,6 +3132,13 @@ export default function Inventario() {
               {activosFiltrados.map((a, idx) => {
                 const activoValidado = (a.estado_admin || 'VALIDADO') === 'VALIDADO';
                 const activoEditable = puedeEditarInventario && (a.estado_admin !== 'RECHAZADO' || puedeValidarInventario);
+                const computadoraDeLaboratorio = a.categoria === 'COMPUTADORA' && a.alcance === 'LABORATORIO';
+                const pendientesInstitucionales = a.alcance !== 'LABORATORIO'
+                  ? [
+                      (!a.ubicacion_label && !a.ubicacion_nombre) ? 'Pendiente de ubicacion' : null,
+                      (!a.responsable_nombre && !a.resguardante_externo_nombre) ? 'Pendiente de resguardante' : null,
+                    ].filter(Boolean)
+                  : [];
                 return (
                 <tr key={a.id}
                   className={`transition-colors ${!a.activo ? 'opacity-50' : ''}`}
@@ -3135,13 +3154,18 @@ export default function Inventario() {
                      {a.numero_oficial && (
                        <p className="text-[11px] text-slate-500 font-mono">Oficial: {a.numero_oficial}</p>
                      )}
-                     {a.categoria === 'COMPUTADORA' && (
+                     {computadoraDeLaboratorio && (
                        <p className={`text-[11px] mt-1 font-semibold ${a.computadora_id ? 'text-blue-500' : 'text-amber-500'}`}>
                          {a.computadora_id
                            ? `Asignada como ${a.computadora_codigo}${a.computadora_fila ? ` · Fila ${a.computadora_fila}` : ''}`
                            : 'Sin asignar a un puesto PC'}
                        </p>
                      )}
+                     {pendientesInstitucionales.map(pendiente => (
+                       <p key={pendiente} className="text-[11px] mt-1 font-semibold text-amber-500">
+                         {pendiente}
+                       </p>
+                     ))}
                   </td>
                   <td className="px-4 py-3 text-gray-300 text-xs">
                     {CATEGORIA_ICONO[a.categoria]?.emoji} {categoriaActivoLabel(a.categoria)}
