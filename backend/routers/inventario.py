@@ -1181,6 +1181,21 @@ def _validar_destinos_movimiento(data: MovimientoInventarioCreate, db: Session):
         raise HTTPException(status_code=404, detail="Resguardante destino no encontrado")
 
 
+def _validar_movimiento_con_activo(data: MovimientoInventarioCreate, activo: Activo):
+    tipo = data.tipo.upper()
+    if tipo == "TRANSFERENCIA_DEPARTAMENTO":
+        if not data.departamento_destino_id:
+            raise HTTPException(status_code=422, detail="Selecciona el departamento destino para transferir el activo")
+        if data.departamento_destino_id == activo.departamento_id:
+            raise HTTPException(status_code=422, detail="El departamento destino debe ser distinto al departamento actual")
+    elif tipo in ("CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE"):
+        if data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Para cambiar el departamento responsable usa TRANSFERENCIA_DEPARTAMENTO"
+            )
+
+
 def _aplicar_movimiento_recibido(activo: Activo, mov: MovimientoInventario):
     tipo = (mov.tipo or "").upper()
     if tipo == "BAJA":
@@ -2320,6 +2335,7 @@ def solicitar_movimiento(
     _asegurar_activo_validado(activo)
     _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
     _validar_destinos_movimiento(data, db)
+    _validar_movimiento_con_activo(data, activo)
     cruza_departamento = data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id
     if cruza_departamento and current_user.rol != RolUsuario.SUPER_ADMIN:
         raise HTTPException(status_code=403, detail="Los movimientos entre departamentos requieren administracion central")

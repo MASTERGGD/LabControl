@@ -1243,6 +1243,9 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
   const [resguardantes, setResguardantes] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const esTransferencia = form.tipo === 'TRANSFERENCIA_DEPARTAMENTO';
+  const esCambioUbicacion = form.tipo === 'CAMBIO_UBICACION';
+  const esCambioResguardante = form.tipo === 'CAMBIO_RESGUARDANTE';
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -1257,6 +1260,19 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
     const val = ['departamento_destino_id','ubicacion_destino_id','resguardante_destino_id'].includes(e.target.name)
       ? (e.target.value === '' ? '' : Number(e.target.value))
       : e.target.value;
+    if (e.target.name === 'tipo') {
+      setForm(f => ({
+        ...f,
+        tipo: val,
+        departamento_destino_id: val === 'TRANSFERENCIA_DEPARTAMENTO' ? '' : (activo?.departamento_id ?? ''),
+        ubicacion_destino_id: val === 'CAMBIO_RESGUARDANTE' ? (activo?.ubicacion_id ?? '') : f.ubicacion_destino_id,
+        ubicacion_destino_nombre: val === 'CAMBIO_RESGUARDANTE' ? '' : f.ubicacion_destino_nombre,
+        resguardante_destino_id: val === 'CAMBIO_UBICACION' ? (activo?.responsable_id ?? '') : f.resguardante_destino_id,
+        resguardante_destino_nombre: val === 'CAMBIO_UBICACION' ? (activo?.resguardante_externo_nombre ?? '') : f.resguardante_destino_nombre,
+      }));
+      setError('');
+      return;
+    }
     setForm({
       ...form,
       [e.target.name]: val,
@@ -1268,6 +1284,16 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.tipo === 'TRANSFERENCIA_DEPARTAMENTO') {
+      if (!form.departamento_destino_id) {
+        setError('Selecciona el departamento destino para transferir el activo.');
+        return;
+      }
+      if (form.departamento_destino_id === activo?.departamento_id) {
+        setError('El departamento destino debe ser distinto al departamento actual.');
+        return;
+      }
+    }
     setLoading(true);
     try {
       const payload = { ...form };
@@ -1304,8 +1330,9 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
               ? 'bg-blue-50 border-blue-300 text-blue-950'
               : 'bg-blue-950/30 border-blue-900 text-blue-100'
           }`}>
-            Este registro cambia datos patrimoniales del activo y deja trazabilidad en el expediente: origen, destino, responsable, fecha y motivo.
-            Para reparaciones o preventivos usa el modulo de Mantenimiento.
+            {esTransferencia
+              ? 'Transferencia de departamento cambia el responsable patrimonial vigente. El activo deja de contar en el departamento origen y pasa al departamento destino, conservando historial en expediente.'
+              : 'Este registro actualiza ubicacion o resguardante sin cambiar el departamento responsable. Para reparaciones o preventivos usa el modulo de Mantenimiento.'}
           </div>
 
           <div>
@@ -1321,24 +1348,38 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Departamento destino</label>
+              <label className="block text-sm text-slate-400 mb-1">
+                {esTransferencia ? 'Departamento destino *' : 'Departamento responsable'}
+              </label>
               <SelectDark
                 value={form.departamento_destino_id}
                 onChange={v => handleChange({ target: { name: 'departamento_destino_id', value: v } })}
-                options={[{ value: '', label: 'Sin cambio' }, ...departamentos.map(d => ({ value: d.id, label: d.nombre }))]}
+                disabled={!esTransferencia}
+                options={[
+                  { value: '', label: esTransferencia ? 'Selecciona destino' : 'Sin cambio' },
+                  ...departamentos
+                    .filter(d => !esTransferencia || d.id !== activo?.departamento_id)
+                    .map(d => ({ value: d.id, label: d.nombre })),
+                ]}
               />
+              {!esTransferencia && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Para cambiarlo, selecciona Transferencia departamento.
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Ubicación destino</label>
               <SelectDark
                 value={form.ubicacion_destino_id}
                 onChange={v => handleChange({ target: { name: 'ubicacion_destino_id', value: v } })}
+                disabled={esCambioResguardante}
                 options={[{ value: '', label: 'Sin ubicación registrada' }, ...ubicaciones.map(u => ({ value: u.id, label: u.label || u.nombre, sublabel: u.tipo }))]}
               />
             </div>
           </div>
 
-          {!form.ubicacion_destino_id && (
+          {!form.ubicacion_destino_id && !esCambioResguardante && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Ubicación física destino</label>
               <input name="ubicacion_destino_nombre" value={form.ubicacion_destino_nombre} onChange={handleChange}
@@ -1353,6 +1394,7 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
               <SelectDark
                 value={form.resguardante_destino_id}
                 onChange={v => handleChange({ target: { name: 'resguardante_destino_id', value: v } })}
+                disabled={esCambioUbicacion}
                 placeholder="Sin usuario SIGA"
                 options={[
                   { value: '', label: 'Sin usuario SIGA' },
@@ -1367,7 +1409,7 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
             <div>
               <label className="block text-sm text-slate-400 mb-1">Resguardante externo</label>
               <input name="resguardante_destino_nombre" value={form.resguardante_destino_nombre} onChange={handleChange}
-                disabled={Boolean(form.resguardante_destino_id)}
+                disabled={Boolean(form.resguardante_destino_id) || esCambioUbicacion}
                 placeholder="Nombre si no tiene cuenta SIGA"
                 className="w-full input-dark text-white px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"/>
             </div>
