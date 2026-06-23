@@ -946,6 +946,23 @@ CAMPO_ACTIVO_LABELS = {
 
 
 def _descripcion_auditoria_activo(accion: str, detalle: dict) -> str | None:
+    cambios = detalle.get("cambios") if isinstance(detalle, dict) else None
+    if isinstance(cambios, list) and cambios:
+        partes = []
+        for cambio in cambios[:5]:
+            if not isinstance(cambio, dict):
+                continue
+            etiqueta = cambio.get("etiqueta") or CAMPO_ACTIVO_LABELS.get(str(cambio.get("campo")), str(cambio.get("campo", "")).replace("_", " "))
+            antes = cambio.get("antes") or "Sin dato"
+            despues = cambio.get("despues") or "Sin dato"
+            partes.append(f"{etiqueta}: {antes} -> {despues}")
+        if partes:
+            extra = len(cambios) - len(partes)
+            texto = "; ".join(partes)
+            if extra > 0:
+                texto = f"{texto}; y {extra} cambio(s) mas"
+            return f"Se actualizaron: {texto}."
+
     campos = detalle.get("campos") if isinstance(detalle, dict) else None
     if not isinstance(campos, list) or not campos:
         return None
@@ -976,6 +993,43 @@ def _descripcion_auditoria_activo(accion: str, detalle: dict) -> str | None:
     if extra > 0:
         texto = f"{texto} y {extra} dato(s) mas"
     return f"{prefijo}: {texto}."
+
+
+def _valor_auditoria_activo(db: Session, campo: str, valor) -> str:
+    if valor is None or valor == "":
+        return "Sin dato"
+    if campo == "laboratorio_id":
+        item = db.query(Laboratorio).filter(Laboratorio.id == valor).first()
+        return item.nombre if item else f"Laboratorio #{valor}"
+    if campo == "departamento_id":
+        item = db.query(Departamento).filter(Departamento.id == valor).first()
+        return item.nombre if item else f"Departamento #{valor}"
+    if campo == "ubicacion_id":
+        item = db.query(UbicacionInventario).filter(UbicacionInventario.id == valor).first()
+        return item.nombre if item else f"Ubicacion #{valor}"
+    if campo == "responsable_id":
+        item = db.query(Usuario).filter(Usuario.id == valor).first()
+        return item.nombre if item else f"Usuario #{valor}"
+    if isinstance(valor, bool):
+        return "Si" if valor else "No"
+    if isinstance(valor, (datetime.date, datetime.datetime)):
+        return valor.isoformat()
+    return str(valor).replace("_", " ")
+
+
+def _cambios_auditoria_activo(db: Session, activo: Activo, campos: dict) -> list[dict]:
+    cambios = []
+    for campo, nuevo in campos.items():
+        anterior = getattr(activo, campo)
+        if nuevo == anterior:
+            continue
+        cambios.append({
+            "campo": campo,
+            "etiqueta": CAMPO_ACTIVO_LABELS.get(campo, campo.replace("_", " ")),
+            "antes": _valor_auditoria_activo(db, campo, anterior),
+            "despues": _valor_auditoria_activo(db, campo, nuevo),
+        })
+    return cambios
 
 
 def _meta_validacion_activo(a: Activo, db: Session) -> dict:
@@ -2241,13 +2295,19 @@ def editar_activo(
     if tipo_final == "ACTIVO":
         campos["cantidad"] = 1
         campos["stock_minimo"] = None
+    cambios_auditoria = _cambios_auditoria_activo(db, a, campos)
+    if not cambios_auditoria:
+        return _serializar_activo(a, db)
     for campo, valor in campos.items():
         setattr(a, campo, valor)
     db.commit()
     db.refresh(a)
     registrar(db, accion=Accion.EDITAR_ACTIVO, recurso=Recurso.ACTIVO,
               usuario=current_user, recurso_id=a.id,
-              detalle={"campos": list(campos.keys())},
+              detalle={
+                  "campos": [c["campo"] for c in cambios_auditoria],
+                  "cambios": cambios_auditoria,
+              },
               request=request)
     return _serializar_activo(a, db)
 
