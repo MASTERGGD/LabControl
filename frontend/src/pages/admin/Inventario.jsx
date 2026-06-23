@@ -1574,6 +1574,21 @@ const VALIDACION_DECISION = {
   },
 };
 
+function validacionRevisionLabel(activo) {
+  return activo?.validacion_revisor ? 'Reviso' : 'Revision';
+}
+
+function validacionRevisionValue(activo) {
+  if (activo?.validacion_revisor) return activo.validacion_revisor;
+  const estado = (activo?.estado_admin || 'BORRADOR').toUpperCase();
+  if (estado === 'BORRADOR') return 'Pendiente de revision';
+  if (estado === 'EN_REVISION') return 'En revision';
+  if (estado === 'OBSERVADO') return 'Observado sin revisor registrado';
+  if (estado === 'RECHAZADO') return 'No autorizado sin revisor registrado';
+  if (estado === 'VALIDADO') return 'Validado sin revisor registrado';
+  return 'Sin revision';
+}
+
 function ModalDecisionValidacion({
   decision,
   validando,
@@ -1982,7 +1997,12 @@ function PanelRevisionInventario({
                 <p>Categoria: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{categoriaActivoLabel(a.categoria)}</span></p>
                 <p>Serie: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.numero_serie || 'Sin serie'}</span></p>
                 <p>Registro: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{formatFechaCorta(a.registrado_fecha) || 'Sin fecha'}</span></p>
-                <p>Revisor: <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>{a.validacion_revisor || 'Sin revisar'}</span></p>
+                <p>
+                  {validacionRevisionLabel(a)}:{' '}
+                  <span className={isDay ? 'text-slate-700' : 'text-slate-300'}>
+                    {validacionRevisionValue(a)}
+                  </span>
+                </p>
               </div>
               {a.validacion_motivo && (
                 <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
@@ -1990,7 +2010,7 @@ function PanelRevisionInventario({
                     {a.estado_admin === 'RECHAZADO' ? 'Motivo de no autorización' : 'Observación'}: {a.validacion_motivo}
                   </p>
                   {a.validacion_revisor && (
-                    <p className="text-[10px] text-slate-500 mt-1">Revisó: {a.validacion_revisor}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Reviso: {a.validacion_revisor}</p>
                   )}
                 </div>
               )}
@@ -3121,9 +3141,9 @@ export default function Inventario() {
                         {a.validacion_motivo}
                       </p>
                     )}
-                    {a.validacion_revisor && (
+                    {((a.estado_admin || 'BORRADOR') !== 'VALIDADO' || a.validacion_revisor) && (
                       <p className="mt-0.5 text-[10px] text-slate-500">
-                        Revisó: {a.validacion_revisor}
+                        {validacionRevisionLabel(a)}: {validacionRevisionValue(a)}
                       </p>
                     )}
                   </td>
