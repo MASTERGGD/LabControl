@@ -916,6 +916,68 @@ def _serializar_audit_log(log: AuditLog) -> dict:
     }
 
 
+CAMPO_ACTIVO_LABELS = {
+    "laboratorio_id": "laboratorio",
+    "departamento_id": "departamento responsable",
+    "ubicacion_id": "ubicacion registrada",
+    "responsable_id": "resguardante SIGA",
+    "alcance": "alcance",
+    "tipo_inventario": "tipo de inventario",
+    "estado_admin": "estado de validacion",
+    "numero_oficial": "numero oficial/patrimonial",
+    "nombre": "nombre",
+    "categoria": "categoria",
+    "area": "area",
+    "marca": "marca",
+    "modelo": "modelo",
+    "numero_serie": "numero de serie",
+    "estado": "estado operativo",
+    "especificaciones": "especificaciones",
+    "observaciones": "observaciones",
+    "resguardante_externo_nombre": "resguardante fisico",
+    "ubicacion_tipo": "tipo de ubicacion",
+    "ubicacion_nombre": "ubicacion fisica",
+    "activo": "estatus del registro",
+    "cantidad": "cantidad",
+    "stock_minimo": "stock minimo",
+    "valor": "valor",
+    "fecha_adquisicion": "fecha de adquisicion",
+}
+
+
+def _descripcion_auditoria_activo(accion: str, detalle: dict) -> str | None:
+    campos = detalle.get("campos") if isinstance(detalle, dict) else None
+    if not isinstance(campos, list) or not campos:
+        return None
+
+    etiquetas = []
+    vistos = set()
+    for campo in campos:
+        etiqueta = CAMPO_ACTIVO_LABELS.get(str(campo), str(campo).replace("_", " "))
+        if etiqueta in vistos:
+            continue
+        vistos.add(etiqueta)
+        etiquetas.append(etiqueta)
+
+    if not etiquetas:
+        return None
+
+    if accion == Accion.CREAR_ACTIVO:
+        prefijo = "Se registro el activo con datos de"
+    elif accion == Accion.EDITAR_ACTIVO:
+        prefijo = "Se actualizaron datos del activo"
+    else:
+        prefijo = "Campos registrados"
+
+    max_visibles = 8
+    visibles = etiquetas[:max_visibles]
+    extra = len(etiquetas) - len(visibles)
+    texto = ", ".join(visibles)
+    if extra > 0:
+        texto = f"{texto} y {extra} dato(s) mas"
+    return f"{prefijo}: {texto}."
+
+
 def _meta_validacion_activo(a: Activo, db: Session) -> dict:
     logs = db.query(AuditLog).filter(
         AuditLog.recurso == Recurso.ACTIVO,
@@ -2864,7 +2926,7 @@ def expediente_activo(
             estado = detalle.get("estado_nuevo")
         else:
             titulo = log.accion.replace("_", " ")
-            descripcion = ", ".join(detalle.get("campos", [])) if isinstance(detalle.get("campos"), list) else None
+            descripcion = _descripcion_auditoria_activo(log.accion, detalle)
             estado = None
         timeline.append(_evento_expediente(
             "AUDITORIA",
