@@ -2431,7 +2431,11 @@ def listar_movimientos(
     if departamentos_visibles is not None:
         if not departamentos_visibles:
             return []
-        q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
+        q = q.filter(
+            (Activo.departamento_id.in_(departamentos_visibles)) |
+            (MovimientoInventario.departamento_origen_id.in_(departamentos_visibles)) |
+            (MovimientoInventario.departamento_destino_id.in_(departamentos_visibles))
+        )
     if activo_id:
         q = q.filter(MovimientoInventario.activo_id == activo_id)
     if estado:
@@ -2462,10 +2466,8 @@ def solicitar_movimiento(
     _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
     _validar_destinos_movimiento(data, db)
     _validar_movimiento_con_activo(data, activo)
-    cruza_departamento = data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id
-    if cruza_departamento and current_user.rol != RolUsuario.SUPER_ADMIN:
-        raise HTTPException(status_code=403, detail="Los movimientos entre departamentos requieren administracion central")
     tipo = data.tipo.upper()
+    cruza_departamento = tipo == "TRANSFERENCIA_DEPARTAMENTO" and data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id
     cantidad = data.cantidad or (1 if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" else activo.cantidad or 1)
 
     if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" and cantidad != 1:
@@ -2490,7 +2492,7 @@ def solicitar_movimiento(
         fecha_solicitud=_utcnow(),
         observaciones=data.observaciones,
     )
-    if aplicar_directo and (current_user.rol == RolUsuario.SUPER_ADMIN or not cruza_departamento):
+    if aplicar_directo and not cruza_departamento:
         ahora = _utcnow()
         mov.estado = "RECIBIDO"
         mov.autorizado_por_id = current_user.id
@@ -2517,6 +2519,16 @@ def _es_movimiento_institucional(mov: MovimientoInventario, activo: Activo) -> b
     return False
 
 
+def _puede_operar_movimiento_departamento(
+    db: Session,
+    usuario: Usuario,
+    departamento_id: int | None,
+) -> bool:
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
+        return True
+    return bool(departamento_id and departamento_id in departamentos_validacion_inventario(db, usuario))
+
+
 @router.post("/movimientos/{movimiento_id}/{accion}", summary="Actualizar estado de movimiento")
 def actualizar_movimiento(
     request: Request,
@@ -2524,7 +2536,7 @@ def actualizar_movimiento(
     accion: str,
     data: MovimientoInventarioEstado = MovimientoInventarioEstado(),
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
+    current_user: Usuario = Depends(get_current_user)
 ):
     mov = db.query(MovimientoInventario).filter(MovimientoInventario.id == movimiento_id).first()
     if not mov:
@@ -2533,16 +2545,18 @@ def actualizar_movimiento(
     assert_resource_access(activo, current_user)
     accion = accion.lower()
     ahora = _utcnow()
-    es_institucional = _es_movimiento_institucional(mov, activo)
+    es_transferencia = (mov.tipo or "").upper() == "TRANSFERENCIA_DEPARTAMENTO"
+    puede_origen = _puede_operar_movimiento_departamento(db, current_user, mov.departamento_origen_id)
+    puede_destino = _puede_operar_movimiento_departamento(db, current_user, mov.departamento_destino_id)
+    es_admin_global = _es_admin_inventario_global(current_user) or puede_validar_inventario_global(db, current_user)
 
     if accion == "autorizar":
         if mov.estado != "SOLICITADO":
             raise HTTPException(status_code=409, detail="Solo se pueden autorizar movimientos solicitados")
-        # Movimientos institucionales/inter-departamentales solo los autoriza SUPER_ADMIN
-        if es_institucional and current_user.rol != RolUsuario.SUPER_ADMIN:
+        if not (es_admin_global or puede_origen):
             raise HTTPException(
                 status_code=403,
-                detail="Los movimientos institucionales o entre departamentos requieren autorización de administración central"
+                detail="Solo el departamento origen o Inventario Institucional pueden autorizar este movimiento"
             )
         mov.estado = "AUTORIZADO"
         mov.autorizado_por_id = current_user.id
@@ -2550,32 +2564,37 @@ def actualizar_movimiento(
     elif accion == "rechazar":
         if mov.estado not in ("SOLICITADO", "AUTORIZADO"):
             raise HTTPException(status_code=409, detail="El movimiento ya no puede rechazarse")
-        if es_institucional and current_user.rol != RolUsuario.SUPER_ADMIN:
-            raise HTTPException(status_code=403, detail="Solo administración central puede rechazar movimientos institucionales")
+        if not (es_admin_global or puede_destino or puede_origen):
+            raise HTTPException(status_code=403, detail="Solo el departamento origen, el destino o Inventario Institucional pueden rechazar este movimiento")
         mov.estado = "RECHAZADO"
         mov.autorizado_por_id = current_user.id
         mov.fecha_autorizacion = ahora
     elif accion == "entregar":
-        if mov.estado != "AUTORIZADO":
-            raise HTTPException(status_code=409, detail="Solo se pueden entregar movimientos autorizados")
-        # Entrega: el LAB_ADMIN del laboratorio de origen o SUPER_ADMIN
-        if current_user.rol == RolUsuario.LAB_ADMIN:
-            lab_origen = activo.laboratorio_id
-            if lab_origen and current_user.laboratorio_id != lab_origen:
-                raise HTTPException(status_code=403, detail="Solo el responsable del laboratorio de origen puede registrar la entrega")
+        if mov.estado not in ("SOLICITADO", "AUTORIZADO"):
+            raise HTTPException(status_code=409, detail="Solo se pueden entregar movimientos solicitados o autorizados")
+        if not (es_admin_global or puede_origen):
+            raise HTTPException(status_code=403, detail="Solo el responsable del departamento origen puede registrar la entrega")
         mov.estado = "ENTREGADO"
         mov.entregado_por_id = current_user.id
         mov.fecha_entrega = ahora
     elif accion == "recibir":
-        if mov.estado not in ("AUTORIZADO", "ENTREGADO"):
-            raise HTTPException(status_code=409, detail="Solo se pueden recibir movimientos autorizados o entregados")
+        if mov.estado not in ("SOLICITADO", "AUTORIZADO", "ENTREGADO"):
+            raise HTTPException(status_code=409, detail="Solo se pueden recibir movimientos solicitados, autorizados o entregados")
+        if es_transferencia and not (es_admin_global or puede_destino):
+            raise HTTPException(status_code=403, detail="Solo el departamento destino puede recibir la transferencia")
+        if not es_transferencia and not (es_admin_global or puede_origen):
+            raise HTTPException(status_code=403, detail="No tienes permiso para recibir este movimiento")
         _aplicar_movimiento_recibido(activo, mov)
         mov.estado = "RECIBIDO"
+        mov.autorizado_por_id = mov.autorizado_por_id or current_user.id
+        mov.fecha_autorizacion = mov.fecha_autorizacion or ahora
         mov.recibido_por_id = current_user.id
         mov.fecha_recepcion = ahora
     elif accion == "cancelar":
         if mov.estado in ("RECIBIDO", "RECHAZADO"):
             raise HTTPException(status_code=409, detail="El movimiento ya no puede cancelarse")
+        if not (es_admin_global or puede_origen or current_user.id == mov.solicitado_por_id):
+            raise HTTPException(status_code=403, detail="Solo quien solicito el movimiento, el origen o Inventario Institucional pueden cancelarlo")
         mov.estado = "CANCELADO"
     else:
         raise HTTPException(status_code=422, detail="Accion invalida. Use: autorizar, rechazar, entregar, recibir o cancelar")

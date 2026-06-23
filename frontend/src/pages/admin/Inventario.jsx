@@ -1264,11 +1264,11 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
   const isDayModal = themeKey === 'day';
   const [form, setForm] = useState({
     tipo: 'TRANSFERENCIA_DEPARTAMENTO',
-    departamento_destino_id: activo?.departamento_id ?? '',
-    ubicacion_destino_id: activo?.ubicacion_id ?? '',
+    departamento_destino_id: '',
+    ubicacion_destino_id: '',
     ubicacion_destino_nombre: '',
-    resguardante_destino_id: activo?.responsable_id ?? '',
-    resguardante_destino_nombre: activo?.resguardante_externo_nombre ?? '',
+    resguardante_destino_id: '',
+    resguardante_destino_nombre: '',
     observaciones: '',
   });
   const [resguardantes, setResguardantes] = useState([]);
@@ -1362,7 +1362,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
               : 'bg-blue-950/30 border-blue-900 text-blue-100'
           }`}>
             {esTransferencia
-              ? 'Transferencia de departamento cambia el responsable patrimonial vigente. El activo deja de contar en el departamento origen y pasa al departamento destino, conservando historial en expediente.'
+              ? 'Solicita el traspaso al departamento destino. El activo seguira contando en el origen hasta que el destino revise sus condiciones y lo reciba.'
               : 'Este registro actualiza ubicacion o resguardante sin cambiar el departamento responsable. Para reparaciones o preventivos usa el modulo de Mantenimiento.'}
           </div>
 
@@ -1400,7 +1400,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
               )}
               {esTransferencia && departamentosDestino.length > 0 && (
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Si el destino no aparece, primero dalo de alta en Catalogos para mantener el inventario oficial.
+                  El destino confirmara ubicacion, resguardante y condiciones al recibir. Si no aparece, primero dalo de alta en Catalogos.
                 </p>
               )}
               {!esTransferencia && (
@@ -1414,13 +1414,13 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
               <SelectDark
                 value={form.ubicacion_destino_id}
                 onChange={v => handleChange({ target: { name: 'ubicacion_destino_id', value: v } })}
-                disabled={esCambioResguardante}
+                disabled={esTransferencia || esCambioResguardante}
                 options={[{ value: '', label: 'Sin ubicación registrada' }, ...ubicaciones.map(u => ({ value: u.id, label: u.label || u.nombre, sublabel: u.tipo }))]}
               />
             </div>
           </div>
 
-          {!form.ubicacion_destino_id && !esCambioResguardante && (
+          {!form.ubicacion_destino_id && !esCambioResguardante && !esTransferencia && (
             <div>
               <label className="block text-sm text-slate-400 mb-1">Ubicación física destino</label>
               <input name="ubicacion_destino_nombre" value={form.ubicacion_destino_nombre} onChange={handleChange}
@@ -1435,7 +1435,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
               <SelectDark
                 value={form.resguardante_destino_id}
                 onChange={v => handleChange({ target: { name: 'resguardante_destino_id', value: v } })}
-                disabled={esCambioUbicacion}
+                disabled={esTransferencia || esCambioUbicacion}
                 placeholder="Sin usuario SIGA"
                 options={[
                   { value: '', label: 'Sin usuario SIGA' },
@@ -1450,7 +1450,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
             <div>
               <label className="block text-sm text-slate-400 mb-1">Resguardante externo</label>
               <input name="resguardante_destino_nombre" value={form.resguardante_destino_nombre} onChange={handleChange}
-                disabled={Boolean(form.resguardante_destino_id) || esCambioUbicacion}
+                disabled={Boolean(form.resguardante_destino_id) || esTransferencia || esCambioUbicacion}
                 placeholder="Nombre si no tiene cuenta SIGA"
                 className="w-full input-dark text-white px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"/>
             </div>
@@ -1459,7 +1459,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
           <div>
             <label className="block text-sm text-slate-400 mb-1">Observaciones</label>
             <textarea name="observaciones" rows={2} value={form.observaciones} onChange={handleChange}
-              placeholder="Motivo del movimiento"
+              placeholder={esTransferencia ? 'Motivo del traspaso y condiciones conocidas del activo' : 'Motivo del movimiento'}
               className="w-full input-dark text-white px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"/>
           </div>
 
@@ -1472,7 +1472,7 @@ function ModalMovimiento({ activo, departamentos, departamentosDestino = departa
             <button type="submit" disabled={loading}
               className="flex-1 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
               style={{ color: '#FFFFFF' }}>
-              {loading ? 'Registrando...' : 'Registrar movimiento'}
+              {loading ? 'Registrando...' : (esTransferencia ? 'Solicitar transferencia' : 'Registrar movimiento')}
             </button>
           </div>
         </form>
@@ -2302,6 +2302,7 @@ export default function Inventario() {
   });
   const [stats, setStats]       = useState(null);
   const [mantenimientoAlertas, setMantenimientoAlertas] = useState(null);
+  const [transferenciasPendientes, setTransferenciasPendientes] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [filtroLab, setFiltroLab]         = useState(searchParams.get('laboratorio_id') || '');
   const [filtroAlcance, setFiltroAlcance] = useState('');
@@ -2349,7 +2350,7 @@ export default function Inventario() {
       const mantParams = new URLSearchParams(params);
       mantParams.delete('solo_disponibles');
 
-      const [rA, rL, rD, rDW, rDDest, rU, rS, rM, rC] = await Promise.all([
+      const [rA, rL, rD, rDW, rDDest, rU, rS, rM, rC, rMov] = await Promise.all([
         api.get(`/inventario/activos?${params}`),
         api.get('/laboratorios?solo_activos=false'),
         api.get('/inventario/departamentos-opciones?modo=lectura'),
@@ -2359,6 +2360,7 @@ export default function Inventario() {
         api.get(`/inventario/estadisticas?${statsParams}`),
         api.get(`/inventario/mantenimiento-alertas?${mantParams}`),
         api.get('/inventario/categorias'),
+        api.get('/inventario/movimientos?tipo=TRANSFERENCIA_DEPARTAMENTO'),
       ]);
       setActivos(rA.data);
       setLabs(rL.data);
@@ -2371,6 +2373,8 @@ export default function Inventario() {
       setStats(rS.data);
       setMantenimientoAlertas(rM.data);
       setCatalogoInventario(rC.data);
+      setTransferenciasPendientes((Array.isArray(rMov.data) ? rMov.data : [])
+        .filter(m => ['SOLICITADO', 'AUTORIZADO', 'ENTREGADO'].includes(m.estado)));
     } finally {
       setLoading(false);
     }
@@ -2408,6 +2412,45 @@ export default function Inventario() {
     filtroCat,
     filtroEstado,
   ].filter(Boolean).length;
+
+  const departamentosGestionablesIds = new Set((departamentosFormulario || []).map(d => Number(d.id)));
+  const puedeAtenderMovimiento = (mov, lado) => {
+    if (!puedeValidarInventario) return false;
+    if (departamentosFormularioGlobal || inventarioScopeGlobal) return true;
+    const id = lado === 'destino' ? mov.departamento_destino_id : mov.departamento_origen_id;
+    return id && departamentosGestionablesIds.has(Number(id));
+  };
+
+  const actualizarMovimiento = async (mov, accion) => {
+    const notas = window.prompt(
+      accion === 'recibir'
+        ? 'Observaciones de recepcion (condiciones del activo, ubicacion o resguardante):'
+        : accion === 'rechazar'
+          ? 'Motivo del rechazo:'
+          : 'Observaciones del movimiento:',
+      ''
+    );
+    if ((accion === 'rechazar') && !String(notas || '').trim()) {
+      toast('Escribe el motivo del rechazo.', 'error');
+      return;
+    }
+    try {
+      await api.post(`/inventario/movimientos/${mov.id}/${accion}`, {
+        observaciones: String(notas || '').trim() || undefined,
+      });
+      toast(
+        accion === 'recibir'
+          ? 'Transferencia recibida. El activo ya pertenece al departamento destino.'
+          : accion === 'rechazar'
+            ? 'Transferencia rechazada. El activo permanece en el departamento origen.'
+            : 'Movimiento actualizado.',
+        'success'
+      );
+      cargar();
+    } catch (error) {
+      toast(error.response?.data?.detail || 'No se pudo actualizar el movimiento.', 'error');
+    }
+  };
 
   const limpiarFiltros = () => {
     setFiltroLab('');
@@ -2698,6 +2741,101 @@ export default function Inventario() {
 
       {/* ── Tab: Activos (contenido original) ── */}
       {tabActivo === 'activos' && <>
+
+      {transferenciasPendientes.length > 0 && (
+        <div className={`mb-5 rounded-xl border px-4 py-3 ${
+          isDay
+            ? 'bg-amber-50 border-amber-200 text-slate-900'
+            : 'bg-amber-500/10 border-amber-500/30 text-amber-50'
+        }`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Transferencias pendientes de recepcion</p>
+              <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-amber-100/80'}`}>
+                El activo no cambia de departamento hasta que el destino lo reciba. Si no corresponde o llega danado, puede rechazarse y quedara en el historial.
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-500/20 px-3 py-1 text-xs font-semibold">
+              {transferenciasPendientes.length}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {transferenciasPendientes.slice(0, 5).map(mov => {
+              const puedeRecibir = puedeAtenderMovimiento(mov, 'destino');
+              const puedeOrigen = puedeAtenderMovimiento(mov, 'origen');
+              return (
+                <div
+                  key={mov.id}
+                  className={`rounded-lg border px-3 py-2 ${
+                    isDay ? 'bg-white border-amber-200' : 'bg-slate-950/40 border-white/10'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">
+                        {mov.activo_codigo} · {mov.activo_nombre}
+                      </p>
+                      <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {mov.departamento_origen_nombre || 'Origen sin departamento'} → {mov.departamento_destino_nombre || 'Destino sin departamento'}
+                      </p>
+                      {mov.observaciones && (
+                        <p className={`text-xs mt-1 ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>
+                          Nota: {mov.observaciones}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-amber-400/30 px-2 py-1 text-[11px] font-semibold">
+                        {mov.estado.replace(/_/g, ' ')}
+                      </span>
+                      {puedeOrigen && mov.estado === 'SOLICITADO' && (
+                        <button
+                          type="button"
+                          onClick={() => actualizarMovimiento(mov, 'entregar')}
+                          className="rounded-lg border border-blue-400/30 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/10"
+                        >
+                          Marcar entrega
+                        </button>
+                      )}
+                      {puedeRecibir && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => actualizarMovimiento(mov, 'recibir')}
+                            className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
+                          >
+                            Recibir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => actualizarMovimiento(mov, 'rechazar')}
+                            className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800"
+                          >
+                            Rechazar
+                          </button>
+                        </>
+                      )}
+                      {puedeOrigen && mov.estado !== 'ENTREGADO' && (
+                        <button
+                          type="button"
+                          onClick={() => actualizarMovimiento(mov, 'cancelar')}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                            isDay
+                              ? 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                              : 'border-white/15 text-slate-300 hover:bg-white/8'
+                          }`}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {mantenimientoAlertas && (mantenimientoAlertas.vencidos > 0 || mantenimientoAlertas.proximos_7 > 0) && (
         <div className={`mb-5 rounded-xl border px-4 py-3 ${
