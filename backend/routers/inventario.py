@@ -1463,15 +1463,19 @@ def departamentos_opciones_inventario(
     current_user: Usuario = Depends(get_current_user),
 ):
     modo = (modo or "lectura").lower()
-    if modo not in ("lectura", "escritura"):
-        raise HTTPException(status_code=422, detail="modo debe ser lectura o escritura")
+    if modo not in ("lectura", "escritura", "destino"):
+        raise HTTPException(status_code=422, detail="modo debe ser lectura, escritura o destino")
 
     scope_global = _es_admin_inventario_global(current_user) or puede_validar_inventario_global(db, current_user)
     query = db.query(Departamento)
     if activo is not None:
         query = query.filter(Departamento.activo == activo)
 
-    if not scope_global:
+    if modo == "destino":
+        visibles = _departamentos_visibles_inventario(db, current_user)
+        if visibles is not None and not visibles:
+            return {"items": [], "scope_global": False, "modo": modo}
+    elif not scope_global:
         if modo == "escritura":
             ids = sorted(set(departamentos_inventario(db, current_user)) | set(departamentos_validacion_inventario(db, current_user)))
         else:

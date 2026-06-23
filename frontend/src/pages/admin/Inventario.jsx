@@ -1228,7 +1228,7 @@ function ModalActivo({
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
-function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }) {
+function ModalMovimiento({ activo, departamentos, departamentosDestino = departamentos, ubicaciones, onClose, onSave }) {
   const { themeKey } = useTheme();
   const isDayModal = themeKey === 'day';
   const [form, setForm] = useState({
@@ -1357,11 +1357,21 @@ function ModalMovimiento({ activo, departamentos, ubicaciones, onClose, onSave }
                 disabled={!esTransferencia}
                 options={[
                   { value: '', label: esTransferencia ? 'Selecciona destino' : 'Sin cambio' },
-                  ...departamentos
+                  ...departamentosDestino
                     .filter(d => !esTransferencia || d.id !== activo?.departamento_id)
-                    .map(d => ({ value: d.id, label: d.nombre })),
+                    .map(d => ({ value: d.id, label: d.nombre, wrap: true })),
                 ]}
               />
+              {esTransferencia && departamentosDestino.length === 0 && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  No hay departamentos destino disponibles. Registra o activa el departamento en Catalogos antes de transferir.
+                </p>
+              )}
+              {esTransferencia && departamentosDestino.length > 0 && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Si el destino no aparece, primero dalo de alta en Catalogos para mantener el inventario oficial.
+                </p>
+              )}
               {!esTransferencia && (
                 <p className="mt-1 text-[11px] text-slate-500">
                   Para cambiarlo, selecciona Transferencia departamento.
@@ -2228,6 +2238,7 @@ export default function Inventario() {
   const [activos, setActivos]   = useState([]);
   const [labs, setLabs]         = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  const [departamentosDestino, setDepartamentosDestino] = useState([]);
   const [inventarioScopeGlobal, setInventarioScopeGlobal] = useState(true);
   const [departamentosFormulario, setDepartamentosFormulario] = useState([]);
   const [departamentosFormularioGlobal, setDepartamentosFormularioGlobal] = useState(true);
@@ -2285,11 +2296,12 @@ export default function Inventario() {
       const mantParams = new URLSearchParams(params);
       mantParams.delete('solo_disponibles');
 
-      const [rA, rL, rD, rDW, rU, rS, rM, rC] = await Promise.all([
+      const [rA, rL, rD, rDW, rDDest, rU, rS, rM, rC] = await Promise.all([
         api.get(`/inventario/activos?${params}`),
         api.get('/laboratorios?solo_activos=false'),
         api.get('/inventario/departamentos-opciones?modo=lectura'),
         api.get('/inventario/departamentos-opciones?modo=escritura'),
+        api.get('/inventario/departamentos-opciones?modo=destino'),
         api.get('/inventario/ubicaciones'),
         api.get(`/inventario/estadisticas?${statsParams}`),
         api.get(`/inventario/mantenimiento-alertas?${mantParams}`),
@@ -2298,6 +2310,7 @@ export default function Inventario() {
       setActivos(rA.data);
       setLabs(rL.data);
       setDepartamentos(rD.data.items || []);
+      setDepartamentosDestino(rDDest.data.items || []);
       setInventarioScopeGlobal(Boolean(rD.data.scope_global));
       setDepartamentosFormulario(rDW.data.items || []);
       setDepartamentosFormularioGlobal(Boolean(rDW.data.scope_global));
@@ -3251,6 +3264,7 @@ export default function Inventario() {
         <ModalMovimiento
           activo={activoMover}
           departamentos={departamentos}
+          departamentosDestino={departamentosDestino}
           ubicaciones={ubicaciones}
           onClose={() => setActivoMover(null)}
           onSave={() => { setActivoMover(null); cargar(); }}
