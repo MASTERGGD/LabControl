@@ -2243,7 +2243,9 @@ export default function Inventario() {
   const puedeImportarInventario = can('inventario:import') || puedeEditarInventario;
   const puedeExportarInventario = can('inventario:read');
   const puedeUsarPrestamos = can('prestamos:write');
-  const puedeGestionarMovimientos = puedeEditarInventario || puedeValidarInventario;
+  const puedeGestionarPatrimonio = puedeValidarInventario;
+  const puedeGestionarMovimientos = puedeGestionarPatrimonio;
+  const mensajeAccionResponsable = 'Requiere autorizacion del responsable de inventario del departamento.';
   const puedeAsignarLaboratorio = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol)
     || puedeValidarInventario;
   const isDay = themeKey === 'day';
@@ -2994,14 +2996,34 @@ export default function Inventario() {
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600/90 hover:bg-blue-600 text-white transition-colors">
                     Mover
                   </button>}
+                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
+                    <button
+                      type="button"
+                      disabled
+                      title={mensajeAccionResponsable}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
+                    >
+                      Mover
+                    </button>
+                  )}
                   <button onClick={() => setActivoExpediente(a)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors">
                     Exp.
                   </button>
-                  {activoValidado && <button onClick={() => descargarResguardo(a)}
+                  {puedeGestionarPatrimonio && activoValidado && <button onClick={() => descargarResguardo(a)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-700/80 hover:bg-amber-700 text-amber-50 transition-colors">
                     Resg.
                   </button>}
+                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
+                    <button
+                      type="button"
+                      disabled
+                      title={mensajeAccionResponsable}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
+                    >
+                      Resg.
+                    </button>
+                  )}
                   {activoValidado && <button onClick={() => descargarEtiquetas(a)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-700/80 hover:bg-teal-700 text-teal-50 transition-colors">
                     Etq.
@@ -3010,10 +3032,20 @@ export default function Inventario() {
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-yellow-700/80 hover:bg-yellow-700 text-yellow-50 transition-colors">
                     Mant.
                   </button>}
-                  {puedeEditarInventario && activoValidado && <button onClick={() => setActivoBaja(a)}
+                  {puedeGestionarPatrimonio && activoValidado && <button onClick={() => setActivoBaja(a)}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-900/70 hover:bg-red-800 text-red-100 transition-colors">
                     Baja
                   </button>}
+                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
+                    <button
+                      type="button"
+                      disabled
+                      title={mensajeAccionResponsable}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
+                    >
+                      Baja
+                    </button>
+                  )}
                   {activoValidado && puedeUsarPrestamos && !a.prestado && a.estado === 'OPERATIVO' ? (
                     <button onClick={() => navigate('/admin/prestamos', { state: { activoId: a.id } })}
                       className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
@@ -3184,14 +3216,40 @@ export default function Inventario() {
                                 d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
                             </svg>
                           </button>}
-                          <button onClick={() => descargarResguardo(a)}
+                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
+                            <button
+                              type="button"
+                              disabled
+                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
+                              title={mensajeAccionResponsable}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
+                              </svg>
+                            </button>
+                          )}
+                          {puedeGestionarPatrimonio && <button onClick={() => descargarResguardo(a)}
                             className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-gray-600 rounded-lg transition-colors"
                             title="Descargar resguardo">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                 d="M9 12h6m-6 4h6M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
                             </svg>
-                          </button>
+                          </button>}
+                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
+                            <button
+                              type="button"
+                              disabled
+                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
+                              title={mensajeAccionResponsable}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M9 12h6m-6 4h6M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+                              </svg>
+                            </button>
+                          )}
                           <button onClick={() => descargarEtiquetas(a)}
                             className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-gray-600 rounded-lg transition-colors"
                             title="Descargar etiqueta QR">
@@ -3208,7 +3266,7 @@ export default function Inventario() {
                                 d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                           </button>}
-                          {puedeEditarInventario && <button onClick={() => setActivoBaja(a)}
+                          {puedeGestionarPatrimonio && <button onClick={() => setActivoBaja(a)}
                             className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-gray-600 rounded-lg transition-colors"
                             title="Solicitar baja">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3216,6 +3274,19 @@ export default function Inventario() {
                                 d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                             </svg>
                           </button>}
+                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
+                            <button
+                              type="button"
+                              disabled
+                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
+                              title={mensajeAccionResponsable}
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                              </svg>
+                            </button>
+                          )}
                           {puedeUsarPrestamos && !a.prestado && a.estado === 'OPERATIVO' && (
                             <button onClick={() => navigate('/admin/prestamos', { state: { activoId: a.id } })}
                               className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-gray-600 rounded-lg transition-colors"
