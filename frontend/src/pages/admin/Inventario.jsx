@@ -576,6 +576,9 @@ function ModalActivo({
   const departamentoUnico = !esEdicion && departamentoBloqueado && departamentosDisponibles.length === 1
     ? departamentosDisponibles[0].id
     : '';
+  const departamentoInicial = activo?.departamento_id
+    ? departamentosDisponibles.find(d => String(d.id) === String(activo.departamento_id))
+    : (departamentoUnico ? departamentosDisponibles.find(d => String(d.id) === String(departamentoUnico)) : null);
   const labContexto = laboratorioInicialId
     ? labs.find(l => String(l.id) === String(laboratorioInicialId))
     : null;
@@ -601,7 +604,7 @@ function ModalActivo({
     estado_admin:      activo?.estado_admin      ?? (puedeValidarInventario ? 'VALIDADO' : 'BORRADOR'),
     nombre:            activo?.nombre            ?? '',
     categoria:         activo?.categoria         ?? 'COMPUTADORA',
-    area:              activo?.area              ?? '',
+    area:              activo?.area              ?? (departamentoInicial?.clave || ''),
     numero_oficial:    activo?.numero_oficial    ?? '',
     marca:             activo?.marca             ?? '',
     modelo:            activo?.modelo            ?? '',
@@ -638,6 +641,20 @@ function ModalActivo({
       setForm(f => ({ ...f, departamento_id: f.departamento_id || departamentosDisponibles[0].id }));
     }
   }, [departamentoBloqueado, departamentosDisponibles, esEdicion, form.alcance]);
+
+  useEffect(() => {
+    if (
+      !esEdicion &&
+      form.alcance === 'INSTITUCIONAL' &&
+      form.departamento_id &&
+      !form.area
+    ) {
+      const departamento = departamentosDisponibles.find(d => String(d.id) === String(form.departamento_id));
+      if (departamento?.clave) {
+        setForm(f => ({ ...f, area: f.area || departamento.clave }));
+      }
+    }
+  }, [departamentosDisponibles, esEdicion, form.alcance, form.area, form.departamento_id]);
 
   const labSeleccionado = form.alcance === 'LABORATORIO' && form.laboratorio_id
     ? labs.find(l => String(l.id) === String(form.laboratorio_id))
@@ -683,10 +700,22 @@ function ModalActivo({
     const val = ['laboratorio_id','departamento_id','ubicacion_id','responsable_id'].includes(e.target.name) ? (e.target.value === '' ? '' : Number(e.target.value))
               : e.target.name === 'valor'          ? (e.target.value === '' ? '' : Number(e.target.value))
               : e.target.name === 'activo'         ? e.target.checked
+              : e.target.name === 'area'           ? e.target.value.toUpperCase()
               : e.target.value;
+    const deptoAnterior = form.departamento_id
+      ? departamentosDisponibles.find(d => String(d.id) === String(form.departamento_id))
+      : null;
+    const deptoNuevo = e.target.name === 'departamento_id' && val
+      ? departamentosDisponibles.find(d => String(d.id) === String(val))
+      : null;
+    const areaSugerida = e.target.name === 'departamento_id' && deptoNuevo?.clave
+      && (!form.area || form.area === deptoAnterior?.clave)
+      ? { area: deptoNuevo.clave }
+      : {};
     const next = {
       ...form,
       [e.target.name]: val,
+      ...areaSugerida,
       ...(e.target.name === 'alcance' && val === 'INSTITUCIONAL' && !laboratorioBloqueado ? { laboratorio_id: '' } : {}),
       ...(e.target.name === 'alcance' && val === 'LABORATORIO' ? { departamento_id: '' } : {}),
     };
@@ -972,12 +1001,14 @@ function ModalActivo({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-slate-400 mb-1">
-                Área
-                <span className="text-slate-500 font-normal ml-1 text-xs">(prefijo del código)</span>
+                Prefijo del código de inventario
               </label>
               <input name="area" value={form.area} onChange={handleChange}
-                placeholder="Ej: LTI, LINF, LMEC"
+                placeholder="Ej: DSE, DPSE, LTI"
                 className="w-full input-dark text-white  px-3 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase placeholder-normal"/>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Se sugiere con la clave del departamento responsable; puedes ajustarlo si el formato institucional usa otra clave.
+              </p>
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Resguardante fisico</label>
