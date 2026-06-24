@@ -15,6 +15,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import api from '../hooks/useApi';
 import { useTheme } from '../context/ThemeContext';
+import { formatDateInMexico, formatDateTimeInMexico } from '../utils/timezone';
 
 const BADGE = {
   PENDIENTE:   'bg-yellow-500/15 text-yellow-300 border-yellow-500/30',
@@ -41,14 +42,12 @@ function badge(val) {
 
 function fmt(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatDateInMexico(iso, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function fmtDateTime(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleString('es-MX', {
+  return formatDateTimeInMexico(iso, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -220,6 +219,7 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+            <Field label="Codigo SIGA" value={bien.codigo_inventario} />
             <Field label="No. oficial" value={bien.numero_oficial} />
             <Field label="Departamento" value={bien.departamento_nombre || bien.laboratorio_nombre} />
             <Field label="Ubicacion" value={bien.ubicacion_label || bien.ubicacion_nombre} />
@@ -230,6 +230,9 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
             <Field label="Alcance" value={label(bien.alcance)} />
             <Field label="Ultimo evento" value={fmtDateTime(resumen.ultima_actualizacion)} />
           </div>
+          <p className="text-[11px] text-slate-500 mt-3">
+            El Codigo SIGA identifica al bien y se conserva aunque cambie de departamento. La transferencia actualiza el responsable patrimonial vigente y queda registrada en la linea de tiempo.
+          </p>
         </div>
       )}
 
