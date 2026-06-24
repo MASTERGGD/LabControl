@@ -23,6 +23,7 @@ from services.user_permissions import (
     PERM_INVENTARIO_VALIDATE,
     PERM_INVENTARIO_WRITE,
     es_responsable_departamento,
+    tiene_permiso_departamento,
 )
 
 router = APIRouter(prefix="/departamentos", tags=["Departamentos"])
@@ -195,6 +196,7 @@ class PermisoDepartamentoIn(BaseModel):
     usuario_id: int
     permiso: str = PERM_COMUNICADOS_WRITE
     activo: bool
+    scope_global: bool = False
 
 
 def _puede_administrar_permisos_departamento(dep: Departamento, usuario: Usuario) -> bool:
@@ -215,6 +217,7 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
     puede_comunicados = PERM_COMUNICADOS_WRITE in permisos_activos or es_responsable
     puede_inventario = PERM_INVENTARIO_WRITE in permisos_activos or es_responsable
     puede_validar_inventario = PERM_INVENTARIO_VALIDATE in permisos_activos
+    puede_inventario_institucional = tiene_permiso_departamento(db, u, PERM_INVENTARIO_VALIDATE, None)
     return {
         "id": u.id,
         "nombre": u.nombre,
@@ -230,6 +233,7 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
         "puede_enviar_comunicados": puede_comunicados,
         "puede_gestionar_inventario": puede_inventario,
         "puede_validar_inventario": puede_validar_inventario,
+        "puede_inventario_institucional": puede_inventario_institucional,
     }
 
 
@@ -256,6 +260,37 @@ def _upsert_permiso_departamento(
         usuario_id=usuario.id,
         permiso=permiso_nombre,
         departamento_id=departamento_id,
+        activo=activo,
+        otorgado_por_id=otorgado_por_id if activo else None,
+        creado_en=now,
+        actualizado_en=now,
+    )
+    db.add(permiso)
+    return permiso
+
+
+def _upsert_permiso_global(
+    db: Session,
+    usuario: Usuario,
+    permiso_nombre: str,
+    activo: bool,
+    otorgado_por_id: int,
+):
+    permiso = db.query(UsuarioPermiso).filter(
+        UsuarioPermiso.usuario_id == usuario.id,
+        UsuarioPermiso.departamento_id.is_(None),
+        UsuarioPermiso.permiso == permiso_nombre,
+    ).first()
+    now = _utcnow()
+    if permiso:
+        permiso.activo = activo
+        permiso.otorgado_por_id = otorgado_por_id if activo else permiso.otorgado_por_id
+        permiso.actualizado_en = now
+        return permiso
+    permiso = UsuarioPermiso(
+        usuario_id=usuario.id,
+        permiso=permiso_nombre,
+        departamento_id=None,
         activo=activo,
         otorgado_por_id=otorgado_por_id if activo else None,
         creado_en=now,
@@ -318,6 +353,10 @@ def actualizar_permiso_departamental(
         raise HTTPException(status_code=403, detail="Solo el responsable del departamento o Super Admin puede cambiar permisos")
     if data.permiso not in PERMISOS_DEPARTAMENTO:
         raise HTTPException(status_code=422, detail="Permiso departamental invalido")
+    if data.scope_global and data.permiso != PERM_INVENTARIO_VALIDATE:
+        raise HTTPException(status_code=422, detail="Solo inventario institucional puede ser global")
+    if data.scope_global and current_user.rol != RolUsuario.SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Solo Super Admin puede asignar inventario institucional")
 
     usuario = db.query(Usuario).filter(
         Usuario.id == data.usuario_id,
@@ -329,14 +368,23 @@ def actualizar_permiso_departamental(
     if dep.responsable_id == usuario.id and data.permiso != PERM_INVENTARIO_VALIDATE and not data.activo:
         raise HTTPException(status_code=400, detail="El responsable del departamento siempre conserva sus permisos")
 
-    _upsert_permiso_departamento(
-        db,
-        usuario,
-        departamento_id,
-        data.permiso,
-        data.activo,
-        current_user.id,
-    )
+    if data.scope_global:
+        _upsert_permiso_global(
+            db,
+            usuario,
+            data.permiso,
+            data.activo,
+            current_user.id,
+        )
+    else:
+        _upsert_permiso_departamento(
+            db,
+            usuario,
+            departamento_id,
+            data.permiso,
+            data.activo,
+            current_user.id,
+        )
     db.commit()
     return _serializar_usuario_departamento(db, usuario, departamento_id)
 

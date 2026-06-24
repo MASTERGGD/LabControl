@@ -185,9 +185,11 @@ function ModalResponsable({ departamento, onClose, onSaved }) {
 
 export function ModalPermisosComunicados({ departamento, onClose }) {
   const { toast } = useToast();
+  const { usuario: usuarioActual } = useAuth();
   const [usuarios, setUsuarios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
+  const isSuperAdmin = usuarioActual?.rol === 'SUPER_ADMIN';
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -211,7 +213,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const toggle = async (usuario, permiso, campo) => {
+  const toggle = async (usuario, permiso, campo, extra = {}) => {
     if (usuario.es_responsable && permiso !== 'inventario:validar') return;
     const activo = !usuario[campo];
     setSavingId(usuario.id);
@@ -220,6 +222,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
         usuario_id: usuario.id,
         permiso,
         activo,
+        ...extra,
       });
       setUsuarios(prev => prev.map(u => u.id === usuario.id ? data : u));
       toast(activo ? 'Permiso activado' : 'Permiso desactivado', 'success');
@@ -299,6 +302,21 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                     />
                     Validar inventario
                   </label>
+                  {isSuperAdmin && (
+                    <label
+                      className="flex items-center gap-2 text-sm text-emerald-200 cursor-pointer"
+                      title="Permite ver y validar inventario de toda la universidad sin cambiar la adscripcion del usuario."
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-emerald-500"
+                        checked={!!u.puede_inventario_institucional}
+                        disabled={savingId === u.id}
+                        onChange={() => toggle(u, 'inventario:validar', 'puede_inventario_institucional', { scope_global: true })}
+                      />
+                      Inventario institucional
+                    </label>
+                  )}
                   <label className={`flex items-center gap-2 text-sm ${u.es_responsable ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}>
                     <input
                       type="checkbox"
