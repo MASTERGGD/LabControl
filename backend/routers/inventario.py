@@ -1144,6 +1144,8 @@ def _serializar_movimiento(m: MovimientoInventario, db: Session) -> dict:
     autorizado = db.query(Usuario).filter(Usuario.id == m.autorizado_por_id).first() if m.autorizado_por_id else None
     entregado = db.query(Usuario).filter(Usuario.id == m.entregado_por_id).first() if m.entregado_por_id else None
     recibido = db.query(Usuario).filter(Usuario.id == m.recibido_por_id).first() if m.recibido_por_id else None
+    resguardante_origen = db.query(Usuario).filter(Usuario.id == m.resguardante_origen_id).first() if m.resguardante_origen_id else None
+    resguardante_destino = db.query(Usuario).filter(Usuario.id == m.resguardante_destino_id).first() if m.resguardante_destino_id else None
     return {
         "id": m.id,
         "activo_id": m.activo_id,
@@ -1160,9 +1162,9 @@ def _serializar_movimiento(m: MovimientoInventario, db: Session) -> dict:
         "ubicacion_destino_id": m.ubicacion_destino_id,
         "ubicacion_destino_nombre": m.ubicacion_destino_nombre or (ubi_d.nombre if ubi_d else None),
         "resguardante_origen_id": m.resguardante_origen_id,
-        "resguardante_origen_nombre": m.resguardante_origen_nombre,
+        "resguardante_origen_nombre": (resguardante_origen.nombre if resguardante_origen else None) or m.resguardante_origen_nombre,
         "resguardante_destino_id": m.resguardante_destino_id,
-        "resguardante_destino_nombre": m.resguardante_destino_nombre,
+        "resguardante_destino_nombre": (resguardante_destino.nombre if resguardante_destino else None) or m.resguardante_destino_nombre,
         "cantidad": m.cantidad,
         "solicitado_por": solicitado.nombre if solicitado else None,
         "autorizado_por": autorizado.nombre if autorizado else None,
