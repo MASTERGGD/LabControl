@@ -239,7 +239,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
       onMouseDown={onClose}
     >
       <div
-        className="glass w-full max-w-3xl shadow-glass animate-fadeUp max-h-[88vh] flex flex-col overflow-hidden"
+        className="glass w-full max-w-5xl shadow-glass animate-fadeUp max-h-[88vh] flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-permisos-departamento-title"
@@ -267,68 +267,85 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
           ) : usuarios.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">No hay usuarios activos asignados a este departamento.</p>
           ) : (
-            <div className="divide-y divide-white/5">
-              {usuarios.map(u => (
-                <div key={u.id} className="flex items-center gap-3 py-3 flex-wrap sm:flex-nowrap">
-                  <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-slate-300">{u.nombre?.[0]?.toUpperCase()}</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
-                    <p className="text-xs text-slate-400 truncate">{u.email}</p>
-                  </div>
-                  {u.es_responsable && (
-                    <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20">
-                      Responsable
-                    </span>
-                  )}
-                  <label className={`flex items-center gap-2 text-sm ${u.es_responsable ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}>
-                    <input
-                      type="checkbox"
-                      className="accent-emerald-500"
-                      checked={!!u.puede_gestionar_inventario}
-                      disabled={u.es_responsable || savingId === u.id}
-                      onChange={() => toggle(u, 'inventario:write', 'puede_gestionar_inventario')}
-                    />
-                    Captura inventario
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="accent-amber-500"
-                      checked={!!u.puede_validar_inventario}
-                      disabled={savingId === u.id}
-                      onChange={() => toggle(u, 'inventario:validar', 'puede_validar_inventario')}
-                    />
-                    Validar inventario
-                  </label>
-                  {isSuperAdmin && (
-                    <label
-                      className="flex items-center gap-2 text-sm text-emerald-200 cursor-pointer"
-                      title="Permite ver y validar inventario de toda la universidad sin cambiar la adscripcion del usuario."
-                    >
-                      <input
-                        type="checkbox"
-                        className="accent-emerald-500"
-                        checked={!!u.puede_inventario_institucional}
-                        disabled={savingId === u.id}
-                        onChange={() => toggle(u, 'inventario:validar', 'puede_inventario_institucional', { scope_global: true })}
-                      />
-                      Inventario institucional
-                    </label>
-                  )}
-                  <label className={`flex items-center gap-2 text-sm ${u.es_responsable ? 'text-slate-500' : 'text-slate-300 cursor-pointer'}`}>
-                    <input
-                      type="checkbox"
-                      className="accent-blue-500"
-                      checked={!!u.puede_enviar_comunicados}
-                      disabled={u.es_responsable || savingId === u.id}
-                      onChange={() => toggle(u, 'comunicados:write', 'puede_enviar_comunicados')}
-                    />
-                    Comunicados
-                  </label>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
+              <table className="w-full min-w-[820px] text-left">
+                <thead className="sticky top-0 z-10 bg-slate-950/95 backdrop-blur border-b border-white/10">
+                  <tr className="text-[11px] uppercase tracking-wide text-slate-400">
+                    <th className="px-4 py-3 font-semibold">Usuario</th>
+                    <th className="px-3 py-3 text-center font-semibold">Captura</th>
+                    <th className="px-3 py-3 text-center font-semibold">Validacion</th>
+                    {isSuperAdmin && <th className="px-3 py-3 text-center font-semibold">Institucional</th>}
+                    <th className="px-3 py-3 text-center font-semibold">Comunicados</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {usuarios.map(u => (
+                    <tr key={u.id} className="hover:bg-white/[0.04] transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-bold text-slate-300">{u.nombre?.[0]?.toUpperCase()}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-sm font-medium text-white truncate">{u.nombre}</p>
+                              {u.es_responsable && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/20 shrink-0">
+                                  Responsable
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-400 truncate max-w-[260px]">{u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Captura inventario para ${u.nombre}`}
+                          className="w-4 h-4 rounded accent-emerald-500"
+                          checked={!!u.puede_gestionar_inventario}
+                          disabled={u.es_responsable || savingId === u.id}
+                          onChange={() => toggle(u, 'inventario:write', 'puede_gestionar_inventario')}
+                        />
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Validar inventario para ${u.nombre}`}
+                          className="w-4 h-4 rounded accent-amber-500"
+                          checked={!!u.puede_validar_inventario}
+                          disabled={savingId === u.id}
+                          onChange={() => toggle(u, 'inventario:validar', 'puede_validar_inventario')}
+                        />
+                      </td>
+                      {isSuperAdmin && (
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Inventario institucional para ${u.nombre}`}
+                            title="Permite ver y validar inventario de toda la universidad sin cambiar la adscripcion del usuario."
+                            className="w-4 h-4 rounded accent-emerald-500"
+                            checked={!!u.puede_inventario_institucional}
+                            disabled={savingId === u.id}
+                            onChange={() => toggle(u, 'inventario:validar', 'puede_inventario_institucional', { scope_global: true })}
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Comunicados para ${u.nombre}`}
+                          className="w-4 h-4 rounded accent-blue-500"
+                          checked={!!u.puede_enviar_comunicados}
+                          disabled={u.es_responsable || savingId === u.id}
+                          onChange={() => toggle(u, 'comunicados:write', 'puede_enviar_comunicados')}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
