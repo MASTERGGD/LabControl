@@ -48,6 +48,27 @@ const responsablePatrimonialLabel = (activo) => {
   if (esLaboratorio) return activo?.laboratorio_nombre || 'Laboratorio sin asignar';
   return activo?.departamento_nombre || 'Sin departamento responsable';
 };
+const alertasOperativasActivo = (activo) => {
+  const alcance = (activo?.alcance || '').toUpperCase();
+  const categoria = (activo?.categoria || '').toUpperCase();
+  const esLaboratorio = alcance === 'LABORATORIO';
+  const esComputadoraLab = esLaboratorio && categoria === 'COMPUTADORA';
+  const sinUbicacion = !activo?.ubicacion_label && !activo?.ubicacion_nombre;
+  const sinResguardante = !activo?.responsable_nombre && !activo?.resguardante_externo_nombre;
+  const alertas = [];
+
+  if (!esLaboratorio && sinUbicacion) {
+    alertas.push('Ubicacion fisica por confirmar');
+  }
+  if (!esLaboratorio && sinResguardante) {
+    alertas.push('Resguardante por confirmar');
+  }
+  if (esLaboratorio && !esComputadoraLab && sinUbicacion) {
+    alertas.push('Ubicacion en laboratorio por confirmar');
+  }
+
+  return alertas;
+};
 const mantenimientoTone = estado => {
   if (estado === 'VENCIDO') return 'bg-red-500/15 text-red-300 border-red-500/30';
   if (estado === 'PROXIMO') return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
@@ -925,7 +946,7 @@ function ModalActivo({
             }`}>
               {form.alcance === 'LABORATORIO'
                 ? 'Ubicacion y resguardante se cambian desde Movimiento para conservar el historial del activo. El responsable operativo es el laboratorio.'
-                : 'Departamento, ubicacion, resguardante y adscripcion se cambian desde Movimiento para conservar el historial del activo.'}
+                : 'Departamento, ubicacion, resguardante y adscripcion se cambian desde Movimiento para conservar el historial del activo. Usa Movimiento > Cambio resguardante para corregir quien cuida fisicamente el bien.'}
             </div>
           )}
 
@@ -3311,12 +3332,7 @@ export default function Inventario() {
             const activoValidado = (a.estado_admin || 'VALIDADO') === 'VALIDADO';
             const activoEditable = puedeEditarInventario && (a.estado_admin !== 'RECHAZADO' || puedeValidarInventario);
             const computadoraDeLaboratorio = a.categoria === 'COMPUTADORA' && a.alcance === 'LABORATORIO';
-            const pendientesInstitucionales = a.alcance !== 'LABORATORIO'
-              ? [
-                  (!a.ubicacion_label && !a.ubicacion_nombre) ? 'Pendiente de ubicacion' : null,
-                  (!a.responsable_nombre && !a.resguardante_externo_nombre) ? 'Pendiente de resguardante' : null,
-                ].filter(Boolean)
-              : [];
+            const pendientesInstitucionales = alertasOperativasActivo(a);
             // Icono de herramienta cambia de color según estado
             const herramientaColor = a.categoria === 'HERRAMIENTA'
               ? (a.estado === 'OPERATIVO' ? 'bg-emerald-900/50 border-emerald-700'
@@ -3550,12 +3566,7 @@ export default function Inventario() {
                 const activoValidado = (a.estado_admin || 'VALIDADO') === 'VALIDADO';
                 const activoEditable = puedeEditarInventario && (a.estado_admin !== 'RECHAZADO' || puedeValidarInventario);
                 const computadoraDeLaboratorio = a.categoria === 'COMPUTADORA' && a.alcance === 'LABORATORIO';
-                const pendientesInstitucionales = a.alcance !== 'LABORATORIO'
-                  ? [
-                      (!a.ubicacion_label && !a.ubicacion_nombre) ? 'Pendiente de ubicacion' : null,
-                      (!a.responsable_nombre && !a.resguardante_externo_nombre) ? 'Pendiente de resguardante' : null,
-                    ].filter(Boolean)
-                  : [];
+                const pendientesInstitucionales = alertasOperativasActivo(a);
                 return (
                 <tr key={a.id}
                   className={`transition-colors ${!a.activo ? 'opacity-50' : ''}`}
