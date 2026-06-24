@@ -1259,6 +1259,137 @@ function ModalActivo({
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
+function ModalAccionMovimiento({ mov, accion, onClose, onConfirm }) {
+  const { themeKey } = useTheme();
+  const isDayModal = themeKey === 'day';
+  const [notas, setNotas] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const textos = {
+    entregar: {
+      titulo: 'Marcar entrega',
+      ayuda: 'Confirma que el departamento origen ya entrego fisicamente el activo. El activo seguira en origen hasta que el destino lo reciba.',
+      etiqueta: 'Observaciones de entrega',
+      placeholder: 'Ej: Se entrega casillero en buen estado al area destino',
+      boton: 'Confirmar entrega',
+      tono: 'bg-blue-700 hover:bg-blue-800',
+    },
+    recibir: {
+      titulo: 'Recibir transferencia',
+      ayuda: 'Confirma que el departamento destino reviso el activo y acepta que pase a su inventario.',
+      etiqueta: 'Condiciones al recibir',
+      placeholder: 'Ej: Recibido completo, sin golpes visibles, queda pendiente asignar resguardante',
+      boton: 'Recibir activo',
+      tono: 'bg-emerald-700 hover:bg-emerald-800',
+    },
+    rechazar: {
+      titulo: 'Rechazar transferencia',
+      ayuda: 'Registra el motivo. El activo permanecera en el departamento origen y el rechazo quedara en el expediente.',
+      etiqueta: 'Motivo del rechazo *',
+      placeholder: 'Ej: El activo llego danado o no corresponde al traspaso solicitado',
+      boton: 'Rechazar transferencia',
+      tono: 'bg-red-700 hover:bg-red-800',
+      requerido: true,
+    },
+    cancelar: {
+      titulo: 'Cancelar transferencia',
+      ayuda: 'Cancela la solicitud antes de que sea recibida por el departamento destino.',
+      etiqueta: 'Motivo de cancelacion',
+      placeholder: 'Ej: El activo ya no sera trasladado',
+      boton: 'Cancelar movimiento',
+      tono: 'bg-slate-700 hover:bg-slate-800',
+    },
+  };
+  const cfg = textos[accion] || textos.entregar;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (cfg.requerido && !notas.trim()) {
+      setError('Escribe el motivo antes de continuar.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await onConfirm(notas.trim());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <form
+        onSubmit={submit}
+        className={`w-full max-w-lg rounded-2xl border shadow-2xl ${
+          isDayModal
+            ? 'border-slate-200 bg-white text-slate-900'
+            : 'border-white/10 bg-slate-900 text-white'
+        }`}
+      >
+        <div className={`px-5 py-4 border-b ${isDayModal ? 'border-slate-200' : 'border-white/10'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold">{cfg.titulo}</h3>
+              <p className={`text-xs mt-1 ${isDayModal ? 'text-slate-500' : 'text-slate-400'}`}>
+                {mov?.activo_codigo} · {mov?.activo_nombre}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className={isDayModal ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'}>
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className={`rounded-xl border px-4 py-3 text-sm ${
+            isDayModal
+              ? 'border-blue-200 bg-blue-50 text-blue-950'
+              : 'border-blue-500/30 bg-blue-500/10 text-blue-100'
+          }`}>
+            {cfg.ayuda}
+          </div>
+          <div>
+            <label className={`block text-sm font-medium mb-1 ${isDayModal ? 'text-slate-700' : 'text-slate-300'}`}>
+              {cfg.etiqueta}
+            </label>
+            <textarea
+              value={notas}
+              onChange={(e) => { setNotas(e.target.value); setError(''); }}
+              rows={4}
+              placeholder={cfg.placeholder}
+              className={`w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500 ${
+                isDayModal
+                  ? 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400'
+                  : 'border-white/10 bg-slate-950 text-white placeholder:text-slate-500'
+              }`}
+            />
+          </div>
+          {error && <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className={`flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold ${
+                isDayModal
+                  ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                  : 'border-white/15 text-slate-200 hover:bg-white/10'
+              }`}
+            >
+              Volver
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 ${cfg.tono}`}
+            >
+              {loading ? 'Guardando...' : cfg.boton}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ModalMovimiento({ activo, departamentos, departamentosDestino = departamentos, ubicaciones, onClose, onSave }) {
   const { themeKey } = useTheme();
   const isDayModal = themeKey === 'day';
@@ -2303,6 +2434,7 @@ export default function Inventario() {
   const [stats, setStats]       = useState(null);
   const [mantenimientoAlertas, setMantenimientoAlertas] = useState(null);
   const [transferenciasPendientes, setTransferenciasPendientes] = useState([]);
+  const [movimientoAccion, setMovimientoAccion] = useState(null);
   const [loading, setLoading]   = useState(true);
   const [filtroLab, setFiltroLab]         = useState(searchParams.get('laboratorio_id') || '');
   const [filtroAlcance, setFiltroAlcance] = useState('');
@@ -2421,19 +2553,13 @@ export default function Inventario() {
     return id && departamentosGestionablesIds.has(Number(id));
   };
 
-  const actualizarMovimiento = async (mov, accion) => {
-    const notas = window.prompt(
-      accion === 'recibir'
-        ? 'Observaciones de recepcion (condiciones del activo, ubicacion o resguardante):'
-        : accion === 'rechazar'
-          ? 'Motivo del rechazo:'
-          : 'Observaciones del movimiento:',
-      ''
-    );
-    if ((accion === 'rechazar') && !String(notas || '').trim()) {
-      toast('Escribe el motivo del rechazo.', 'error');
-      return;
-    }
+  const abrirAccionMovimiento = (mov, accion) => {
+    setMovimientoAccion({ mov, accion });
+  };
+
+  const actualizarMovimiento = async (notas = '') => {
+    if (!movimientoAccion) return;
+    const { mov, accion } = movimientoAccion;
     try {
       await api.post(`/inventario/movimientos/${mov.id}/${accion}`, {
         observaciones: String(notas || '').trim() || undefined,
@@ -2446,9 +2572,11 @@ export default function Inventario() {
             : 'Movimiento actualizado.',
         'success'
       );
+      setMovimientoAccion(null);
       cargar();
     } catch (error) {
       toast(error.response?.data?.detail || 'No se pudo actualizar el movimiento.', 'error');
+      throw error;
     }
   };
 
@@ -2785,14 +2913,18 @@ export default function Inventario() {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-amber-400/30 px-2 py-1 text-[11px] font-semibold">
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                        isDay
+                          ? 'bg-amber-600 text-white'
+                          : 'border border-amber-400/30 bg-amber-500/15 text-amber-100'
+                      }`}>
                         {mov.estado.replace(/_/g, ' ')}
                       </span>
                       {puedeOrigen && mov.estado === 'SOLICITADO' && (
                         <button
                           type="button"
-                          onClick={() => actualizarMovimiento(mov, 'entregar')}
-                          className="rounded-lg border border-blue-400/30 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/10"
+                          onClick={() => abrirAccionMovimiento(mov, 'entregar')}
+                          className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800"
                         >
                           Marcar entrega
                         </button>
@@ -2801,14 +2933,14 @@ export default function Inventario() {
                         <>
                           <button
                             type="button"
-                            onClick={() => actualizarMovimiento(mov, 'recibir')}
+                            onClick={() => abrirAccionMovimiento(mov, 'recibir')}
                             className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800"
                           >
                             Recibir
                           </button>
                           <button
                             type="button"
-                            onClick={() => actualizarMovimiento(mov, 'rechazar')}
+                            onClick={() => abrirAccionMovimiento(mov, 'rechazar')}
                             className="rounded-lg bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800"
                           >
                             Rechazar
@@ -2818,7 +2950,7 @@ export default function Inventario() {
                       {puedeOrigen && mov.estado !== 'ENTREGADO' && (
                         <button
                           type="button"
-                          onClick={() => actualizarMovimiento(mov, 'cancelar')}
+                          onClick={() => abrirAccionMovimiento(mov, 'cancelar')}
                           className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                             isDay
                               ? 'border-slate-300 text-slate-600 hover:bg-slate-50'
@@ -3581,6 +3713,14 @@ export default function Inventario() {
             decisionValidacion.estado,
             motivo,
           )}
+        />
+      )}
+      {movimientoAccion && (
+        <ModalAccionMovimiento
+          mov={movimientoAccion.mov}
+          accion={movimientoAccion.accion}
+          onClose={() => setMovimientoAccion(null)}
+          onConfirm={actualizarMovimiento}
         />
       )}
     </AdminLayout>
