@@ -1177,6 +1177,44 @@ def _serializar_movimiento(m: MovimientoInventario, db: Session) -> dict:
     }
 
 
+def _descripcion_movimiento_expediente(mov_data: dict) -> str:
+    tipo = (mov_data.get("tipo") or "").upper()
+
+    if tipo == "CAMBIO_UBICACION":
+        origen = mov_data.get("ubicacion_origen_nombre") or "Sin ubicacion"
+        destino = mov_data.get("ubicacion_destino_nombre") or "Sin ubicacion"
+        return f"Ubicacion: {origen} -> {destino}"
+
+    if tipo == "CAMBIO_RESGUARDANTE":
+        origen = mov_data.get("resguardante_origen_nombre") or "Sin resguardante"
+        destino = mov_data.get("resguardante_destino_nombre") or "Sin resguardante"
+        return f"Resguardante: {origen} -> {destino}"
+
+    if tipo == "TRANSFERENCIA_DEPARTAMENTO":
+        origen = mov_data.get("departamento_origen_nombre") or "Origen sin departamento"
+        destino = mov_data.get("departamento_destino_nombre") or "Destino sin departamento"
+        partes = [f"Departamento: {origen} -> {destino}"]
+        ubicacion = mov_data.get("ubicacion_destino_nombre")
+        resguardante = mov_data.get("resguardante_destino_nombre")
+        if ubicacion:
+            partes.append(f"ubicacion destino: {ubicacion}")
+        if resguardante:
+            partes.append(f"resguardante destino: {resguardante}")
+        return "; ".join(partes)
+
+    origen = (
+        mov_data.get("departamento_origen_nombre") or
+        mov_data.get("ubicacion_origen_nombre") or
+        mov_data.get("resguardante_origen_nombre")
+    )
+    destino = (
+        mov_data.get("departamento_destino_nombre") or
+        mov_data.get("ubicacion_destino_nombre") or
+        mov_data.get("resguardante_destino_nombre")
+    )
+    return f"{origen or 'Origen sin dato'} -> {destino or 'Destino sin dato'}"
+
+
 def _serializar_solicitud_baja(s: SolicitudBajaInventario, db: Session) -> dict:
     activo     = db.query(Activo).filter(Activo.id == s.activo_id).first()
     solicitado = db.query(Usuario).filter(Usuario.id == s.solicitado_por_id).first()  if s.solicitado_por_id  else None
@@ -2938,23 +2976,13 @@ def expediente_activo(
     timeline = []
     for m in movimientos:
         mov_data = _serializar_movimiento(m, db)
-        origen = (
-            mov_data.get("departamento_origen_nombre") or
-            mov_data.get("ubicacion_origen_nombre") or
-            mov_data.get("resguardante_origen_nombre")
-        )
-        destino = (
-            mov_data.get("departamento_destino_nombre") or
-            mov_data.get("ubicacion_destino_nombre") or
-            mov_data.get("resguardante_destino_nombre")
-        )
         timeline.append(_evento_expediente(
             "MOVIMIENTO",
             m.fecha_recepcion or m.fecha_entrega or m.fecha_autorizacion or m.fecha_solicitud,
             (m.tipo or "MOVIMIENTO").replace("_", " "),
-            f"{origen or 'Origen sin dato'} -> {destino or 'Destino sin dato'}",
+            _descripcion_movimiento_expediente(mov_data),
             m.estado,
-            None,
+            mov_data.get("recibido_por") or mov_data.get("entregado_por") or mov_data.get("autorizado_por") or mov_data.get("solicitado_por"),
             {"movimiento_id": m.id},
         ))
     for b in bajas:
@@ -2999,6 +3027,8 @@ def expediente_activo(
         ))
     for log in auditoria:
         detalle = log.detalle or {}
+        if detalle.get("movimiento_id"):
+            continue
         if detalle.get("flujo") == "VALIDACION_INVENTARIO":
             titulo = f"Validacion: {detalle.get('estado_anterior', '—')} -> {detalle.get('estado_nuevo', '—')}"
             descripcion = detalle.get("observaciones")
