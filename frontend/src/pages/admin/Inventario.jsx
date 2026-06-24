@@ -1710,6 +1710,7 @@ function ModalBaja({ activo, onClose, onSave }) {
 
 const TABS = [
   { key: 'activos',         label: 'Activos' },
+  { key: 'transferencias',  label: 'Transferencias' },
   { key: 'revision',        label: 'Revision' },
   { key: 'bajas',           label: 'Bajas' },
   { key: 'levantamientos',  label: 'Levantamientos' },
@@ -2415,6 +2416,7 @@ export default function Inventario() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabsVisibles = TABS.filter(t => {
     if (t.key === 'activos') return true;
+    if (t.key === 'transferencias') return puedeValidarInventario;
     if (t.key === 'revision') return puedeValidarInventario;
     return puedeEditarInventario;
   });
@@ -2805,7 +2807,18 @@ export default function Inventario() {
                 ? 'text-white bg-white/8 border-b-2 border-emerald-400'
                 : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}>
-            {t.label}
+            <span className="inline-flex items-center gap-2">
+              {t.label}
+              {t.key === 'transferencias' && transferenciasPendientes.length > 0 && (
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  tabActivo === t.key
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'bg-amber-500/20 text-amber-200'
+                }`}>
+                  {transferenciasPendientes.length}
+                </span>
+              )}
+            </span>
           </button>
         ))}
       </div>
@@ -2867,10 +2880,144 @@ export default function Inventario() {
         />
       )}
 
+      {tabActivo === 'transferencias' && (
+        <div className="space-y-4">
+          <div className={`rounded-xl border px-4 py-3 ${
+            isDay
+              ? 'bg-amber-50 border-amber-200 text-slate-900'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-50'
+          }`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Transferencias pendientes de recepcion</p>
+                <p className={`text-xs mt-1 max-w-3xl ${isDay ? 'text-slate-600' : 'text-amber-100/80'}`}>
+                  El activo permanece en el departamento origen hasta que el destino revise sus condiciones y lo reciba. Si no corresponde o llega danado, puede rechazarse y queda trazabilidad en el expediente.
+                </p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                isDay ? 'bg-amber-600 text-white' : 'bg-amber-500/20 text-amber-100'
+              }`}>
+                {transferenciasPendientes.length} pendiente(s)
+              </span>
+            </div>
+          </div>
+
+          {transferenciasPendientes.length === 0 ? (
+            <div className={`rounded-2xl border px-6 py-12 text-center ${
+              isDay ? 'border-slate-200 bg-white text-slate-600' : 'border-white/10 bg-white/5 text-slate-400'
+            }`}>
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl">
+                ✓
+              </div>
+              <p className={`text-base font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>
+                No hay transferencias pendientes
+              </p>
+              <p className="mt-1 text-sm">
+                Cuando otro departamento envie activos para recepcion, apareceran aqui en tarjetas.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {transferenciasPendientes.map(mov => {
+                const puedeRecibir = puedeAtenderMovimiento(mov, 'destino');
+                const puedeOrigen = puedeAtenderMovimiento(mov, 'origen');
+                return (
+                  <div
+                    key={mov.id}
+                    className={`rounded-2xl border p-4 shadow-sm ${
+                      isDay ? 'border-slate-200 bg-white text-slate-900' : 'border-white/10 bg-slate-900/70 text-white'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold truncate">
+                          {mov.activo_nombre || 'Activo sin nombre'}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {mov.activo_codigo || 'Sin codigo'}
+                        </p>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                        isDay ? 'bg-amber-600 text-white' : 'bg-amber-500/15 text-amber-100'
+                      }`}>
+                        {mov.estado.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <div className={`mt-4 rounded-xl border px-3 py-2 text-sm ${
+                      isDay ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-slate-950/50'
+                    }`}>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <p className={`text-[11px] font-semibold uppercase ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>Origen</p>
+                          <p className="font-medium">{mov.departamento_origen_nombre || 'Sin departamento'}</p>
+                        </div>
+                        <div>
+                          <p className={`text-[11px] font-semibold uppercase ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>Destino</p>
+                          <p className="font-medium">{mov.departamento_destino_nombre || 'Sin departamento'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {mov.observaciones && (
+                      <p className={`mt-3 rounded-xl px-3 py-2 text-xs ${
+                        isDay ? 'bg-amber-50 text-slate-700' : 'bg-amber-500/10 text-amber-100'
+                      }`}>
+                        Nota: {mov.observaciones}
+                      </p>
+                    )}
+                    <div className="mt-4 flex flex-wrap justify-end gap-2">
+                      {puedeOrigen && mov.estado === 'SOLICITADO' && (
+                        <button
+                          type="button"
+                          onClick={() => abrirAccionMovimiento(mov, 'entregar')}
+                          className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"
+                        >
+                          Marcar entrega
+                        </button>
+                      )}
+                      {puedeRecibir && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => abrirAccionMovimiento(mov, 'recibir')}
+                            className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
+                          >
+                            Recibir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => abrirAccionMovimiento(mov, 'rechazar')}
+                            className="rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800"
+                          >
+                            Rechazar
+                          </button>
+                        </>
+                      )}
+                      {puedeOrigen && mov.estado !== 'ENTREGADO' && (
+                        <button
+                          type="button"
+                          onClick={() => abrirAccionMovimiento(mov, 'cancelar')}
+                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                            isDay
+                              ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                              : 'border-white/15 text-slate-200 hover:bg-white/8'
+                          }`}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Tab: Activos (contenido original) ── */}
       {tabActivo === 'activos' && <>
 
-      {transferenciasPendientes.length > 0 && (
+      {false && transferenciasPendientes.length > 0 && (
         <div className={`mb-5 rounded-xl border px-4 py-3 ${
           isDay
             ? 'bg-amber-50 border-amber-200 text-slate-900'
