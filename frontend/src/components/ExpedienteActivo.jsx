@@ -75,7 +75,7 @@ function SectionCard({ title, items, renderItem, emptyMsg = 'Sin registros' }) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-slate-500">{emptyMsg}</p>
+        <p className={`text-xs ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{emptyMsg}</p>
       )}
     </div>
   );
@@ -96,8 +96,8 @@ function KpiRow({ data }) {
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {kpis.map(([label, val, cls]) => (
         <div key={label} className={`border rounded-lg p-3 text-center ${isDay ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
-          <p className={`text-2xl font-bold ${val === 0 ? 'text-slate-600' : cls}`}>{val}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">{label}</p>
+          <p className={`text-2xl font-bold ${val === 0 ? (isDay ? 'text-slate-600' : 'text-slate-300') : cls}`}>{val}</p>
+          <p className={`text-[10px] mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{label}</p>
         </div>
       ))}
     </div>
@@ -105,10 +105,12 @@ function KpiRow({ data }) {
 }
 
 function Field({ label: title, value }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{title}</p>
-      <p className="text-xs text-slate-300 mt-0.5">{value || '—'}</p>
+      <p className={`text-[10px] uppercase tracking-wide ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{title}</p>
+      <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-950' : 'text-slate-100'}`}>{value || '—'}</p>
     </div>
   );
 }
@@ -133,15 +135,15 @@ function Timeline({ items }) {
                     : item.tipo === 'BAJA' ? 'bg-red-400'
                     : 'bg-emerald-400'
                 }`} />
-                {i < Math.min(items.length, 30) - 1 && <span className="w-px flex-1 bg-slate-700/40 mt-1" />}
+                {i < Math.min(items.length, 30) - 1 && <span className={`w-px flex-1 mt-1 ${isDay ? 'bg-slate-200' : 'bg-slate-700/60'}`} />}
               </div>
               <div className="min-w-0 pb-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className={`font-semibold ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{item.titulo}</p>
                   {item.estado && badge(item.estado)}
                 </div>
-                {item.descripcion && <p className="text-slate-400 mt-0.5">{item.descripcion}</p>}
-                <p className="text-slate-500 mt-0.5">
+                {item.descripcion && <p className={`mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>{item.descripcion}</p>}
+                <p className={`mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
                   {fmtDateTime(item.fecha)}{item.actor ? ` · ${item.actor}` : ''}
                 </p>
               </div>
@@ -149,7 +151,7 @@ function Timeline({ items }) {
           ))}
         </div>
       ) : (
-        <p className="text-xs text-slate-500">Sin eventos registrados.</p>
+        <p className={`text-xs ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>Sin eventos registrados.</p>
       )}
     </div>
   );
@@ -195,7 +197,7 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <p className={`font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{bien.nombre}</p>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
                 {bien.codigo_inventario} · {label(bien.categoria)}
               </p>
             </div>
@@ -230,7 +232,7 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
             <Field label="Alcance" value={label(bien.alcance)} />
             <Field label="Ultimo evento" value={fmtDateTime(resumen.ultima_actualizacion)} />
           </div>
-          <p className="text-[11px] text-slate-500 mt-3">
+          <p className={`text-[11px] mt-3 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
             El Codigo SIGA identifica al bien y se conserva aunque cambie de departamento. La transferencia actualiza el responsable patrimonial vigente y queda registrada en la linea de tiempo.
           </p>
         </div>
@@ -272,15 +274,15 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={m => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium">{m.tipo?.replace(/_/g,' ')}</span>
+                <span className={`font-medium ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{m.tipo?.replace(/_/g,' ')}</span>
                 {badge(m.estado)}
               </div>
-              <p className="text-slate-400">
+              <p className={isDay ? 'text-slate-600' : 'text-slate-300'}>
                 {m.departamento_origen_nombre || m.ubicacion_origen_nombre || '—'}
                 {' → '}
                 {m.departamento_destino_nombre || m.ubicacion_destino_nombre || '—'}
               </p>
-              <p className="text-slate-500 mt-0.5">{fmt(m.fecha_solicitud)}</p>
+              <p className={`mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{fmt(m.fecha_solicitud)}</p>
             </>
           )}
         />
@@ -291,10 +293,10 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={b => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium truncate">{b.motivo}</span>
+                <span className={`font-medium truncate ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{b.motivo}</span>
                 {badge(b.estado)}
               </div>
-              <div className="text-slate-400 space-y-0.5">
+              <div className={`space-y-0.5 ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>
                 <p>Solicitó: {b.solicitado_por || '—'} · {fmt(b.fecha_solicitud)}</p>
                 {b.autorizado_por && <p>Autorizó: {b.autorizado_por} · {fmt(b.fecha_autorizacion)}</p>}
                 {b.migrado_version && (
@@ -311,13 +313,13 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={r => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium">{r.levantamiento_nombre || `Levantamiento #${r.levantamiento_id}`}</span>
+                <span className={`font-medium ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{r.levantamiento_nombre || `Levantamiento #${r.levantamiento_id}`}</span>
                 {badge(r.estado)}
               </div>
-              <p className="text-slate-400">
+              <p className={isDay ? 'text-slate-600' : 'text-slate-300'}>
                 {r.ubicacion_reportada && `Ubicación reportada: ${r.ubicacion_reportada}`}
               </p>
-              <p className="text-slate-500">{fmt(r.fecha_revision)} · {r.revisado_por || '—'}</p>
+              <p className={isDay ? 'text-slate-500' : 'text-slate-400'}>{fmt(r.fecha_revision)} · {r.revisado_por || '—'}</p>
             </>
           )}
         />
@@ -328,10 +330,10 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={p => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium">{p.solicitante_nombre}</span>
+                <span className={`font-medium ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{p.solicitante_nombre}</span>
                 {badge(p.estado)}
               </div>
-              <p className="text-slate-400">Salida: {fmt(p.fecha_salida)} · Esperado: {fmt(p.fecha_retorno_esperada)}</p>
+              <p className={isDay ? 'text-slate-600' : 'text-slate-300'}>Salida: {fmt(p.fecha_salida)} · Esperado: {fmt(p.fecha_retorno_esperada)}</p>
               {p.fecha_retorno_real && <p className="text-emerald-400">Devuelto: {fmt(p.fecha_retorno_real)}</p>}
             </>
           )}
@@ -343,11 +345,11 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={i => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium">{i.tipo} · {i.prioridad}</span>
+                <span className={`font-medium ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{i.tipo} · {i.prioridad}</span>
                 {badge(i.estado)}
               </div>
-              <p className="text-slate-400 truncate">{i.descripcion || '—'}</p>
-              <p className="text-slate-500">{fmt(i.fecha_reporte)} · Reportó: {i.reportado_por || '—'}</p>
+              <p className={`truncate ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>{i.descripcion || '—'}</p>
+              <p className={isDay ? 'text-slate-500' : 'text-slate-400'}>{fmt(i.fecha_reporte)} · Reportó: {i.reportado_por || '—'}</p>
             </>
           )}
         />
@@ -358,19 +360,19 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
           renderItem={a => (
             <>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-slate-200 font-medium">{label(a.accion)}</span>
+                <span className={`font-medium ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>{label(a.accion)}</span>
                 {a.exito ? badge('OK') : badge('ERROR')}
               </div>
-              <p className="text-slate-400">{a.usuario_nombre || 'Sistema'}</p>
+              <p className={isDay ? 'text-slate-600' : 'text-slate-300'}>{a.usuario_nombre || 'Sistema'}</p>
               {a.detalle?.estado_nuevo && (
-                <p className="text-slate-500 mt-0.5">
+                <p className={`mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
                   {a.detalle.estado_anterior || '—'} → {a.detalle.estado_nuevo}
                 </p>
               )}
               {a.detalle?.observaciones && (
-                <p className="text-slate-400 mt-0.5">{a.detalle.observaciones}</p>
+                <p className={`mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>{a.detalle.observaciones}</p>
               )}
-              <p className="text-slate-500 mt-0.5">{fmtDateTime(a.fecha)}</p>
+              <p className={`mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{fmtDateTime(a.fecha)}</p>
             </>
           )}
         />
@@ -384,7 +386,7 @@ function ExpedienteContent({ activoId, activo: activoProp }) {
 
 export default function ExpedienteActivo({ activoId, activo, mode = 'drawer', onClose }) {
   const { themeKey } = useTheme();
-  const isDark = themeKey === 'dark';
+  const isDark = themeKey !== 'day';
 
   if (mode === 'page') {
     return (
