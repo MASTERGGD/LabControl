@@ -2417,6 +2417,88 @@ function PanelEstadoInventario({
   );
 }
 
+function ActionMenu({ items = [], isDay, align = 'right' }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const visibles = items.filter(Boolean);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+          isDay
+            ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+            : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+        }`}
+        title="Mas acciones"
+        aria-label="Mas acciones"
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="12" cy="5" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="12" cy="19" r="1.8" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          className={`absolute z-50 mt-2 w-56 overflow-hidden rounded-xl border py-1 shadow-2xl ${
+            align === 'left' ? 'left-0' : 'right-0'
+          } ${isDay ? 'border-slate-200 bg-white text-slate-800' : 'border-white/10 bg-slate-950 text-slate-100'}`}
+        >
+          {visibles.length ? visibles.map(item => (
+            <button
+              key={item.key || item.label}
+              type="button"
+              disabled={item.disabled}
+              title={item.title}
+              onClick={() => {
+                if (item.disabled) return;
+                setOpen(false);
+                item.onClick?.();
+              }}
+              className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
+                item.disabled
+                  ? 'cursor-not-allowed opacity-45'
+                  : isDay
+                    ? 'hover:bg-slate-50'
+                    : 'hover:bg-white/8'
+              }`}
+            >
+              <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${item.iconClass || (isDay ? 'bg-slate-100 text-slate-600' : 'bg-white/8 text-slate-300')}`}>
+                {item.icon || (
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
+                  </svg>
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block font-medium">{item.label}</span>
+                {item.hint && <span className={`block text-[11px] ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{item.hint}</span>}
+              </span>
+            </button>
+          )) : (
+            <p className={`px-3 py-2 text-sm ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+              Sin acciones disponibles
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Inventario() {
   const { themeKey } = useTheme();
   const { toast } = useToast();
@@ -2729,6 +2811,94 @@ export default function Inventario() {
       return;
     }
     actualizarEstadoValidacion(activo, estado);
+  };
+
+  const accionesSecundariasActivo = (activo, activoValidado) => {
+    if (!activoValidado) {
+      return [{
+        key: 'pendiente-validacion',
+        label: 'Pendiente de validacion',
+        hint: 'Las acciones oficiales se habilitan al validar.',
+        disabled: true,
+      }];
+    }
+
+    const acciones = [];
+
+    if (puedeGestionarMovimientos) {
+      acciones.push({
+        key: 'mover',
+        label: 'Movimiento patrimonial',
+        hint: 'Transferir, cambiar ubicacion o resguardante.',
+        onClick: () => setActivoMover(activo),
+      });
+    } else if (!puedeGestionarPatrimonio && puedeEditarInventario) {
+      acciones.push({
+        key: 'mover-bloqueado',
+        label: 'Movimiento patrimonial',
+        hint: mensajeAccionResponsable,
+        disabled: true,
+      });
+    }
+
+    if (puedeGestionarPatrimonio) {
+      acciones.push({
+        key: 'resguardo',
+        label: 'Descargar resguardo',
+        hint: 'Formato patrimonial del activo.',
+        onClick: () => descargarResguardo(activo),
+      });
+    } else if (!puedeGestionarPatrimonio && puedeEditarInventario) {
+      acciones.push({
+        key: 'resguardo-bloqueado',
+        label: 'Descargar resguardo',
+        hint: mensajeAccionResponsable,
+        disabled: true,
+      });
+    }
+
+    acciones.push({
+      key: 'etiqueta',
+      label: 'Etiqueta QR',
+      hint: 'Generar etiqueta del activo.',
+      onClick: () => descargarEtiquetas(activo),
+    });
+
+    if (puedeEditarInventario) {
+      acciones.push({
+        key: 'mantenimiento',
+        label: 'Programar mantenimiento',
+        hint: 'Preventivo o seguimiento operativo.',
+        onClick: () => abrirMantenimientoActivo(activo, true),
+      });
+    }
+
+    if (puedeGestionarPatrimonio) {
+      acciones.push({
+        key: 'baja',
+        label: 'Solicitar baja',
+        hint: 'Iniciar proceso de baja patrimonial.',
+        onClick: () => setActivoBaja(activo),
+      });
+    } else if (!puedeGestionarPatrimonio && puedeEditarInventario) {
+      acciones.push({
+        key: 'baja-bloqueada',
+        label: 'Solicitar baja',
+        hint: mensajeAccionResponsable,
+        disabled: true,
+      });
+    }
+
+    if (puedeUsarPrestamos && !activo.prestado && activo.estado === 'OPERATIVO') {
+      acciones.push({
+        key: 'prestar',
+        label: 'Prestar activo',
+        hint: 'Abrir modulo de prestamos con este activo.',
+        onClick: () => navigate('/admin/prestamos', { state: { activoId: activo.id } }),
+      });
+    }
+
+    return acciones;
   };
 
   return (
@@ -3455,8 +3625,8 @@ export default function Inventario() {
                     </button>
                   )}
                 </div>
-                {/* Acciones — Editar ghost (30%) + Prestar sólido (70%) */}
-                <div className="flex gap-2 pt-2 border-t border-white/5 mt-auto">
+                {/* Acciones principales + menu de opciones secundarias */}
+                <div className="flex items-center gap-2 pt-2 border-t border-white/5 mt-auto">
                   {activoEditable && <button onClick={() => setActivoEditar(a)}
                     className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                       isDay
@@ -3468,72 +3638,11 @@ export default function Inventario() {
                     </svg>
                     Editar
                   </button>}
-                  {puedeGestionarMovimientos && activoValidado && <button onClick={() => setActivoMover(a)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600/90 hover:bg-blue-600 text-white transition-colors">
-                    Mover
-                  </button>}
-                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
-                    <button
-                      type="button"
-                      disabled
-                      title={mensajeAccionResponsable}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
-                    >
-                      Mover
-                    </button>
-                  )}
                   <button onClick={() => setActivoExpediente(a)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors">
-                    Exp.
+                    className="flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors">
+                    Expediente
                   </button>
-                  {puedeGestionarPatrimonio && activoValidado && <button onClick={() => descargarResguardo(a)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-700/80 hover:bg-amber-700 text-amber-50 transition-colors">
-                    Resg.
-                  </button>}
-                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
-                    <button
-                      type="button"
-                      disabled
-                      title={mensajeAccionResponsable}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
-                    >
-                      Resg.
-                    </button>
-                  )}
-                  {activoValidado && <button onClick={() => descargarEtiquetas(a)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-700/80 hover:bg-teal-700 text-teal-50 transition-colors">
-                    Etq.
-                  </button>}
-                  {puedeEditarInventario && activoValidado && <button onClick={() => abrirMantenimientoActivo(a, true)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-yellow-700/80 hover:bg-yellow-700 text-yellow-50 transition-colors">
-                    Mant.
-                  </button>}
-                  {puedeGestionarPatrimonio && activoValidado && <button onClick={() => setActivoBaja(a)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-900/70 hover:bg-red-800 text-red-100 transition-colors">
-                    Baja
-                  </button>}
-                  {!puedeGestionarPatrimonio && puedeEditarInventario && activoValidado && (
-                    <button
-                      type="button"
-                      disabled
-                      title={mensajeAccionResponsable}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-400/20 text-slate-400/60 cursor-not-allowed"
-                    >
-                      Baja
-                    </button>
-                  )}
-                  {activoValidado && puedeUsarPrestamos && !a.prestado && a.estado === 'OPERATIVO' ? (
-                    <button onClick={() => navigate('/admin/prestamos', { state: { activoId: a.id } })}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
-                      Prestar
-                    </button>
-                  ) : !activoValidado ? (
-                    <span className="flex-1 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-center text-[10px] font-semibold text-amber-300">
-                      Pendiente de validación
-                    </span>
-                  ) : (
-                    <div className="flex-1" /> // espaciador para mantener el Editar alineado
-                  )}
+                  <ActionMenu isDay={isDay} items={accionesSecundariasActivo(a, activoValidado)} />
                 </div>
               </div>
             );
@@ -3554,7 +3663,7 @@ export default function Inventario() {
                 <th className="hidden xl:table-cell text-left px-4 py-3">Mant.</th>
                 <th className="text-left px-4 py-3">Validación</th>
                 <th className="hidden xl:table-cell text-left px-4 py-3">Préstamo</th>
-                <th className={`sticky right-0 z-10 text-right px-4 py-3 w-[150px] ${
+                <th className={`sticky right-0 z-10 text-right px-4 py-3 w-[136px] ${
                   isDay ? 'bg-slate-50' : 'bg-slate-950'
                 }`}>
                   Acciones
@@ -3672,123 +3781,34 @@ export default function Inventario() {
                   <td className={`sticky right-0 z-10 px-4 py-3 align-top ${
                     isDay ? 'bg-slate-50 shadow-[-12px_0_18px_rgba(15,23,42,0.08)]' : 'bg-slate-950 shadow-[-12px_0_18px_rgba(0,0,0,0.35)]'
                   }`}>
-                    <div className="flex items-center justify-end gap-1 flex-wrap max-w-[150px] ml-auto">
+                    <div className="flex items-center justify-end gap-2">
                       {activoEditable && <button onClick={() => setActivoEditar(a)}
-                        className="p-1.5 text-slate-400 hover:text-white hover:bg-gray-600 rounded-lg transition-colors"
-                        title="Editar activo">
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                          isDay
+                            ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                            : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+                        }`}
+                        title="Editar activo"
+                        aria-label="Editar activo">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>}
                       <button onClick={() => setActivoExpediente(a)}
-                        className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-gray-600 rounded-lg transition-colors"
-                        title="Expediente">
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
+                          isDay
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/15'
+                        }`}
+                        title="Expediente"
+                        aria-label="Expediente">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
                         </svg>
                       </button>
-                      {activoValidado ? (
-                        <>
-                          {puedeGestionarMovimientos && <button onClick={() => setActivoMover(a)}
-                            className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Mover activo">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
-                            </svg>
-                          </button>}
-                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
-                            <button
-                              type="button"
-                              disabled
-                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
-                              title={mensajeAccionResponsable}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
-                              </svg>
-                            </button>
-                          )}
-                          {puedeGestionarPatrimonio && <button onClick={() => descargarResguardo(a)}
-                            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Descargar resguardo">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M9 12h6m-6 4h6M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-                            </svg>
-                          </button>}
-                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
-                            <button
-                              type="button"
-                              disabled
-                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
-                              title={mensajeAccionResponsable}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M9 12h6m-6 4h6M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
-                              </svg>
-                            </button>
-                          )}
-                          <button onClick={() => descargarEtiquetas(a)}
-                            className="p-1.5 text-slate-400 hover:text-teal-400 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Descargar etiqueta QR">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h2m4 0v2m0 4h-2m-4-2h2" />
-                            </svg>
-                          </button>
-                          {puedeEditarInventario && <button onClick={() => abrirMantenimientoActivo(a, true)}
-                            className="p-1.5 text-slate-400 hover:text-yellow-400 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Programar mantenimiento">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </button>}
-                          {puedeGestionarPatrimonio && <button onClick={() => setActivoBaja(a)}
-                            className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-gray-600 rounded-lg transition-colors"
-                            title="Solicitar baja">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                            </svg>
-                          </button>}
-                          {!puedeGestionarPatrimonio && puedeEditarInventario && (
-                            <button
-                              type="button"
-                              disabled
-                              className="p-1.5 text-slate-400/35 cursor-not-allowed rounded-lg"
-                              title={mensajeAccionResponsable}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                              </svg>
-                            </button>
-                          )}
-                          {puedeUsarPrestamos && !a.prestado && a.estado === 'OPERATIVO' && (
-                            <button onClick={() => navigate('/admin/prestamos', { state: { activoId: a.id } })}
-                              className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-gray-600 rounded-lg transition-colors"
-                              title="Prestar activo">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                              </svg>
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <span
-                          className="ml-1 rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300"
-                          title="Las operaciones oficiales se habilitan después de la validación"
-                        >
-                          Pendiente de validación
-                        </span>
-                      )}
+                      <ActionMenu isDay={isDay} items={accionesSecundariasActivo(a, activoValidado)} />
                     </div>
                   </td>
                 </tr>
