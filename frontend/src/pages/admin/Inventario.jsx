@@ -2417,7 +2417,7 @@ function PanelEstadoInventario({
   );
 }
 
-function ActionMenu({ items = [], isDay, align = 'right' }) {
+function ActionMenu({ items = [], isDay, align = 'right', onOpenChange }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const visibles = items.filter(Boolean);
@@ -2425,17 +2425,24 @@ function ActionMenu({ items = [], isDay, align = 'right' }) {
   useEffect(() => {
     if (!open) return undefined;
     const close = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) setOpen(false);
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false);
+        onOpenChange?.(false);
+      }
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
-  }, [open]);
+  }, [open, onOpenChange]);
 
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen(v => {
+          const next = !v;
+          onOpenChange?.(next);
+          return next;
+        })}
         className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${
           isDay
             ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
@@ -2466,6 +2473,7 @@ function ActionMenu({ items = [], isDay, align = 'right' }) {
               onClick={() => {
                 if (item.disabled) return;
                 setOpen(false);
+                onOpenChange?.(false);
                 item.onClick?.();
               }}
               className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors ${
@@ -2560,6 +2568,7 @@ export default function Inventario() {
   const [activoExpediente, setActivoExpediente] = useState(null);
   const [modalImportar, setModalImportar] = useState(false);
   const [modalCatalogo, setModalCatalogo] = useState(false);
+  const [accionesMenuAbierto, setAccionesMenuAbierto] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [validandoId, setValidandoId] = useState(null);
   const [decisionValidacion, setDecisionValidacion] = useState(null);
@@ -3642,7 +3651,11 @@ export default function Inventario() {
                     className="flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-700 hover:bg-slate-600 text-white transition-colors">
                     Expediente
                   </button>
-                  <ActionMenu isDay={isDay} items={accionesSecundariasActivo(a, activoValidado)} />
+                  <ActionMenu
+                    isDay={isDay}
+                    items={accionesSecundariasActivo(a, activoValidado)}
+                    onOpenChange={open => setAccionesMenuAbierto(open ? `card-${a.id}` : null)}
+                  />
                 </div>
               </div>
             );
@@ -3778,7 +3791,7 @@ export default function Inventario() {
                       <span className="text-slate-600">—</span>
                     )}
                   </td>
-                  <td className={`sticky right-0 z-10 px-4 py-3 align-top ${
+                  <td className={`sticky right-0 px-4 py-3 align-top ${accionesMenuAbierto === `row-${a.id}` ? 'z-40' : 'z-10'} ${
                     isDay ? 'bg-slate-50 shadow-[-12px_0_18px_rgba(15,23,42,0.08)]' : 'bg-slate-950 shadow-[-12px_0_18px_rgba(0,0,0,0.35)]'
                   }`}>
                     <div className="flex items-center justify-end gap-2">
@@ -3808,7 +3821,11 @@ export default function Inventario() {
                             d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
                         </svg>
                       </button>
-                      <ActionMenu isDay={isDay} items={accionesSecundariasActivo(a, activoValidado)} />
+                      <ActionMenu
+                        isDay={isDay}
+                        items={accionesSecundariasActivo(a, activoValidado)}
+                        onOpenChange={open => setAccionesMenuAbierto(open ? `row-${a.id}` : null)}
+                      />
                     </div>
                   </td>
                 </tr>
