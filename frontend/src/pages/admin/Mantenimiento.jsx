@@ -2094,6 +2094,7 @@ function TabHistorial({ laboratorios }) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 export default function Mantenimiento() {
+  const { usuario } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabInicial = ['kanban', 'preventivo', 'historial'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'kanban';
   const activoInicialId = searchParams.get('activo_id') || '';
@@ -2114,6 +2115,19 @@ export default function Mantenimiento() {
   const { toast } = useToast();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
+  const permisosInventario = usuario?.permisos || [];
+  const esVistaInstitucional =
+    usuario?.rol === 'SUPER_ADMIN' ||
+    usuario?.rol === 'ADMINISTRATIVO' ||
+    permisosInventario.some(p => p.startsWith('inventario:'));
+  const tituloModulo = esVistaInstitucional ? 'Mantenimiento de activos' : 'Mantenimiento';
+  const subtituloModulo = esVistaInstitucional
+    ? 'Incidentes, preventivos e historial de bienes institucionales'
+    : 'Incidentes · Preventivo · Historial de equipos';
+  const textoBotonIncidente = esVistaInstitucional ? 'Reportar mantenimiento' : 'Reportar Incidente';
+  const placeholderBusqueda = esVistaInstitucional
+    ? 'Buscar activo, descripción, laboratorio...'
+    : 'Buscar equipo, descripción, lab...';
 
   const cargarTodo = useCallback(async () => {
     setLoading(true); setError('');
@@ -2207,7 +2221,7 @@ export default function Mantenimiento() {
     },
     {
       key: 'historial',
-      label: 'Historial por equipo',
+      label: esVistaInstitucional ? 'Historial por activo' : 'Historial por equipo',
       icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
       badge: null,
       badgeColor: '',
@@ -2219,8 +2233,8 @@ export default function Mantenimiento() {
       {/* Header principal */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>Mantenimiento</h1>
-          <p className={`${isDay ? 'text-slate-600' : 'text-slate-400'} text-sm mt-0.5`}>Incidentes · Preventivo · Historial de equipos</p>
+          <h1 className={`text-2xl font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>{tituloModulo}</h1>
+          <p className={`${isDay ? 'text-slate-600' : 'text-slate-400'} text-sm mt-0.5`}>{subtituloModulo}</p>
         </div>
         {tab === 'kanban' && (
           <button onClick={abrirModalNuevo}
@@ -2228,7 +2242,7 @@ export default function Mantenimiento() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
-            Reportar Incidente
+            {textoBotonIncidente}
           </button>
         )}
       </div>
@@ -2287,7 +2301,7 @@ export default function Mantenimiento() {
           {/* Filtros — los contadores viven en los encabezados de columna */}
           <div className="flex flex-wrap items-center gap-3 mb-5">
             <div className="flex-1 min-w-48">
-              <input type="text" placeholder="Buscar equipo, descripción, lab…"
+              <input type="text" placeholder={placeholderBusqueda}
                 value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)}
                 className="input-dark text-sm" />
             </div>
