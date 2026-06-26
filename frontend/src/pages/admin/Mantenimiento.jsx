@@ -64,12 +64,71 @@ function formatFecha(iso) {
 const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'✍️ Manual' };
 
 // ─── Tarjeta de incidente ─────────────────────────────────────────────────────
+const AREAS_ATENCION = {
+  TODAS: { label: 'Todas', short: 'Todas', icon: '▦', dayCls: 'bg-slate-50 text-slate-700 border-slate-200', darkCls: 'bg-slate-800/70 text-slate-200 border-slate-700' },
+  SISTEMAS: { label: 'Sistemas / TI', short: 'Sistemas', icon: '💻', dayCls: 'bg-blue-50 text-blue-800 border-blue-200', darkCls: 'bg-blue-500/10 text-blue-200 border-blue-500/30' },
+  INFRAESTRUCTURA: { label: 'Infraestructura', short: 'Infraestructura', icon: '🏗️', dayCls: 'bg-amber-50 text-amber-800 border-amber-200', darkCls: 'bg-amber-500/10 text-amber-200 border-amber-500/30' },
+  SERVICIOS: { label: 'Servicios generales', short: 'Servicios', icon: '🧹', dayCls: 'bg-emerald-50 text-emerald-800 border-emerald-200', darkCls: 'bg-emerald-500/10 text-emerald-200 border-emerald-500/30' },
+  LABORATORIO: { label: 'Laboratorio', short: 'Lab', icon: '🧪', dayCls: 'bg-violet-50 text-violet-800 border-violet-200', darkCls: 'bg-violet-500/10 text-violet-200 border-violet-500/30' },
+  INVENTARIO: { label: 'Inventario', short: 'Inventario', icon: '📦', dayCls: 'bg-orange-50 text-orange-800 border-orange-200', darkCls: 'bg-orange-500/10 text-orange-200 border-orange-500/30' },
+};
+
+function inferirAreaAtencion(item = {}) {
+  const texto = [
+    item.tipo,
+    item.descripcion,
+    item.activo_nombre || item.nombre,
+    item.activo_categoria || item.categoria,
+    item.activo_codigo || item.codigo_inventario,
+    item.pc_codigo,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  if (item.computadora_id || item.pc_codigo || /pc|computadora|laptop|teclado|mouse|monitor|impresora|internet|red|software|proyector|cpu|wifi/.test(texto)) {
+    return 'SISTEMAS';
+  }
+  if (/l[aá]mpara|luz|clima|aire|electric|contacto|puerta|ventana|techo|pared|agua|fuga|ba[ñn]o|plomer/.test(texto)) {
+    return 'INFRAESTRUCTURA';
+  }
+  if (/mesa|silla|escritorio|archivero|casillero|mobiliario|estante|locker|mueble/.test(texto)) {
+    return 'INFRAESTRUCTURA';
+  }
+  if (/limpieza|basura|aseo|sanitiz|desinfecci/.test(texto)) {
+    return 'SERVICIOS';
+  }
+  if (/resguardo|transferencia|baja|inventario|validaci[oó]n|no localizado/.test(texto)) {
+    return 'INVENTARIO';
+  }
+  if (item.laboratorio_id || item.laboratorio_nombre) {
+    return 'LABORATORIO';
+  }
+  return 'INFRAESTRUCTURA';
+}
+
+function origenIncidente(incidente = {}) {
+  if (incidente.activo_departamento_nombre) return incidente.activo_departamento_nombre;
+  if (incidente.origen_departamento_nombre) return incidente.origen_departamento_nombre;
+  if (incidente.laboratorio_nombre) return incidente.laboratorio_nombre;
+  if (incidente.activo_alcance === 'INSTITUCIONAL') return 'Inventario institucional';
+  return 'Sin origen definido';
+}
+
+function detalleOrigenIncidente(incidente = {}) {
+  const piezas = [];
+  if (incidente.activo_ubicacion_nombre) piezas.push(incidente.activo_ubicacion_nombre);
+  if (incidente.activo_responsable_nombre) piezas.push(incidente.activo_responsable_nombre);
+  return piezas.join(' · ');
+}
+
 function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const tipo  = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const pri   = PRIORIDAD_BADGE[incidente.prioridad] || PRIORIDAD_BADGE.MEDIA;
   const extra = iconFromDesc(incidente.descripcion);
+  const areaKey = inferirAreaAtencion(incidente);
+  const area = AREAS_ATENCION[areaKey] || AREAS_ATENCION.INFRAESTRUCTURA;
+  const origen = origenIncidente(incidente);
+  const detalleOrigen = detalleOrigenIncidente(incidente);
   // Nombre limpio: quitar doble guion y formatear
   const nombreRaw = incidente.activo_nombre
     || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general del laboratorio');
@@ -112,6 +171,18 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${isDay ? area.dayCls : area.darkCls}`}>
+          <span>{area.icon}</span>
+          {area.short}
+        </span>
+        {incidente.activo_departamento_nombre && (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isDay ? 'bg-slate-100 text-slate-600' : 'bg-slate-800 text-slate-300'}`}>
+            Departamental
+          </span>
+        )}
+      </div>
+
       {/* Badge adeudo vinculado */}
       {incidente.adeudo_id && (
         <div className="mt-2 mb-1">
@@ -131,12 +202,12 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       {/* Meta info */}
       <div className="flex items-center justify-between gap-2 mt-2">
         <div className={`flex items-center gap-1.5 text-[10px] ${isDay ? 'text-slate-600' : 'text-slate-500'}`}>
-          {incidente.laboratorio_nombre && (
+          {origen && (
             <span className="flex items-center gap-0.5">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
               </svg>
-              <span className="truncate max-w-[80px]">{incidente.laboratorio_nombre}</span>
+              <span className="truncate max-w-[118px]" title={detalleOrigen || origen}>{origen}</span>
             </span>
           )}
         </div>
@@ -959,12 +1030,19 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const { toast } = useToast();
+  const activoSeleccionado = activos.find(a => String(a.id) === String(form.activo_id));
+  const esActivoDepartamental = Boolean(activoSeleccionado && !activoSeleccionado.laboratorio_id);
+  const areaSugerida = AREAS_ATENCION[inferirAreaAtencion(activoSeleccionado || form)] || AREAS_ATENCION.INFRAESTRUCTURA;
+  const puedeReporteDepartamental = Boolean(usuario?.departamento_id && !form.activo_id && !form.laboratorio_id && !esLabAdmin);
 
   const handleGuardar = async (e) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
+      const origenDepartamental = Boolean(usuario?.departamento_id && !form.activo_id && !form.laboratorio_id);
       await api.post('/inventario/incidentes', {
         ...form,
+        origen: origenDepartamental ? 'DEPARTAMENTO' : form.origen,
+        origen_id: origenDepartamental ? usuario.departamento_id : form.origen_id,
         activo_id:      form.activo_id      ? parseInt(form.activo_id)      : null,
         laboratorio_id: form.laboratorio_id ? parseInt(form.laboratorio_id) : null,
       });
@@ -1013,11 +1091,44 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 setForm({
                   ...form,
                   activo_id: val,
-                  laboratorio_id: activo?.laboratorio_id ? String(activo.laboratorio_id) : form.laboratorio_id,
+                  laboratorio_id: activo?.laboratorio_id ? String(activo.laboratorio_id) : '',
                 });
               }}
             />
           </div>
+
+          {activoSeleccionado && (
+            <div className={`rounded-xl border p-3 ${isDay ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-white/10'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Origen del reporte
+                  </p>
+                  <p className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>
+                    {activoSeleccionado.departamento_nombre || activoSeleccionado.laboratorio_nombre || 'Activo institucional'}
+                  </p>
+                  {(activoSeleccionado.ubicacion_label || activoSeleccionado.responsable_nombre || activoSeleccionado.resguardante_externo_nombre) && (
+                    <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                      {[activoSeleccionado.ubicacion_label, activoSeleccionado.responsable_nombre || activoSeleccionado.resguardante_externo_nombre].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                </div>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${isDay ? areaSugerida.dayCls : areaSugerida.darkCls}`}>
+                  <span>{areaSugerida.icon}</span>
+                  {areaSugerida.short}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {puedeReporteDepartamental && (
+            <div className={`rounded-xl border p-3 ${isDay ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30 text-amber-100'}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide">Reporte general del departamento</p>
+              <p className="text-sm mt-1">
+                Si no eliges un activo, se registrara como mantenimiento general de tu departamento. Es util para lamparas, clima, limpieza o infraestructura.
+              </p>
+            </div>
+          )}
 
           {esLabAdmin ? (
             /* LAB_ADMIN: muestra el nombre de su lab, no puede cambiarlo */
@@ -1033,7 +1144,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 <span className="ml-auto text-xs text-slate-600">Fijo</span>
               </div>
             </div>
-          ) : (
+          ) : !esActivoDepartamental ? (
             /* SUPER_ADMIN: puede elegir cualquier lab */
             <div>
               <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Laboratorio</label>
@@ -1044,7 +1155,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 options={[{ value: '', label: 'Seleccionar laboratorio...' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
               />
             </div>
-          )}
+          ) : null}
 
           <div>
             <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">Prioridad</label>
@@ -2108,6 +2219,7 @@ export default function Mantenimiento() {
   const [error,        setError]        = useState('');
   const [filtroTexto,  setFiltroTexto]  = useState('');
   const [filtroLab,    setFiltroLab]    = useState('');
+  const [filtroArea,   setFiltroArea]   = useState('TODAS');
   const [drawerInc,    setDrawerInc]    = useState(null);
   const [modalNuevo,   setModalNuevo]   = useState(false);
   const [dragTarget,   setDragTarget]   = useState(null);
@@ -2136,7 +2248,7 @@ export default function Mantenimiento() {
       if (filtroLab) params.append('laboratorio_id', filtroLab);
       const [incRes, statsRes, labsRes] = await Promise.all([
         api.get(`/inventario/incidentes?${params}`),
-        api.get('/inventario/incidentes/estadisticas'),
+        api.get(`/inventario/incidentes/estadisticas?${params}`),
         api.get('/laboratorios'),
       ]);
       setIncidentes(incRes.data);
@@ -2185,11 +2297,21 @@ export default function Mantenimiento() {
   };
 
   // Filtrado local
+  const resumenAreas = ['SISTEMAS', 'INFRAESTRUCTURA', 'SERVICIOS', 'LABORATORIO', 'INVENTARIO']
+    .map(key => ({
+      key,
+      ...AREAS_ATENCION[key],
+      count: incidentes.filter(i => inferirAreaAtencion(i) === key).length,
+    }));
+
   const filtered = incidentes.filter(i => {
+    if (filtroArea !== 'TODAS' && inferirAreaAtencion(i) !== filtroArea) return false;
     if (!filtroTexto) return true;
     const t = filtroTexto.toLowerCase();
     return (i.activo_nombre?.toLowerCase().includes(t) ||
             i.descripcion?.toLowerCase().includes(t)   ||
+            i.activo_departamento_nombre?.toLowerCase().includes(t) ||
+            i.activo_ubicacion_nombre?.toLowerCase().includes(t) ||
             i.laboratorio_nombre?.toLowerCase().includes(t) ||
             i.pc_codigo?.toLowerCase().includes(t));
   });
@@ -2278,6 +2400,38 @@ export default function Mantenimiento() {
       {/* ── Pestaña: Kanban de incidentes ───────────────────────────────────── */}
       {tab === 'kanban' && (
         <>
+          <div className={`mb-5 rounded-2xl border p-4 ${isDay ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/50 border-white/10'}`}>
+            <div className="flex flex-col gap-1 mb-3">
+              <h2 className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Bandejas de atención</h2>
+              <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                Separa reportes de laboratorio, activos departamentales y solicitudes que deben canalizarse a Sistemas o Infraestructura.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+              {[{ key: 'TODAS', ...AREAS_ATENCION.TODAS, count: incidentes.length }, ...resumenAreas].map(areaItem => {
+                const activo = filtroArea === areaItem.key;
+                return (
+                  <button
+                    key={areaItem.key}
+                    type="button"
+                    onClick={() => setFiltroArea(areaItem.key)}
+                    className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                      activo
+                        ? isDay ? 'ring-2 ring-emerald-300 bg-emerald-50 border-emerald-200' : 'ring-2 ring-emerald-500/40 bg-emerald-500/10 border-emerald-500/30'
+                        : isDay ? areaItem.dayCls : areaItem.darkCls
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-lg">{areaItem.icon}</span>
+                      <span className={`text-lg font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>{areaItem.count}</span>
+                    </div>
+                    <div className={`mt-1 text-xs font-semibold ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>{areaItem.short}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Alerta alta prioridad */}
           {pendientesAlta.length > 0 && (
             <div className="mb-4 glass-sm border border-red-700/40 rounded-xl p-4 flex items-start gap-3">

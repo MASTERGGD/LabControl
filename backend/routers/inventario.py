@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from services.auditoria import registrar, Accion, Recurso
@@ -117,13 +117,63 @@ def _filtrar_lab_asignado(query, model, usuario: Usuario, laboratorio_id: int | 
     return query
 
 
-def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario) -> None:
+def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laboratorio_id: int | None):
+    """Limita mantenimiento al alcance real del usuario.
+
+    Los responsables de laboratorio solo ven su laboratorio. Inventario institucional
+    y super admin pueden ver todo. Los responsables/capturistas departamentales ven
+    incidentes de activos adscritos a sus departamentos y los que ellos reportaron.
+    """
+    if _es_rol_laboratorio(usuario):
+        if not usuario.laboratorio_id:
+            raise HTTPException(status_code=403, detail="No tienes laboratorio asignado")
+        if laboratorio_id and laboratorio_id != usuario.laboratorio_id:
+            raise HTTPException(status_code=403, detail="Solo puedes consultar mantenimiento de tu laboratorio")
+        return query.filter(Incidente.laboratorio_id == usuario.laboratorio_id)
+
+    if laboratorio_id:
+        query = query.filter(Incidente.laboratorio_id == laboratorio_id)
+
+    if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
+        return query
+
+    departamentos = _departamentos_visibles_inventario(db, usuario) or []
+    condiciones = [Incidente.reportado_por_id == usuario.id]
+    if usuario.laboratorio_id:
+        condiciones.append(Incidente.laboratorio_id == usuario.laboratorio_id)
+    if departamentos:
+        query = query.outerjoin(Activo, Incidente.activo_id == Activo.id)
+        condiciones.append(Activo.departamento_id.in_(departamentos))
+        condiciones.append(and_(Incidente.origen == "DEPARTAMENTO", Incidente.origen_id.in_(departamentos)))
+
+    return query.filter(or_(*condiciones))
+
+
+def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario, db: Session | None = None) -> None:
     if _es_rol_laboratorio(usuario):
         if not usuario.laboratorio_id or incidente.laboratorio_id != usuario.laboratorio_id:
             raise HTTPException(
                 status_code=403,
                 detail="Solo puedes gestionar incidentes de tu laboratorio",
             )
+        return
+
+    if db is None or _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
+        return
+
+    if incidente.reportado_por_id == usuario.id:
+        return
+
+    departamentos = _departamentos_visibles_inventario(db, usuario) or []
+    if incidente.activo_id and departamentos:
+        activo = db.query(Activo).filter(Activo.id == incidente.activo_id).first()
+        if activo and activo.departamento_id in departamentos:
+            return
+
+    raise HTTPException(
+        status_code=403,
+        detail="Solo puedes gestionar mantenimiento de activos dentro de tu alcance",
+    )
 
 
 def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[int] | None:
@@ -1453,6 +1503,10 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
     from models.sesion import AsignacionPC
     activo    = db.query(Activo).filter(Activo.id == i.activo_id).first() if i.activo_id else None
     lab       = db.query(Laboratorio).filter(Laboratorio.id == i.laboratorio_id).first() if i.laboratorio_id else None
+    dep_activo = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first() if activo and activo.departamento_id else None
+    dep_origen = db.query(Departamento).filter(Departamento.id == i.origen_id).first() if i.origen == "DEPARTAMENTO" and i.origen_id else None
+    ubicacion_activo = db.query(UbicacionInventario).filter(UbicacionInventario.id == activo.ubicacion_id).first() if activo and activo.ubicacion_id else None
+    responsable_activo = db.query(Usuario).filter(Usuario.id == activo.responsable_id).first() if activo and activo.responsable_id else None
     # Para computadoras, intentar obtener datos básicos
     pc_info   = None
     if i.computadora_id:
@@ -1525,6 +1579,18 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         "activo_nombre":    activo.nombre if activo else None,
         "activo_codigo":    activo.codigo_inventario if activo else None,
         "activo_categoria": activo.categoria if activo else None,
+        "activo_alcance":   activo.alcance if activo else None,
+        "activo_departamento_id": activo.departamento_id if activo else None,
+        "activo_departamento_nombre": dep_activo.nombre if dep_activo else None,
+        "origen_departamento_id": dep_origen.id if dep_origen else None,
+        "origen_departamento_nombre": dep_origen.nombre if dep_origen else None,
+        "activo_ubicacion_nombre": (
+            " / ".join(p for p in [ubicacion_activo.edificio, ubicacion_activo.nombre] if p)
+            if ubicacion_activo else (activo.ubicacion_nombre if activo else None)
+        ),
+        "activo_responsable_nombre": (
+            responsable_activo.nombre if responsable_activo else (activo.resguardante_externo_nombre if activo else None)
+        ),
         "computadora_id":   i.computadora_id,
         "pc_codigo":        pc_info["codigo"] if pc_info else None,
         "laboratorio_id":   i.laboratorio_id or (lab.id if lab else None),
@@ -3439,7 +3505,7 @@ def listar_incidentes(
         q = q.filter(Incidente.prioridad == prioridad.upper())
     if tipo:
         q = q.filter(Incidente.tipo == tipo.upper())
-    q = _filtrar_lab_asignado(q, Incidente, current_user, laboratorio_id)
+    q = _filtrar_incidentes_visibles(q, db, current_user, laboratorio_id)
 
     incidentes = q.order_by(Incidente.fecha_reporte.desc()).all()
     return [_serializar_incidente(i, db) for i in incidentes]
@@ -3455,18 +3521,29 @@ def crear_incidente(
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
-    # Los reportes de limpieza, iluminacion o seguridad pueden ser generales
-    # del laboratorio. El responsable asociara un equipo despues si aplica.
-    if not data.activo_id and not data.computadora_id and not data.laboratorio_id:
+    origen_norm = data.origen.upper()
+    departamento_origen_id = data.origen_id if origen_norm == "DEPARTAMENTO" else None
+
+    # Los reportes de limpieza, iluminacion, mobiliario o infraestructura pueden
+    # ser generales de un laboratorio o de un departamento.
+    if not data.activo_id and not data.computadora_id and not data.laboratorio_id and not departamento_origen_id:
         raise HTTPException(
             status_code=422,
-            detail="El incidente debe indicar un laboratorio, un activo o una computadora"
+            detail="El incidente debe indicar un laboratorio, un departamento, un activo o una computadora"
         )
     if data.activo_id and data.computadora_id:
         raise HTTPException(
             status_code=422,
             detail="El incidente no puede asociarse simultaneamente a un activo y a una computadora"
         )
+
+    if departamento_origen_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_origen_id, Departamento.activo == True).first()
+        if not dep:
+            raise HTTPException(status_code=404, detail="Departamento no encontrado")
+        departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
+        if departamentos_visibles is not None and departamento_origen_id not in departamentos_visibles:
+            raise HTTPException(status_code=403, detail="Solo puedes reportar mantenimiento de tu departamento")
 
     # Si viene activo_id, validar el alta oficial y extraer laboratorio_id.
     lab_id = data.laboratorio_id
@@ -3500,7 +3577,7 @@ def crear_incidente(
         activo_id        = data.activo_id,
         computadora_id   = data.computadora_id,
         laboratorio_id   = lab_id,
-        origen           = data.origen.upper(),
+        origen           = origen_norm,
         origen_id        = data.origen_id,
         tipo             = data.tipo.upper(),
         descripcion      = data.descripcion,
@@ -3548,7 +3625,7 @@ def actualizar_incidente(
     i = db.query(Incidente).filter(Incidente.id == incidente_id).first()
     if not i:
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
-    _asegurar_acceso_incidente(i, current_user)
+    _asegurar_acceso_incidente(i, current_user, db)
     if i.estado in ESTADOS_INCIDENTE_CERRADOS:
         raise HTTPException(
             status_code=409,
@@ -3765,7 +3842,7 @@ def agregar_seguimiento_incidente(
     incidente = db.query(Incidente).filter(Incidente.id == incidente_id).first()
     if not incidente:
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
-    _asegurar_acceso_incidente(incidente, current_user)
+    _asegurar_acceso_incidente(incidente, current_user, db)
 
     texto = data.texto.strip()
     if len(texto) < 2:
@@ -3809,7 +3886,7 @@ def reabrir_incidente(
     incidente = db.query(Incidente).filter(Incidente.id == incidente_id).first()
     if not incidente:
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
-    _asegurar_acceso_incidente(incidente, current_user)
+    _asegurar_acceso_incidente(incidente, current_user, db)
     if incidente.estado not in ESTADOS_INCIDENTE_CERRADOS:
         raise HTTPException(status_code=409, detail="La incidencia no esta cerrada")
 
@@ -3870,10 +3947,7 @@ def estadisticas_incidentes(
     current_user: Usuario = Depends(get_current_user)
 ):
     q = db.query(Incidente)
-    if laboratorio_id:
-        q = q.filter(Incidente.laboratorio_id == laboratorio_id)
-    elif current_user.rol == RolUsuario.LAB_ADMIN:
-        q = q.filter(Incidente.laboratorio_id == current_user.laboratorio_id)
+    q = _filtrar_incidentes_visibles(q, db, current_user, laboratorio_id)
 
     todos = q.all()
     return {
