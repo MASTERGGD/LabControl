@@ -74,6 +74,13 @@ const AREAS_ATENCION = {
 };
 
 function inferirAreaAtencion(item = {}) {
+  const seguimientoCanalizado = [...(item.seguimientos || [])]
+    .reverse()
+    .find(seg => String(seg.texto || '').toLowerCase().startsWith('canalizado a '));
+  const textoCanalizado = String(seguimientoCanalizado?.texto || '').toLowerCase();
+  if (textoCanalizado.includes('sistemas')) return 'SISTEMAS';
+  if (textoCanalizado.includes('infraestructura')) return 'INFRAESTRUCTURA';
+
   const texto = [
     item.tipo,
     item.descripcion,
@@ -93,7 +100,7 @@ function inferirAreaAtencion(item = {}) {
     return 'INFRAESTRUCTURA';
   }
   if (/limpieza|basura|aseo|sanitiz|desinfecci/.test(texto)) {
-    return 'SERVICIOS';
+    return 'INFRAESTRUCTURA';
   }
   if (/resguardo|transferencia|baja|inventario|validaci[oó]n|no localizado/.test(texto)) {
     return 'INVENTARIO';
@@ -447,8 +454,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
 
   const tipo = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general');
-  const esReporteLaboratorio = Boolean(incidente.laboratorio_nombre);
-  const opcionesCanalizacion = ['INFRAESTRUCTURA', 'SISTEMAS', 'SERVICIOS', 'INVENTARIO', ...(esReporteLaboratorio ? ['LABORATORIO'] : [])];
+  const opcionesCanalizacion = ['INFRAESTRUCTURA', 'SISTEMAS'];
 
   return (
     <>
@@ -2398,7 +2404,7 @@ export default function Mantenimiento() {
   };
 
   // Filtrado local
-  const resumenAreas = ['SISTEMAS', 'INFRAESTRUCTURA', 'SERVICIOS', 'LABORATORIO', 'INVENTARIO']
+  const resumenAreas = ['SISTEMAS', 'INFRAESTRUCTURA', 'LABORATORIO', 'INVENTARIO']
     .map(key => ({
       key,
       ...AREAS_ATENCION[key],

@@ -146,6 +146,20 @@ def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laborator
         condiciones.append(Activo.departamento_id.in_(departamentos))
         condiciones.append(and_(Incidente.origen == "DEPARTAMENTO", Incidente.origen_id.in_(departamentos)))
 
+        dep_usuario = db.query(Departamento).filter(Departamento.id == usuario.departamento_id).first() if usuario.departamento_id else None
+        clave_dep = (dep_usuario.clave if dep_usuario else "").strip().upper()
+        nombre_dep = (dep_usuario.nombre if dep_usuario else "").strip().upper()
+        destinos_canalizados = []
+        if clave_dep in {"CI", "INFRA", "INFRAESTRUCTURA"} or "INFRAESTRUCTURA" in nombre_dep:
+            destinos_canalizados.append("Canalizado a Infraestructura")
+        if clave_dep in {"SIS", "SISTEMAS", "TI"} or "SISTEMAS" in nombre_dep:
+            destinos_canalizados.append("Canalizado a Sistemas")
+        for destino in destinos_canalizados:
+            subq = db.query(SeguimientoIncidente.incidente_id).filter(
+                SeguimientoIncidente.texto.ilike(f"{destino}%")
+            )
+            condiciones.append(Incidente.id.in_(subq))
+
     return query.filter(or_(*condiciones))
 
 
@@ -3576,12 +3590,22 @@ def crear_incidente(
         lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
         if not lab:
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+        puede_reportar_desde_sesion = False
+        if current_user.rol == RolUsuario.DOCENTE and origen_norm == "SESION" and data.origen_id:
+            from models.sesion import SesionClase
+            sesion = db.query(SesionClase).filter(SesionClase.id == data.origen_id).first()
+            puede_reportar_desde_sesion = bool(
+                sesion and
+                sesion.docente_id == current_user.id and
+                sesion.laboratorio_id == lab.id
+            )
         puede_reportar_laboratorio = (
             current_user.rol == RolUsuario.SUPER_ADMIN or
-            (_es_rol_laboratorio(current_user) and current_user.laboratorio_id == lab.id)
+            (_es_rol_laboratorio(current_user) and current_user.laboratorio_id == lab.id) or
+            puede_reportar_desde_sesion
         )
         if not puede_reportar_laboratorio:
-            raise HTTPException(status_code=403, detail="Solo responsables de laboratorio pueden reportar mantenimiento de laboratorios")
+            raise HTTPException(status_code=403, detail="Solo puedes reportar mantenimiento de laboratorios desde una sesion propia o como responsable del laboratorio")
 
     i = Incidente(
         activo_id        = data.activo_id,
