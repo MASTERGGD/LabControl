@@ -3554,7 +3554,13 @@ def crear_incidente(
         _asegurar_activo_validado(activo)
         if lab_id and activo.laboratorio_id and lab_id != activo.laboratorio_id:
             raise HTTPException(status_code=422, detail="El activo no pertenece al laboratorio indicado")
-        lab_id = activo.laboratorio_id or lab_id
+        if activo.laboratorio_id:
+            lab_id = activo.laboratorio_id
+        else:
+            lab_id = None
+            if activo.departamento_id and origen_norm != "DEPARTAMENTO":
+                origen_norm = "DEPARTAMENTO"
+                departamento_origen_id = activo.departamento_id
 
     # Si viene computadora_id, validar y extraer laboratorio_id.
     if data.computadora_id:
@@ -3570,15 +3576,19 @@ def crear_incidente(
         lab = db.query(Laboratorio).filter(Laboratorio.id == lab_id).first()
         if not lab:
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
-        if _es_rol_laboratorio(current_user) and current_user.laboratorio_id != lab.id:
-            raise HTTPException(status_code=403, detail="Solo puedes reportar incidentes de tu laboratorio")
+        puede_reportar_laboratorio = (
+            current_user.rol == RolUsuario.SUPER_ADMIN or
+            (_es_rol_laboratorio(current_user) and current_user.laboratorio_id == lab.id)
+        )
+        if not puede_reportar_laboratorio:
+            raise HTTPException(status_code=403, detail="Solo responsables de laboratorio pueden reportar mantenimiento de laboratorios")
 
     i = Incidente(
         activo_id        = data.activo_id,
         computadora_id   = data.computadora_id,
         laboratorio_id   = lab_id,
         origen           = origen_norm,
-        origen_id        = data.origen_id,
+        origen_id        = departamento_origen_id if origen_norm == "DEPARTAMENTO" else data.origen_id,
         tipo             = data.tipo.upper(),
         descripcion      = data.descripcion,
         reportado_por_id = current_user.id,

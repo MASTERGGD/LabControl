@@ -131,7 +131,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const detalleOrigen = detalleOrigenIncidente(incidente);
   // Nombre limpio: quitar doble guion y formatear
   const nombreRaw = incidente.activo_nombre
-    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general del laboratorio');
+    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : (incidente.laboratorio_nombre ? 'Reporte general del laboratorio' : 'Reporte general del departamento'));
   const nombre = nombreRaw.replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
 
   // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
@@ -316,6 +316,9 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const [mostrarReapertura, setMostrarReapertura] = useState(false);
   const [motivoReapertura, setMotivoReapertura] = useState('');
   const [reabriendo, setReabriendo] = useState(false);
+  const [areaCanalizacion, setAreaCanalizacion] = useState(inferirAreaAtencion(incidente));
+  const [notaCanalizacion, setNotaCanalizacion] = useState('');
+  const [canalizando, setCanalizando] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const { toast } = useToast();
@@ -419,8 +422,33 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
     }
   };
 
+  const handleCanalizar = async () => {
+    const area = AREAS_ATENCION[areaCanalizacion] || AREAS_ATENCION.INFRAESTRUCTURA;
+    const nota = notaCanalizacion.trim();
+    setCanalizando(true); setError('');
+    try {
+      const texto = `Canalizado a ${area.label}${nota ? `: ${nota}` : ''}`;
+      const { data } = await api.post(
+        `/inventario/incidentes/${incidente.id}/seguimientos`,
+        { texto }
+      );
+      await api.put(`/inventario/incidentes/${incidente.id}`, { estado: 'EN_REVISION' });
+      setSeguimientos(data.seguimientos || []);
+      setForm(prev => ({ ...prev, estado: 'EN_REVISION' }));
+      setNotaCanalizacion('');
+      toast(`Reporte canalizado a ${area.label}`, 'success', { title: 'Canalizacion registrada' });
+      onActualizado();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al canalizar el reporte');
+    } finally {
+      setCanalizando(false);
+    }
+  };
+
   const tipo = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general');
+  const esReporteLaboratorio = Boolean(incidente.laboratorio_nombre);
+  const opcionesCanalizacion = ['INFRAESTRUCTURA', 'SISTEMAS', 'SERVICIOS', 'INVENTARIO', ...(esReporteLaboratorio ? ['LABORATORIO'] : [])];
 
   return (
     <>
@@ -631,6 +659,60 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               </div>
             )}
           </div>
+
+          {!estaCerrado && (
+            <div className={`rounded-xl border p-4 space-y-3 ${
+              isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+            }`}>
+              <div>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Canalizar atencion</p>
+                <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                  Envia el reporte al area que debe atenderlo. Quedara registrado en el historial y pasara a revision.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {opcionesCanalizacion.map(key => {
+                  const area = AREAS_ATENCION[key];
+                  const activo = areaCanalizacion === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setAreaCanalizacion(key)}
+                      className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                        activo
+                          ? isDay ? 'ring-2 ring-emerald-300 bg-emerald-50 border-emerald-200' : 'ring-2 ring-emerald-500/40 bg-emerald-500/10 border-emerald-500/30'
+                          : isDay ? area.dayCls : area.darkCls
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{area.icon}</span>
+                        <span className={`text-xs font-semibold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>{area.short}</span>
+                      </div>
+                      <p className={`mt-1 text-[11px] leading-snug ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                        {area.description || area.label}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+              <textarea
+                rows={2}
+                value={notaCanalizacion}
+                onChange={e => setNotaCanalizacion(e.target.value)}
+                placeholder="Nota para el area receptora. Ej. revisar lamparas, mover escritorio, verificar red..."
+                className="input-dark resize-none text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleCanalizar}
+                disabled={canalizando}
+                className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-2.5 text-sm font-semibold transition-colors"
+              >
+                {canalizando ? 'Canalizando...' : `Canalizar a ${(AREAS_ATENCION[areaCanalizacion] || AREAS_ATENCION.INFRAESTRUCTURA).label}`}
+              </button>
+            </div>
+          )}
 
           {/* Estado */}
           <div>
@@ -1023,8 +1105,10 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const { usuario } = useAuth();
-  const esLabAdmin = usuario?.rol === 'LAB_ADMIN';
-  const labIdFijo  = esLabAdmin ? String(usuario.laboratorio_id) : '';
+  const esRolLaboratorio = usuario?.rol === 'LAB_ADMIN' || usuario?.rol === 'RESPONSABLE_LAB';
+  const esSuperAdmin = usuario?.rol === 'SUPER_ADMIN';
+  const puedeElegirLaboratorio = esRolLaboratorio || esSuperAdmin;
+  const labIdFijo  = esRolLaboratorio ? String(usuario.laboratorio_id) : '';
 
   const [form, setForm] = useState({ activo_id:'', laboratorio_id: labIdFijo, tipo:'DAÑO', prioridad:'MEDIA', descripcion:'', origen:'MANUAL' });
   const [saving, setSaving] = useState(false);
@@ -1033,18 +1117,23 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
   const activoSeleccionado = activos.find(a => String(a.id) === String(form.activo_id));
   const esActivoDepartamental = Boolean(activoSeleccionado && !activoSeleccionado.laboratorio_id);
   const areaSugerida = AREAS_ATENCION[inferirAreaAtencion(activoSeleccionado || form)] || AREAS_ATENCION.INFRAESTRUCTURA;
-  const puedeReporteDepartamental = Boolean(usuario?.departamento_id && !form.activo_id && !form.laboratorio_id && !esLabAdmin);
+  const puedeReporteDepartamental = Boolean(usuario?.departamento_id && !form.activo_id && !puedeElegirLaboratorio);
+  const esFlujoDepartamental = Boolean(!puedeElegirLaboratorio && usuario?.departamento_id);
+  const tituloModal = esFlujoDepartamental ? 'Reportar mantenimiento' : 'Reportar incidente';
+  const labelTipo = esFlujoDepartamental ? 'Tipo de mantenimiento' : 'Tipo de incidente';
+  const origenDepartamentoId = activoSeleccionado?.departamento_id || usuario?.departamento_id;
+  const origenDepartamentoNombre = activoSeleccionado?.departamento_nombre || usuario?.departamento_nombre || 'Tu departamento';
 
   const handleGuardar = async (e) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
-      const origenDepartamental = Boolean(usuario?.departamento_id && !form.activo_id && !form.laboratorio_id);
+      const origenDepartamental = Boolean(esFlujoDepartamental && origenDepartamentoId);
       await api.post('/inventario/incidentes', {
         ...form,
         origen: origenDepartamental ? 'DEPARTAMENTO' : form.origen,
-        origen_id: origenDepartamental ? usuario.departamento_id : form.origen_id,
+        origen_id: origenDepartamental ? origenDepartamentoId : form.origen_id,
         activo_id:      form.activo_id      ? parseInt(form.activo_id)      : null,
-        laboratorio_id: form.laboratorio_id ? parseInt(form.laboratorio_id) : null,
+        laboratorio_id: puedeElegirLaboratorio && form.laboratorio_id ? parseInt(form.laboratorio_id) : null,
       });
       toast('Incidente reportado y registrado', 'success', { title: 'Reporte creado' });
       onCreado(); onClose();
@@ -1057,7 +1146,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-md shadow-glass animate-fadeUp">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
-          <h2 className="font-semibold text-white">Reportar Incidente</h2>
+          <h2 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{tituloModal}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
@@ -1067,7 +1156,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
         <form onSubmit={handleGuardar} className="p-6 space-y-4">
           {/* Tipo */}
           <div>
-            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">Tipo de incidente</label>
+            <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">{labelTipo}</label>
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(TIPOS_ICON).map(([val, { label, emoji }]) => (
                 <label key={val}
@@ -1091,7 +1180,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 setForm({
                   ...form,
                   activo_id: val,
-                  laboratorio_id: activo?.laboratorio_id ? String(activo.laboratorio_id) : '',
+                  laboratorio_id: puedeElegirLaboratorio && activo?.laboratorio_id ? String(activo.laboratorio_id) : '',
                 });
               }}
             />
@@ -1130,8 +1219,18 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
             </div>
           )}
 
-          {esLabAdmin ? (
-            /* LAB_ADMIN: muestra el nombre de su lab, no puede cambiarlo */
+          {esFlujoDepartamental && (
+            <div>
+              <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Origen del reporte</label>
+              <div className={`rounded-xl border px-3 py-3 ${isDay ? 'bg-slate-50 border-slate-200 text-slate-900' : 'bg-slate-900/60 border-white/10 text-slate-200'}`}>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Departamento</p>
+                <p className="text-sm font-semibold mt-0.5">{origenDepartamentoNombre}</p>
+              </div>
+            </div>
+          )}
+
+          {esRolLaboratorio ? (
+            /* Responsable de laboratorio: muestra el nombre de su lab, no puede cambiarlo */
             <div>
               <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Laboratorio</label>
               <div className="input-dark flex items-center gap-2 opacity-70 cursor-not-allowed">
@@ -1144,7 +1243,7 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                 <span className="ml-auto text-xs text-slate-600">Fijo</span>
               </div>
             </div>
-          ) : !esActivoDepartamental ? (
+          ) : puedeElegirLaboratorio && !esActivoDepartamental ? (
             /* SUPER_ADMIN: puede elegir cualquier lab */
             <div>
               <label className="block text-xs text-slate-400 font-medium tracking-wide mb-1.5">Laboratorio</label>
@@ -2237,6 +2336,8 @@ export default function Mantenimiento() {
     ? 'Incidentes, preventivos e historial de bienes institucionales'
     : 'Incidentes · Preventivo · Historial de equipos';
   const textoBotonIncidente = esVistaInstitucional ? 'Reportar mantenimiento' : 'Reportar Incidente';
+  const esRolLaboratorioMantenimiento = usuario?.rol === 'LAB_ADMIN' || usuario?.rol === 'RESPONSABLE_LAB';
+  const puedeFiltrarLaboratorios = usuario?.rol === 'SUPER_ADMIN' || esRolLaboratorioMantenimiento;
   const placeholderBusqueda = esVistaInstitucional
     ? 'Buscar activo, descripción, laboratorio...'
     : 'Buscar equipo, descripción, lab...';
@@ -2460,13 +2561,19 @@ export default function Mantenimiento() {
                 className="input-dark text-sm" />
             </div>
 
-            <SelectDark
-              value={filtroLab}
-              onChange={setFiltroLab}
-              className="w-44"
-              placeholder="Todos los labs"
-              options={[{ value: '', label: 'Todos los labs' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
-            />
+            {puedeFiltrarLaboratorios ? (
+              <SelectDark
+                value={filtroLab}
+                onChange={setFiltroLab}
+                className="w-44"
+                placeholder="Todos los labs"
+                options={[{ value: '', label: 'Todos los labs' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
+              />
+            ) : (
+              <div className={`rounded-xl border px-3 py-2.5 text-sm ${isDay ? 'bg-white border-slate-200 text-slate-600' : 'bg-slate-900/60 border-white/10 text-slate-400'}`}>
+                Alcance: tu departamento
+              </div>
+            )}
 
             <button onClick={cargarTodo} className="btn-ghost px-3 py-2.5 text-sm" title="Actualizar">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
