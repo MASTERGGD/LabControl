@@ -329,6 +329,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const [mostrarReasignacion, setMostrarReasignacion] = useState(false);
   const [modoSeguimiento, setModoSeguimiento] = useState('');
   const [mostrarHistorialCompleto, setMostrarHistorialCompleto] = useState(false);
+  const [mostrarDetallesAvanzados, setMostrarDetallesAvanzados] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const { toast } = useToast();
@@ -396,19 +397,33 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       setError('Escribe el seguimiento realizado.');
       return;
     }
+    const esCierreReparacion = modoSeguimiento === 'REPARACION';
     setGuardandoSeguimiento(true); setError('');
     try {
+      if (esCierreReparacion) {
+        await api.put(`/inventario/incidentes/${incidente.id}`, {
+          estado: 'REPARADO',
+          prioridad: form.prioridad,
+          costo_reparacion: form.costo_reparacion ? parseFloat(form.costo_reparacion) : null,
+        });
+      }
       const { data } = await api.post(
         `/inventario/incidentes/${incidente.id}/seguimientos`,
         { texto }
       );
       setSeguimientos(data.seguimientos || []);
+      if (esCierreReparacion) {
+        setForm(prev => ({ ...prev, estado: 'REPARADO' }));
+      }
       setNuevoSeguimiento('');
       setModoSeguimiento('');
-      toast('Seguimiento agregado al historial', 'success');
+      toast(
+        esCierreReparacion ? 'Incidente cerrado como reparado' : 'Seguimiento agregado al historial',
+        'success'
+      );
       onActualizado();
     } catch (e) {
-      setError(e.response?.data?.detail || 'Error al agregar el seguimiento');
+      setError(e.response?.data?.detail || (esCierreReparacion ? 'Error al cerrar la reparacion' : 'Error al agregar el seguimiento'));
     } finally {
       setGuardandoSeguimiento(false);
     }
@@ -613,7 +628,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 {form.estado !== 'REPARADO' && (
                   <button
                     type="button"
-                    onClick={() => handleCambioRapido('REPARADO')}
+                    onClick={() => {
+                      setForm(prev => ({ ...prev, estado: 'REPARADO' }));
+                      setModoSeguimiento('REPARACION');
+                      setMostrarReasignacion(false);
+                    }}
                     disabled={saving}
                     className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
                       isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/20'
@@ -645,6 +664,15 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                   }`}
                 >
                   Reasignar atencion
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMostrarDetallesAvanzados(!mostrarDetallesAvanzados)}
+                  className={`col-span-2 rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                    isDay ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-slate-800/50 border-white/10 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {mostrarDetallesAvanzados ? 'Ocultar detalles avanzados' : 'Editar detalles avanzados'}
                 </button>
               </div>
             )}
@@ -842,6 +870,10 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             </div>
           )}
 
+          {mostrarDetallesAvanzados && (
+            <div className={`rounded-xl border p-4 space-y-4 ${
+              isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+            }`}>
           {/* Estado */}
           <div>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Estado</p>
@@ -886,10 +918,20 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               ))}
             </div>
           </div>
+            </div>
+          )}
 
           {/* Costo */}
-          <div>
+          {(mostrarDetallesAvanzados || modoSeguimiento === 'REPARACION') && (
+          <div className={`rounded-xl border p-4 ${
+            isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+          }`}>
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Costo estimado</label>
+            {modoSeguimiento === 'REPARACION' && (
+              <p className={`text-xs mb-2 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                Opcional. Capturalo solo si la reparacion tuvo gasto, refaccion o servicio externo.
+              </p>
+            )}
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
               <input type="number" min="0" step="0.01" placeholder="0.00"
@@ -899,6 +941,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 className={`input-dark pl-7 ${estaCerrado ? 'cursor-default opacity-75' : ''}`} />
             </div>
           </div>
+          )}
 
           {/* Historial inmutable */}
           <div className={`rounded-xl border p-4 ${
@@ -977,11 +1020,18 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               }`}>
                 <div className="flex items-center justify-between gap-2 mb-2">
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
-              {modoSeguimiento === 'INFO' ? 'Solicitar informacion' : 'Agregar seguimiento'}
+              {modoSeguimiento === 'INFO'
+                ? 'Solicitar informacion'
+                : modoSeguimiento === 'REPARACION'
+                  ? 'Cierre de reparacion'
+                  : 'Agregar seguimiento'}
             </label>
                   <button
                     type="button"
                     onClick={() => {
+                      if (modoSeguimiento === 'REPARACION') {
+                        setForm(prev => ({ ...prev, estado: incidente.estado }));
+                      }
                       setModoSeguimiento('');
                       setNuevoSeguimiento('');
                       setError('');
@@ -1004,7 +1054,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               disabled={guardandoSeguimiento}
               className="btn-blue w-full mt-2"
             >
-              {guardandoSeguimiento ? 'Agregando...' : 'Guardar en historial'}
+              {guardandoSeguimiento
+                ? 'Guardando...'
+                : modoSeguimiento === 'REPARACION'
+                  ? 'Guardar cierre'
+                  : 'Guardar en historial'}
             </button>
               </div>
             )}
@@ -2705,6 +2759,7 @@ export default function Mantenimiento() {
               })}
             </div>
           </div>
+          )}
 
           {/* Alerta alta prioridad */}
           {pendientesAlta.length > 0 && (
