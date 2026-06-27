@@ -326,6 +326,9 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const [areaCanalizacion, setAreaCanalizacion] = useState(inferirAreaAtencion(incidente));
   const [notaCanalizacion, setNotaCanalizacion] = useState('');
   const [canalizando, setCanalizando] = useState(false);
+  const [mostrarReasignacion, setMostrarReasignacion] = useState(false);
+  const [modoSeguimiento, setModoSeguimiento] = useState('');
+  const [mostrarHistorialCompleto, setMostrarHistorialCompleto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const { toast } = useToast();
@@ -401,6 +404,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       );
       setSeguimientos(data.seguimientos || []);
       setNuevoSeguimiento('');
+      setModoSeguimiento('');
       toast('Seguimiento agregado al historial', 'success');
       onActualizado();
     } catch (e) {
@@ -452,9 +456,42 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
     }
   };
 
+  const handleCambioRapido = async (estado) => {
+    setSaving(true); setError('');
+    try {
+      await api.put(`/inventario/incidentes/${incidente.id}`, {
+        estado,
+        prioridad: form.prioridad,
+        costo_reparacion: form.costo_reparacion ? parseFloat(form.costo_reparacion) : null,
+      });
+      setForm(prev => ({ ...prev, estado }));
+      toast(
+        estado === 'REPARADO' ? 'Incidente marcado como reparado' : 'Incidente tomado en revision',
+        'success'
+      );
+      onActualizado();
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Error al actualizar el estado');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const tipo = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general');
   const opcionesCanalizacion = ['INFRAESTRUCTURA', 'SISTEMAS'];
+  const seguimientosOrdenados = [...seguimientos].reverse();
+  const seguimientosMostrados = mostrarHistorialCompleto ? seguimientosOrdenados : seguimientosOrdenados.slice(0, 2);
+  const ultimoCanalizado = seguimientosOrdenados.find(seg => String(seg.texto || '').toLowerCase().startsWith('canalizado a '));
+  const destinoCanalizado = ultimoCanalizado?.texto?.replace(/^Canalizado a\s*/i, '').split(':')[0]?.trim();
+  const areaActual = destinoCanalizado || (AREAS_ATENCION[inferirAreaAtencion(incidente)]?.label || 'Por definir');
+  const esReporteLaboratorio = Boolean(incidente.laboratorio_id || incidente.laboratorio_nombre);
+  const etiquetaReporteGeneral = esReporteLaboratorio ? 'Observacion general del laboratorio' : 'Reporte general del departamento';
+  const textoSeguimientoPlaceholder = modoSeguimiento === 'INFO'
+    ? 'Indica que informacion necesitas del area o persona que reporto...'
+    : modoSeguimiento === 'REPARACION'
+      ? 'Describe la reparacion realizada, refaccion usada o accion de cierre...'
+      : 'Describe la llamada, revision, reparacion o accion realizada...';
 
   return (
     <>
@@ -530,6 +567,89 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             )}
           </div>
 
+          {/* Resumen operativo */}
+          <div className={`rounded-xl border p-4 ${
+            isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+          }`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Atencion actual</p>
+                <p className={`mt-1 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{areaActual}</p>
+                <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {form.estado === 'PENDIENTE'
+                    ? 'Pendiente de tomar en revision.'
+                    : form.estado === 'EN_REVISION'
+                      ? 'En seguimiento por el area responsable.'
+                      : form.estado === 'REPARADO'
+                        ? 'Atencion marcada como reparada.'
+                        : 'Estado registrado en el expediente.'}
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
+                form.estado === 'REPARADO'
+                  ? isDay ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/15 text-emerald-200'
+                  : form.estado === 'EN_REVISION'
+                    ? isDay ? 'bg-blue-100 text-blue-800' : 'bg-blue-500/15 text-blue-200'
+                    : isDay ? 'bg-amber-100 text-amber-900' : 'bg-amber-500/15 text-amber-200'
+              }`}>
+                {form.estado === 'EN_REVISION' ? 'EN REVISION' : form.estado === 'REPARADO' ? 'REPARADO' : 'PENDIENTE'}
+              </span>
+            </div>
+
+            {!estaCerrado && (
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                {form.estado !== 'EN_REVISION' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCambioRapido('EN_REVISION')}
+                    disabled={saving}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                      isDay ? 'bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100' : 'bg-blue-500/10 border-blue-500/30 text-blue-200 hover:bg-blue-500/20'
+                    }`}
+                  >
+                    Tomar en revision
+                  </button>
+                )}
+                {form.estado !== 'REPARADO' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCambioRapido('REPARADO')}
+                    disabled={saving}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                      isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/20'
+                    }`}
+                  >
+                    Marcar reparado
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModoSeguimiento(modoSeguimiento === 'INFO' ? '' : 'INFO');
+                    setMostrarReasignacion(false);
+                  }}
+                  className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                    isDay ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-800/70 border-white/10 text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  Solicitar mas info
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarReasignacion(!mostrarReasignacion);
+                    setModoSeguimiento('');
+                  }}
+                  className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                    isDay ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-800/70 border-white/10 text-slate-200 hover:bg-slate-800'
+                  }`}
+                >
+                  Reasignar atencion
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Asociacion tecnica: fija si el reporte ya identifico el equipo */}
           <div>
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
@@ -584,11 +704,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 {!identificandoEquipo ? (
                   <>
                     <p className={`text-sm font-semibold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>
-                      Observación general del laboratorio
+                      {etiquetaReporteGeneral}
                     </p>
                     <p className={`text-xs mt-1 leading-relaxed ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
-                      No está asociada a una PC ni a un activo. Puede atenderse y cerrarse así,
-                      por ejemplo en limpieza, iluminación o seguridad.
+                      No esta asociada a una PC ni a un activo. Puede atenderse y cerrarse asi,
+                      por ejemplo en limpieza, iluminacion, seguridad o infraestructura.
                     </p>
                     {!estaCerrado && (
                       <button
@@ -666,12 +786,14 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             )}
           </div>
 
-          {!estaCerrado && (
+          {!estaCerrado && mostrarReasignacion && (
             <div className={`rounded-xl border p-4 space-y-3 ${
               isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
             }`}>
               <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">Canalizar atencion</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">
+                  {destinoCanalizado ? 'Reasignar atencion' : 'Canalizar atencion'}
+                </p>
                 <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
                   Envia el reporte al area que debe atenderlo. Quedara registrado en el historial y pasara a revision.
                 </p>
@@ -715,7 +837,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 disabled={canalizando}
                 className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-2.5 text-sm font-semibold transition-colors"
               >
-                {canalizando ? 'Canalizando...' : `Canalizar a ${(AREAS_ATENCION[areaCanalizacion] || AREAS_ATENCION.INFRAESTRUCTURA).label}`}
+                {canalizando ? 'Canalizando...' : `${destinoCanalizado ? 'Reasignar' : 'Canalizar'} a ${(AREAS_ATENCION[areaCanalizacion] || AREAS_ATENCION.INFRAESTRUCTURA).label}`}
               </button>
             </div>
           )}
@@ -791,7 +913,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               </p>
             ) : (
               <div className="space-y-3">
-                {[...seguimientos].reverse().map(seg => (
+                {seguimientosMostrados.map(seg => (
                   <div key={seg.id} className={`border-l-2 pl-3 ${
                     seg.tipo === 'REAPERTURA'
                       ? 'border-amber-500'
@@ -817,18 +939,61 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                     </p>
                   </div>
                 ))}
+                {seguimientos.length > 2 && (
+                  <button
+                    type="button"
+                    onClick={() => setMostrarHistorialCompleto(!mostrarHistorialCompleto)}
+                    className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                      isDay
+                        ? 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                        : 'border-white/10 text-slate-300 hover:bg-white/5'
+                    }`}
+                  >
+                    {mostrarHistorialCompleto ? 'Mostrar menos' : `Ver historial completo (${seguimientos.length})`}
+                  </button>
+                )}
               </div>
             )}
           </div>
 
           {/* Nuevo seguimiento: disponible incluso con el expediente cerrado */}
           <div>
+            {!modoSeguimiento && (
+              <button
+                type="button"
+                onClick={() => setModoSeguimiento('NOTA')}
+                className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                  isDay
+                    ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    : 'bg-slate-900/35 border-white/10 text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                Agregar nota al seguimiento
+              </button>
+            )}
+            {modoSeguimiento && (
+              <div className={`rounded-xl border p-4 ${
+                isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
+              }`}>
+                <div className="flex items-center justify-between gap-2 mb-2">
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
-              Agregar seguimiento
+              {modoSeguimiento === 'INFO' ? 'Solicitar informacion' : 'Agregar seguimiento'}
             </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoSeguimiento('');
+                      setNuevoSeguimiento('');
+                      setError('');
+                    }}
+                    className={`text-xs font-semibold ${isDay ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Cancelar nota
+                  </button>
+                </div>
             <textarea
               rows={3}
-              placeholder="Describe la llamada, revisión, reparación o acción realizada..."
+              placeholder={textoSeguimientoPlaceholder}
               value={nuevoSeguimiento}
               onChange={e => setNuevoSeguimiento(e.target.value)}
               className="input-dark resize-none leading-relaxed"
@@ -839,8 +1004,10 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               disabled={guardandoSeguimiento}
               className="btn-blue w-full mt-2"
             >
-              {guardandoSeguimiento ? 'Agregando...' : 'Agregar al historial'}
+              {guardandoSeguimiento ? 'Agregando...' : 'Guardar en historial'}
             </button>
+              </div>
+            )}
           </div>
 
           {/* Adeudo vinculado o botón crear */}
