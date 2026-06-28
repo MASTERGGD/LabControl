@@ -56,9 +56,57 @@ const COLUMNAS = [
 ];
 const ESTADOS_CERRADOS = ['REPARADO', 'DADO_DE_BAJA', 'CERRADO_SIN_ADEUDO'];
 
+const ESTADO_FLUJO = {
+  PENDIENTE:   { label: 'Pendiente',     short: 'PENDIENTE',   icon: '⏳', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.3)', dayCls: 'border-amber-500 bg-amber-100 text-amber-900', darkCls: 'border-amber-500/50 bg-amber-500/10 text-amber-300' },
+  REABIERTO:   { label: 'Reabierto',     short: 'REABIERTO',   icon: '↺',  color: '#f97316', bg: 'rgba(249,115,22,0.08)',  border: 'rgba(249,115,22,0.3)', dayCls: 'border-orange-500 bg-orange-100 text-orange-900', darkCls: 'border-orange-500/50 bg-orange-500/10 text-orange-300' },
+  CANALIZADO:  { label: 'Canalizado',    short: 'CANALIZADO',  icon: '↗',  color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)',  border: 'rgba(139,92,246,0.3)', dayCls: 'border-violet-500 bg-violet-50 text-violet-800', darkCls: 'border-violet-500/50 bg-violet-500/10 text-violet-300' },
+  EN_REVISION: { label: 'En revision',   short: 'EN REVISION', icon: '🔍', color: '#3b82f6', bg: 'rgba(59,130,246,0.08)',   border: 'rgba(59,130,246,0.3)', dayCls: 'border-blue-500 bg-blue-50 text-blue-800', darkCls: 'border-blue-500/50 bg-blue-500/10 text-blue-300' },
+  EN_ESPERA:   { label: 'En espera',     short: 'EN ESPERA',   icon: '⏸', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.3)', dayCls: 'border-slate-500 bg-slate-100 text-slate-800', darkCls: 'border-slate-500/50 bg-slate-500/10 text-slate-300' },
+  REPARADO:    { label: 'Por confirmar', short: 'REPARADO',    icon: '✅', color: '#10b981', bg: 'rgba(16,185,129,0.08)',   border: 'rgba(16,185,129,0.3)', dayCls: 'border-emerald-500 bg-emerald-50 text-emerald-800', darkCls: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' },
+  CERRADO:     { label: 'Cerrado',       short: 'CERRADO',     icon: '✓',  color: '#059669', bg: 'rgba(5,150,105,0.08)',    border: 'rgba(5,150,105,0.3)', dayCls: 'border-emerald-600 bg-emerald-100 text-emerald-900', darkCls: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' },
+  RECHAZADO:   { label: 'Rechazado',     short: 'RECHAZADO',   icon: '×',  color: '#ef4444', bg: 'rgba(239,68,68,0.08)',    border: 'rgba(239,68,68,0.3)', dayCls: 'border-red-500 bg-red-50 text-red-800', darkCls: 'border-red-500/50 bg-red-500/10 text-red-300' },
+  CANCELADO:   { label: 'Cancelado',     short: 'CANCELADO',   icon: '—',  color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.3)', dayCls: 'border-slate-500 bg-slate-100 text-slate-800', darkCls: 'border-slate-500/50 bg-slate-500/10 text-slate-300' },
+  DADO_DE_BAJA:{ label: 'Dado de baja',  short: 'BAJA',        icon: '📦', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.3)', dayCls: 'border-slate-500 bg-slate-100 text-slate-800', darkCls: 'border-slate-500/50 bg-slate-500/10 text-slate-400' },
+};
+
+const infoEstadoFlujo = (estado) => ESTADO_FLUJO[estado] || {
+  label: estado || 'Pendiente',
+  short: estado || 'PENDIENTE',
+  icon: '•',
+  color: '#64748b',
+  bg: 'rgba(100,116,139,0.08)',
+  border: 'rgba(100,116,139,0.3)',
+  dayCls: 'border-slate-500 bg-slate-100 text-slate-800',
+  darkCls: 'border-slate-500/50 bg-slate-500/10 text-slate-300',
+};
+
+const COLUMNAS_FLUJO = [
+  { key: 'PENDIENTE',   ...ESTADO_FLUJO.PENDIENTE,   label: 'Reportados' },
+  { key: 'CANALIZADO',  ...ESTADO_FLUJO.CANALIZADO,  label: 'Canalizados' },
+  { key: 'EN_REVISION', ...ESTADO_FLUJO.EN_REVISION, label: 'En revisión' },
+  { key: 'EN_ESPERA',   ...ESTADO_FLUJO.EN_ESPERA,   label: 'En espera' },
+  { key: 'REPARADO',    ...ESTADO_FLUJO.REPARADO,    label: 'Por confirmar' },
+  { key: 'REABIERTO',   ...ESTADO_FLUJO.REABIERTO,   label: 'Reabiertos' },
+  { key: 'CERRADO',     ...ESTADO_FLUJO.CERRADO,     label: 'Cerrados' },
+];
+const ESTADOS_TERMINALES = ['CERRADO', 'RECHAZADO', 'CANCELADO', 'DADO_DE_BAJA', 'CERRADO_SIN_ADEUDO'];
+
 function formatFecha(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('es-MX', { day:'2-digit', month:'short' });
+}
+
+function formatAntiguedad(iso) {
+  if (!iso) return '';
+  const fecha = new Date(iso);
+  const diffMs = Date.now() - fecha.getTime();
+  if (!Number.isFinite(diffMs) || diffMs < 0) return '';
+  const minutos = Math.floor(diffMs / 60000);
+  if (minutos < 60) return `hace ${Math.max(1, minutos)} min`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  const dias = Math.floor(horas / 24);
+  return `hace ${dias} d`;
 }
 
 const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'✍️ Manual' };
@@ -119,6 +167,16 @@ function origenIncidente(incidente = {}) {
   return 'Sin origen definido';
 }
 
+function esIncidenteDeLaboratorio(incidente = {}) {
+  if (incidente.origen === 'DEPARTAMENTO') return false;
+  return Boolean(
+    incidente.origen === 'SESION' ||
+    incidente.origen === 'RECEPCION' ||
+    incidente.laboratorio_id ||
+    incidente.laboratorio_nombre
+  );
+}
+
 function detalleOrigenIncidente(incidente = {}) {
   const piezas = [];
   if (incidente.activo_ubicacion_nombre) piezas.push(incidente.activo_ubicacion_nombre);
@@ -137,14 +195,19 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const origen = origenIncidente(incidente);
   const detalleOrigen = detalleOrigenIncidente(incidente);
   // Nombre limpio: quitar doble guion y formatear
+  const resumenProblema = String(incidente.descripcion || '').trim();
   const nombreRaw = incidente.activo_nombre
-    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : (incidente.laboratorio_nombre ? 'Reporte general del laboratorio' : 'Reporte general del departamento'));
+    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '')
+    || (resumenProblema ? resumenProblema.slice(0, 58) : '')
+    || (incidente.laboratorio_nombre ? 'Reporte general del laboratorio' : 'Reporte general del departamento');
   const nombre = nombreRaw.replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
+  const folio = `INC-${String(incidente.id || '').padStart(4, '0')}`;
+  const antiguedad = formatAntiguedad(incidente.fecha_reporte);
 
   // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
   const adeudoPendiente = incidente.adeudo_id &&
     incidente.adeudo_estado !== 'RESUELTO' && incidente.adeudo_estado !== 'CANCELADO';
-  const cerrado = ESTADOS_CERRADOS.includes(incidente.estado);
+  const cerrado = ESTADOS_TERMINALES.includes(incidente.estado);
 
   return (
     <div
@@ -161,7 +224,10 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-base shrink-0" title={tipo.label}>{tipo.emoji}</span>
-          <p className={`text-sm font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
+            <p className={`text-[10px] font-mono ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>{folio}</p>
+          </div>
         </div>
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isDay ? pri.dayCls : pri.cls}`}>
           {pri.label}
@@ -218,7 +284,14 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
             </span>
           )}
         </div>
-        <span className={`text-[10px] ${isDay ? 'text-slate-500' : 'text-slate-600'}`}>{formatFecha(incidente.fecha_reporte)}</span>
+        <div className="text-right">
+          <span className={`block text-[10px] ${isDay ? 'text-slate-500' : 'text-slate-600'}`}>{antiguedad || formatFecha(incidente.fecha_reporte)}</span>
+          {incidente.reportado_por && (
+            <span className={`block text-[10px] max-w-[118px] truncate ${isDay ? 'text-slate-500' : 'text-slate-600'}`} title={incidente.reportado_por}>
+              {incidente.reportado_por}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Indicador de arrastre — oculto si tiene adeudo pendiente */}
@@ -299,7 +372,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const vinculoFijo = Boolean(incidente.computadora_id || incidente.activo_id);
-  const estaCerrado = ESTADOS_CERRADOS.includes(incidente.estado);
+  const estaCerrado = ESTADOS_TERMINALES.includes(incidente.estado);
   const [form, setForm] = useState({
     estado:            incidente.estado,
     prioridad:         incidente.prioridad,
@@ -438,7 +511,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
     setReabriendo(true); setError('');
     try {
       await api.post(`/inventario/incidentes/${incidente.id}/reabrir`, { motivo });
-      toast('Incidencia reabierta y enviada a revision', 'success');
+      toast('Incidencia reabierta para nueva revision', 'success');
       onActualizado();
       onClose();
     } catch (e) {
@@ -458,9 +531,9 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
         `/inventario/incidentes/${incidente.id}/seguimientos`,
         { texto }
       );
-      await api.put(`/inventario/incidentes/${incidente.id}`, { estado: 'EN_REVISION' });
+      await api.put(`/inventario/incidentes/${incidente.id}`, { estado: 'CANALIZADO' });
       setSeguimientos(data.seguimientos || []);
-      setForm(prev => ({ ...prev, estado: 'EN_REVISION' }));
+      setForm(prev => ({ ...prev, estado: 'CANALIZADO' }));
       setNotaCanalizacion('');
       toast(`Reporte canalizado a ${area.label}`, 'success', { title: 'Canalizacion registrada' });
       onActualizado();
@@ -481,7 +554,13 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       });
       setForm(prev => ({ ...prev, estado }));
       toast(
-        estado === 'REPARADO' ? 'Incidente marcado como reparado' : 'Incidente tomado en revision',
+        estado === 'REPARADO'
+          ? 'Incidente marcado como reparado'
+          : estado === 'CERRADO'
+            ? 'Incidente cerrado'
+            : estado === 'EN_ESPERA'
+              ? 'Incidente puesto en espera'
+              : 'Incidente actualizado',
         'success'
       );
       onActualizado();
@@ -499,11 +578,17 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const seguimientosMostrados = mostrarHistorialCompleto ? seguimientosOrdenados : seguimientosOrdenados.slice(0, 2);
   const ultimoCanalizado = seguimientosOrdenados.find(seg => String(seg.texto || '').toLowerCase().startsWith('canalizado a '));
   const destinoCanalizado = ultimoCanalizado?.texto?.replace(/^Canalizado a\s*/i, '').split(':')[0]?.trim();
-  const areaActual = destinoCanalizado || (AREAS_ATENCION[inferirAreaAtencion(incidente)]?.label || 'Por definir');
-  const esReporteLaboratorio = Boolean(incidente.laboratorio_id || incidente.laboratorio_nombre);
+  const areaSugerida = AREAS_ATENCION[inferirAreaAtencion(incidente)]?.label || 'Por definir';
+  const areaActual = destinoCanalizado || (form.estado === 'PENDIENTE' ? 'Responsable de origen' : areaSugerida);
+  const estadoActual = infoEstadoFlujo(form.estado);
+  const esReporteLaboratorio = esIncidenteDeLaboratorio(incidente);
   const etiquetaReporteGeneral = esReporteLaboratorio ? 'Observacion general del laboratorio' : 'Reporte general del departamento';
   const origenNombre = origenIncidente(incidente);
   const origenDetalle = detalleOrigenIncidente(incidente);
+  const subtituloHeader = esReporteLaboratorio
+    ? incidente.laboratorio_nombre || origenNombre
+    : origenNombre;
+  const etiquetaSubtituloHeader = esReporteLaboratorio ? 'Lab' : 'Depto';
   const etiquetaOrigen = incidente.origen === 'DEPARTAMENTO'
     ? `Departamento · ${origenNombre}`
     : incidente.origen === 'SESION' || incidente.origen === 'RECEPCION'
@@ -540,6 +625,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           <span className="text-2xl">{tipo.emoji}</span>
           <div className="flex-1 min-w-0">
             <p className={`font-bold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
+            {!esReporteLaboratorio && subtituloHeader && subtituloHeader !== 'Sin origen definido' && (
+              <p className="text-xs text-slate-500 truncate">
+                {etiquetaSubtituloHeader}: {subtituloHeader}
+              </p>
+            )}
             {incidente.laboratorio_nombre && (
               <p className="text-xs text-slate-500 truncate">📍 {incidente.laboratorio_nombre}</p>
             )}
@@ -615,22 +705,22 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 <p className={`mt-1 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{areaActual}</p>
                 <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
                   {form.estado === 'PENDIENTE'
-                    ? 'Pendiente de tomar en revision.'
-                    : form.estado === 'EN_REVISION'
-                      ? 'En seguimiento por el area responsable.'
-                      : form.estado === 'REPARADO'
-                        ? 'Atencion marcada como reparada.'
-                        : 'Estado registrado en el expediente.'}
+                    ? `Pendiente de revisar. Area sugerida: ${areaSugerida}.`
+                    : form.estado === 'CANALIZADO'
+                      ? 'Canalizado al area responsable.'
+                      : form.estado === 'EN_REVISION'
+                        ? 'En seguimiento por el area responsable.'
+                        : form.estado === 'EN_ESPERA'
+                          ? 'En pausa por informacion, refaccion o presupuesto.'
+                          : form.estado === 'REPARADO'
+                            ? 'Reparado; pendiente de confirmacion/cierre.'
+                            : 'Estado registrado en el expediente.'}
                 </p>
               </div>
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${
-                form.estado === 'REPARADO'
-                  ? isDay ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-500/15 text-emerald-200'
-                  : form.estado === 'EN_REVISION'
-                    ? isDay ? 'bg-blue-100 text-blue-800' : 'bg-blue-500/15 text-blue-200'
-                    : isDay ? 'bg-amber-100 text-amber-900' : 'bg-amber-500/15 text-amber-200'
+                isDay ? estadoActual.dayCls : estadoActual.darkCls
               }`}>
-                {form.estado === 'EN_REVISION' ? 'EN REVISION' : form.estado === 'REPARADO' ? 'REPARADO' : 'PENDIENTE'}
+                {estadoActual.short}
               </span>
             </div>
 
@@ -662,6 +752,30 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                     }`}
                   >
                     Marcar reparado
+                  </button>
+                )}
+                {form.estado === 'REPARADO' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCambioRapido('CERRADO')}
+                    disabled={saving}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                      isDay ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/30'
+                    }`}
+                  >
+                    Confirmar cierre
+                  </button>
+                )}
+                {form.estado !== 'EN_ESPERA' && form.estado !== 'REPARADO' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCambioRapido('EN_ESPERA')}
+                    disabled={saving}
+                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                      isDay ? 'bg-slate-50 border-slate-300 text-slate-700 hover:bg-slate-100' : 'bg-slate-800/70 border-white/10 text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    Poner en espera
                   </button>
                 )}
                 <button
@@ -2625,7 +2739,7 @@ export default function Mantenimiento() {
     // Bloquear reabrir si tiene adeudo pendiente
     const adeudoPendiente = inc.adeudo_id &&
       inc.adeudo_estado !== 'RESUELTO' && inc.adeudo_estado !== 'CANCELADO';
-    if (adeudoPendiente && (targetEstado === 'PENDIENTE' || targetEstado === 'EN_REVISION')) {
+    if (adeudoPendiente && (targetEstado === 'PENDIENTE' || targetEstado === 'REABIERTO' || targetEstado === 'EN_REVISION')) {
       toast(
         `No se puede reabrir — este incidente tiene un adeudo pendiente (#${inc.adeudo_id}). ` +
         `Resuelve el adeudo primero, o crea un nuevo incidente de inspección.`,
@@ -2637,7 +2751,7 @@ export default function Mantenimiento() {
 
     try {
       await api.put(`/inventario/incidentes/${inc.id}`, { estado: targetEstado });
-      const colLabel = COLUMNAS.find(c => c.key === targetEstado)?.label || targetEstado;
+      const colLabel = COLUMNAS_FLUJO.find(c => c.key === targetEstado)?.label || targetEstado;
       toast(`Movido a "${colLabel}"`, 'success');
       cargarTodo();
     } catch (err) {
@@ -2648,7 +2762,7 @@ export default function Mantenimiento() {
   };
 
   // Filtrado local
-  const resumenAreas = ['SISTEMAS', 'INFRAESTRUCTURA', 'LABORATORIO', 'INVENTARIO']
+  const resumenAreas = ['SISTEMAS', 'INFRAESTRUCTURA']
     .map(key => ({
       key,
       ...AREAS_ATENCION[key],
@@ -2669,12 +2783,12 @@ export default function Mantenimiento() {
 
   // Agrupar en columnas (DADO_DE_BAJA no aparece en kanban)
   const kanban = {};
-  COLUMNAS.forEach(c => { kanban[c.key] = []; });
+  COLUMNAS_FLUJO.forEach(c => { kanban[c.key] = []; });
   filtered.forEach(i => {
     if (kanban[i.estado]) kanban[i.estado].push(i);
   });
 
-  const pendientesAlta = incidentes.filter(i => i.prioridad === 'ALTA' && i.estado === 'PENDIENTE');
+  const pendientesAlta = incidentes.filter(i => i.prioridad === 'ALTA' && (i.estado === 'PENDIENTE' || i.estado === 'REABIERTO'));
 
   // ─── Configuración de pestañas ──────────────────────────────────────────────
   const TABS = [
@@ -2682,7 +2796,7 @@ export default function Mantenimiento() {
       key: 'kanban',
       label: 'Incidentes',
       icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>,
-      badge: incidentes.filter(i => i.estado === 'PENDIENTE').length || null,
+      badge: incidentes.filter(i => i.estado === 'PENDIENTE' || i.estado === 'REABIERTO').length || null,
       badgeColor: 'bg-amber-500/20 text-amber-400',
     },
     {
@@ -2755,7 +2869,7 @@ export default function Mantenimiento() {
             <div className="flex flex-col gap-1 mb-3">
               <h2 className={`text-sm font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Bandejas de atención</h2>
               <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
-                Separa reportes de laboratorio, activos departamentales y solicitudes que deben canalizarse a Sistemas o Infraestructura.
+                Filtra por el area sugerida o receptora. El origen del reporte se muestra dentro de cada tarjeta.
               </p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
@@ -2782,7 +2896,6 @@ export default function Mantenimiento() {
               })}
             </div>
           </div>
-          )}
 
           {/* Alerta alta prioridad */}
           {pendientesAlta.length > 0 && (
@@ -2841,8 +2954,8 @@ export default function Mantenimiento() {
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {COLUMNAS.map(col => (
+            <div className="grid grid-cols-1 md:auto-cols-[minmax(280px,1fr)] md:grid-flow-col md:overflow-x-auto gap-4 pb-2">
+              {COLUMNAS_FLUJO.map(col => (
                 <KanbanColumn
                   key={col.key}
                   col={col}

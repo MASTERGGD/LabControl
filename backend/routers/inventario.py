@@ -90,7 +90,21 @@ TIPOS_MOVIMIENTO_LEGACY = ["MANTENIMIENTO"]
 ESTADOS_MOVIMIENTO = ["SOLICITADO", "AUTORIZADO", "RECHAZADO", "ENTREGADO", "RECIBIDO", "CANCELADO"]
 ESTADOS_PRESTAMO = ["ACTIVO", "DEVUELTO", "VENCIDO"]
 CONDICIONES = ["EXCELENTE", "BUENO", "REGULAR", "DAÑADO"]
-ESTADOS_INCIDENTE_CERRADOS = ("REPARADO", "DADO_DE_BAJA", "CERRADO_SIN_ADEUDO")
+ESTADOS_INCIDENTE = (
+    "PENDIENTE",
+    "CANALIZADO",
+    "EN_REVISION",
+    "EN_ESPERA",
+    "REABIERTO",
+    "REPARADO",
+    "CERRADO",
+    "RECHAZADO",
+    "CANCELADO",
+    "DADO_DE_BAJA",
+    "CERRADO_SIN_ADEUDO",
+)
+ESTADOS_INCIDENTE_CERRADOS = ("CERRADO", "RECHAZADO", "CANCELADO", "DADO_DE_BAJA", "CERRADO_SIN_ADEUDO")
+ESTADOS_INCIDENTE_REABRIBLES = ("REPARADO", "CERRADO", "RECHAZADO", "CANCELADO", "DADO_DE_BAJA", "CERRADO_SIN_ADEUDO")
 CATALOGO_TIPO_CATEGORIA = "CATEGORIA_ACTIVO"
 CATALOGO_TIPO_UBICACION = "TIPO_UBICACION"
 CATALOGO_TIPOS = [CATALOGO_TIPO_CATEGORIA, CATALOGO_TIPO_UBICACION]
@@ -164,16 +178,17 @@ def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laborator
     condiciones = [Incidente.reportado_por_id == usuario.id]
     if usuario.laboratorio_id:
         condiciones.append(Incidente.laboratorio_id == usuario.laboratorio_id)
+
+    for destino in _destinos_canalizados_usuario(db, usuario):
+        subq = db.query(SeguimientoIncidente.incidente_id).filter(
+            SeguimientoIncidente.texto.ilike(f"{destino}%")
+        )
+        condiciones.append(Incidente.id.in_(subq))
+
     if departamentos:
         query = query.outerjoin(Activo, Incidente.activo_id == Activo.id)
         condiciones.append(Activo.departamento_id.in_(departamentos))
         condiciones.append(and_(Incidente.origen == "DEPARTAMENTO", Incidente.origen_id.in_(departamentos)))
-
-        for destino in _destinos_canalizados_usuario(db, usuario):
-            subq = db.query(SeguimientoIncidente.incidente_id).filter(
-                SeguimientoIncidente.texto.ilike(f"{destino}%")
-            )
-            condiciones.append(Incidente.id.in_(subq))
 
     return query.filter(or_(*condiciones))
 
@@ -464,7 +479,7 @@ class IncidenteCreate(BaseModel):
     prioridad:       str             = Field(default="MEDIA")    # ALTA | MEDIA | BAJA
 
 class IncidenteUpdate(BaseModel):
-    estado:            Optional[str]   = None   # PENDIENTE | EN_REVISION | REPARADO | DADO_DE_BAJA
+    estado:            Optional[str]   = None   # Ver ESTADOS_INCIDENTE
     prioridad:         Optional[str]   = None
     notas_seguimiento: Optional[str]   = None
     costo_reparacion:  Optional[float] = None
@@ -3767,6 +3782,8 @@ def actualizar_incidente(
 
     # ── Bloquear reabrir un incidente que ya generó un adeudo ────────────────
     nuevo_estado = campos.get("estado", "").upper() if "estado" in campos else ""
+    if nuevo_estado and nuevo_estado not in ESTADOS_INCIDENTE:
+        raise HTTPException(status_code=422, detail=f"Estado de incidente no valido: {nuevo_estado}")
     if nuevo_estado == "DADO_DE_BAJA":
         activo_destino = campos.get("activo_id", i.activo_id)
         pc_destino = campos.get("computadora_id", i.computadora_id)
@@ -3775,7 +3792,7 @@ def actualizar_incidente(
                 status_code=422,
                 detail="Una observacion general no puede marcarse como dada de baja sin un equipo relacionado",
             )
-    if nuevo_estado in ("PENDIENTE", "EN_REVISION"):
+    if nuevo_estado in ("PENDIENTE", "REABIERTO", "EN_REVISION"):
         adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == incidente_id).first()
         if adeudo_vinculado and adeudo_vinculado.estado not in ("RESUELTO", "CANCELADO"):
             raise HTTPException(
@@ -3808,7 +3825,7 @@ def actualizar_incidente(
                 pc.estado = "OPERATIVO"
 
     # Si se cierra sin adeudo → solo registrar fecha de resolución
-    if "estado" in campos and campos["estado"].upper() == "CERRADO_SIN_ADEUDO":
+    if "estado" in campos and campos["estado"].upper() in ("CERRADO", "CERRADO_SIN_ADEUDO"):
         i.fecha_resolucion = _utcnow()
 
     # Si se marca como DADO_DE_BAJA → dar de baja el equipo
@@ -3871,7 +3888,7 @@ def actualizar_incidente(
             request=request,
         )
     # Audit log when closing/resolving
-    if "estado" in campos and campos["estado"].upper() in ("REPARADO", "CERRADO_SIN_ADEUDO", "DADO_DE_BAJA"):
+    if "estado" in campos and campos["estado"].upper() in ("REPARADO", "CERRADO", "CERRADO_SIN_ADEUDO", "DADO_DE_BAJA", "RECHAZADO", "CANCELADO"):
         registrar(db, accion=Accion.CERRAR_MANTENIMIENTO, recurso=Recurso.INCIDENTE,
                   usuario=current_user, recurso_id=i.id,
                   detalle={"estado_anterior": estado_anterior, "estado_nuevo": i.estado,
@@ -3928,19 +3945,15 @@ def reabrir_incidente(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    if current_user.rol not in (
-        RolUsuario.SUPER_ADMIN,
-        RolUsuario.LAB_ADMIN,
-        RolUsuario.RESPONSABLE_LAB,
-    ):
-        raise HTTPException(status_code=403, detail="Solo un responsable puede reabrir incidencias")
+    if current_user.rol == RolUsuario.ALUMNO:
+        raise HTTPException(status_code=403, detail="Acceso denegado")
 
     incidente = db.query(Incidente).filter(Incidente.id == incidente_id).first()
     if not incidente:
         raise HTTPException(status_code=404, detail="Incidente no encontrado")
     _asegurar_acceso_incidente(incidente, current_user, db)
-    if incidente.estado not in ESTADOS_INCIDENTE_CERRADOS:
-        raise HTTPException(status_code=409, detail="La incidencia no esta cerrada")
+    if incidente.estado not in ESTADOS_INCIDENTE_REABRIBLES:
+        raise HTTPException(status_code=409, detail="La incidencia no esta en un estado reabrible")
 
     adeudo_vinculado = db.query(Adeudo).filter(Adeudo.incidente_id == incidente_id).first()
     if adeudo_vinculado and adeudo_vinculado.estado not in ("RESUELTO", "CANCELADO"):
@@ -3951,7 +3964,7 @@ def reabrir_incidente(
 
     motivo = data.motivo.strip()
     estado_anterior = incidente.estado
-    incidente.estado = "EN_REVISION"
+    incidente.estado = "REABIERTO"
     incidente.fecha_resolucion = None
 
     if incidente.activo_id:
@@ -3971,7 +3984,7 @@ def reabrir_incidente(
         tipo="REAPERTURA",
         texto=f"Incidencia reabierta: {motivo}",
         estado_anterior=estado_anterior,
-        estado_nuevo="EN_REVISION",
+        estado_nuevo="REABIERTO",
     ))
     db.commit()
     db.refresh(incidente)
