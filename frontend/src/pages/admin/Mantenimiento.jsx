@@ -502,6 +502,13 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const areaActual = destinoCanalizado || (AREAS_ATENCION[inferirAreaAtencion(incidente)]?.label || 'Por definir');
   const esReporteLaboratorio = Boolean(incidente.laboratorio_id || incidente.laboratorio_nombre);
   const etiquetaReporteGeneral = esReporteLaboratorio ? 'Observacion general del laboratorio' : 'Reporte general del departamento';
+  const origenNombre = origenIncidente(incidente);
+  const origenDetalle = detalleOrigenIncidente(incidente);
+  const etiquetaOrigen = incidente.origen === 'DEPARTAMENTO'
+    ? `Departamento · ${origenNombre}`
+    : incidente.origen === 'SESION' || incidente.origen === 'RECEPCION'
+      ? `Laboratorio · ${origenNombre}`
+      : ORIGENES[incidente.origen] || origenNombre || incidente.origen || 'Sin origen definido';
   const textoSeguimientoPlaceholder = modoSeguimiento === 'INFO'
     ? 'Indica que informacion necesitas del area o persona que reporto...'
     : modoSeguimiento === 'REPARACION'
@@ -564,8 +571,24 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           <div className={`glass-sm rounded-xl p-4 space-y-3 text-sm ${isDay ? 'bg-white border border-slate-200' : ''}`}>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Origen</span>
-              <span className={isDay ? 'text-slate-800' : 'text-slate-300'}>{ORIGENES[incidente.origen] || incidente.origen}</span>
+              <span
+                className={`${isDay ? 'text-slate-800' : 'text-slate-300'} text-right font-medium`}
+                title={origenDetalle || origenNombre}
+              >
+                {etiquetaOrigen}
+              </span>
             </div>
+            {origenDetalle && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-500">Contexto</span>
+                <span
+                  className={`${isDay ? 'text-slate-700' : 'text-slate-400'} text-right text-xs`}
+                  title={origenDetalle}
+                >
+                  {origenDetalle}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Reportado por</span>
               <span className={`${isDay ? 'text-slate-800' : 'text-slate-300'} font-medium`}>{incidente.reportado_por || '—'}</span>

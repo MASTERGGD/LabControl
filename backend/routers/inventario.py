@@ -117,6 +117,29 @@ def _filtrar_lab_asignado(query, model, usuario: Usuario, laboratorio_id: int | 
     return query
 
 
+def _destinos_canalizados_usuario(db: Session, usuario: Usuario) -> list[str]:
+    dep_usuario = db.query(Departamento).filter(Departamento.id == usuario.departamento_id).first() if usuario.departamento_id else None
+    clave_dep = (dep_usuario.clave if dep_usuario else "").strip().upper()
+    nombre_dep = (dep_usuario.nombre if dep_usuario else "").strip().upper()
+    destinos = []
+    if clave_dep in {"CI", "INFRA", "INFRAESTRUCTURA"} or "INFRAESTRUCTURA" in nombre_dep:
+        destinos.append("Canalizado a Infraestructura")
+    if clave_dep in {"SIS", "SISTEMAS", "TI"} or "SISTEMAS" in nombre_dep:
+        destinos.append("Canalizado a Sistemas")
+    return destinos
+
+
+def _incidente_canalizado_a_usuario(db: Session, incidente_id: int, usuario: Usuario) -> bool:
+    for destino in _destinos_canalizados_usuario(db, usuario):
+        existe = db.query(SeguimientoIncidente.id).filter(
+            SeguimientoIncidente.incidente_id == incidente_id,
+            SeguimientoIncidente.texto.ilike(f"{destino}%"),
+        ).first()
+        if existe:
+            return True
+    return False
+
+
 def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laboratorio_id: int | None):
     """Limita mantenimiento al alcance real del usuario.
 
@@ -146,15 +169,7 @@ def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laborator
         condiciones.append(Activo.departamento_id.in_(departamentos))
         condiciones.append(and_(Incidente.origen == "DEPARTAMENTO", Incidente.origen_id.in_(departamentos)))
 
-        dep_usuario = db.query(Departamento).filter(Departamento.id == usuario.departamento_id).first() if usuario.departamento_id else None
-        clave_dep = (dep_usuario.clave if dep_usuario else "").strip().upper()
-        nombre_dep = (dep_usuario.nombre if dep_usuario else "").strip().upper()
-        destinos_canalizados = []
-        if clave_dep in {"CI", "INFRA", "INFRAESTRUCTURA"} or "INFRAESTRUCTURA" in nombre_dep:
-            destinos_canalizados.append("Canalizado a Infraestructura")
-        if clave_dep in {"SIS", "SISTEMAS", "TI"} or "SISTEMAS" in nombre_dep:
-            destinos_canalizados.append("Canalizado a Sistemas")
-        for destino in destinos_canalizados:
+        for destino in _destinos_canalizados_usuario(db, usuario):
             subq = db.query(SeguimientoIncidente.incidente_id).filter(
                 SeguimientoIncidente.texto.ilike(f"{destino}%")
             )
@@ -176,6 +191,9 @@ def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario, db: Sessi
         return
 
     if incidente.reportado_por_id == usuario.id:
+        return
+
+    if _incidente_canalizado_a_usuario(db, incidente.id, usuario):
         return
 
     departamentos = _departamentos_visibles_inventario(db, usuario) or []
