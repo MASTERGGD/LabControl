@@ -695,31 +695,59 @@ function SeccionAlerta({ titulo, count, color, icono, children, onVerTodos }) {
 }
 
 function PanelAlertas({ alertas, navigate }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   if (!alertas || alertas.total === 0) return null;
   const { incidentes_pendientes, incidentes_total, prestamos_vencidos, prestamos_total, adeudos_criticos, adeudos_total } = alertas;
+  const pesoPrioridad = { ALTA: 3, MEDIA: 2, BAJA: 1 };
+  const incidentesOrdenados = [...(incidentes_pendientes || [])].sort((a, b) => {
+    const prioridad = (pesoPrioridad[b.prioridad] || 0) - (pesoPrioridad[a.prioridad] || 0);
+    if (prioridad !== 0) return prioridad;
+    return (b.dias || 0) - (a.dias || 0);
+  });
+  const incidentesVisibles = incidentesOrdenados.slice(0, 3);
+  const incidentesAlta = incidentesOrdenados.filter(i => i.prioridad === 'ALTA').length;
+  const irMantenimiento = () => navigate('/admin/mantenimiento');
   return (
     <div className="rounded-xl overflow-hidden"
-      style={{ background:'rgba(15,23,42,0.78)', border:'1px solid rgba(255,255,255,0.08)', boxShadow:'0 18px 45px rgba(0,0,0,0.18)' }}>
+      style={{
+        background: isDay ? '#FFFFFF' : 'rgba(15,23,42,0.78)',
+        border: `1px solid ${isDay ? '#CBD5E1' : 'rgba(255,255,255,0.08)'}`,
+        boxShadow: isDay ? '0 18px 45px rgba(15,23,42,0.08)' : '0 18px 45px rgba(0,0,0,0.18)'
+      }}>
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/6"
-        style={{ background:'linear-gradient(90deg, rgba(239,68,68,0.09), rgba(245,158,11,0.045), rgba(15,23,42,0))' }}>
+        style={{ background: isDay ? 'linear-gradient(90deg, #FFF7ED, #FFFFFF)' : 'linear-gradient(90deg, rgba(239,68,68,0.09), rgba(245,158,11,0.045), rgba(15,23,42,0))' }}>
         <span className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0" style={{ background:'rgba(239,68,68,0.13)', color:'#fca5a5', border:'1px solid rgba(239,68,68,0.24)' }}>🚨</span>
         <div className="flex-1">
-          <p className="text-sm font-bold text-slate-100" style={{margin:0}}>Atención operativa</p>
-          <p className="text-xs text-slate-500" style={{margin:0}}>{alertas.total} elemento{alertas.total !== 1 ? 's' : ''} pendiente{alertas.total !== 1 ? 's' : ''}</p>
+          <p className={`text-sm font-bold ${isDay ? 'text-slate-950' : 'text-slate-100'}`} style={{margin:0}}>Atención operativa</p>
+          <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-500'}`} style={{margin:0}}>{alertas.total} elemento{alertas.total !== 1 ? 's' : ''} pendiente{alertas.total !== 1 ? 's' : ''}</p>
         </div>
-        <span className="text-xs text-slate-500">Actualiza cada 30s</span>
+        <div className="flex items-center gap-2">
+          {incidentesAlta > 0 && (
+            <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ color: isDay ? '#991B1B' : '#FCA5A5', background: isDay ? '#FEE2E2' : 'rgba(239,68,68,0.16)' }}>
+              {incidentesAlta} alta{incidentesAlta !== 1 ? 's' : ''}
+            </span>
+          )}
+          <button onClick={irMantenimiento} className="text-xs font-semibold hover:underline" style={{ background: 'none', border: 'none', cursor: 'pointer', color: isDay ? '#B45309' : '#FDBA74' }}>
+            Ver tablero
+          </button>
+        </div>
       </div>
       <div className="divide-y divide-white/5 md:divide-y-0 md:divide-x md:flex">
         <SeccionAlerta titulo="Incidentes sin atender" count={incidentes_total} icono="🛠️"
           color={{ accent:'#f97316', text:'#fdba74', badgeBg:'rgba(249,115,22,0.16)', badgeText:'#fed7aa', link:'#fb923c' }}
-          onVerTodos={() => navigate('/admin/mantenimiento')}>
-          {incidentes_pendientes.map(inc => (
+          onVerTodos={irMantenimiento}>
+          {incidentesVisibles.map(inc => (
             <FilaAlerta key={inc.id}
               icono={inc.prioridad === 'ALTA' ? '🔴' : inc.prioridad === 'BAJA' ? '🟡' : '🟠'}
-              texto={inc.descripcion} sub={`Hace ${inc.dias} día${inc.dias!==1?'s':''} · ${inc.tipo}`}
-              urgente={inc.dias >= 3} boton="Atender" onClick={() => navigate('/admin/mantenimiento')}/>
+              texto={inc.descripcion} sub={`${inc.prioridad || 'Media'} · Hace ${inc.dias} día${inc.dias!==1?'s':''} · ${inc.tipo}`}
+              urgente={inc.prioridad === 'ALTA' || inc.dias >= 3} boton="Atender" onClick={irMantenimiento}/>
           ))}
-          {incidentes_total > 5 && <p className="text-xs text-slate-500 px-4 py-2" style={{margin:0}}>+{incidentes_total - 5} más</p>}
+          {incidentes_total > incidentesVisibles.length && (
+            <button onClick={irMantenimiento} className="w-full text-left text-xs px-4 py-2 hover:underline" style={{margin:0, background:'transparent', border:'none', cursor:'pointer', color: isDay ? '#B45309' : '#FDBA74'}}>
+              Mostrando {incidentesVisibles.length} de {incidentes_total}. Ver todas las incidencias
+            </button>
+          )}
         </SeccionAlerta>
         <SeccionAlerta titulo="Préstamos vencidos" count={prestamos_total} icono="📤"
           color={{ accent:'#eab308', text:'#fde68a', badgeBg:'rgba(234,179,8,0.16)', badgeText:'#fef3c7', link:'#facc15' }}
