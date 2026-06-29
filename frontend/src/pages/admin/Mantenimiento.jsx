@@ -111,6 +111,28 @@ function formatAntiguedad(iso) {
 
 const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'✍️ Manual' };
 
+const OPCIONES_ORIGEN_FILTRO = [
+  { value: '', label: 'Todos los origenes' },
+  { value: 'LABORATORIO', label: 'Laboratorio' },
+  { value: 'DEPARTAMENTO', label: 'Departamento' },
+  { value: 'SESION', label: 'Sesion de clase' },
+  { value: 'MANUAL', label: 'Manual' },
+];
+
+const OPCIONES_PRIORIDAD_FILTRO = [
+  { value: '', label: 'Todas las prioridades' },
+  { value: 'ALTA', label: 'Alta' },
+  { value: 'MEDIA', label: 'Media' },
+  { value: 'BAJA', label: 'Baja' },
+];
+
+const OPCIONES_ESTADO_FILTRO = [
+  { value: '', label: 'Todos los estados' },
+  ...COLUMNAS_FLUJO.map(col => ({ value: col.key, label: col.label })),
+  { value: 'RECHAZADO', label: 'Rechazados' },
+  { value: 'CANCELADO', label: 'Cancelados' },
+];
+
 // ─── Tarjeta de incidente ─────────────────────────────────────────────────────
 const AREAS_ATENCION = {
   TODAS: { label: 'Todas', short: 'Todas', icon: '▦', dayCls: 'bg-slate-50 text-slate-700 border-slate-200', darkCls: 'bg-slate-800/70 text-slate-200 border-slate-700' },
@@ -165,6 +187,14 @@ function origenIncidente(incidente = {}) {
   if (incidente.laboratorio_nombre) return incidente.laboratorio_nombre;
   if (incidente.activo_alcance === 'INSTITUCIONAL') return 'Inventario institucional';
   return 'Sin origen definido';
+}
+
+function tipoOrigenFiltro(incidente = {}) {
+  if (incidente.origen === 'SESION' || incidente.origen === 'RECEPCION') return 'SESION';
+  if (incidente.origen === 'MANUAL' && (incidente.laboratorio_id || incidente.laboratorio_nombre)) return 'LABORATORIO';
+  if (incidente.origen === 'DEPARTAMENTO' || incidente.activo_departamento_nombre || incidente.origen_departamento_nombre) return 'DEPARTAMENTO';
+  if (incidente.laboratorio_id || incidente.laboratorio_nombre) return 'LABORATORIO';
+  return incidente.origen || 'MANUAL';
 }
 
 function esIncidenteDeLaboratorio(incidente = {}) {
@@ -2683,6 +2713,10 @@ export default function Mantenimiento() {
   const [filtroTexto,  setFiltroTexto]  = useState('');
   const [filtroLab,    setFiltroLab]    = useState('');
   const [filtroArea,   setFiltroArea]   = useState('TODAS');
+  const [filtroOrigen, setFiltroOrigen] = useState('');
+  const [filtroPrioridad, setFiltroPrioridad] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('');
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [drawerInc,    setDrawerInc]    = useState(null);
   const [modalNuevo,   setModalNuevo]   = useState(false);
   const [dragTarget,   setDragTarget]   = useState(null);
@@ -2703,8 +2737,8 @@ export default function Mantenimiento() {
   const esRolLaboratorioMantenimiento = usuario?.rol === 'LAB_ADMIN' || usuario?.rol === 'RESPONSABLE_LAB';
   const puedeFiltrarLaboratorios = usuario?.rol === 'SUPER_ADMIN' || esRolLaboratorioMantenimiento;
   const placeholderBusqueda = esVistaInstitucional
-    ? 'Buscar activo, descripción, laboratorio...'
-    : 'Buscar equipo, descripción, lab...';
+    ? 'Buscar folio, activo, descripcion, reportante, departamento o laboratorio...'
+    : 'Buscar equipo, descripcion, laboratorio o reportante...';
 
   const cargarTodo = useCallback(async () => {
     setLoading(true); setError('');
@@ -2771,11 +2805,20 @@ export default function Mantenimiento() {
 
   const filtered = incidentes.filter(i => {
     if (filtroArea !== 'TODAS' && inferirAreaAtencion(i) !== filtroArea) return false;
+    if (filtroOrigen && tipoOrigenFiltro(i) !== filtroOrigen) return false;
+    if (filtroPrioridad && i.prioridad !== filtroPrioridad) return false;
+    if (filtroEstado && i.estado !== filtroEstado) return false;
     if (!filtroTexto) return true;
     const t = filtroTexto.toLowerCase();
-    return (i.activo_nombre?.toLowerCase().includes(t) ||
+    const folio = `inc-${String(i.id || '').padStart(4, '0')}`;
+    return (folio.includes(t) ||
+            String(i.id || '').includes(t) ||
+            i.activo_nombre?.toLowerCase().includes(t) ||
             i.descripcion?.toLowerCase().includes(t)   ||
             i.activo_departamento_nombre?.toLowerCase().includes(t) ||
+            i.origen_departamento_nombre?.toLowerCase().includes(t) ||
+            i.reportado_por_nombre?.toLowerCase().includes(t) ||
+            i.reportado_por?.toLowerCase().includes(t) ||
             i.activo_ubicacion_nombre?.toLowerCase().includes(t) ||
             i.laboratorio_nombre?.toLowerCase().includes(t) ||
             i.pc_codigo?.toLowerCase().includes(t));
@@ -2930,8 +2973,8 @@ export default function Mantenimiento() {
                 value={filtroLab}
                 onChange={setFiltroLab}
                 className="w-44"
-                placeholder="Todos los labs"
-                options={[{ value: '', label: 'Todos los labs' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
+                placeholder="Todas las ubicaciones"
+                options={[{ value: '', label: 'Todas las ubicaciones' }, ...laboratorios.map(l => ({ value: l.id, label: l.nombre }))]}
               />
             ) : (
               <div className={`rounded-xl border px-3 py-2.5 text-sm ${isDay ? 'bg-white border-slate-200 text-slate-600' : 'bg-slate-900/60 border-white/10 text-slate-400'}`}>
@@ -2939,12 +2982,71 @@ export default function Mantenimiento() {
               </div>
             )}
 
+            <button
+              type="button"
+              onClick={() => setMostrarFiltros(v => !v)}
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                mostrarFiltros || filtroOrigen || filtroPrioridad || filtroEstado
+                  ? isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                  : isDay ? 'bg-white border-slate-200 text-slate-700 hover:border-slate-300' : 'bg-slate-900/60 border-white/10 text-slate-300 hover:border-white/20'
+              }`}
+            >
+              <span>{mostrarFiltros ? '−' : '+'}</span>
+              Filtros
+              {(filtroOrigen || filtroPrioridad || filtroEstado) && (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isDay ? 'bg-emerald-100 text-emerald-900' : 'bg-emerald-400/20 text-emerald-200'}`}>
+                  {[filtroOrigen, filtroPrioridad, filtroEstado].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+
             <button onClick={cargarTodo} className="btn-ghost px-3 py-2.5 text-sm" title="Actualizar">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
               </svg>
             </button>
           </div>
+
+          {mostrarFiltros && (
+            <div className={`mb-5 rounded-2xl border p-3 ${isDay ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/50 border-white/10'}`}>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <SelectDark
+                  value={filtroOrigen}
+                  onChange={setFiltroOrigen}
+                  placeholder="Todos los origenes"
+                  options={OPCIONES_ORIGEN_FILTRO}
+                />
+                <SelectDark
+                  value={filtroPrioridad}
+                  onChange={setFiltroPrioridad}
+                  placeholder="Todas las prioridades"
+                  options={OPCIONES_PRIORIDAD_FILTRO}
+                />
+                <SelectDark
+                  value={filtroEstado}
+                  onChange={setFiltroEstado}
+                  placeholder="Todos los estados"
+                  options={OPCIONES_ESTADO_FILTRO}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroTexto('');
+                    setFiltroLab('');
+                    setFiltroOrigen('');
+                    setFiltroPrioridad('');
+                    setFiltroEstado('');
+                    setFiltroArea('TODAS');
+                  }}
+                  className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    isDay ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && <div className="mb-4 bg-red-950/40 border border-red-800/50 text-red-300 rounded-xl px-4 py-3 text-sm">{error}</div>}
 
