@@ -52,6 +52,8 @@ import AutoAsignacion from './pages/AutoAsignacion';
 import ValidarConsulta from './pages/ValidarConsulta';
 import ValidarActivo from './pages/ValidarActivo';
 
+const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
 // También acepta rolesPermitidos explícito para casos especiales.
@@ -81,7 +83,7 @@ function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) 
       return children;
     }
     // Redirigir a su propio dashboard si intenta acceder a un área no permitida
-    return <Navigate to={RUTAS_POR_ROL[usuario.rol] || '/login'} replace />;
+    return <Navigate to={rutaInicialUsuario(usuario)} replace />;
   }
 
   return children;
@@ -101,12 +103,22 @@ const RUTAS_POR_ROL = {
   ALUMNO:      '/alumno/estudio-socioeconomico',
 };
 
+function tieneServiciosEscolares(usuario) {
+  return usuario?.rol === 'SERVICIOS_ESCOLARES'
+    || (usuario?.rol !== 'SUPER_ADMIN' && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE));
+}
+
+function rutaInicialUsuario(usuario) {
+  if (tieneServiciosEscolares(usuario)) return '/servicios-escolares';
+  return RUTAS_POR_ROL[usuario?.rol] || '/login';
+}
+
 // ─── Redireccionador automático post-login ────────────────────────────────────
 
 function RootRedirect() {
   const { usuario } = useAuth();
   if (!usuario) return <Navigate to="/login" replace />;
-  return <Navigate to={RUTAS_POR_ROL[usuario.rol] || '/login'} replace />;
+  return <Navigate to={rutaInicialUsuario(usuario)} replace />;
 }
 
 // ─── App ───────────────────────────────────────────────────────────────────────
@@ -151,18 +163,18 @@ function AppRoutes() {
       <Route
         path="/servicios-escolares"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'SERVICIOS_ESCOLARES']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN', 'SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
             <DashboardServiciosEscolares />
           </RutaProtegida>
         }
       />
       <Route path="/servicios-escolares/alumnos" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
           <SEAlumnos />
         </RutaProtegida>
       }/>
       <Route path="/servicios-escolares/estudios-socioeconomicos" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
           <SEFichas />
         </RutaProtegida>
       }/>
@@ -369,7 +381,7 @@ function AppRoutes() {
         </RutaProtegida>
       }/>
       <Route path="/admin/tutoria/estudio-socioeconomico" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
           <Navigate to="/servicios-escolares/estudios-socioeconomicos" replace />
         </RutaProtegida>
       }/>

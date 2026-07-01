@@ -7,6 +7,23 @@ import SelectDark from './SelectDark';
 import ThemeSwitcher from './ThemeSwitcher';
 import { useTheme } from '../context/ThemeContext';
 
+const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+
+function tieneServiciosEscolares(usuario) {
+  return usuario?.rol === 'SERVICIOS_ESCOLARES'
+    || (usuario?.rol !== 'SUPER_ADMIN' && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE));
+}
+
+function getHomePath(usuario) {
+  if (tieneServiciosEscolares(usuario)) return '/servicios-escolares';
+  if (usuario?.rol === 'ADMINISTRATIVO') return '/administrativo';
+  if (usuario?.rol === 'TUTORIA_ADMIN') return '/admin/tutoria';
+  if (usuario?.rol === 'MEDICO') return '/medico/consultorio';
+  if (usuario?.rol === 'DOCENTE') return '/docente';
+  if (usuario?.rol === 'ALUMNO') return '/alumno/estudio-socioeconomico';
+  return usuario?.rol === 'SUPER_ADMIN' ? '/admin' : '/lab';
+}
+
 function BrandMark({ size = 'w-8 h-8', imageSize = 'w-[78%] h-[78%]' }) {
   return (
     <div
@@ -289,7 +306,7 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
   },
   {
-    label: 'Inicio escolares', path: '/servicios-escolares', exact: true, roles: ['SERVICIOS_ESCOLARES'],
+    label: 'Inicio escolares', path: '/servicios-escolares', exact: true, roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l6.16-3.422A12.083 12.083 0 0118.5 14c0 3.314-2.91 6-6.5 6s-6.5-2.686-6.5-6c0-1.193.257-2.353.34-3.422L12 14z"/></svg>,
   },
 
@@ -381,17 +398,17 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Espacios
-  { divider: true, label: 'Servicios Escolares', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'] },
+  { divider: true, label: 'Servicios Escolares', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE },
   {
-    label: 'Panel escolares', path: '/servicios-escolares', exact: true, roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    label: 'Panel escolares', path: '/servicios-escolares', exact: true, roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h8M8 15h5"/></svg>,
   },
   {
-    label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   },
   {
-    label: 'Estudios socioeconómicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], inGroup: true,
+    label: 'Estudios socioeconómicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
   },
 
@@ -559,15 +576,8 @@ function Breadcrumb({ pathname }) {
 
 // Sidebar content (definido fuera de AdminLayout para evitar re-montaje)
 function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
-  const homePath = usuario?.rol === 'ADMINISTRATIVO'
-    ? '/administrativo'
-    : usuario?.rol === 'SERVICIOS_ESCOLARES' ? '/servicios-escolares'
-    : usuario?.rol === 'TUTORIA_ADMIN' ? '/admin/tutoria'
-    : usuario?.rol === 'MEDICO' ? '/medico/consultorio'
-    : usuario?.rol === 'DOCENTE' ? '/docente'
-    : usuario?.rol === 'RESPONSABLE_LAB' ? '/admin/inventario'
-    : usuario?.rol === 'LAB_ADMIN' ? '/lab' : '/admin';
-  const storageKey = `labcontrol-sidebar-groups-v2-${usuario?.rol || 'anon'}`;
+  const homePath = getHomePath(usuario);
+  const storageKey = `labcontrol-sidebar-groups-v2-${usuario?.rol || 'anon'}-${tieneServiciosEscolares(usuario) ? 'escolares' : 'base'}`;
   const [openGroups, setOpenGroups] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(storageKey) || '{}');
@@ -893,14 +903,7 @@ export default function AdminLayout({ children }) {
   const { usuario, logout, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const homePath = usuario?.rol === 'ADMINISTRATIVO'
-    ? '/administrativo'
-    : usuario?.rol === 'SERVICIOS_ESCOLARES' ? '/servicios-escolares'
-    : usuario?.rol === 'TUTORIA_ADMIN' ? '/admin/tutoria'
-    : usuario?.rol === 'MEDICO' ? '/medico/consultorio'
-    : usuario?.rol === 'DOCENTE' ? '/docente'
-    : usuario?.rol === 'RESPONSABLE_LAB' ? '/admin/inventario'
-    : usuario?.rol === 'LAB_ADMIN' ? '/lab' : '/admin';
+  const homePath = getHomePath(usuario);
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [sidebarOpen,  setSidebarOpen]  = useState(true);

@@ -5,6 +5,22 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 
 const EMPTY = { nombre: '', clave: '', descripcion: '', activo: true };
+const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+
+const normalizarCatalogo = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[_-]+/g, ' ')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toUpperCase();
+
+const esDepartamentoServiciosEscolares = departamento => {
+  const clave = normalizarCatalogo(departamento?.clave).replace(/\s/g, '');
+  const nombre = normalizarCatalogo(departamento?.nombre);
+  return ['SE', 'DSE', 'DPSE', 'SERVICIOSESCOLARES'].includes(clave)
+    || nombre.includes('SERVICIOS ESCOLARES');
+};
 
 /* Devuelve siglas de máx 5 chars; si la clave ya es corta la usa tal cual */
 const STOP = new Set(['Y', 'DE', 'LA', 'EL', 'LOS', 'LAS', 'DEL', 'E']);
@@ -190,6 +206,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const isSuperAdmin = usuarioActual?.rol === 'SUPER_ADMIN';
+  const mostrarServiciosEscolares = esDepartamentoServiciosEscolares(departamento);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -275,6 +292,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                     <th className="px-3 py-3 text-center font-semibold">Captura</th>
                     <th className="px-3 py-3 text-center font-semibold">Validacion</th>
                     {isSuperAdmin && <th className="px-3 py-3 text-center font-semibold">Institucional</th>}
+                    {mostrarServiciosEscolares && <th className="px-3 py-3 text-center font-semibold">Escolares</th>}
                     <th className="px-3 py-3 text-center font-semibold">Comunicados</th>
                   </tr>
                 </thead>
@@ -329,6 +347,19 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                             checked={!!u.puede_inventario_institucional}
                             disabled={savingId === u.id}
                             onChange={() => toggle(u, 'inventario:validar', 'puede_inventario_institucional', { scope_global: true })}
+                          />
+                        </td>
+                      )}
+                      {mostrarServiciosEscolares && (
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Servicios Escolares para ${u.nombre}`}
+                            title="Permite gestionar alumnos y estudios socioeconomicos desde el modulo de Servicios Escolares."
+                            className="w-4 h-4 rounded accent-sky-500"
+                            checked={!!u.puede_gestionar_servicios_escolares}
+                            disabled={u.es_responsable || savingId === u.id}
+                            onChange={() => toggle(u, PERM_SERVICIOS_ESCOLARES_MANAGE, 'puede_gestionar_servicios_escolares')}
                           />
                         </td>
                       )}

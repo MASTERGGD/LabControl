@@ -12,6 +12,18 @@ const ROLES_REDIRECT = {
   ALUMNO: '/alumno/estudio-socioeconomico',
 };
 
+const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+
+function getRedirectPath(usuario) {
+  if (
+    usuario?.rol !== 'SUPER_ADMIN'
+    && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE)
+  ) {
+    return '/servicios-escolares';
+  }
+  return ROLES_REDIRECT[usuario?.rol] || '/';
+}
+
 const PASSWORD_FIELDS = [
   ['password_actual', 'Contraseña actual', 'La contraseña temporal que recibiste', 'current-password'],
   ['password_nuevo', 'Nueva contraseña', 'Mínimo 8 caracteres', 'new-password'],
@@ -56,7 +68,7 @@ export default function CambiarPasswordObligatorio() {
 
   if (!usuario) return <Navigate to="/login" replace />;
   if (!usuario.debe_cambiar_password) {
-    return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
+    return <Navigate to={getRedirectPath(usuario)} replace />;
   }
 
   const handleSubmit = async (e) => {
@@ -79,7 +91,7 @@ export default function CambiarPasswordObligatorio() {
       });
       const token = sessionStorage.getItem('token');
       login({ ...usuario, debe_cambiar_password: false }, token);
-      navigate(ROLES_REDIRECT[usuario.rol] || '/', { replace: true });
+      navigate(getRedirectPath(usuario), { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al cambiar la contraseña');
     } finally {

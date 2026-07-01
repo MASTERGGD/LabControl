@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -10,6 +12,23 @@ from models.usuario_permiso import UsuarioPermiso
 PERM_COMUNICADOS_WRITE = "comunicados:write"
 PERM_INVENTARIO_WRITE = "inventario:write"
 PERM_INVENTARIO_VALIDATE = "inventario:validar"
+PERM_SERVICIOS_ESCOLARES_MANAGE = "servicios_escolares:manage"
+
+
+def _normalizar_catalogo(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = unicodedata.normalize("NFKD", str(value))
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(normalized.upper().replace("_", " ").replace("-", " ").split())
+
+
+def es_departamento_servicios_escolares(departamento: Departamento | None) -> bool:
+    if not departamento:
+        return False
+    clave = _normalizar_catalogo(getattr(departamento, "clave", "")).replace(" ", "")
+    nombre = _normalizar_catalogo(getattr(departamento, "nombre", ""))
+    return clave in {"SE", "DSE", "DPSE", "SERVICIOSESCOLARES"} or "SERVICIOS ESCOLARES" in nombre
 
 
 def es_responsable_departamento(db: Session, usuario: Usuario, departamento_id: int | None) -> bool:
@@ -88,6 +107,53 @@ def departamentos_validacion_inventario(db: Session, usuario: Usuario) -> list[i
     return departamentos_con_permiso(db, usuario, PERM_INVENTARIO_VALIDATE)
 
 
+def departamentos_servicios_escolares(db: Session, usuario: Usuario) -> list[int]:
+    if not usuario:
+        return []
+    try:
+        departamentos = db.query(Departamento).filter(Departamento.activo == True).all()
+    except (OperationalError, ProgrammingError):
+        db.rollback()
+        return []
+
+    servicios_ids = {
+        dep.id
+        for dep in departamentos
+        if es_departamento_servicios_escolares(dep)
+    }
+    if not servicios_ids:
+        return []
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.SERVICIOS_ESCOLARES):
+        return sorted(servicios_ids)
+
+    ids = {
+        dep.id
+        for dep in departamentos
+        if dep.id in servicios_ids and dep.responsable_id == usuario.id
+    }
+    try:
+        rows = db.query(UsuarioPermiso.departamento_id).filter(
+            UsuarioPermiso.usuario_id == usuario.id,
+            UsuarioPermiso.permiso == PERM_SERVICIOS_ESCOLARES_MANAGE,
+            UsuarioPermiso.activo == True,
+            UsuarioPermiso.departamento_id.in_(servicios_ids),
+        ).all()
+        ids.update(row[0] for row in rows if row[0] is not None)
+    except (OperationalError, ProgrammingError):
+        db.rollback()
+    return sorted(ids)
+
+
+def puede_gestionar_servicios_escolares(db: Session, usuario: Usuario) -> bool:
+    if not usuario:
+        return False
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.SERVICIOS_ESCOLARES):
+        return True
+    if tiene_permiso_departamento(db, usuario, PERM_SERVICIOS_ESCOLARES_MANAGE, None):
+        return True
+    return bool(departamentos_servicios_escolares(db, usuario))
+
+
 def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) -> bool:
     try:
         return db.query(UsuarioPermiso.id).filter(
@@ -142,4 +208,6 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
         permisos.add(PERM_INVENTARIO_WRITE)
     if puede_validar_inventario(db, usuario):
         permisos.add(PERM_INVENTARIO_VALIDATE)
+    if puede_gestionar_servicios_escolares(db, usuario):
+        permisos.add(PERM_SERVICIOS_ESCOLARES_MANAGE)
     return sorted(permisos)

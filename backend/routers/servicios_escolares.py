@@ -29,6 +29,7 @@ from models.usuario import Usuario, RolUsuario
 from models.catalogo import CatalogoAlumno, CatalogoCarrera
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from services.auditoria import registrar, Accion, Recurso
+from services.user_permissions import puede_gestionar_servicios_escolares
 
 router = APIRouter(prefix="/servicios-escolares", tags=["Servicios Escolares"])
 
@@ -39,10 +40,10 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-def _require_se(user: Usuario):
-    if user.rol not in (RolUsuario.SERVICIOS_ESCOLARES, RolUsuario.SUPER_ADMIN):
+def _require_se(db: Session, user: Usuario):
+    if not puede_gestionar_servicios_escolares(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Solo Servicios Escolares puede realizar esta acción")
+                            "No tienes permiso para gestionar Servicios Escolares")
 
 
 def _require_alumno(user: Usuario):
@@ -50,8 +51,10 @@ def _require_alumno(user: Usuario):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Acceso solo para alumnos")
 
 
-def _require_carreras_reader(user: Usuario):
-    if user.rol not in (RolUsuario.SERVICIOS_ESCOLARES, RolUsuario.SUPER_ADMIN, RolUsuario.ALUMNO):
+def _require_carreras_reader(db: Session, user: Usuario):
+    if user.rol == RolUsuario.ALUMNO:
+        return
+    if not puede_gestionar_servicios_escolares(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No tienes acceso al catalogo de carreras")
 
 
@@ -238,7 +241,7 @@ def listar_carreras(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_carreras_reader(current_user)
+    _require_carreras_reader(db, current_user)
     _ensure_carreras_desde_alumnos(db)
     q = db.query(CatalogoCarrera)
     if not incluir_inactivas:
@@ -252,7 +255,7 @@ def crear_carrera(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     clave = _norm_text(body.clave).upper()
     nombre = _norm_text(body.nombre)
     if not clave or not nombre:
@@ -279,7 +282,7 @@ def actualizar_carrera(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     carrera = db.query(CatalogoCarrera).get(carrera_id)
     if not carrera:
         raise HTTPException(404, "Carrera no encontrada")
@@ -309,7 +312,7 @@ def desactivar_carrera(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     carrera = db.query(CatalogoCarrera).get(carrera_id)
     if not carrera:
         raise HTTPException(404, "Carrera no encontrada")
@@ -330,7 +333,7 @@ def listar_alumnos(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
 
     q_obj = db.query(CatalogoAlumno).filter(CatalogoAlumno.activo == True)
     if q.strip():
@@ -369,7 +372,7 @@ def detalle_alumno(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -396,7 +399,7 @@ def actualizar_alumno(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -426,7 +429,7 @@ def activar_acceso(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -482,7 +485,7 @@ def reset_password_alumno(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -523,7 +526,7 @@ def desactivar_acceso(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -551,7 +554,7 @@ def activar_ficha(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     a = db.query(CatalogoAlumno).get(alumno_id)
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
@@ -602,7 +605,7 @@ def listar_fichas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
 
     q_obj = db.query(FichaSocioeconomica).join(
         CatalogoAlumno, FichaSocioeconomica.alumno_id == CatalogoAlumno.id
@@ -642,7 +645,7 @@ def detalle_ficha(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     f = db.query(FichaSocioeconomica).get(ficha_id)
     if not f:
         raise HTTPException(404, "Ficha no encontrada")
@@ -667,7 +670,7 @@ def cambiar_estado_ficha(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
     f = db.query(FichaSocioeconomica).get(ficha_id)
     if not f:
         raise HTTPException(404, "Ficha no encontrada")
@@ -708,7 +711,7 @@ def estadisticas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    _require_se(current_user)
+    _require_se(db, current_user)
 
     q_alumnos = db.query(func.count(CatalogoAlumno.id)).filter(CatalogoAlumno.activo == True)
     total_alumnos = q_alumnos.scalar() or 0

@@ -109,6 +109,20 @@ def _validar_departamento(departamento_id: Optional[int], rol: RolUsuario, db: S
             raise HTTPException(status_code=404, detail="Departamento no encontrado o inactivo")
 
 
+def _validar_rol_asignable(rol: RolUsuario, usuario_actual: Optional[Usuario] = None):
+    """Evita crear o conservar el rol legacy de Servicios Escolares."""
+    if rol != RolUsuario.SERVICIOS_ESCOLARES:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            "Servicios Escolares ya no se asigna como rol. "
+            "Crea al usuario como ADMINISTRATIVO, asignalo al departamento "
+            "y habilita el permiso departamental de Servicios Escolares."
+        ),
+    )
+
+
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("", summary="Listar usuarios")
@@ -166,6 +180,7 @@ def crear_usuario(
     if data.numero_empleado and db.query(Usuario).filter(Usuario.numero_empleado == data.numero_empleado).first():
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese número de empleado")
 
+    _validar_rol_asignable(data.rol)
     _validar_laboratorio(data.laboratorio_id, data.rol, db)
     _validar_departamento(data.departamento_id, data.rol, db)
 
@@ -240,6 +255,7 @@ def editar_usuario(
     nuevo_rol = RolUsuario(campos["rol"]) if "rol" in campos else u.rol
     nuevo_lab = campos.get("laboratorio_id", u.laboratorio_id)
     nuevo_dep = campos.get("departamento_id", u.departamento_id)
+    _validar_rol_asignable(nuevo_rol, u)
     _validar_laboratorio(nuevo_lab, nuevo_rol, db)
     _validar_departamento(nuevo_dep, nuevo_rol, db)
 
@@ -415,6 +431,14 @@ async def bulk_excel(
             rol = RolUsuario(rol_str)
         except ValueError:
             errores.append({"fila": fila, "email": email, "error": f"Rol invalido: '{rol_str}'. Use: SUPER_ADMIN, LAB_ADMIN, DOCENTE, ADMINISTRATIVO, TUTORIA_ADMIN"})
+            continue
+
+        if rol == RolUsuario.SERVICIOS_ESCOLARES:
+            errores.append({
+                "fila": fila,
+                "email": email,
+                "error": "SERVICIOS_ESCOLARES ya no se usa como rol. Use ADMINISTRATIVO + departamento + permiso de Servicios Escolares.",
+            })
             continue
 
         # Verificar duplicados

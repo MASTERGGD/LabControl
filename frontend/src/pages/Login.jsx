@@ -12,6 +12,18 @@ const ROLES_REDIRECT = {
   ALUMNO: '/alumno/estudio-socioeconomico',
 };
 
+const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+
+function getRedirectPath(usuario) {
+  if (
+    usuario?.rol !== 'SUPER_ADMIN'
+    && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE)
+  ) {
+    return '/servicios-escolares';
+  }
+  return ROLES_REDIRECT[usuario?.rol] || '/';
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const { login, usuario } = useAuth();
@@ -23,7 +35,7 @@ export default function Login() {
 
   if (usuario) {
     if (usuario.debe_cambiar_password) return <Navigate to="/cambiar-password" replace />;
-    return <Navigate to={ROLES_REDIRECT[usuario.rol] || '/'} replace />;
+    return <Navigate to={getRedirectPath(usuario)} replace />;
   }
 
   const handleChange = (e) => {
@@ -46,7 +58,7 @@ export default function Login() {
       if (data.usuario.debe_cambiar_password) {
         navigate('/cambiar-password', { replace: true });
       } else {
-        navigate(ROLES_REDIRECT[data.usuario.rol] || '/');
+        navigate(getRedirectPath(data.usuario));
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al conectar con el servidor');

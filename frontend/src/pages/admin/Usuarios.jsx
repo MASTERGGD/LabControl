@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 
-const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES', 'DOCENTE'];
+const ROLES = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'DOCENTE'];
 
 // SUPER_ADMIN destaca en azul; todos los demás en gris neutro para reducir ruido visual
 const ROL_COLOR = {
@@ -14,7 +14,7 @@ const ROL_COLOR = {
   RESPONSABLE_LAB:     'bg-slate-700/60 text-slate-200 border border-slate-600/40',
   ADMINISTRATIVO:      'bg-slate-700/60 text-slate-200 border border-slate-600/40',
   TUTORIA_ADMIN:       'bg-slate-700/60 text-slate-200 border border-slate-600/40',
-  SERVICIOS_ESCOLARES: 'bg-slate-700/60 text-slate-200 border border-slate-600/40',
+  SERVICIOS_ESCOLARES: 'bg-amber-900/50 text-amber-200 border border-amber-600/40',
   DOCENTE:             'bg-slate-700/60 text-slate-200 border border-slate-600/40',
 };
 
@@ -24,7 +24,7 @@ const ROL_LABEL = {
   RESPONSABLE_LAB:     'Responsable Lab',
   ADMINISTRATIVO:      'Administrativo',
   TUTORIA_ADMIN:       'Tutoría',
-  SERVICIOS_ESCOLARES: 'Escolares',
+  SERVICIOS_ESCOLARES: 'Escolares (obsoleto)',
   DOCENTE:             'Docente',
   ALUMNO:              'Alumno',
 };
@@ -36,11 +36,12 @@ const toTitleCase = s =>
 // ─── Modal Crear / Editar ──────────────────────────────────────────────────────
 
 function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
+  const usaRolEscolaresLegacy = usuario?.rol === 'SERVICIOS_ESCOLARES';
   const [form, setForm] = useState({
     nombre:              usuario?.nombre              || '',
     email:               usuario?.email               || '',
     numero_empleado:     usuario?.numero_empleado     || '',
-    rol:                 usuario?.rol                 || 'DOCENTE',
+    rol:                 usaRolEscolaresLegacy ? 'ADMINISTRATIVO' : (usuario?.rol || 'DOCENTE'),
     laboratorio_id:      usuario?.laboratorio_id      ?? '',
     departamento_id:     usuario?.departamento_id     ?? '',
     password:            '',
@@ -138,6 +139,14 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                   })}
                   options={ROLES.map(r => ({ value: r, label: r }))}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Servicios Escolares se habilita con ADMINISTRATIVO + departamento + permiso.
+                </p>
+                {usaRolEscolaresLegacy && (
+                  <p className="mt-2 rounded-lg border border-amber-600/40 bg-amber-900/30 px-3 py-2 text-xs text-amber-100">
+                    Este usuario usa el rol anterior de Servicios Escolares. Al guardar se convertira a ADMINISTRATIVO; despues habilita el permiso desde Departamentos.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">
@@ -391,7 +400,9 @@ function ModalExcel({ onClose, onSave }) {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-slate-500 text-xs">Roles validos: SUPER_ADMIN, LAB_ADMIN, RESPONSABLE_LAB, ADMINISTRATIVO, TUTORIA_ADMIN, SERVICIOS_ESCOLARES, DOCENTE</p>
+                <p className="text-slate-500 text-xs">
+                  Roles validos: SUPER_ADMIN, LAB_ADMIN, RESPONSABLE_LAB, ADMINISTRATIVO, TUTORIA_ADMIN, DOCENTE. Servicios Escolares se activa con ADMINISTRATIVO + departamento + permiso.
+                </p>
               </div>
 
               {/* Selector de archivo */}
