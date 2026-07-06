@@ -442,7 +442,6 @@ class CatalogoInventarioIn(BaseModel):
     tipo: str = Field(..., description=f"Uno de: {CATALOGO_TIPOS}")
     nombre: str = Field(..., min_length=2, max_length=150)
     clave: Optional[str] = Field(None, max_length=50)
-    familia: Optional[str] = Field(None, max_length=80)
     prefijo_codigo: Optional[str] = Field(None, max_length=12)
     alcance: str = Field(default="AMBOS", description=f"Uno de: {CATALOGO_ALCANCES}")
     activo: bool = True
@@ -450,7 +449,6 @@ class CatalogoInventarioIn(BaseModel):
 
 class CatalogoInventarioUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=150)
-    familia: Optional[str] = Field(None, max_length=80)
     prefijo_codigo: Optional[str] = Field(None, max_length=12)
     alcance: Optional[str] = Field(None, description=f"Uno de: {CATALOGO_ALCANCES}")
     activo: Optional[bool] = None
@@ -614,7 +612,7 @@ def _serializar_catalogo_inventario(item: CatalogoInventarioItem) -> dict:
         "clave": item.clave,
         "nombre": item.nombre,
         "prefijo_codigo": item.prefijo_codigo,
-        "familia": item.familia or FAMILIA_CATEGORIA.get(item.clave),
+        "familia": FAMILIA_CATEGORIA.get(item.clave),
         "alcance": item.alcance,
         "activo": item.activo,
         "protegido": item.protegido,
@@ -4126,7 +4124,6 @@ def crear_catalogo_inventario(
         tipo=tipo,
         clave=clave,
         nombre=data.nombre.strip(),
-        familia=(data.familia or FAMILIA_CATEGORIA.get(clave) or "").strip() or None,
         prefijo_codigo=prefijo,
         alcance=alcance,
         activo=data.activo,
@@ -4157,8 +4154,6 @@ def actualizar_catalogo_inventario(
     cambios = data.model_dump(exclude_unset=True)
     if "nombre" in cambios and cambios["nombre"] is not None:
         item.nombre = cambios["nombre"].strip()
-    if "familia" in cambios:
-        item.familia = (cambios["familia"] or "").strip() or None
     if "prefijo_codigo" in cambios and item.tipo == CATALOGO_TIPO_CATEGORIA:
         item.prefijo_codigo = _normalizar_clave_catalogo(cambios["prefijo_codigo"] or item.clave)[:12]
     if "alcance" in cambios and cambios["alcance"] is not None:
