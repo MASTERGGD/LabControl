@@ -70,12 +70,48 @@ def _url_validacion_activo(activo_id: int) -> str:
     return f"{_frontend_base_url()}/validar/activo/{_token_validacion_activo(activo_id)}"
 
 CATEGORIAS = [
-    "COMPUTADORA", "IMPRESORA_3D", "BRAZO_ROBOTICO", "SCANNER", "IOT",
-    "HERRAMIENTA", "MOBILIARIO", "AUDIOVISUAL", "REDES", "MEDICO",
-    "CRISTALERIA", "REACTIVO", "INSTRUMENTO_MEDICION", "EQUIPO_LABORATORIO",
-    "MATERIAL_CONSUMIBLE", "SEGURIDAD_EPP", "ALMACENAMIENTO",
-    "OFICINA", "VEHICULO", "OTRO",
+    "COMPUTADORA", "LAPTOP", "MONITOR", "PERIFERICO", "IMPRESORA",
+    "MULTIFUNCIONAL", "SCANNER", "NO_BREAK", "REDES", "IMPRESORA_3D",
+    "BRAZO_ROBOTICO", "IOT", "MOBILIARIO", "OFICINA", "AUDIOVISUAL",
+    "HERRAMIENTA", "EQUIPO_TALLER", "EQUIPO_SOLDADURA",
+    "INSTRUMENTO_MEDICION", "EQUIPO_LABORATORIO", "CRISTALERIA",
+    "REACTIVO", "MATERIAL_CONSUMIBLE", "SEGURIDAD_EPP", "ALMACENAMIENTO",
+    "MEDICO", "INFRAESTRUCTURA", "CLIMATIZACION", "ELECTRICO",
+    "VEHICULO", "OTRO",
 ]
+FAMILIA_CATEGORIA = {
+    "COMPUTADORA": "Computo y TI",
+    "LAPTOP": "Computo y TI",
+    "MONITOR": "Computo y TI",
+    "PERIFERICO": "Computo y TI",
+    "IMPRESORA": "Impresion y digitalizacion",
+    "MULTIFUNCIONAL": "Impresion y digitalizacion",
+    "SCANNER": "Impresion y digitalizacion",
+    "NO_BREAK": "Computo y TI",
+    "REDES": "Redes y conectividad",
+    "IMPRESORA_3D": "Laboratorio / tecnologia",
+    "BRAZO_ROBOTICO": "Laboratorio / tecnologia",
+    "IOT": "Laboratorio / tecnologia",
+    "MOBILIARIO": "Mobiliario",
+    "OFICINA": "Administrativo",
+    "AUDIOVISUAL": "Audiovisual",
+    "HERRAMIENTA": "Herramienta y taller",
+    "EQUIPO_TALLER": "Herramienta y taller",
+    "EQUIPO_SOLDADURA": "Herramienta y taller",
+    "INSTRUMENTO_MEDICION": "Instrumentos de medicion",
+    "EQUIPO_LABORATORIO": "Laboratorio",
+    "CRISTALERIA": "Quimica",
+    "REACTIVO": "Quimica",
+    "MATERIAL_CONSUMIBLE": "Consumibles",
+    "SEGURIDAD_EPP": "Seguridad y EPP",
+    "ALMACENAMIENTO": "Almacenamiento",
+    "MEDICO": "Medico / salud",
+    "INFRAESTRUCTURA": "Infraestructura",
+    "CLIMATIZACION": "Infraestructura",
+    "ELECTRICO": "Infraestructura",
+    "VEHICULO": "Vehiculos",
+    "OTRO": "Otro",
+}
 ESTADOS_ACTIVO = ["OPERATIVO", "MANTENIMIENTO", "DAÑADO", "BAJA"]
 ALCANCES_ACTIVO = ["LABORATORIO", "INSTITUCIONAL"]
 TIPOS_INVENTARIO = ["ACTIVO"]
@@ -297,11 +333,19 @@ def _asegurar_activo_validado(activo: Activo | None) -> None:
 # Códigos cortos por categoría para armar el número de inventario
 TIPO_CODIGO = {
     "COMPUTADORA":    "PC",
+    "LAPTOP":         "LAP",
+    "MONITOR":        "MON",
+    "PERIFERICO":     "PER",
+    "IMPRESORA":      "IMP",
+    "MULTIFUNCIONAL": "MUL",
     "IMPRESORA_3D":   "IMP",
     "BRAZO_ROBOTICO": "ROB",
     "SCANNER":        "SCN",
+    "NO_BREAK":       "NOB",
     "IOT":            "IOT",
     "HERRAMIENTA":    "HER",
+    "EQUIPO_TALLER":  "TAL",
+    "EQUIPO_SOLDADURA": "SOL",
     "MOBILIARIO":     "MOB",
     "AUDIOVISUAL":    "AUD",
     "REDES":          "RED",
@@ -314,6 +358,9 @@ TIPO_CODIGO = {
     "SEGURIDAD_EPP":  "EPP",
     "ALMACENAMIENTO": "ALM",
     "OFICINA":        "OFI",
+    "INFRAESTRUCTURA": "INF",
+    "CLIMATIZACION":  "CLI",
+    "ELECTRICO":      "ELE",
     "VEHICULO":       "VEH",
     "OTRO":           "OTR",
 }
@@ -395,6 +442,7 @@ class CatalogoInventarioIn(BaseModel):
     tipo: str = Field(..., description=f"Uno de: {CATALOGO_TIPOS}")
     nombre: str = Field(..., min_length=2, max_length=150)
     clave: Optional[str] = Field(None, max_length=50)
+    familia: Optional[str] = Field(None, max_length=80)
     prefijo_codigo: Optional[str] = Field(None, max_length=12)
     alcance: str = Field(default="AMBOS", description=f"Uno de: {CATALOGO_ALCANCES}")
     activo: bool = True
@@ -402,6 +450,7 @@ class CatalogoInventarioIn(BaseModel):
 
 class CatalogoInventarioUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=150)
+    familia: Optional[str] = Field(None, max_length=80)
     prefijo_codigo: Optional[str] = Field(None, max_length=12)
     alcance: Optional[str] = Field(None, description=f"Uno de: {CATALOGO_ALCANCES}")
     activo: Optional[bool] = None
@@ -531,6 +580,7 @@ def _catalogo_base_items(tipo: str) -> list[dict]:
                 "clave": clave,
                 "nombre": clave.replace("_", " ").title(),
                 "prefijo_codigo": TIPO_CODIGO.get(clave, "OTR"),
+                "familia": FAMILIA_CATEGORIA.get(clave, "Otro"),
                 "alcance": "AMBOS",
                 "activo": True,
                 "protegido": True,
@@ -546,6 +596,7 @@ def _catalogo_base_items(tipo: str) -> list[dict]:
                 "clave": clave,
                 "nombre": clave.replace("_", " ").title(),
                 "prefijo_codigo": None,
+                "familia": None,
                 "alcance": "AMBOS",
                 "activo": True,
                 "protegido": True,
@@ -563,6 +614,7 @@ def _serializar_catalogo_inventario(item: CatalogoInventarioItem) -> dict:
         "clave": item.clave,
         "nombre": item.nombre,
         "prefijo_codigo": item.prefijo_codigo,
+        "familia": item.familia or FAMILIA_CATEGORIA.get(item.clave),
         "alcance": item.alcance,
         "activo": item.activo,
         "protegido": item.protegido,
@@ -4074,6 +4126,7 @@ def crear_catalogo_inventario(
         tipo=tipo,
         clave=clave,
         nombre=data.nombre.strip(),
+        familia=(data.familia or FAMILIA_CATEGORIA.get(clave) or "").strip() or None,
         prefijo_codigo=prefijo,
         alcance=alcance,
         activo=data.activo,
@@ -4104,6 +4157,8 @@ def actualizar_catalogo_inventario(
     cambios = data.model_dump(exclude_unset=True)
     if "nombre" in cambios and cambios["nombre"] is not None:
         item.nombre = cambios["nombre"].strip()
+    if "familia" in cambios:
+        item.familia = (cambios["familia"] or "").strip() or None
     if "prefijo_codigo" in cambios and item.tipo == CATALOGO_TIPO_CATEGORIA:
         item.prefijo_codigo = _normalizar_clave_catalogo(cambios["prefijo_codigo"] or item.clave)[:12]
     if "alcance" in cambios and cambios["alcance"] is not None:

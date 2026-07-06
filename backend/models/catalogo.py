@@ -61,6 +61,7 @@ class CatalogoInventarioItem(Base):
     tipo            = Column(String(40), nullable=False, index=True)
     clave           = Column(String(50), nullable=False, index=True)
     nombre          = Column(String(150), nullable=False)
+    familia         = Column(String(80), nullable=True)
     prefijo_codigo  = Column(String(12), nullable=True)
     alcance         = Column(String(20), default="AMBOS", nullable=False)
     activo          = Column(Boolean, default=True, nullable=False)

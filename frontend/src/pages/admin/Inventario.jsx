@@ -29,9 +29,49 @@ const ESTADO_BADGE = {
   BAJA:          'bg-gray-700 text-slate-400',
 };
 
-const CATEGORIAS_BASE = ['COMPUTADORA','IMPRESORA_3D','BRAZO_ROBOTICO','SCANNER','IOT','HERRAMIENTA','MOBILIARIO','AUDIOVISUAL','REDES','MEDICO','OFICINA','VEHICULO','OTRO'];
+const CATEGORIAS_BASE = [
+  'COMPUTADORA','LAPTOP','MONITOR','PERIFERICO','IMPRESORA','MULTIFUNCIONAL','SCANNER','NO_BREAK','REDES',
+  'IMPRESORA_3D','BRAZO_ROBOTICO','IOT','MOBILIARIO','OFICINA','AUDIOVISUAL','HERRAMIENTA','EQUIPO_TALLER',
+  'EQUIPO_SOLDADURA','INSTRUMENTO_MEDICION','EQUIPO_LABORATORIO','CRISTALERIA','REACTIVO','MATERIAL_CONSUMIBLE',
+  'SEGURIDAD_EPP','ALMACENAMIENTO','MEDICO','INFRAESTRUCTURA','CLIMATIZACION','ELECTRICO','VEHICULO','OTRO'
+];
 const CATEGORIAS_POR_LAB = {
+  COMPUTO: ['COMPUTADORA','LAPTOP','MONITOR','PERIFERICO','IMPRESORA','MULTIFUNCIONAL','SCANNER','NO_BREAK','REDES','AUDIOVISUAL','MOBILIARIO','HERRAMIENTA','OTRO'],
   QUIMICA: ['CRISTALERIA','REACTIVO','INSTRUMENTO_MEDICION','EQUIPO_LABORATORIO','MATERIAL_CONSUMIBLE','SEGURIDAD_EPP','MOBILIARIO','ALMACENAMIENTO','OTRO'],
+  INDUSTRIAL: ['HERRAMIENTA','EQUIPO_TALLER','EQUIPO_SOLDADURA','INSTRUMENTO_MEDICION','EQUIPO_LABORATORIO','SEGURIDAD_EPP','MOBILIARIO','ALMACENAMIENTO','OTRO'],
+};
+const FAMILIA_CATEGORIA = {
+  COMPUTADORA: 'Computo y TI',
+  LAPTOP: 'Computo y TI',
+  MONITOR: 'Computo y TI',
+  PERIFERICO: 'Computo y TI',
+  IMPRESORA: 'Impresion y digitalizacion',
+  MULTIFUNCIONAL: 'Impresion y digitalizacion',
+  SCANNER: 'Impresion y digitalizacion',
+  NO_BREAK: 'Computo y TI',
+  REDES: 'Redes y conectividad',
+  IMPRESORA_3D: 'Laboratorio / tecnologia',
+  BRAZO_ROBOTICO: 'Laboratorio / tecnologia',
+  IOT: 'Laboratorio / tecnologia',
+  MOBILIARIO: 'Mobiliario',
+  OFICINA: 'Administrativo',
+  AUDIOVISUAL: 'Audiovisual',
+  HERRAMIENTA: 'Herramienta y taller',
+  EQUIPO_TALLER: 'Herramienta y taller',
+  EQUIPO_SOLDADURA: 'Herramienta y taller',
+  INSTRUMENTO_MEDICION: 'Instrumentos de medicion',
+  EQUIPO_LABORATORIO: 'Laboratorio',
+  CRISTALERIA: 'Quimica',
+  REACTIVO: 'Quimica',
+  MATERIAL_CONSUMIBLE: 'Consumibles',
+  SEGURIDAD_EPP: 'Seguridad y EPP',
+  ALMACENAMIENTO: 'Almacenamiento',
+  MEDICO: 'Medico / salud',
+  INFRAESTRUCTURA: 'Infraestructura',
+  CLIMATIZACION: 'Infraestructura',
+  ELECTRICO: 'Infraestructura',
+  VEHICULO: 'Vehiculos',
+  OTRO: 'Otro',
 };
 const CATEGORIAS = Array.from(new Set([...CATEGORIAS_BASE, ...Object.values(CATEGORIAS_POR_LAB).flat()]));
 const ALCANCES   = ['LABORATORIO','INSTITUCIONAL'];
@@ -327,6 +367,7 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
   const [form, setForm] = useState({
     nombre: '',
     clave: '',
+    familia: '',
     prefijo_codigo: '',
     alcance: 'AMBOS',
     activo: true,
@@ -344,7 +385,7 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
   const resetForm = () => {
     setEditando(null);
     setError('');
-    setForm({ nombre: '', clave: '', prefijo_codigo: '', alcance: 'AMBOS', activo: true });
+    setForm({ nombre: '', clave: '', familia: '', prefijo_codigo: '', alcance: 'AMBOS', activo: true });
   };
 
   const editar = (item) => {
@@ -354,6 +395,7 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
     setForm({
       nombre: item.nombre || '',
       clave: item.clave || '',
+      familia: item.familia || FAMILIA_CATEGORIA[item.clave] || '',
       prefijo_codigo: item.prefijo_codigo || '',
       alcance: item.alcance || 'AMBOS',
       activo: item.activo !== false,
@@ -372,6 +414,7 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
       if (editando?.id) {
         await api.put(`/inventario/catalogo/${editando.id}`, {
           nombre: form.nombre.trim(),
+          familia: tipo === 'CATEGORIA_ACTIVO' ? (form.familia.trim() || null) : null,
           prefijo_codigo: tipo === 'CATEGORIA_ACTIVO' ? (form.prefijo_codigo.trim() || null) : null,
           alcance: form.alcance,
           activo: form.activo,
@@ -382,6 +425,7 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
           tipo,
           nombre: form.nombre.trim(),
           clave: form.clave.trim() || null,
+          familia: tipo === 'CATEGORIA_ACTIVO' ? (form.familia.trim() || null) : null,
           prefijo_codigo: tipo === 'CATEGORIA_ACTIVO' ? (form.prefijo_codigo.trim() || null) : null,
           alcance: form.alcance,
           activo: form.activo,
@@ -437,19 +481,23 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
             <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-              <div className="grid grid-cols-[1fr_110px_100px_100px] gap-3 px-4 py-3 text-xs uppercase tracking-wide text-slate-400 border-b border-white/10">
+              <div className="grid grid-cols-[1fr_150px_90px_90px_90px] gap-3 px-4 py-3 text-xs uppercase tracking-wide text-slate-400 border-b border-white/10">
                 <span>Elemento</span>
+                <span>Familia</span>
                 <span>Prefijo</span>
                 <span>Alcance</span>
                 <span>Accion</span>
               </div>
               <div className="max-h-[420px] overflow-y-auto divide-y divide-white/10">
                 {items.map(item => (
-                  <div key={`${item.base ? 'base' : 'custom'}-${item.clave}`} className="grid grid-cols-[1fr_110px_100px_100px] gap-3 px-4 py-3 items-center">
+                  <div key={`${item.base ? 'base' : 'custom'}-${item.clave}`} className="grid grid-cols-[1fr_150px_90px_90px_90px] gap-3 px-4 py-3 items-center">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-white truncate">{item.nombre}</p>
                       <p className="text-xs text-slate-400 font-mono">{item.clave}</p>
                     </div>
+                    <span className="text-xs text-slate-300 truncate">
+                      {item.familia || FAMILIA_CATEGORIA[item.clave] || '-'}
+                    </span>
                     <span className="text-xs text-slate-300 font-mono">
                       {item.prefijo_codigo || '-'}
                     </span>
@@ -506,16 +554,28 @@ function ModalCatalogoInventario({ catalogo, onClose, onDone }) {
               </div>
 
               {tipo === 'CATEGORIA_ACTIVO' && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Prefijo para codigo</label>
-                  <input
-                    value={form.prefijo_codigo}
-                    onChange={e => setForm(f => ({ ...f, prefijo_codigo: e.target.value.toUpperCase() }))}
-                    className="w-full input-dark text-white px-3 py-2.5"
-                    placeholder="Ej: SOL"
-                    maxLength={12}
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Familia</label>
+                    <input
+                      value={form.familia}
+                      onChange={e => setForm(f => ({ ...f, familia: e.target.value }))}
+                      className="w-full input-dark text-white px-3 py-2.5"
+                      placeholder="Ej: Computo y TI"
+                      maxLength={80}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">Prefijo para codigo</label>
+                    <input
+                      value={form.prefijo_codigo}
+                      onChange={e => setForm(f => ({ ...f, prefijo_codigo: e.target.value.toUpperCase() }))}
+                      className="w-full input-dark text-white px-3 py-2.5"
+                      placeholder="Ej: SOL"
+                      maxLength={12}
+                    />
+                  </div>
+                </>
               )}
 
               <div>
@@ -682,13 +742,22 @@ function ModalActivo({
     : null;
   const categoriasCatalogo = categoriasInventario?.length
     ? categoriasInventario
-    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), alcance: 'AMBOS' }));
+    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), familia: FAMILIA_CATEGORIA[c], alcance: 'AMBOS' }));
   const tiposUbicacionCatalogo = tiposUbicacionInventario?.length
     ? tiposUbicacionInventario
     : TIPOS_UBICACION.map(t => ({ clave: t, nombre: t.replace(/_/g, ' ') }));
   const categoriaNombre = useMemo(() => {
     const mapa = new Map(categoriasCatalogo.map(i => [i.clave, i.nombre || categoriaActivoLabel(i.clave)]));
     return clave => mapa.get(clave) || categoriaActivoLabel(clave);
+  }, [categoriasCatalogo]);
+  const categoriaOpcionLabel = useMemo(() => {
+    const mapa = new Map(categoriasCatalogo.map(i => [i.clave, i]));
+    return clave => {
+      const item = mapa.get(clave);
+      const nombre = item?.nombre || categoriaActivoLabel(clave);
+      const familia = item?.familia || FAMILIA_CATEGORIA[clave];
+      return familia ? `${nombre} - ${familia}` : nombre;
+    };
   }, [categoriasCatalogo]);
   const categoriasDisponibles = useMemo(() => {
     const categoriaLab = (labSeleccionado?.categoria || categoriaLabContexto || '').toUpperCase();
@@ -1074,7 +1143,7 @@ function ModalActivo({
                 onChange={v => handleChange({ target: { name: 'categoria', value: v } })}
                 options={categoriasDisponibles.map(c => ({
                   value: c,
-                  label: categoriaNombre(c),
+                  label: categoriaOpcionLabel(c),
                 }))}
               />
               {(labSeleccionado?.categoria || categoriaLabContexto) && CATEGORIAS_POR_LAB[(labSeleccionado?.categoria || categoriaLabContexto || '').toUpperCase()] && (
@@ -2541,7 +2610,7 @@ export default function Inventario() {
   const [departamentosFormularioGlobal, setDepartamentosFormularioGlobal] = useState(true);
   const [ubicaciones, setUbicaciones] = useState([]);
   const [catalogoInventario, setCatalogoInventario] = useState({
-    categorias_items: CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), alcance: 'AMBOS', base: true, activo: true })),
+    categorias_items: CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), familia: FAMILIA_CATEGORIA[c], alcance: 'AMBOS', base: true, activo: true })),
     tipos_ubicacion_items: TIPOS_UBICACION.map(t => ({ clave: t, nombre: t.replace(/_/g, ' '), alcance: 'AMBOS', base: true, activo: true })),
   });
   const [stats, setStats]       = useState(null);
@@ -2647,7 +2716,7 @@ export default function Inventario() {
   const conteosValidacion = stats?.por_estado_admin || {};
   const categoriasFiltro = catalogoInventario.categorias_items?.length
     ? catalogoInventario.categorias_items
-    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c) }));
+    : CATEGORIAS.map(c => ({ clave: c, nombre: categoriaActivoLabel(c), familia: FAMILIA_CATEGORIA[c] }));
 
   const filtrosAplicados = [
     filtroLab,
@@ -3443,7 +3512,15 @@ export default function Inventario() {
           onChange={setFiltroCat}
           className="w-44"
           placeholder="Todas las categorías"
-          options={[{ value: '', label: 'Todas las categorías' }, ...categoriasFiltro.map(c => ({ value: c.clave, label: c.nombre || categoriaActivoLabel(c.clave) }))]}
+          options={[
+            { value: '', label: 'Todas las categorías' },
+            ...categoriasFiltro.map(c => ({
+              value: c.clave,
+              label: c.familia || FAMILIA_CATEGORIA[c.clave]
+                ? `${c.nombre || categoriaActivoLabel(c.clave)} - ${c.familia || FAMILIA_CATEGORIA[c.clave]}`
+                : c.nombre || categoriaActivoLabel(c.clave),
+            })),
+          ]}
         />
         <SelectDark
           value={filtroEstado}
