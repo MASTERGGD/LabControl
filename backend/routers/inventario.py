@@ -275,14 +275,22 @@ def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[in
 
 
 def _departamento_activo_operativo(db: Session, activo: Activo | None) -> int | None:
-    """Departamento vigente para permisos: directo o heredado del laboratorio."""
+    """Departamento vigente para permisos: directo, heredado del laboratorio o de su responsable."""
     if not activo:
         return None
     if activo.departamento_id:
         return activo.departamento_id
     if activo.laboratorio_id:
         row = db.query(Laboratorio.departamento_id).filter(Laboratorio.id == activo.laboratorio_id).first()
-        return row[0] if row else None
+        if row and row[0]:
+            return row[0]
+        usuario_lab = db.query(Usuario.departamento_id).filter(
+            Usuario.laboratorio_id == activo.laboratorio_id,
+            Usuario.departamento_id.isnot(None),
+            Usuario.activo == True,
+            Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
+        ).order_by(Usuario.rol.desc(), Usuario.id.asc()).first()
+        return usuario_lab[0] if usuario_lab else None
     return None
 
 
@@ -290,10 +298,20 @@ def _lab_ids_por_departamentos(db: Session, departamentos: list[int] | tuple[int
     ids = [int(dep_id) for dep_id in departamentos if dep_id]
     if not ids:
         return []
-    return [
+    lab_ids = {
         lab_id
         for (lab_id,) in db.query(Laboratorio.id).filter(Laboratorio.departamento_id.in_(ids)).all()
-    ]
+    }
+    lab_ids.update(
+        lab_id
+        for (lab_id,) in db.query(Usuario.laboratorio_id).filter(
+            Usuario.departamento_id.in_(ids),
+            Usuario.laboratorio_id.isnot(None),
+            Usuario.activo == True,
+            Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
+        ).all()
+    )
+    return sorted(lab_ids)
 
 
 def _filtrar_activos_por_departamentos(query, db: Session, departamentos: list[int] | tuple[int, ...]):

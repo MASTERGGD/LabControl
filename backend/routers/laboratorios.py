@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 import re
 import datetime
 from database import get_db
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from models.laboratorio import Laboratorio, Computadora, HistorialAsignacionActivoPC
 from models.departamento import Departamento
@@ -96,15 +97,16 @@ class BulkComputadorasCreate(BaseModel):
 
 def _enriquecer_lab(lab: Laboratorio) -> dict:
     pcs = lab.computadoras
-    dep = lab.departamento
+    db = object_session(lab)
+    departamento_id, departamento_nombre = _departamento_laboratorio_operativo(db, lab) if db else (lab.departamento_id, None)
     return {
         "id": lab.id,
         "nombre": lab.nombre,
         "categoria": lab.categoria,
         "ubicacion": lab.ubicacion,
         "capacidad": lab.capacidad,
-        "departamento_id": lab.departamento_id,
-        "departamento_nombre": dep.nombre if dep else None,
+        "departamento_id": departamento_id,
+        "departamento_nombre": departamento_nombre,
         "activo": lab.activo,
         "total_computadoras": len(pcs),
         "computadoras_activas": sum(1 for pc in pcs if pc.activa),
@@ -127,6 +129,43 @@ def _validar_departamento_laboratorio(db: Session, departamento_id: Optional[int
     existe = db.query(Departamento.id).filter(Departamento.id == departamento_id).first()
     if not existe:
         raise HTTPException(status_code=404, detail="Departamento no encontrado")
+
+
+def _lab_ids_por_departamentos(db: Session, departamentos: list[int] | tuple[int, ...]) -> list[int]:
+    ids = [int(dep_id) for dep_id in departamentos if dep_id]
+    if not ids:
+        return []
+    lab_ids = {
+        lab_id
+        for (lab_id,) in db.query(Laboratorio.id).filter(Laboratorio.departamento_id.in_(ids)).all()
+    }
+    lab_ids.update(
+        lab_id
+        for (lab_id,) in db.query(Usuario.laboratorio_id).filter(
+            Usuario.departamento_id.in_(ids),
+            Usuario.laboratorio_id.isnot(None),
+            Usuario.activo == True,
+            Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
+        ).all()
+    )
+    return sorted(lab_ids)
+
+
+def _departamento_laboratorio_operativo(db: Session, lab: Laboratorio) -> tuple[Optional[int], Optional[str]]:
+    if lab.departamento_id and lab.departamento:
+        return lab.departamento_id, lab.departamento.nombre
+    usuario_lab = db.query(Usuario.departamento_id, Departamento.nombre).join(
+        Departamento,
+        Departamento.id == Usuario.departamento_id,
+    ).filter(
+        Usuario.laboratorio_id == lab.id,
+        Usuario.departamento_id.isnot(None),
+        Usuario.activo == True,
+        Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
+    ).order_by(Usuario.rol.desc(), Usuario.id.asc()).first()
+    if usuario_lab:
+        return usuario_lab[0], usuario_lab[1]
+    return lab.departamento_id, None
 
 def _get_lab_autorizado(lab_id: int, db: Session, user: Usuario) -> Laboratorio:
     """Obtiene el laboratorio y verifica que el usuario tenga acceso."""
@@ -264,7 +303,13 @@ def listar_laboratorios(
         if departamentos_visibles is not None:
             if not departamentos_visibles:
                 return []
-            query = query.filter(Laboratorio.departamento_id.in_(departamentos_visibles))
+            lab_ids = _lab_ids_por_departamentos(db, departamentos_visibles)
+            query = query.filter(
+                or_(
+                    Laboratorio.departamento_id.in_(departamentos_visibles),
+                    Laboratorio.id.in_(lab_ids),
+                )
+            )
     labs = query.order_by(Laboratorio.nombre).all()
     return [_enriquecer_lab(lab) for lab in labs]
 
