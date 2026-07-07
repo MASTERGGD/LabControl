@@ -7,10 +7,16 @@ import datetime
 from database import get_db
 from sqlalchemy.exc import IntegrityError
 from models.laboratorio import Laboratorio, Computadora, HistorialAsignacionActivoPC
+from models.departamento import Departamento
 from models.inventario import Activo
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 from services.auditoria import registrar, Accion, Recurso
+from services.user_permissions import (
+    departamentos_inventario,
+    departamentos_validacion_inventario,
+    puede_validar_inventario_global,
+)
 from ws.mapa import manager
 
 router = APIRouter(prefix="/laboratorios", tags=["Laboratorios"])
@@ -23,12 +29,14 @@ class LaboratorioCreate(BaseModel):
     categoria: Optional[str] = Field(None, max_length=80)
     ubicacion: Optional[str] = None
     capacidad: int = Field(default=25, ge=1, le=200)
+    departamento_id: Optional[int] = None
 
 class LaboratorioUpdate(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=100)
     categoria: Optional[str] = Field(None, max_length=80)
     ubicacion: Optional[str] = None
     capacidad: Optional[int] = Field(None, ge=1, le=200)
+    departamento_id: Optional[int] = None
     activo: Optional[bool] = None
 
 class LaboratorioResponse(BaseModel):
@@ -37,6 +45,8 @@ class LaboratorioResponse(BaseModel):
     categoria: Optional[str]
     ubicacion: Optional[str]
     capacidad: int
+    departamento_id: Optional[int] = None
+    departamento_nombre: Optional[str] = None
     activo: bool
     total_computadoras: int = 0
     computadoras_activas: int = 0
@@ -86,16 +96,37 @@ class BulkComputadorasCreate(BaseModel):
 
 def _enriquecer_lab(lab: Laboratorio) -> dict:
     pcs = lab.computadoras
+    dep = lab.departamento
     return {
         "id": lab.id,
         "nombre": lab.nombre,
         "categoria": lab.categoria,
         "ubicacion": lab.ubicacion,
         "capacidad": lab.capacidad,
+        "departamento_id": lab.departamento_id,
+        "departamento_nombre": dep.nombre if dep else None,
         "activo": lab.activo,
         "total_computadoras": len(pcs),
         "computadoras_activas": sum(1 for pc in pcs if pc.activa),
     }
+
+
+def _departamentos_visibles_laboratorios(db: Session, usuario: Usuario) -> list[int] | None:
+    if usuario.rol == RolUsuario.SUPER_ADMIN or puede_validar_inventario_global(db, usuario):
+        return None
+    ids = set(departamentos_inventario(db, usuario))
+    ids.update(departamentos_validacion_inventario(db, usuario))
+    if usuario.rol == RolUsuario.ADMINISTRATIVO and usuario.departamento_id:
+        ids.add(usuario.departamento_id)
+    return sorted(ids)
+
+
+def _validar_departamento_laboratorio(db: Session, departamento_id: Optional[int]) -> None:
+    if departamento_id is None:
+        return
+    existe = db.query(Departamento.id).filter(Departamento.id == departamento_id).first()
+    if not existe:
+        raise HTTPException(status_code=404, detail="Departamento no encontrado")
 
 def _get_lab_autorizado(lab_id: int, db: Session, user: Usuario) -> Laboratorio:
     """Obtiene el laboratorio y verifica que el usuario tenga acceso."""
@@ -228,6 +259,12 @@ def listar_laboratorios(
         query = query.filter(Laboratorio.activo == True)
     if current_user.rol in (RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
         query = query.filter(Laboratorio.id == current_user.laboratorio_id)
+    else:
+        departamentos_visibles = _departamentos_visibles_laboratorios(db, current_user)
+        if departamentos_visibles is not None:
+            if not departamentos_visibles:
+                return []
+            query = query.filter(Laboratorio.departamento_id.in_(departamentos_visibles))
     labs = query.order_by(Laboratorio.nombre).all()
     return [_enriquecer_lab(lab) for lab in labs]
 
@@ -242,6 +279,7 @@ def crear_laboratorio(
     if existente:
         raise HTTPException(status_code=409, detail="Ya existe un laboratorio con ese nombre")
 
+    _validar_departamento_laboratorio(db, data.departamento_id)
     lab = Laboratorio(**data.model_dump())
     db.add(lab)
     db.commit()
@@ -270,7 +308,9 @@ def editar_laboratorio(
     if not lab:
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 
-    for campo, valor in data.model_dump(exclude_none=True).items():
+    cambios = data.model_dump(exclude_unset=True)
+    _validar_departamento_laboratorio(db, cambios.get("departamento_id"))
+    for campo, valor in cambios.items():
         setattr(lab, campo, valor)
 
     db.commit()

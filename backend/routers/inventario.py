@@ -223,7 +223,12 @@ def _filtrar_incidentes_visibles(query, db: Session, usuario: Usuario, laborator
 
     if departamentos:
         query = query.outerjoin(Activo, Incidente.activo_id == Activo.id)
-        condiciones.append(Activo.departamento_id.in_(departamentos))
+        lab_ids = _lab_ids_por_departamentos(db, departamentos)
+        condiciones_activo = [Activo.departamento_id.in_(departamentos)]
+        if lab_ids:
+            condiciones_activo.append(Activo.laboratorio_id.in_(lab_ids))
+            condiciones.append(Incidente.laboratorio_id.in_(lab_ids))
+        condiciones.append(or_(*condiciones_activo))
         condiciones.append(and_(Incidente.origen == "DEPARTAMENTO", Incidente.origen_id.in_(departamentos)))
 
     return query.filter(or_(*condiciones))
@@ -250,7 +255,7 @@ def _asegurar_acceso_incidente(incidente: Incidente, usuario: Usuario, db: Sessi
     departamentos = _departamentos_visibles_inventario(db, usuario) or []
     if incidente.activo_id and departamentos:
         activo = db.query(Activo).filter(Activo.id == incidente.activo_id).first()
-        if activo and activo.departamento_id in departamentos:
+        if activo and _departamento_activo_operativo(db, activo) in departamentos:
             return
 
     raise HTTPException(
@@ -267,6 +272,39 @@ def _departamentos_visibles_inventario(db: Session, usuario: Usuario) -> list[in
     if usuario.rol == RolUsuario.ADMINISTRATIVO and usuario.departamento_id:
         ids.add(usuario.departamento_id)
     return sorted(ids)
+
+
+def _departamento_activo_operativo(db: Session, activo: Activo | None) -> int | None:
+    """Departamento vigente para permisos: directo o heredado del laboratorio."""
+    if not activo:
+        return None
+    if activo.departamento_id:
+        return activo.departamento_id
+    if activo.laboratorio_id:
+        row = db.query(Laboratorio.departamento_id).filter(Laboratorio.id == activo.laboratorio_id).first()
+        return row[0] if row else None
+    return None
+
+
+def _lab_ids_por_departamentos(db: Session, departamentos: list[int] | tuple[int, ...]) -> list[int]:
+    ids = [int(dep_id) for dep_id in departamentos if dep_id]
+    if not ids:
+        return []
+    return [
+        lab_id
+        for (lab_id,) in db.query(Laboratorio.id).filter(Laboratorio.departamento_id.in_(ids)).all()
+    ]
+
+
+def _filtrar_activos_por_departamentos(query, db: Session, departamentos: list[int] | tuple[int, ...]):
+    ids = [int(dep_id) for dep_id in departamentos if dep_id]
+    if not ids:
+        return query.filter(Activo.id == -1)
+    lab_ids = _lab_ids_por_departamentos(db, ids)
+    condiciones = [Activo.departamento_id.in_(ids)]
+    if lab_ids:
+        condiciones.append(Activo.laboratorio_id.in_(lab_ids))
+    return query.filter(or_(*condiciones))
 
 
 def _resolver_departamento_inventario(
@@ -312,7 +350,7 @@ def _asegurar_acceso_activo_departamental(
     if _es_admin_inventario_global(usuario) or puede_validar_inventario_global(db, usuario):
         return
     permitidos = _departamentos_visibles_inventario(db, usuario) or []
-    if not activo or activo.departamento_id not in permitidos:
+    if not activo or _departamento_activo_operativo(db, activo) not in permitidos:
         raise HTTPException(status_code=404, detail="Activo no encontrado")
 
 
@@ -864,10 +902,11 @@ def _query_activos_filtrados(
         if departamento_id:
             if departamento_id not in departamentos_visibles:
                 raise HTTPException(status_code=403, detail="Solo puedes consultar inventario de tu departamento")
+            q = _filtrar_activos_por_departamentos(q, db, [departamento_id])
         else:
-            q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
-    if departamento_id:
-        q = q.filter(Activo.departamento_id == departamento_id)
+            q = _filtrar_activos_por_departamentos(q, db, departamentos_visibles)
+    elif departamento_id:
+        q = _filtrar_activos_por_departamentos(q, db, [departamento_id])
     if ubicacion_id:
         q = q.filter(Activo.ubicacion_id == ubicacion_id)
     if alcance:
@@ -1210,6 +1249,7 @@ def _destinatarios_validacion_activo(a: Activo, db: Session) -> set[int]:
     if creacion and creacion.usuario_id:
         destinatarios.add(creacion.usuario_id)
 
+    departamento_id = _departamento_activo_operativo(db, a)
     if a.laboratorio_id:
         usuarios_lab = db.query(Usuario.id).filter(
             Usuario.laboratorio_id == a.laboratorio_id,
@@ -1217,8 +1257,8 @@ def _destinatarios_validacion_activo(a: Activo, db: Session) -> set[int]:
             Usuario.rol.in_([RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB]),
         ).all()
         destinatarios.update(uid for (uid,) in usuarios_lab)
-    elif a.departamento_id:
-        dep = db.query(Departamento).filter(Departamento.id == a.departamento_id).first()
+    if departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
         if dep and dep.responsable_id:
             destinatarios.add(dep.responsable_id)
     return destinatarios
@@ -1248,8 +1288,9 @@ def _destinatarios_revision_institucional(
             Usuario.activo == True,
         ).all()
     )
-    if activo.departamento_id:
-        dep = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first()
+    departamento_id = _departamento_activo_operativo(db, activo)
+    if departamento_id:
+        dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
         if dep and dep.responsable_id:
             destinatarios.add(dep.responsable_id)
         destinatarios.update(
@@ -1259,7 +1300,7 @@ def _destinatarios_revision_institucional(
                 Usuario.id == UsuarioPermiso.usuario_id,
             ).filter(
                 UsuarioPermiso.permiso == PERM_INVENTARIO_VALIDATE,
-                UsuarioPermiso.departamento_id == activo.departamento_id,
+                UsuarioPermiso.departamento_id == departamento_id,
                 UsuarioPermiso.activo == True,
                 Usuario.activo == True,
             ).all()
@@ -1484,15 +1525,16 @@ def _validar_destinos_movimiento(data: MovimientoInventarioCreate, db: Session):
         raise HTTPException(status_code=404, detail="Resguardante destino no encontrado")
 
 
-def _validar_movimiento_con_activo(data: MovimientoInventarioCreate, activo: Activo):
+def _validar_movimiento_con_activo(data: MovimientoInventarioCreate, activo: Activo, departamento_actual_id: int | None = None):
     tipo = data.tipo.upper()
+    departamento_actual_id = departamento_actual_id if departamento_actual_id is not None else activo.departamento_id
     if tipo == "TRANSFERENCIA_DEPARTAMENTO":
         if not data.departamento_destino_id:
             raise HTTPException(status_code=422, detail="Selecciona el departamento destino para transferir el activo")
-        if data.departamento_destino_id == activo.departamento_id:
+        if data.departamento_destino_id == departamento_actual_id:
             raise HTTPException(status_code=422, detail="El departamento destino debe ser distinto al departamento actual")
     elif tipo in ("CAMBIO_UBICACION", "CAMBIO_RESGUARDANTE"):
-        if data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id:
+        if data.departamento_destino_id and data.departamento_destino_id != departamento_actual_id:
             raise HTTPException(
                 status_code=422,
                 detail="Para cambiar el departamento responsable usa TRANSFERENCIA_DEPARTAMENTO"
@@ -2278,8 +2320,11 @@ def crear_activo(
         if not data.laboratorio_id:
             raise HTTPException(status_code=422, detail="laboratorio_id es requerido para activos de laboratorio")
         assert_lab_write(data.laboratorio_id, current_user)
-        if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
+        lab_activo = db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first()
+        if not lab_activo:
             raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+        if lab_activo.departamento_id:
+            departamento_operacion_id = lab_activo.departamento_id
     elif data.laboratorio_id:
         assert_lab_write(data.laboratorio_id, current_user)
     if departamento_operacion_id and not db.query(Departamento).filter(Departamento.id == departamento_operacion_id).first():
@@ -2360,7 +2405,7 @@ def obtener_activo(
     # RLS: LAB_ADMIN no puede ver activos de otros laboratorios (devuelve 404)
     assert_resource_access(a, current_user)
     departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
-    if departamentos_visibles is not None and a.departamento_id not in departamentos_visibles:
+    if departamentos_visibles is not None and _departamento_activo_operativo(db, a) not in departamentos_visibles:
         raise HTTPException(status_code=404, detail="Recurso no encontrado")
     historial = db.query(Prestamo).filter(
         Prestamo.activo_id == activo_id
@@ -2381,7 +2426,7 @@ def editar_activo(
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     # RLS: LAB_ADMIN solo puede editar activos de su laboratorio
     _asegurar_acceso_activo_departamental(db, a, current_user)
-    _asegurar_write_inventario_departamento(db, current_user, a.departamento_id)
+    _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, a))
     if (a.estado_admin or "VALIDADO").upper() == "RECHAZADO" and current_user.rol != RolUsuario.SUPER_ADMIN:
         raise HTTPException(
             status_code=409,
@@ -2530,7 +2575,7 @@ def cambiar_validacion_activo(
         )
     a = db.query(Activo).filter(Activo.id == activo_id).first()
     _asegurar_acceso_activo_departamental(db, a, current_user)
-    _asegurar_write_inventario_departamento(db, current_user, a.departamento_id)
+    _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, a))
 
     estado = (data.estado_admin or "").upper()
     estados_validacion = ["BORRADOR", "EN_REVISION", "OBSERVADO", "VALIDADO", "RECHAZADO"]
@@ -2634,10 +2679,16 @@ def listar_movimientos(
     if departamentos_visibles is not None:
         if not departamentos_visibles:
             return []
+        lab_ids = _lab_ids_por_departamentos(db, departamentos_visibles)
+        condiciones = [
+            Activo.departamento_id.in_(departamentos_visibles),
+            MovimientoInventario.departamento_origen_id.in_(departamentos_visibles),
+            MovimientoInventario.departamento_destino_id.in_(departamentos_visibles),
+        ]
+        if lab_ids:
+            condiciones.append(Activo.laboratorio_id.in_(lab_ids))
         q = q.filter(
-            (Activo.departamento_id.in_(departamentos_visibles)) |
-            (MovimientoInventario.departamento_origen_id.in_(departamentos_visibles)) |
-            (MovimientoInventario.departamento_destino_id.in_(departamentos_visibles))
+            or_(*condiciones)
         )
     if activo_id:
         q = q.filter(MovimientoInventario.activo_id == activo_id)
@@ -2666,11 +2717,12 @@ def solicitar_movimiento(
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
     _asegurar_acceso_activo_departamental(db, activo, current_user)
     _asegurar_activo_validado(activo)
-    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    departamento_actual_id = _departamento_activo_operativo(db, activo)
+    _asegurar_write_inventario_departamento(db, current_user, departamento_actual_id)
     _validar_destinos_movimiento(data, db)
-    _validar_movimiento_con_activo(data, activo)
+    _validar_movimiento_con_activo(data, activo, departamento_actual_id)
     tipo = data.tipo.upper()
-    cruza_departamento = tipo == "TRANSFERENCIA_DEPARTAMENTO" and data.departamento_destino_id and data.departamento_destino_id != activo.departamento_id
+    cruza_departamento = tipo == "TRANSFERENCIA_DEPARTAMENTO" and data.departamento_destino_id and data.departamento_destino_id != departamento_actual_id
     cantidad = data.cantidad or (1 if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" else activo.cantidad or 1)
 
     if (activo.tipo_inventario or "ACTIVO") == "ACTIVO" and cantidad != 1:
@@ -2680,7 +2732,7 @@ def solicitar_movimiento(
         activo_id=activo.id,
         tipo=tipo,
         estado="SOLICITADO",
-        departamento_origen_id=activo.departamento_id,
+        departamento_origen_id=departamento_actual_id,
         departamento_destino_id=data.departamento_destino_id,
         ubicacion_origen_id=activo.ubicacion_id,
         ubicacion_destino_id=data.ubicacion_destino_id,
@@ -2827,7 +2879,7 @@ def listar_bajas(
     if departamentos_visibles is not None:
         if not departamentos_visibles:
             return []
-        q = q.filter(Activo.departamento_id.in_(departamentos_visibles))
+        q = _filtrar_activos_por_departamentos(q, db, departamentos_visibles)
     if estado:
         q = q.filter(SolicitudBajaInventario.estado == estado.upper())
     if activo_id:
@@ -2847,7 +2899,7 @@ def solicitar_baja(
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
     _asegurar_acceso_activo_departamental(db, activo, current_user)
     _asegurar_activo_validado(activo)
-    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, activo))
     abierta = db.query(SolicitudBajaInventario).filter(
         SolicitudBajaInventario.activo_id == activo_id,
         SolicitudBajaInventario.estado.in_(["SOLICITADA", "EN_REVISION", "VALIDADA_FISICAMENTE", "AUTORIZADA"]),
@@ -3055,7 +3107,7 @@ def registrar_revision_levantamiento(
         raise HTTPException(status_code=409, detail="El levantamiento no esta abierto")
     activo = db.query(Activo).filter(Activo.id == data.activo_id).first()
     _asegurar_acceso_activo_departamental(db, activo, current_user)
-    _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+    _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, activo))
     activos_scope = _query_activos_levantamiento(db, l, current_user)
     if activo.id not in {a.id for a in activos_scope}:
         raise HTTPException(status_code=422, detail="El activo no pertenece al alcance de este levantamiento")
@@ -3126,7 +3178,7 @@ def expediente_activo(
     activo = db.query(Activo).filter(Activo.id == activo_id).first()
     assert_resource_access(activo, current_user)
     departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
-    if departamentos_visibles is not None and activo.departamento_id not in departamentos_visibles:
+    if departamentos_visibles is not None and _departamento_activo_operativo(db, activo) not in departamentos_visibles:
         raise HTTPException(status_code=404, detail="Recurso no encontrado")
     movimientos = db.query(MovimientoInventario).filter(MovimientoInventario.activo_id == activo_id).order_by(MovimientoInventario.fecha_solicitud.desc()).all()
     bajas = db.query(SolicitudBajaInventario).filter(SolicitudBajaInventario.activo_id == activo_id).order_by(SolicitudBajaInventario.fecha_solicitud.desc()).all()
@@ -4237,10 +4289,11 @@ def estadisticas(
         if departamento_id:
             if departamento_id not in departamentos_visibles:
                 raise HTTPException(status_code=403, detail="Solo puedes consultar estadisticas de tu departamento")
+            q_a = _filtrar_activos_por_departamentos(q_a, db, [departamento_id])
         else:
-            q_a = q_a.filter(Activo.departamento_id.in_(departamentos_visibles))
-    if departamento_id:
-        q_a = q_a.filter(Activo.departamento_id == departamento_id)
+            q_a = _filtrar_activos_por_departamentos(q_a, db, departamentos_visibles)
+    elif departamento_id:
+        q_a = _filtrar_activos_por_departamentos(q_a, db, [departamento_id])
     if ubicacion_id:
         q_a = q_a.filter(Activo.ubicacion_id == ubicacion_id)
     if alcance:
@@ -4281,7 +4334,7 @@ def estadisticas(
     por_responsable = {}
     for a in activos:
         por_categoria[a.categoria] = por_categoria.get(a.categoria, 0) + 1
-        key = a.departamento_id or 0
+        key = _departamento_activo_operativo(db, a) or 0
         por_departamento[key] = por_departamento.get(key, 0) + 1
         if (a.alcance or "").upper() == "LABORATORIO" and a.laboratorio_id:
             lab = db.query(Laboratorio).filter(Laboratorio.id == a.laboratorio_id).first()
@@ -4855,11 +4908,8 @@ def listar_mantenimientos(
         departamentos_visibles = _departamentos_visibles_inventario(db, current_user) or []
         if not departamentos_visibles:
             return []
-        activos_ids = [
-            row[0] for row in db.query(Activo.id)
-            .filter(Activo.departamento_id.in_(departamentos_visibles))
-            .all()
-        ]
+        activos_query = _filtrar_activos_por_departamentos(db.query(Activo.id), db, departamentos_visibles)
+        activos_ids = [row[0] for row in activos_query.all()]
         if not activos_ids:
             return []
         q = q.filter(MantenimientoPreventivo.activo_id.in_(activos_ids))
@@ -4883,7 +4933,7 @@ def crear_mantenimiento(
     if activo:
         _asegurar_acceso_activo_departamental(db, activo, current_user)
         _asegurar_activo_validado(activo)
-        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+        _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, activo))
     elif data.laboratorio_id:
         assert_lab_write(data.laboratorio_id, current_user)
     elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
@@ -4927,7 +4977,7 @@ def actualizar_mantenimiento(
     activo = db.query(Activo).filter(Activo.id == mp.activo_id).first() if mp.activo_id else None
     if activo:
         _asegurar_acceso_activo_departamental(db, activo, current_user)
-        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+        _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, activo))
     elif mp.laboratorio_id:
         assert_lab_write(mp.laboratorio_id, current_user)
     elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
@@ -5000,7 +5050,7 @@ def eliminar_mantenimiento(
     activo = db.query(Activo).filter(Activo.id == mp.activo_id).first() if mp.activo_id else None
     if activo:
         _asegurar_acceso_activo_departamental(db, activo, current_user)
-        _asegurar_write_inventario_departamento(db, current_user, activo.departamento_id)
+        _asegurar_write_inventario_departamento(db, current_user, _departamento_activo_operativo(db, activo))
     elif mp.laboratorio_id:
         assert_lab_write(mp.laboratorio_id, current_user)
     elif current_user.rol not in (RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB):
@@ -5023,7 +5073,7 @@ def historial_activo(
         raise HTTPException(status_code=404, detail="Activo no encontrado")
     assert_resource_access(activo, current_user)
     departamentos_visibles = _departamentos_visibles_inventario(db, current_user)
-    if departamentos_visibles is not None and activo.departamento_id not in departamentos_visibles:
+    if departamentos_visibles is not None and _departamento_activo_operativo(db, activo) not in departamentos_visibles:
         raise HTTPException(status_code=404, detail="Activo no encontrado")
 
     eventos = []

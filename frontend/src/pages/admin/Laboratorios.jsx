@@ -156,6 +156,11 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
           <span className="inline-flex mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
             {categoriaLabel(lab.categoria)}
           </span>
+          {lab.departamento_nombre && (
+            <span className="inline-flex mt-1 ml-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20">
+              {toTitleCase(lab.departamento_nombre)}
+            </span>
+          )}
           {lab.ubicacion ? (
             <p className="text-xs mt-1 flex items-center gap-1 truncate" style={{ color: '#94a3b8' }}>
               <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,10 +273,11 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
 }
 
 // ─── Modal Crear / Editar ─────────────────────────────────────────────────────
-function ModalLab({ lab, onClose, onSave }) {
+function ModalLab({ lab, departamentos = [], onClose, onSave }) {
   const [form, setForm]       = useState({
     nombre: lab?.nombre || '',
     categoria: lab?.categoria || '',
+    departamento_id: lab?.departamento_id ? String(lab.departamento_id) : '',
     ubicacion: lab?.ubicacion || '',
     capacidad: lab?.capacidad ?? 25,
     activo: lab?.activo ?? true,
@@ -292,6 +298,7 @@ function ModalLab({ lab, onClose, onSave }) {
       const payload = {
         ...form,
         categoria: form.categoria || null,
+        departamento_id: form.departamento_id ? Number(form.departamento_id) : null,
       };
       const { data } = lab
         ? await api.put(`/laboratorios/${lab.id}`, payload)
@@ -334,6 +341,24 @@ function ModalLab({ lab, onClose, onSave }) {
                 ...CATEGORIAS_LAB.map(c => ({ value: c, label: categoriaLabel(c) })),
               ]}
             />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1.5">Departamento responsable</label>
+            <SelectDark
+              value={form.departamento_id}
+              onChange={v => setForm({ ...form, departamento_id: v })}
+              placeholder="Sin departamento"
+              options={[
+                { value: '', label: 'Sin departamento' },
+                ...departamentos.map(dep => ({
+                  value: String(dep.id),
+                  label: `${dep.nombre}${dep.clave ? ` (${dep.clave})` : ''}`,
+                })),
+              ]}
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Sus activos de laboratorio podran ser vistos y validados por el responsable de ese departamento.
+            </p>
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1.5">Ubicación</label>
@@ -421,6 +446,7 @@ export default function Laboratorios() {
   const puedeAdministrar = usuario?.rol === 'SUPER_ADMIN';
   const esResponsable = usuario?.rol === 'RESPONSABLE_LAB';
   const [labs, setLabs]               = useState([]);
+  const [departamentos, setDepartamentos] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [modalCrear, setModalCrear]   = useState(false);
@@ -441,6 +467,18 @@ export default function Laboratorios() {
   }, [esResponsable, soloActivos, usuario?.laboratorio_id]);
 
   useEffect(() => { cargarLabs(); }, [cargarLabs]);
+
+  const cargarDepartamentos = useCallback(async () => {
+    if (!puedeAdministrar) return;
+    try {
+      const { data } = await api.get('/departamentos?activo=true');
+      setDepartamentos(Array.isArray(data) ? data : []);
+    } catch {
+      setDepartamentos([]);
+    }
+  }, [puedeAdministrar]);
+
+  useEffect(() => { cargarDepartamentos(); }, [cargarDepartamentos]);
 
   const handleDesactivar = async () => {
     try {
@@ -587,6 +625,7 @@ export default function Laboratorios() {
       {puedeAdministrar && (modalCrear || labEditar) && (
         <ModalLab
           lab={labEditar}
+          departamentos={departamentos}
           onClose={() => { setModalCrear(false); setLabEditar(null); }}
           onSave={()  => { setModalCrear(false); setLabEditar(null); cargarLabs(); }}
         />

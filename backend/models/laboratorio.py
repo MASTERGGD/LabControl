@@ -15,8 +15,10 @@ class Laboratorio(Base):
     categoria = Column(String(80), nullable=True)
     ubicacion = Column(String, nullable=True)
     capacidad = Column(Integer, default=25)
+    departamento_id = Column(Integer, ForeignKey("departamentos.id"), nullable=True, index=True)
     activo = Column(Boolean, default=True)
 
+    departamento = relationship("Departamento")
     admin = relationship("Usuario", back_populates="laboratorio", uselist=False, foreign_keys="Usuario.laboratorio_id")
     computadoras = relationship("Computadora", back_populates="laboratorio")
     activos = relationship("Activo", back_populates="laboratorio")
