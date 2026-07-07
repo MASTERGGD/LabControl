@@ -2703,6 +2703,7 @@ export default function Mantenimiento() {
   const tabInicial = ['kanban', 'preventivo', 'historial'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'kanban';
   const activoInicialId = searchParams.get('activo_id') || '';
   const abrirNuevoInicial = searchParams.get('nuevo') === '1';
+  const estadoInicial = searchParams.get('estado') || '';
   const [tab,          setTab]          = useState(tabInicial);
   const [incidentes,   setIncidentes]   = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
@@ -2715,7 +2716,7 @@ export default function Mantenimiento() {
   const [filtroArea,   setFiltroArea]   = useState('TODAS');
   const [filtroOrigen, setFiltroOrigen] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState(estadoInicial);
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [drawerInc,    setDrawerInc]    = useState(null);
   const [modalNuevo,   setModalNuevo]   = useState(false);
@@ -2739,6 +2740,14 @@ export default function Mantenimiento() {
   const placeholderBusqueda = esVistaInstitucional
     ? 'Buscar folio, activo, descripcion, reportante, departamento o laboratorio...'
     : 'Buscar equipo, descripcion, laboratorio o reportante...';
+
+  useEffect(() => {
+    const estadoUrl = searchParams.get('estado') || '';
+    if (estadoUrl) {
+      setFiltroEstado(estadoUrl);
+      setMostrarFiltros(true);
+    }
+  }, [searchParams]);
 
   const cargarTodo = useCallback(async () => {
     setLoading(true); setError('');
@@ -2832,6 +2841,7 @@ export default function Mantenimiento() {
   });
 
   const pendientesAlta = incidentes.filter(i => i.prioridad === 'ALTA' && (i.estado === 'PENDIENTE' || i.estado === 'REABIERTO'));
+  const reportesPendientes = filtered.filter(i => i.estado === 'PENDIENTE');
 
   // ─── Configuración de pestañas ──────────────────────────────────────────────
   const TABS = [
@@ -2961,6 +2971,61 @@ export default function Mantenimiento() {
           )}
 
           {/* Filtros — los contadores viven en los encabezados de columna */}
+          {!loading && reportesPendientes.length > 0 && (
+            <div className={`mb-5 rounded-2xl border p-4 ${
+              isDay ? 'bg-amber-50/80 border-amber-200 shadow-sm' : 'bg-amber-500/10 border-amber-400/25'
+            }`}>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className={`text-sm font-bold ${isDay ? 'text-amber-950' : 'text-amber-100'}`}>
+                    Reportes pendientes de revisar
+                  </p>
+                  <p className={`text-xs ${isDay ? 'text-amber-800' : 'text-amber-200/80'}`}>
+                    Son los mismos incidentes que aparecen como "sin atender" en el dashboard. Abre uno para canalizarlo o iniciar su revision.
+                  </p>
+                </div>
+                <span className={`self-start rounded-full px-3 py-1 text-xs font-bold ${
+                  isDay ? 'bg-white text-amber-900 border border-amber-200' : 'bg-amber-300/15 text-amber-100 border border-amber-300/20'
+                }`}>
+                  {reportesPendientes.length} pendiente{reportesPendientes.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {reportesPendientes.slice(0, 6).map(inc => {
+                  const prioridad = PRIORIDAD_BADGE[inc.prioridad] || PRIORIDAD_BADGE.MEDIA;
+                  const titulo = inc.activo_nombre || inc.pc_codigo || inc.nombre || 'Reporte general';
+                  const origen = inc.laboratorio_nombre || inc.origen_departamento_nombre || inc.activo_departamento_nombre || 'Sin ubicacion';
+                  return (
+                    <button
+                      key={inc.id}
+                      type="button"
+                      onClick={() => setDrawerInc(inc)}
+                      className={`rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 ${
+                        isDay ? 'bg-white border-amber-200 hover:border-amber-300 hover:shadow-md' : 'bg-slate-950/45 border-amber-300/15 hover:border-amber-300/35'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`text-sm font-bold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{titulo}</p>
+                          <p className={`text-[11px] font-mono ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                            INC-{String(inc.id || '').padStart(4, '0')}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${isDay ? prioridad.dayCls : prioridad.cls}`}>
+                          {prioridad.label}
+                        </span>
+                      </div>
+                      <p className={`mt-2 line-clamp-2 text-xs ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>
+                        {inc.descripcion || 'Sin descripcion'}
+                      </p>
+                      <p className={`mt-2 text-[11px] ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{origen}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3 mb-5">
             <div className="flex-1 min-w-48">
               <input type="text" placeholder={placeholderBusqueda}

@@ -707,7 +707,7 @@ function PanelAlertas({ alertas, navigate }) {
   });
   const incidentesVisibles = incidentesOrdenados.slice(0, 3);
   const incidentesAlta = incidentesOrdenados.filter(i => i.prioridad === 'ALTA').length;
-  const irMantenimiento = () => navigate('/admin/mantenimiento');
+  const irMantenimiento = () => navigate('/admin/mantenimiento?estado=PENDIENTE');
   return (
     <div className="rounded-xl overflow-hidden"
       style={{
