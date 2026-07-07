@@ -2703,7 +2703,7 @@ export default function Mantenimiento() {
   const tabInicial = ['kanban', 'preventivo', 'historial'].includes(searchParams.get('tab')) ? searchParams.get('tab') : 'kanban';
   const activoInicialId = searchParams.get('activo_id') || '';
   const abrirNuevoInicial = searchParams.get('nuevo') === '1';
-  const estadoInicial = searchParams.get('estado') || '';
+  const focoPendientes = searchParams.get('foco') === 'pendientes';
   const [tab,          setTab]          = useState(tabInicial);
   const [incidentes,   setIncidentes]   = useState([]);
   const [laboratorios, setLaboratorios] = useState([]);
@@ -2716,12 +2716,13 @@ export default function Mantenimiento() {
   const [filtroArea,   setFiltroArea]   = useState('TODAS');
   const [filtroOrigen, setFiltroOrigen] = useState('');
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState(estadoInicial);
+  const [filtroEstado, setFiltroEstado] = useState('');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
   const [drawerInc,    setDrawerInc]    = useState(null);
   const [modalNuevo,   setModalNuevo]   = useState(false);
   const [dragTarget,   setDragTarget]   = useState(null);
   const dragItem = useRef(null);
+  const kanbanScrollRef = useRef(null);
   const { toast } = useToast();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -2742,10 +2743,13 @@ export default function Mantenimiento() {
     : 'Buscar equipo, descripcion, laboratorio o reportante...';
 
   useEffect(() => {
-    const estadoUrl = searchParams.get('estado') || '';
-    if (estadoUrl) {
-      setFiltroEstado(estadoUrl);
-      setMostrarFiltros(true);
+    if (searchParams.get('foco') === 'pendientes') {
+      setFiltroEstado('');
+      setMostrarFiltros(false);
+      setTab('kanban');
+      window.requestAnimationFrame(() => {
+        kanbanScrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+      });
     }
   }, [searchParams]);
 
@@ -2841,7 +2845,6 @@ export default function Mantenimiento() {
   });
 
   const pendientesAlta = incidentes.filter(i => i.prioridad === 'ALTA' && (i.estado === 'PENDIENTE' || i.estado === 'REABIERTO'));
-  const reportesPendientes = filtered.filter(i => i.estado === 'PENDIENTE');
 
   // ─── Configuración de pestañas ──────────────────────────────────────────────
   const TABS = [
@@ -2971,58 +2974,11 @@ export default function Mantenimiento() {
           )}
 
           {/* Filtros — los contadores viven en los encabezados de columna */}
-          {!loading && reportesPendientes.length > 0 && (
-            <div className={`mb-5 rounded-2xl border p-4 ${
-              isDay ? 'bg-amber-50/80 border-amber-200 shadow-sm' : 'bg-amber-500/10 border-amber-400/25'
+          {focoPendientes && (
+            <div className={`mb-4 rounded-2xl border px-4 py-3 text-sm ${
+              isDay ? 'bg-amber-50/80 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-400/25 text-amber-100'
             }`}>
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className={`text-sm font-bold ${isDay ? 'text-amber-950' : 'text-amber-100'}`}>
-                    Reportes pendientes de revisar
-                  </p>
-                  <p className={`text-xs ${isDay ? 'text-amber-800' : 'text-amber-200/80'}`}>
-                    Son los mismos incidentes que aparecen como "sin atender" en el dashboard. Abre uno para canalizarlo o iniciar su revision.
-                  </p>
-                </div>
-                <span className={`self-start rounded-full px-3 py-1 text-xs font-bold ${
-                  isDay ? 'bg-white text-amber-900 border border-amber-200' : 'bg-amber-300/15 text-amber-100 border border-amber-300/20'
-                }`}>
-                  {reportesPendientes.length} pendiente{reportesPendientes.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {reportesPendientes.slice(0, 6).map(inc => {
-                  const prioridad = PRIORIDAD_BADGE[inc.prioridad] || PRIORIDAD_BADGE.MEDIA;
-                  const titulo = inc.activo_nombre || inc.pc_codigo || inc.nombre || 'Reporte general';
-                  const origen = inc.laboratorio_nombre || inc.origen_departamento_nombre || inc.activo_departamento_nombre || 'Sin ubicacion';
-                  return (
-                    <button
-                      key={inc.id}
-                      type="button"
-                      onClick={() => setDrawerInc(inc)}
-                      className={`rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 ${
-                        isDay ? 'bg-white border-amber-200 hover:border-amber-300 hover:shadow-md' : 'bg-slate-950/45 border-amber-300/15 hover:border-amber-300/35'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`text-sm font-bold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{titulo}</p>
-                          <p className={`text-[11px] font-mono ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
-                            INC-{String(inc.id || '').padStart(4, '0')}
-                          </p>
-                        </div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold border ${isDay ? prioridad.dayCls : prioridad.cls}`}>
-                          {prioridad.label}
-                        </span>
-                      </div>
-                      <p className={`mt-2 line-clamp-2 text-xs ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>
-                        {inc.descripcion || 'Sin descripcion'}
-                      </p>
-                      <p className={`mt-2 text-[11px] ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{origen}</p>
-                    </button>
-                  );
-                })}
-              </div>
+              Se muestra el tablero completo. Los reportes sin atender estan en la columna <strong>Reportados</strong>; al cambiar de estado avanzan a su columna correspondiente.
             </div>
           )}
 
@@ -3121,7 +3077,7 @@ export default function Mantenimiento() {
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:auto-cols-[minmax(280px,1fr)] md:grid-flow-col md:overflow-x-auto gap-4 pb-2">
+            <div ref={kanbanScrollRef} className="grid grid-cols-1 md:auto-cols-[minmax(280px,1fr)] md:grid-flow-col md:overflow-x-auto gap-4 pb-2">
               {COLUMNAS_FLUJO.map(col => (
                 <KanbanColumn
                   key={col.key}
