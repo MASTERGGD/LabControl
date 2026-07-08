@@ -87,7 +87,6 @@ const COLUMNAS_FLUJO = [
   { key: 'EN_ESPERA',   ...ESTADO_FLUJO.EN_ESPERA,   label: 'En espera' },
   { key: 'REPARADO',    ...ESTADO_FLUJO.REPARADO,    label: 'Por confirmar' },
   { key: 'REABIERTO',   ...ESTADO_FLUJO.REABIERTO,   label: 'Reabiertos' },
-  { key: 'CERRADO',     ...ESTADO_FLUJO.CERRADO,     label: 'Cerrados' },
 ];
 const ESTADOS_TERMINALES = ['CERRADO', 'RECHAZADO', 'CANCELADO', 'DADO_DE_BAJA', 'CERRADO_SIN_ADEUDO'];
 
@@ -107,6 +106,42 @@ function formatAntiguedad(iso) {
   if (horas < 24) return `hace ${horas} h`;
   const dias = Math.floor(horas / 24);
   return `hace ${dias} d`;
+}
+
+function folioIncidente(incidente = {}) {
+  return `INC-${String(incidente.id || '').padStart(4, '0')}`;
+}
+
+function tituloIncidente(incidente = {}) {
+  const descripcion = String(incidente.descripcion || '').trim();
+  const base = incidente.activo_nombre
+    || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '')
+    || (descripcion ? descripcion.slice(0, 58) : '')
+    || (incidente.laboratorio_nombre ? 'Reporte general del laboratorio' : 'Reporte general del departamento');
+  return String(base).replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
+}
+
+function descripcionIncidente(incidente = {}) {
+  return String(incidente.descripcion || 'Sin descripcion registrada').trim();
+}
+
+function fechaUltimaActividadIncidente(incidente = {}) {
+  return incidente.fecha_cierre
+    || incidente.fecha_reparacion
+    || incidente.fecha_actualizacion
+    || incidente.updated_at
+    || incidente.fecha_reporte;
+}
+
+function formatFechaHistorial(iso) {
+  if (!iso) return 'Sin fecha';
+  return formatDateTimeInMexico(iso, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'✍️ Manual' };
@@ -129,8 +164,11 @@ const OPCIONES_PRIORIDAD_FILTRO = [
 const OPCIONES_ESTADO_FILTRO = [
   { value: '', label: 'Todos los estados' },
   ...COLUMNAS_FLUJO.map(col => ({ value: col.key, label: col.label })),
+  { value: 'CERRADO', label: 'Cerrados' },
   { value: 'RECHAZADO', label: 'Rechazados' },
   { value: 'CANCELADO', label: 'Cancelados' },
+  { value: 'DADO_DE_BAJA', label: 'Dados de baja' },
+  { value: 'CERRADO_SIN_ADEUDO', label: 'Cerrados sin adeudo' },
 ];
 
 // ─── Tarjeta de incidente ─────────────────────────────────────────────────────
@@ -231,7 +269,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
     || (resumenProblema ? resumenProblema.slice(0, 58) : '')
     || (incidente.laboratorio_nombre ? 'Reporte general del laboratorio' : 'Reporte general del departamento');
   const nombre = nombreRaw.replace(/--+/g, '-').replace(/\s+/g, ' ').trim();
-  const folio = `INC-${String(incidente.id || '').padStart(4, '0')}`;
+  const folio = folioIncidente(incidente);
   const antiguedad = formatAntiguedad(incidente.fecha_reporte);
 
   // No permitir arrastrar si tiene adeudo pendiente (no resuelto/cancelado)
@@ -397,6 +435,138 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
 }
 
 // ─── Drawer de detalle ────────────────────────────────────────────────────────
+function HistorialIncidenciasPanel({ items = [], resumen = {}, expanded, locked, onToggle, onOpen }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const total = resumen.total || items.length;
+
+  if (!total) return null;
+
+  const visibles = expanded ? items : items.slice(0, 4);
+  const chips = [
+    { key: 'CERRADO', label: 'cerradas' },
+    { key: 'RECHAZADO', label: 'rechazadas' },
+    { key: 'CANCELADO', label: 'canceladas' },
+    { key: 'DADO_DE_BAJA', label: 'bajas' },
+    { key: 'CERRADO_SIN_ADEUDO', label: 'sin adeudo' },
+  ].filter(chip => resumen[chip.key]);
+
+  return (
+    <section
+      className={`mb-4 rounded-2xl border p-4 ${
+        isDay
+          ? 'bg-white border-slate-200 shadow-sm'
+          : 'bg-slate-900/70 border-white/10'
+      }`}
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className={`text-sm font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>
+              Historial de incidencias atendidas
+            </h3>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                isDay
+                  ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                  : 'bg-white/10 text-slate-200 border border-white/10'
+              }`}
+            >
+              {total}
+            </span>
+          </div>
+          <p className={`mt-1 text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+            El tablero mantiene el trabajo activo. Las incidencias terminadas se consultan aqui para no saturar las columnas.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {chips.map(chip => (
+            <span
+              key={chip.key}
+              className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                isDay
+                  ? 'bg-slate-50 text-slate-700 border border-slate-200'
+                  : 'bg-white/5 text-slate-300 border border-white/10'
+              }`}
+            >
+              {resumen[chip.key]} {chip.label}
+            </span>
+          ))}
+          {!locked && items.length > 4 && (
+            <button
+              type="button"
+              onClick={onToggle}
+              className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                isDay
+                  ? 'border-slate-300 text-slate-700 hover:bg-slate-50'
+                  : 'border-white/10 text-slate-200 hover:bg-white/10'
+              }`}
+            >
+              {expanded ? 'Contraer historial' : `Ver historial (${items.length})`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {(expanded || locked) && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {visibles.map(item => {
+            const estadoInfo = infoEstadoFlujo(item.estado);
+            const area = AREAS_ATENCION[inferirAreaAtencion(item)] || AREAS_ATENCION.LAB;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onOpen(item)}
+                className={`text-left rounded-2xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                  isDay
+                    ? 'bg-slate-50 border-slate-200 text-slate-900 hover:bg-white'
+                    : 'bg-slate-950/70 border-white/10 text-slate-100 hover:bg-slate-900'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className={`truncate text-sm font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>
+                      {tituloIncidente(item)}
+                    </p>
+                    <p className={`mt-0.5 text-[11px] font-mono ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                      {folioIncidente(item)}
+                    </p>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                    style={{
+                      color: estadoInfo.color,
+                      borderColor: `${estadoInfo.color}55`,
+                      background: `${estadoInfo.color}18`,
+                    }}
+                  >
+                    {estadoInfo.label}
+                  </span>
+                </div>
+                <p className={`mt-2 line-clamp-2 text-xs ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>
+                  {descripcionIncidente(item)}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span
+                    className="rounded-full border px-2 py-0.5 font-semibold"
+                    style={{ color: area.color, borderColor: `${area.color}55`, background: `${area.color}16` }}
+                  >
+                    {area.icon} {area.label}
+                  </span>
+                  <span className={isDay ? 'text-slate-500' : 'text-slate-400'}>
+                    {formatFechaHistorial(fechaUltimaActividadIncidente(item))}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const navigate = useNavigate();
   const { themeKey } = useTheme();
@@ -2718,6 +2888,7 @@ export default function Mantenimiento() {
   const [filtroPrioridad, setFiltroPrioridad] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('');
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [historialExpandido, setHistorialExpandido] = useState(false);
   const [drawerInc,    setDrawerInc]    = useState(null);
   const [modalNuevo,   setModalNuevo]   = useState(false);
   const [dragTarget,   setDragTarget]   = useState(null);
@@ -2823,7 +2994,7 @@ export default function Mantenimiento() {
     if (filtroEstado && i.estado !== filtroEstado) return false;
     if (!filtroTexto) return true;
     const t = filtroTexto.toLowerCase();
-    const folio = `inc-${String(i.id || '').padStart(4, '0')}`;
+    const folio = folioIncidente(i).toLowerCase();
     return (folio.includes(t) ||
             String(i.id || '').includes(t) ||
             i.activo_nombre?.toLowerCase().includes(t) ||
@@ -2837,10 +3008,22 @@ export default function Mantenimiento() {
             i.pc_codigo?.toLowerCase().includes(t));
   });
 
-  // Agrupar en columnas (DADO_DE_BAJA no aparece en kanban)
+  const incidentesActivos = filtered.filter(i => !ESTADOS_TERMINALES.includes(i.estado));
+  const incidentesHistoricos = filtered
+    .filter(i => ESTADOS_TERMINALES.includes(i.estado))
+    .sort((a, b) => new Date(fechaUltimaActividadIncidente(b) || 0) - new Date(fechaUltimaActividadIncidente(a) || 0));
+  const resumenHistorico = incidentesHistoricos.reduce((acc, item) => {
+    acc.total += 1;
+    acc[item.estado] = (acc[item.estado] || 0) + 1;
+    return acc;
+  }, { total: 0 });
+  const estadoTerminalFiltrado = ESTADOS_TERMINALES.includes(filtroEstado);
+  const mostrarHistorialCompleto = historialExpandido || estadoTerminalFiltrado;
+
+  // Agrupar en columnas activas. Los estados terminales viven en el historial compacto.
   const kanban = {};
   COLUMNAS_FLUJO.forEach(c => { kanban[c.key] = []; });
-  filtered.forEach(i => {
+  incidentesActivos.forEach(i => {
     if (kanban[i.estado]) kanban[i.estado].push(i);
   });
 
@@ -3077,21 +3260,31 @@ export default function Mantenimiento() {
               <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
             </div>
           ) : (
-            <div ref={kanbanScrollRef} className="grid grid-cols-1 md:auto-cols-[minmax(280px,1fr)] md:grid-flow-col md:overflow-x-auto gap-4 pb-2">
-              {COLUMNAS_FLUJO.map(col => (
-                <KanbanColumn
-                  key={col.key}
-                  col={col}
-                  cards={kanban[col.key] || []}
-                  dragItem={dragItem}
-                  isDragTarget={dragTarget === col.key}
-                  onDragOver={setDragTarget}
-                  onDragLeave={() => setDragTarget(null)}
-                  onDrop={handleDrop}
-                  onCardClick={setDrawerInc}
-                />
-              ))}
-            </div>
+            <>
+              <HistorialIncidenciasPanel
+                items={incidentesHistoricos}
+                resumen={resumenHistorico}
+                expanded={mostrarHistorialCompleto}
+                locked={estadoTerminalFiltrado}
+                onToggle={() => setHistorialExpandido(v => !v)}
+                onOpen={setDrawerInc}
+              />
+              <div ref={kanbanScrollRef} className="grid grid-cols-1 md:auto-cols-[minmax(280px,1fr)] md:grid-flow-col md:overflow-x-auto gap-4 pb-2">
+                {COLUMNAS_FLUJO.map(col => (
+                  <KanbanColumn
+                    key={col.key}
+                    col={col}
+                    cards={kanban[col.key] || []}
+                    dragItem={dragItem}
+                    isDragTarget={dragTarget === col.key}
+                    onDragOver={setDragTarget}
+                    onDragLeave={() => setDragTarget(null)}
+                    onDrop={handleDrop}
+                    onCardClick={setDrawerInc}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {/* Drawer detalle */}
