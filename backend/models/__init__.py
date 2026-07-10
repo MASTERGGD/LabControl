@@ -11,6 +11,7 @@ from .inventario import (
 )
 from .adeudo import Adeudo
 from .notificacion import Notificacion
+from .password_reset import PasswordResetToken
 from .catalogo import CatalogoAlumno, CatalogoMateria, CatalogoCarrera, CatalogoInventarioItem
 from .auditoria import AuditLog
 from .cumplimiento import EventoCumplimiento

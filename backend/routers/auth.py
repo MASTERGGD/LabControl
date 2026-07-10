@@ -1,17 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from database import get_db
 from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
-from dependencies import get_current_user, crear_access_token, verificar_password
+from models.password_reset import PasswordResetToken, utcnow_naive
+from dependencies import get_current_user, crear_access_token, verificar_password, hashear_password
 from services.auditoria import registrar, Accion, Recurso
 from services.active_sessions import end_session, list_user_sessions, register_session
 from services.rate_limit import clear_login_failures, ensure_login_not_locked, register_login_failure
 from services.user_permissions import permisos_efectivos
+from services.email import enviar_recuperacion_password
+from services.password_policy import password_policy_error
+import hashlib
 import datetime
 import os
+import secrets
 
 def _token_expire_minutes() -> int:
     """Duracion del access token. ACCESS_TOKEN_EXPIRE_MINUTES tiene prioridad."""
@@ -50,6 +56,39 @@ class UsuarioResponse(BaseModel):
 class SessionHeartbeatIn(BaseModel):
     session_id: str
     path: str | None = None
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(..., min_length=32, max_length=256)
+    password: str = Field(..., min_length=10, max_length=128)
+
+
+def _reset_minutes() -> int:
+    try:
+        return max(5, min(120, int(os.getenv("PASSWORD_RESET_EXPIRE_MINUTES", "30"))))
+    except ValueError:
+        return 30
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _institutional_email(email: str) -> bool:
+    domain = os.getenv("INSTITUTIONAL_EMAIL_DOMAIN", "utecan.edu.mx").strip().lower()
+    return email.strip().lower().endswith("@" + domain)
+
+
+def _active_reset(db: Session, token: str) -> PasswordResetToken | None:
+    return db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == _token_hash(token),
+        PasswordResetToken.usado_en.is_(None),
+        PasswordResetToken.expira_en > utcnow_naive(),
+    ).first()
 
 
 def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
@@ -133,6 +172,90 @@ def login(
         "token_type": "bearer",
         "usuario": _serializar_usuario(usuario, db),
     }
+
+
+@router.post("/password/forgot", summary="Solicitar recuperación de contraseña")
+def forgot_password(data: ForgotPasswordIn, request: Request, db: Session = Depends(get_db)):
+    """Siempre responde igual para no revelar qué correos tienen una cuenta."""
+    generic = {
+        "mensaje": "Si el correo pertenece a una cuenta activa, recibirás un enlace temporal en unos minutos."
+    }
+    email = str(data.email).strip().lower()
+    if not _institutional_email(email):
+        return generic
+
+    usuario = db.query(Usuario).filter(func.lower(Usuario.email) == email, Usuario.activo.is_(True)).first()
+    if not usuario:
+        registrar(
+            db, accion=Accion.RECUPERACION_SOLICITADA, recurso=Recurso.SISTEMA,
+            detalle={"cuenta_encontrada": False}, request=request, exito=False,
+        )
+        return generic
+
+    now = utcnow_naive()
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.usuario_id == usuario.id,
+        PasswordResetToken.usado_en.is_(None),
+    ).update({PasswordResetToken.usado_en: now}, synchronize_session=False)
+
+    raw_token = secrets.token_urlsafe(48)
+    minutes = _reset_minutes()
+    reset = PasswordResetToken(
+        usuario_id=usuario.id,
+        token_hash=_token_hash(raw_token),
+        expira_en=now + datetime.timedelta(minutes=minutes),
+    )
+    db.add(reset)
+    db.commit()
+
+    frontend = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    sent = enviar_recuperacion_password(
+        usuario.email, usuario.nombre, f"{frontend}/recuperar-password/{raw_token}", minutes
+    )
+    registrar(
+        db, accion=Accion.RECUPERACION_SOLICITADA, recurso=Recurso.USUARIO,
+        usuario=usuario, recurso_id=usuario.id,
+        detalle={"correo_enviado": sent, "expira_minutos": minutes}, request=request,
+    )
+    return generic
+
+
+@router.get("/password/reset/{token}", summary="Validar enlace de recuperación")
+def validate_reset_token(token: str, db: Session = Depends(get_db)):
+    if not _active_reset(db, token):
+        raise HTTPException(status_code=400, detail="El enlace es inválido, ya fue utilizado o ha expirado.")
+    return {"valido": True}
+
+
+@router.post("/password/reset", summary="Restablecer contraseña")
+def reset_password(data: ResetPasswordIn, request: Request, db: Session = Depends(get_db)):
+    reset = _active_reset(db, data.token)
+    if not reset:
+        raise HTTPException(status_code=400, detail="El enlace es inválido, ya fue utilizado o ha expirado.")
+    policy_error = password_policy_error(data.password)
+    if policy_error:
+        raise HTTPException(status_code=422, detail=policy_error)
+
+    usuario = db.query(Usuario).filter(Usuario.id == reset.usuario_id, Usuario.activo.is_(True)).first()
+    if not usuario:
+        raise HTTPException(status_code=400, detail="El enlace es inválido, ya fue utilizado o ha expirado.")
+    if verificar_password(data.password, usuario.password_hash):
+        raise HTTPException(status_code=422, detail="La nueva contraseña debe ser diferente a la anterior.")
+
+    now = utcnow_naive()
+    usuario.password_hash = hashear_password(data.password)
+    usuario.debe_cambiar_password = False
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.usuario_id == usuario.id,
+        PasswordResetToken.usado_en.is_(None),
+    ).update({PasswordResetToken.usado_en: now}, synchronize_session=False)
+    db.commit()
+    clear_login_failures(request, usuario.email)
+    registrar(
+        db, accion=Accion.RECUPERACION_USADA, recurso=Recurso.USUARIO,
+        usuario=usuario, recurso_id=usuario.id, request=request,
+    )
+    return {"mensaje": "Tu contraseña se actualizó correctamente. Ya puedes iniciar sesión."}
 
 
 @router.get("/me", response_model=UsuarioResponse, summary="Usuario actual")

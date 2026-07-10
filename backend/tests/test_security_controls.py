@@ -55,7 +55,7 @@ class TestPasswordChangeGuard:
         resp = client.put(
             "/usuarios/me/password",
             headers=auth_headers(token),
-            json={"password_actual": "TemporalPass123", "password_nuevo": "NuevaClave456"},
+            json={"password_actual": "TemporalPass123", "password_nuevo": "NuevaClave456!"},
         )
         assert resp.status_code == 200
         # Ahora el flag está limpio: el mismo token ya puede usar endpoints normales.

@@ -10,6 +10,7 @@ from dependencies import hashear_password, verificar_password, get_current_user,
 from rls import usuario_lab_filter, resolve_lab_id
 import secrets
 from services.auditoria import registrar, Accion, Recurso
+from services.password_policy import password_policy_error
 import string
 import io
 
@@ -22,7 +23,7 @@ class UsuarioCreate(BaseModel):
     nombre: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     numero_empleado: Optional[str] = None
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=10, max_length=128)
     rol: RolUsuario = RolUsuario.DOCENTE
     laboratorio_id: Optional[int] = None
     departamento_id: Optional[int] = None
@@ -59,7 +60,7 @@ class ResetPasswordResponse(BaseModel):
 
 class CambiarPasswordPropio(BaseModel):
     password_actual: str = Field(..., min_length=1, description="Contraseña actual")
-    password_nuevo:  str = Field(..., min_length=6, description="Nueva contraseña (mín. 6 caracteres)")
+    password_nuevo: str = Field(..., min_length=10, max_length=128, description="Nueva contraseña segura")
 
 
 # ─── Helper ────────────────────────────────────────────────────────────────────
@@ -88,8 +89,15 @@ def _serializar(u: Usuario, db: Session) -> dict:
     }
 
 def _generar_password(longitud: int = 10) -> str:
-    alfabeto = string.ascii_letters + string.digits + "!@#$"
-    return ''.join(secrets.choice(alfabeto) for _ in range(longitud))
+    longitud = max(10, longitud)
+    chars = [
+        secrets.choice(string.ascii_uppercase), secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits), secrets.choice("!@#$%&*"),
+    ]
+    alfabeto = string.ascii_letters + string.digits + "!@#$%&*"
+    chars.extend(secrets.choice(alfabeto) for _ in range(longitud - len(chars)))
+    secrets.SystemRandom().shuffle(chars)
+    return ''.join(chars)
 
 def _validar_laboratorio(laboratorio_id: Optional[int], rol: RolUsuario, db: Session):
     """LAB_ADMIN debe tener laboratorio. Verifica que el lab exista."""
@@ -175,6 +183,9 @@ def crear_usuario(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN))
 ):
+    policy_error = password_policy_error(data.password)
+    if policy_error:
+        raise HTTPException(status_code=422, detail=policy_error)
     if db.query(Usuario).filter(Usuario.email == data.email).first():
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
     if data.numero_empleado and db.query(Usuario).filter(Usuario.numero_empleado == data.numero_empleado).first():
@@ -343,6 +354,7 @@ def reset_password(
 
 @router.put("/me/password", summary="Cambiar mi propia contraseña")
 def cambiar_mi_password(
+    request: Request,
     data: CambiarPasswordPropio,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
@@ -359,10 +371,18 @@ def cambiar_mi_password(
     if data.password_actual == data.password_nuevo:
         raise HTTPException(status_code=400, detail="La nueva contraseña debe ser diferente a la actual")
 
+    policy_error = password_policy_error(data.password_nuevo)
+    if policy_error:
+        raise HTTPException(status_code=422, detail=policy_error)
+
     u = db.query(Usuario).filter(Usuario.id == current_user.id).first()
     u.password_hash = hashear_password(data.password_nuevo)
     u.debe_cambiar_password = False  # ya cumplió el cambio obligatorio
     db.commit()
+
+    registrar(db, accion=Accion.CAMBIAR_PASSWORD, recurso=Recurso.USUARIO,
+              usuario=current_user, recurso_id=current_user.id,
+              detalle={"tipo": "cambio_propio"}, request=request)
 
     return {"mensaje": "Contraseña actualizada correctamente"}
 

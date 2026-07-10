@@ -121,6 +121,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() not in ("0", "false", "no")
         self.rules = [
             RateLimitRule("/auth/login", ("POST",), _env_int("RATE_LIMIT_LOGIN_PER_MINUTE", 10), 60),
+            RateLimitRule("/auth/password/forgot", ("POST",), _env_int("RATE_LIMIT_PASSWORD_RESET_PER_HOUR", 5), 3600),
+            RateLimitRule("/auth/password/reset", ("POST",), _env_int("RATE_LIMIT_PASSWORD_RESET_ATTEMPTS_PER_MINUTE", 10), 60),
             RateLimitRule("/sesiones/autoasignacion", ("GET", "POST"), _env_int("RATE_LIMIT_QR_PER_MINUTE", 30), 60),
             RateLimitRule("/catalogo/alumnos/buscar", ("GET",), _env_int("RATE_LIMIT_SEARCH_PER_MINUTE", 60), 60, "user_or_ip"),
             RateLimitRule("/inventario/incidentes", ("POST", "PUT", "PATCH"), _env_int("RATE_LIMIT_WRITE_PER_MINUTE", 60), 60, "user_or_ip"),

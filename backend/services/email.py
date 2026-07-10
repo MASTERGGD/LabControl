@@ -141,3 +141,36 @@ def enviar_notificacion(
     except Exception as exc:
         logger.warning("Error enviando email a %s: %s", destinatario, exc)
         return False
+
+
+def enviar_recuperacion_password(destinatario: str, nombre: str, url: str, minutos: int) -> bool:
+    """Envía un enlace temporal; nunca incluye ni genera contraseñas por correo."""
+    titulo = "Recupera tu contraseña de SIGA"
+    mensaje = (
+        f"Hola, {nombre}. Recibimos una solicitud para cambiar tu contraseña. "
+        f"Este enlace funciona una sola vez y caduca en {minutos} minutos. "
+        "Si no solicitaste el cambio, puedes ignorar este mensaje."
+    )
+    if not _CONFIGURED:
+        logger.info("SMTP no configurado — recuperación omitida para %s", destinatario)
+        return False
+    try:
+        html_body = _build_html("PASSWORD_RESET", titulo, mensaje, url).replace(
+            "Ver en LabControl", "Cambiar mi contraseña"
+        )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "[SIGA UTECAN] Recuperación de contraseña"
+        msg["From"] = SMTP_FROM
+        msg["To"] = destinatario
+        msg.attach(MIMEText(f"{mensaje}\n\n{url}", "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM, [destinatario], msg.as_string())
+        logger.info("Correo de recuperación enviado a %s", destinatario)
+        return True
+    except Exception as exc:
+        logger.warning("Error enviando recuperación a %s: %s", destinatario, exc)
+        return False

@@ -76,7 +76,7 @@ class TestCrudUsuarios:
         r = client.post("/usuarios", json={
             "nombre": "Juan Docente",
             "email": "juan@utecan.mx",
-            "password": "Pass1234!",
+            "password": "PassDocente1!",
             "rol": "DOCENTE",
         }, headers=auth_headers(tok))
         assert r.status_code == 201
@@ -91,7 +91,7 @@ class TestCrudUsuarios:
         r = client.post("/usuarios", json={
             "nombre": "Laura Admin",
             "email": "laura@utecan.mx",
-            "password": "Pass1234!",
+            "password": "PassDocente1!",
             "rol": "LAB_ADMIN",
             "laboratorio_id": lab.id,
         }, headers=auth_headers(tok))
@@ -103,11 +103,11 @@ class TestCrudUsuarios:
         tok = get_token(client, "admin@test.mx", "Test1234!")
         client.post("/usuarios", json={
             "nombre": "U1", "email": "dup@test.mx",
-            "password": "Pass1234!", "rol": "DOCENTE",
+            "password": "PassDocente1!", "rol": "DOCENTE",
         }, headers=auth_headers(tok))
         r = client.post("/usuarios", json={
             "nombre": "U2", "email": "dup@test.mx",
-            "password": "Pass1234!", "rol": "ALUMNO",
+            "password": "PassDocente1!", "rol": "ALUMNO",
         }, headers=auth_headers(tok))
         assert r.status_code in (400, 409)
 
@@ -184,12 +184,12 @@ class TestCambioPassword:
         tok = get_token(client, "user@test.mx", "OldPass1!")
         r = client.put("/usuarios/me/password", json={
             "password_actual": "OldPass1!",
-            "password_nuevo": "NewPass2!",
+            "password_nuevo": "NewPassword2!",
         }, headers=auth_headers(tok))
         assert r.status_code == 200
         # Login con nueva contraseña
         r2 = client.post("/auth/login", data={
-            "username": "user@test.mx", "password": "NewPass2!",
+            "username": "user@test.mx", "password": "NewPassword2!",
         })
         assert r2.status_code == 200
 
@@ -198,7 +198,7 @@ class TestCambioPassword:
         tok = get_token(client, "user@test.mx", "Test1234!")
         r = client.put("/usuarios/me/password", json={
             "password_actual": "Incorrecta!",
-            "password_nuevo": "NewPass2!",
+            "password_nuevo": "NewPassword2!",
         }, headers=auth_headers(tok))
         assert r.status_code in (400, 401, 422)
 

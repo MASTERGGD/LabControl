@@ -164,7 +164,7 @@ class TestCambioPasswordObligatorio:
             headers=auth_headers(token),
             json={
                 "password_actual": "TemporalPass123",
-                "password_nuevo": "NuevaSegura123",
+                "password_nuevo": "NuevaSegura123!",
             },
         )
         desbloqueado = client.get("/usuarios", headers=auth_headers(token))

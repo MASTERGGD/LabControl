@@ -175,7 +175,7 @@ function ModalCambiarPassword({ onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password_nuevo !== form.confirmar) { setError('Las contraseñas no coinciden'); return; }
-    if (form.password_nuevo.length < 6) { setError('Mínimo 6 caracteres'); return; }
+    if (form.password_nuevo.length < 10 || !/[A-Z]/.test(form.password_nuevo) || !/[a-z]/.test(form.password_nuevo) || !/\d/.test(form.password_nuevo) || !/[^A-Za-z0-9]/.test(form.password_nuevo)) { setError('Usa mínimo 10 caracteres, mayúscula, minúscula, número y símbolo'); return; }
     setLoading(true); setError('');
     try {
       await api.put('/usuarios/me/password', {
@@ -211,7 +211,7 @@ function ModalCambiarPassword({ onClose }) {
                 </label>
                 <input type="password" required value={form[campo]}
                   onChange={e => setForm({...form, [campo]: e.target.value})}
-                  placeholder={i === 0 ? 'Tu contraseña actual' : 'Mínimo 6 caracteres'}
+                  placeholder={i === 0 ? 'Tu contraseña actual' : 'Mínimo 10 caracteres'}
                   className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500"/>
               </div>
             ))}

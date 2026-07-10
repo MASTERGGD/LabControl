@@ -14,6 +14,7 @@ from jose import JWTError
 from permissions import require_permission
 from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
+from services.timezone import now_mx
 import datetime
 import uuid
 
@@ -328,9 +329,8 @@ async def abrir_sesion(
     current_user: Usuario = Depends(require_permission("sesiones:write"))
 ):
     # ── Hora actual en México (UTC-6, sin ajuste DST simplificado) ────────────
-    OFFSET_MX = datetime.timedelta(hours=-6)
     ahora_utc = _utcnow()
-    ahora_mx  = ahora_utc + OFFSET_MX          # hora local México
+    ahora_mx  = now_mx().replace(tzinfo=None)  # hora local Mexico
     dia_mx    = ahora_mx.weekday()              # 0=lun … 6=dom
     hora_mx   = ahora_mx.strftime("%H:%M")      # "07:00"
     TOLERANCIA = datetime.timedelta(minutes=15)

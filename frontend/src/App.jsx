@@ -8,6 +8,8 @@ import { ROUTE_PERMISSIONS } from './config/permissions';
 
 // Páginas
 import Login from './pages/Login';
+import SolicitarRecuperacion from './pages/SolicitarRecuperacion';
+import RestablecerPassword from './pages/RestablecerPassword';
 import CambiarPasswordObligatorio from './pages/CambiarPasswordObligatorio';
 import DashboardAdmin from './pages/DashboardAdmin';
 import DashboardSuperAdmin from './pages/DashboardSuperAdmin';
@@ -128,6 +130,8 @@ function AppRoutes() {
     <Routes>
       {/* Pública */}
       <Route path="/login" element={<Login />} />
+      <Route path="/recuperar-password" element={<SolicitarRecuperacion />} />
+      <Route path="/recuperar-password/:token" element={<RestablecerPassword />} />
       <Route path="/autoasignacion/:token" element={<AutoAsignacion />} />
       <Route path="/validar/consulta/:token" element={<ValidarConsulta />} />
       <Route path="/validar/activo/:token" element={<ValidarActivo />} />

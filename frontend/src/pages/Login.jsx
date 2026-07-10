@@ -1,5 +1,5 @@
 import React, { useState, useId } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 
@@ -158,6 +158,11 @@ export default function Login() {
                     </svg>
                   )}
                 </button>
+              </div>
+              <div className="mt-2 text-right">
+                <Link to="/recuperar-password" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
               </div>
             </div>
 

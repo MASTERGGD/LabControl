@@ -26,7 +26,7 @@ function getRedirectPath(usuario) {
 
 const PASSWORD_FIELDS = [
   ['password_actual', 'Contraseña actual', 'La contraseña temporal que recibiste', 'current-password'],
-  ['password_nuevo', 'Nueva contraseña', 'Mínimo 8 caracteres', 'new-password'],
+  ['password_nuevo', 'Nueva contraseña', 'Mínimo 10 caracteres, con número y símbolo', 'new-password'],
   ['confirmar', 'Confirmar nueva contraseña', 'Repite la nueva contraseña', 'new-password'],
 ];
 
@@ -77,8 +77,8 @@ export default function CambiarPasswordObligatorio() {
       setError('Las contraseñas no coinciden');
       return;
     }
-    if (form.password_nuevo.length < 8) {
-      setError('Mínimo 8 caracteres');
+    if (form.password_nuevo.length < 10 || !/[A-Z]/.test(form.password_nuevo) || !/[a-z]/.test(form.password_nuevo) || !/\d/.test(form.password_nuevo) || !/[^A-Za-z0-9]/.test(form.password_nuevo)) {
+      setError('Usa mínimo 10 caracteres, mayúscula, minúscula, número y símbolo');
       return;
     }
 
