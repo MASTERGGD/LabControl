@@ -685,12 +685,12 @@ export default function Adeudos() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Responsabilidades</h1>
-          <p className="text-slate-400 text-sm mt-1">Adeudos y trazabilidad de incidentes por persona</p>
+          <h1 className="text-2xl font-bold text-slate-950 dark:text-white">Responsabilidades</h1>
+          <p className="text-slate-600 dark:text-slate-400 text-sm mt-1">Adeudos y trazabilidad de incidentes por persona</p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={sincronizarPrestamos} disabled={sincronizando}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-sm rounded-xl transition-colors disabled:opacity-50">
+            className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-xl shadow-sm transition-colors disabled:opacity-50">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -708,21 +708,21 @@ export default function Adeudos() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         {[
-          {label:'Total',       val:stats.total,     num:'text-white',        border:'border-slate-700/50'},
-          {label:'Pendientes',  val:stats.pendiente, num:'text-red-400',      border:'border-red-800/40'},
-          {label:'En revisión', val:stats.revision,  num:'text-amber-400',    border:'border-amber-800/40'},
-          {label:'Resueltos',   val:stats.resuelto,  num:'text-emerald-400',  border:'border-emerald-800/40'},
-          {label:'Exonerados',  val:stats.exonerado, num:'text-slate-400',    border:'border-slate-700/50'},
+          {label:'Total',       val:stats.total,     num:'text-slate-950 dark:text-white',        border:'border-slate-200/80 dark:border-slate-700/50'},
+          {label:'Pendientes',  val:stats.pendiente, num:'text-red-600 dark:text-red-400',        border:'border-red-200/80 dark:border-red-800/40'},
+          {label:'En revisión', val:stats.revision,  num:'text-amber-700 dark:text-amber-400',    border:'border-amber-200/80 dark:border-amber-800/40'},
+          {label:'Resueltos',   val:stats.resuelto,  num:'text-emerald-700 dark:text-emerald-400',border:'border-emerald-200/80 dark:border-emerald-800/40'},
+          {label:'Exonerados',  val:stats.exonerado, num:'text-slate-600 dark:text-slate-400',    border:'border-slate-200/80 dark:border-slate-700/50'},
         ].map(s => (
-          <div key={s.label} className={`bg-slate-800/60 rounded-xl p-3 text-center border ${s.border}`}>
+          <div key={s.label} className={`bg-white/95 dark:bg-slate-800/60 rounded-xl p-3 text-center border shadow-sm ${s.border}`}>
             <div className={`text-2xl font-bold ${s.num}`}>{s.val}</div>
-            <div className="text-slate-500 text-xs mt-0.5">{s.label}</div>
+            <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Filtros */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-4">
+      <div className="bg-white/95 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl p-4 mb-4 shadow-sm">
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="sm:col-span-2">
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
@@ -736,27 +736,27 @@ export default function Adeudos() {
         </div>
         <div className="flex justify-end mt-3">
           <button onClick={() => { setBusqueda(''); setFiltroEstado(''); setFiltroTipo(''); setFiltroCuatri(''); setFiltroLab(''); }}
-            className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-700/60 hover:border-slate-500 bg-slate-800/40 hover:bg-slate-700/40 transition-colors">
+            className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-500 bg-white dark:bg-slate-800/40 hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
             ✕ Limpiar filtros
           </button>
         </div>
       </div>
 
       {/* Tabla */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      <div className="bg-white/95 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-700/70 rounded-2xl overflow-hidden shadow-sm">
         {loading ? (
-          <div className="py-20 text-center text-slate-500">Cargando...</div>
+          <div className="py-20 text-center text-slate-500 dark:text-slate-400">Cargando...</div>
         ) : adeudos.length === 0 ? (
           <div className="py-20 text-center">
             <div className="text-4xl mb-3">✅</div>
-            <p className="text-slate-400 font-medium">Sin responsabilidades registradas</p>
-            <p className="text-slate-600 text-sm mt-1">Usa "Sync préstamos" para revisar vencidos automáticamente.</p>
+            <p className="text-slate-700 dark:text-slate-400 font-medium">Sin responsabilidades registradas</p>
+            <p className="text-slate-500 dark:text-slate-500 text-sm mt-1">Usa "Sync préstamos" para revisar vencidos automáticamente.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-800/40">
+                <tr className="border-b border-slate-200/80 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/40">
                   {['Persona','Identificador','Tipo','Origen','Lab','Cuatrimestre','Monto','Estado','Acciones'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs text-slate-400 font-semibold uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
@@ -764,13 +764,13 @@ export default function Adeudos() {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {adeudos.map((a, i) => (
-                  <tr key={a.id} className={`hover:bg-slate-800/30 transition-colors ${i%2===0?'':'bg-slate-800/10'}`}>
+                  <tr key={a.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors ${i%2===0?'':'bg-slate-50/60 dark:bg-slate-800/10'}`}>
                     {/* Persona — columna ancha, nombre en Title Case sin truncar */}
                     <td className="px-4 py-3 min-w-[200px]">
                       <div className="flex items-start gap-2">
                         <span className="text-base shrink-0 mt-0.5">{PERSONA_ICON[a.persona_tipo]}</span>
                         <div>
-                          <span className="text-white font-medium text-sm leading-snug block">
+                          <span className="text-slate-950 dark:text-white font-medium text-sm leading-snug block">
                             {toTitleCase(a.persona_nombre)}
                           </span>
                           <span className="block text-xs text-slate-500 leading-snug mt-1 max-w-[320px]"
@@ -781,7 +781,7 @@ export default function Adeudos() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-slate-300 text-xs">{a.persona_identificador}</td>
+                    <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300 text-xs">{a.persona_identificador}</td>
                     <td className="px-4 py-3 text-slate-400 text-xs">{PERSONA_TIPO_LABEL[a.persona_tipo] || a.persona_tipo}</td>
                     <td className="px-4 py-3"><OrigenBadge origen={a.origen_tipo} /></td>
                     <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{a.laboratorio_nombre || <span className="text-slate-700">—</span>}</td>
@@ -795,17 +795,17 @@ export default function Adeudos() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button onClick={() => { setSeleccionado(a); setModoModal('detalle'); }} title="Ver detalle"
-                          className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                          className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         </button>
                         {!['RESUELTO','EXONERADO'].includes(a.estado) && (
                           <button onClick={() => { setSeleccionado(a); setModoModal('resolver'); }} title="Actualizar estado"
-                            className="p-2 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-emerald-900/20 transition-colors">
+                            className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                           </button>
                         )}
                         <button onClick={() => handleEliminar(a.id)} title="Eliminar"
-                          className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-colors">
+                          className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-red-700 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                       </div>

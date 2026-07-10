@@ -29,13 +29,13 @@ function StatCard({ icon, label, value, color = 'blue' }) {
     amber:  'from-amber-500  to-amber-600',
   };
   return (
-    <div className="glass rounded-2xl p-5 flex items-center gap-4">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70 flex items-center gap-4">
       <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${grad[color] || grad.blue} flex items-center justify-center text-xl shrink-0`}>
         {icon}
       </div>
       <div>
-        <p className="text-2xl font-bold text-white leading-none">{value}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{label}</p>
+        <p className="text-2xl font-bold text-slate-950 dark:text-white leading-none">{value}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
       </div>
     </div>
   );
@@ -157,7 +157,7 @@ export default function HistorialAlumno() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/8 transition-colors shrink-0"
+            className="p-2 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/8 transition-colors shrink-0"
             title="Volver"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -165,14 +165,14 @@ export default function HistorialAlumno() {
             </svg>
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-white">Historial de laboratorio</h1>
-            <p className="text-slate-400 text-sm">Revisa asistencia, sesiones, materias y horas de uso por alumno</p>
+            <h1 className="text-2xl font-bold text-slate-950 dark:text-white">Historial de laboratorio</h1>
+            <p className="text-slate-600 dark:text-slate-400 text-sm">Revisa asistencia, sesiones, materias y horas de uso por alumno</p>
           </div>
         </div>
 
         {/* ── Buscador ────────────────────────────────────────────────────── */}
         {/* Buscador compacto — sin caja dentro de caja, ancho contenido */}
-        <div className="glass rounded-2xl p-4">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
           <form onSubmit={e => { e.preventDefault(); buscar(); }}
                 className="flex gap-3 items-center flex-wrap max-w-2xl">
             <div className="flex-1" style={{ minWidth: '220px', position: 'relative', zIndex: 10 }}>
@@ -184,10 +184,10 @@ export default function HistorialAlumno() {
                 onSelect={seleccionarAlumno}
                 renderItem={a => (
                   <div>
-                    <span className="font-medium text-white">
+                    <span className="font-medium text-slate-950 dark:text-white">
                       {[a.apellido_paterno, a.apellido_materno, a.nombres].filter(Boolean).join(' ')}
                     </span>
-                    <span className="ml-2 text-xs text-slate-400 font-mono">{a.matricula}</span>
+                    <span className="ml-2 text-xs text-slate-500 dark:text-slate-400 font-mono">{a.matricula}</span>
                     {a.grupo && <span className="ml-1 text-xs text-blue-400">· {a.grupo}</span>}
                   </div>
                 )}
@@ -199,7 +199,7 @@ export default function HistorialAlumno() {
               <div className="flex items-center gap-2 bg-blue-900/30 border border-blue-700/40 rounded-xl px-3 py-2 text-sm shrink-0">
                 <span className="text-blue-300 font-mono text-xs">{alumnoSeleccionado.matricula}</span>
                 <button type="button" onClick={() => { setAlumnoSeleccionado(null); setInputVal(''); setMatricula(''); }}
-                  className="text-slate-500 hover:text-white leading-none">✕</button>
+                  className="text-slate-500 hover:text-slate-950 dark:hover:text-white leading-none">✕</button>
               </div>
             )}
 
@@ -227,7 +227,7 @@ export default function HistorialAlumno() {
         {data && (
           <>
             {/* Ficha del alumno */}
-            <div className="glass rounded-2xl p-5">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
@@ -236,8 +236,8 @@ export default function HistorialAlumno() {
                       {(data.alumno.nombre || '?')[0].toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-xl font-bold text-white">{data.alumno.nombre}</p>
-                      <p className="font-mono text-slate-400 text-sm">{data.alumno.matricula}</p>
+                      <p className="text-xl font-bold text-slate-950 dark:text-white">{data.alumno.nombre}</p>
+                      <p className="font-mono text-slate-500 dark:text-slate-400 text-sm">{data.alumno.matricula}</p>
                     </div>
                   </div>
                   <div className="pl-15 flex flex-wrap gap-2 mt-2">
@@ -283,9 +283,9 @@ export default function HistorialAlumno() {
                 </div>
 
                 {/* Tabla */}
-                <div className="glass rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-4">
-                    <h2 className="font-semibold text-white text-sm">
+                <div className="rounded-2xl overflow-hidden border border-slate-200/80 bg-white shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+                  <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/5 flex items-center justify-between gap-4">
+                    <h2 className="font-semibold text-slate-950 dark:text-white text-sm">
                       Historial ({historial.length}{busqueda ? ` de ${data.total_sesiones}` : ''})
                     </h2>
                     <div className="relative w-64">
@@ -310,9 +310,9 @@ export default function HistorialAlumno() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-white/5 bg-white/3">
+                          <tr className="border-b border-slate-200/80 bg-slate-50/80 dark:border-white/5 dark:bg-white/3">
                             {['#','Fecha','Materia','Grupo','Docente','Laboratorio','PC','Horas','Estado'].map(h => (
-                              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 whitespace-nowrap">
+                              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">
                                 {h}
                               </th>
                             ))}
@@ -321,25 +321,25 @@ export default function HistorialAlumno() {
                         <tbody>
                           {historial.map((h, idx) => (
                             <tr key={`${h.sesion_id}-${idx}`}
-                                className="border-b border-white/3 hover:bg-white/3 transition-colors">
+                                className="border-b border-slate-100 hover:bg-slate-50 transition-colors dark:border-white/3 dark:hover:bg-white/3">
                               <td className="px-4 py-3 text-slate-500 text-xs">{idx + 1}</td>
-                              <td className="px-4 py-3 text-slate-300 text-xs whitespace-nowrap font-mono">
+                              <td className="px-4 py-3 text-slate-600 dark:text-slate-300 text-xs whitespace-nowrap font-mono">
                                 {h.fecha || '—'}
                               </td>
-                              <td className="px-4 py-3 text-white font-medium whitespace-nowrap">
+                              <td className="px-4 py-3 text-slate-950 dark:text-white font-medium whitespace-nowrap">
                                 {h.materia}
                               </td>
-                              <td className="px-4 py-3 text-slate-400 text-center">
+                              <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-center">
                                 {h.grupo || '—'}
                               </td>
-                              <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
+                              <td className="px-4 py-3 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                                 {h.docente || '—'}
                               </td>
                               <td className="px-4 py-3">
-                                <span className="text-slate-300 whitespace-nowrap">{h.laboratorio}</span>
+                                <span className="text-slate-700 dark:text-slate-300 whitespace-nowrap">{h.laboratorio}</span>
                               </td>
                               <td className="px-4 py-3 text-center">
-                                <span className="font-mono text-xs bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-lg text-slate-300">
+                                <span className="font-mono text-xs bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-lg text-slate-700 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300">
                                   {h.pc_codigo || '—'}
                                 </span>
                               </td>
@@ -361,7 +361,7 @@ export default function HistorialAlumno() {
                   )}
 
                   {/* Pie */}
-                  <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-500">
+                  <div className="px-5 py-3 border-t border-slate-200/80 dark:border-white/5 flex items-center justify-between text-xs text-slate-500">
                     <span>{data.total_sesiones} sesión{data.total_sesiones !== 1 ? 'es' : ''} en total</span>
                     <span className="text-emerald-400/80">{data.total_horas} h acumuladas</span>
                   </div>
@@ -369,11 +369,11 @@ export default function HistorialAlumno() {
               </>
             ) : (
               /* Sin historial */
-              <div className="glass rounded-2xl py-16 text-center">
+              <div className="rounded-2xl border border-slate-200/80 bg-white py-16 text-center shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
                 <div className="text-5xl mb-4">📭</div>
-                <p className="text-slate-300 font-medium">Sin registros de asistencia</p>
+                <p className="text-slate-700 dark:text-slate-300 font-medium">Sin registros de asistencia</p>
                 <p className="text-slate-500 text-sm mt-1">
-                  El alumno <span className="font-mono text-slate-400">{data.alumno.matricula}</span> no
+                  El alumno <span className="font-mono text-slate-500 dark:text-slate-400">{data.alumno.matricula}</span> no
                   tiene sesiones registradas en el sistema.
                 </p>
               </div>
@@ -383,9 +383,9 @@ export default function HistorialAlumno() {
 
         {/* Estado inicial (sin búsqueda aún) */}
         {!data && !loading && !error && (
-          <div className="glass rounded-2xl py-20 text-center">
+          <div className="rounded-2xl border border-slate-200/80 bg-white py-20 text-center shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
             <div className="text-5xl mb-4">🔍</div>
-            <p className="text-slate-300 font-semibold text-lg">Ingresa una matrícula para consultar el historial</p>
+            <p className="text-slate-700 dark:text-slate-300 font-semibold text-lg">Ingresa una matrícula para consultar el historial</p>
             <p className="text-slate-600 text-xs mt-1.5 max-w-sm mx-auto leading-relaxed">
               Verás los laboratorios usados, horas acumuladas y materias cursadas en una sola vista.
             </p>

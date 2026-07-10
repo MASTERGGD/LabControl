@@ -19,6 +19,11 @@ export function dateToLocalISO(date) {
   return `${year}-${month}-${day}`;
 }
 
+export function weekdayIndexInMexico(date = new Date()) {
+  const local = new Date(date.toLocaleString('en-US', { timeZone: MEXICO_TIME_ZONE }));
+  return (local.getDay() + 6) % 7;
+}
+
 function parseApiDate(value) {
   if (value instanceof Date) return value;
   if (typeof value !== 'string') return new Date(value);

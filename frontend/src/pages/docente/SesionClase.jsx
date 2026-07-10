@@ -8,7 +8,8 @@ import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
 import AdminLayout from '../../components/AdminLayout';
 import { useTheme } from '../../context/ThemeContext';
-import { dateToLocalISO } from '../../utils/timezone';
+import { dateToLocalISO, weekdayIndexInMexico } from '../../utils/timezone';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -577,12 +578,21 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
       await api.delete(`/horarios/reservaciones/${r.id}`);
       onCancelada(); onClose();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error al cancelar');
+      alert(getApiErrorMessage(err, 'Error al cancelar'));
     } finally { setCancelando(false); }
   };
 
   const handleIniciarSesion = async () => {
     setIniciando(true); setError('');
+    const diaReserva = Number(slot.dia_semana);
+    const diaHoy = weekdayIndexInMexico();
+    if (Number.isInteger(diaReserva) && diaReserva !== diaHoy) {
+      const diaReservaLabel = DIAS_LABEL[diaReserva] || 'otro dia';
+      const diaHoyLabel = DIAS_LABEL[diaHoy] || 'hoy';
+      setError(`Esta reservacion es para ${diaReservaLabel}. Hoy en Mexico es ${diaHoyLabel}; solo puedes iniciar la sesion el dia de la clase.`);
+      setIniciando(false);
+      return;
+    }
     try {
       const { data } = await api.post('/sesiones', {
         laboratorio_id:   r.laboratorio_id,
@@ -594,7 +604,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
       onSesionIniciada(data);
       navigate(`/docente/sesion/${data.id}`);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al iniciar sesión');
+      setError(getApiErrorMessage(err, 'Error al iniciar sesion'));
       setIniciando(false);
     }
   };
