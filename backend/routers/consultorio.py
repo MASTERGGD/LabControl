@@ -15,6 +15,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, extract, or_
 from sqlalchemy.orm import Session, aliased
+import openpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 
 from database import get_db
 from dependencies import crear_access_token, decodificar_token, get_current_user
@@ -1172,6 +1175,168 @@ def estadisticas(
         "top_diagnosticos": [{"diagnostico": d, "total": t} for d, t in top_diagnosticos],
         "top_motivos": [{"motivo": d, "total": t} for d, t in top_motivos],
     }
+
+
+@router.get("/estadisticas/excel", summary="Exportar estadisticas agregadas del consultorio")
+def exportar_estadisticas_excel(
+    anio: int = Query(default=None),
+    mes: Optional[int] = Query(default=None, ge=1, le=12),
+    cuatrimestre: Optional[int] = Query(default=None, ge=1, le=3),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Genera un libro agregado sin datos clinicos identificables."""
+    _require_medico(current_user)
+    data = estadisticas(
+        anio=anio,
+        mes=mes,
+        cuatrimestre=cuatrimestre,
+        db=db,
+        current_user=current_user,
+    )
+
+    if mes:
+        periodo = f"Mes {mes:02d} de {data['anio']}"
+        sufijo = f"mes_{mes:02d}"
+    elif cuatrimestre:
+        periodo = f"Cuatrimestre {cuatrimestre} de {data['anio']}"
+        sufijo = f"cuatrimestre_{cuatrimestre}"
+    else:
+        periodo = f"Ano {data['anio']}"
+        sufijo = "anio"
+
+    wb = openpyxl.Workbook()
+    ws_resumen = wb.active
+    ws_resumen.title = "Resumen"
+
+    verde = "047857"
+    verde_claro = "D1FAE5"
+    gris = "E2E8F0"
+    gris_claro = "F8FAFC"
+    blanco = "FFFFFF"
+    borde = Border(
+        left=Side(style="thin", color=gris),
+        right=Side(style="thin", color=gris),
+        top=Side(style="thin", color=gris),
+        bottom=Side(style="thin", color=gris),
+    )
+
+    def preparar_hoja(ws, titulo, subtitulo):
+        ws.sheet_view.showGridLines = False
+        ws.merge_cells("A1:C1")
+        ws["A1"] = titulo
+        ws["A1"].font = Font(color=blanco, bold=True, size=16)
+        ws["A1"].fill = PatternFill("solid", fgColor=verde)
+        ws["A1"].alignment = Alignment(vertical="center")
+        ws.row_dimensions[1].height = 28
+        ws.merge_cells("A2:C2")
+        ws["A2"] = subtitulo
+        ws["A2"].font = Font(color="475569", italic=True, size=10)
+        ws["A2"].alignment = Alignment(wrap_text=True, vertical="center")
+        ws.row_dimensions[2].height = 30
+
+    def agregar_tabla(ws, fila, encabezados, filas):
+        for columna, encabezado in enumerate(encabezados, 1):
+            celda = ws.cell(row=fila, column=columna, value=encabezado)
+            celda.font = Font(bold=True, color="064E3B")
+            celda.fill = PatternFill("solid", fgColor=verde_claro)
+            celda.border = borde
+            celda.alignment = Alignment(vertical="center")
+        for offset, valores in enumerate(filas, 1):
+            for columna, valor in enumerate(valores, 1):
+                celda = ws.cell(row=fila + offset, column=columna, value=valor)
+                celda.fill = PatternFill("solid", fgColor=blanco if offset % 2 else gris_claro)
+                celda.border = borde
+                celda.alignment = Alignment(vertical="top", wrap_text=True)
+
+    def ajustar_columnas(ws):
+        for columna in range(1, ws.max_column + 1):
+            letra = get_column_letter(columna)
+            ancho = max(
+                (len(str(ws.cell(fila, columna).value or "")) for fila in range(1, ws.max_row + 1)),
+                default=10,
+            )
+            ws.column_dimensions[letra].width = min(max(ancho + 3, 14), 48)
+        ws.freeze_panes = "A4"
+
+    nota_privacidad = (
+        "Reporte agregado. No contiene nombres, matriculas, expedientes clinicos "
+        "ni otros datos personales de pacientes."
+    )
+    preparar_hoja(ws_resumen, "SIGA UTECAN - Estadisticas del consultorio", nota_privacidad)
+    resumen = [
+        ("Periodo seleccionado", periodo),
+        ("Consultas del periodo", data.get("total_periodo", data.get("total_anio", 0))),
+        ("Consultas del ano", data.get("total_anio", 0)),
+        ("Consultas del mes actual", data.get("consultas_mes_actual", 0)),
+        ("Incapacidades del ano", data.get("incapacidades_anio", 0)),
+        ("Incapacidades activas", data.get("incapacidades_activas", 0)),
+        ("Seguimientos pendientes", data.get("seguimientos_pendientes", 0)),
+        ("Seguimientos vencidos", data.get("seguimientos_vencidos", 0)),
+        ("Canalizaciones pendientes", data.get("canalizaciones_pendientes", 0)),
+        ("Pacientes recurrentes", data.get("pacientes_recurrentes", 0)),
+        (
+            "Generado",
+            as_mx(datetime.datetime.now(datetime.timezone.utc)).strftime("%d/%m/%Y %H:%M"),
+        ),
+    ]
+    agregar_tabla(ws_resumen, 4, ("Indicador", "Valor"), resumen)
+    ajustar_columnas(ws_resumen)
+
+    ws_evolucion = wb.create_sheet("Evolucion")
+    preparar_hoja(ws_evolucion, "Evolucion de consultas", f"Periodo consultado: {periodo}")
+    evolucion = [
+        ("Mes", item.get("mes"), item.get("total", 0))
+        for item in data.get("por_mes", [])
+    ] + [
+        ("Cuatrimestre", item.get("label") or item.get("cuatrimestre"), item.get("total", 0))
+        for item in data.get("por_cuatrimestre", [])
+    ]
+    agregar_tabla(ws_evolucion, 4, ("Agrupacion", "Periodo", "Consultas"), evolucion)
+    ajustar_columnas(ws_evolucion)
+
+    ws_distribuciones = wb.create_sheet("Distribuciones")
+    preparar_hoja(ws_distribuciones, "Distribuciones", f"Periodo consultado: {periodo}")
+    distribuciones = []
+    for nombre, valores in (
+        ("Sexo", data.get("por_sexo", {})),
+        ("Tipo de paciente", data.get("por_tipo", {})),
+        ("Origen", data.get("por_origen", {})),
+        ("Area", data.get("por_area", {})),
+    ):
+        distribuciones.extend((nombre, etiqueta, total) for etiqueta, total in valores.items())
+    distribuciones.extend(
+        ("Hora", item.get("hora"), item.get("total", 0))
+        for item in data.get("por_hora", [])
+    )
+    agregar_tabla(ws_distribuciones, 4, ("Dimension", "Categoria", "Consultas"), distribuciones)
+    ajustar_columnas(ws_distribuciones)
+
+    ws_frecuencias = wb.create_sheet("Frecuencias")
+    preparar_hoja(
+        ws_frecuencias,
+        "Motivos y diagnosticos frecuentes",
+        f"Periodo consultado: {periodo}",
+    )
+    frecuencias = [
+        ("Motivo de consulta", item.get("motivo"), item.get("total", 0))
+        for item in data.get("top_motivos", [])
+    ] + [
+        ("Diagnostico", item.get("diagnostico"), item.get("total", 0))
+        for item in data.get("top_diagnosticos", [])
+    ]
+    agregar_tabla(ws_frecuencias, 4, ("Tipo", "Descripcion", "Consultas"), frecuencias)
+    ajustar_columnas(ws_frecuencias)
+
+    salida = io.BytesIO()
+    wb.save(salida)
+    salida.seek(0)
+    nombre_archivo = f"estadisticas_consultorio_{data['anio']}_{sufijo}.xlsx"
+    return StreamingResponse(
+        salida,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}"'},
+    )
 
 
 # ─── PDF RECETA — formato medico institucional ────────────────────────────────

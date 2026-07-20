@@ -1328,6 +1328,7 @@ function Estadisticas() {
   const [modo, setModo] = useState("anio");
   const [mes, setMes] = useState(new Date().getMonth() + 1);
   const [cuatrimestre, setCuatrimestre] = useState(Math.floor(new Date().getMonth() / 4) + 1);
+  const [exportandoExcel, setExportandoExcel] = useState(false);
   const { toast: showToast } = useToast();
 
   useEffect(() => {
@@ -1342,6 +1343,36 @@ function Estadisticas() {
       .catch(() => showToast("Error al cargar estadísticas", "error"));
   }, [anio, modo, mes, cuatrimestre]);
 
+  const descargarExcel = async () => {
+    setExportandoExcel(true);
+    try {
+      const response = await api.get("/consultorio/estadisticas/excel", {
+        params: {
+          anio,
+          mes: modo === "mes" ? mes : undefined,
+          cuatrimestre: modo === "cuatrimestre" ? cuatrimestre : undefined,
+        },
+        responseType: "blob",
+      });
+      const disposition = response.headers["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const nombre = match?.[1] || `estadisticas_consultorio_${anio}.xlsx`;
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", nombre);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      showToast("Estadisticas descargadas en Excel", "success");
+    } catch {
+      showToast("No se pudo generar el archivo Excel", "error");
+    } finally {
+      setExportandoExcel(false);
+    }
+  };
+
   if (!stats) return (
     <div className="flex items-center justify-center h-40">
       <span className="text-slate-400 animate-pulse">Cargando estadísticas…</span>
@@ -1353,7 +1384,7 @@ function Estadisticas() {
   return (
     <div className="space-y-6">
       {/* Selector año */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label className="text-sm text-slate-400">Año:</label>
         <select value={anio} onChange={e => setAnio(Number(e.target.value))}
           className="input-dark w-32">
@@ -1376,6 +1407,18 @@ function Estadisticas() {
             <option value={3}>SEP-DIC</option>
           </select>
         )}
+        <button
+          type="button"
+          onClick={descargarExcel}
+          disabled={exportandoExcel}
+          className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60 sm:ml-auto"
+          title="Descargar estadisticas agregadas en Excel"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14a2 2 0 002-2v-3" />
+          </svg>
+          {exportandoExcel ? "Generando..." : "Descargar Excel"}
+        </button>
       </div>
 
       {/* KPIs */}
