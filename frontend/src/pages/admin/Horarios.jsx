@@ -1026,7 +1026,7 @@ export default function Horarios() {
     setLoading(true);
     try {
       const { data } = await api.get(
-        `/horarios?laboratorio_id=${labSeleccionado}&cuatrimestre=${encodeURIComponent(cuatrimestre)}&solo_activos=false`
+        `/horarios?laboratorio_id=${labSeleccionado}&cuatrimestre=${encodeURIComponent(cuatrimestre)}&solo_activos=true`
       );
       setHorarios(data);
     } finally {
@@ -1163,9 +1163,6 @@ export default function Horarios() {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-purple-700 inline-block"></span> Bloqueado
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded bg-gray-600 inline-block opacity-40"></span> Inactivo
             </span>
           </div>
         </div>
@@ -1379,7 +1376,6 @@ export default function Horarios() {
           {horarios.some(h => h.bloqueado) && (
             <span className="text-purple-400">{horarios.filter(h => h.bloqueado).length} bloqueados</span>
           )}
-          <span>{horarios.filter(h => !h.activo).length} inactivos</span>
         </div>
       )}
 

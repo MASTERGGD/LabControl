@@ -111,7 +111,7 @@ class TestCrudHorarios:
         assert r2.status_code == 200
         assert r2.json()["hora_inicio"] == "15:00"
 
-    def test_desactivar_horario(self, client, db):
+    def test_eliminar_horario_y_recrear_mismo_turno(self, client, db):
         tok, lab = self._setup(client, db)
         r = client.post("/horarios", json={
             "laboratorio_id": lab.id, "dia_semana": 3,
@@ -121,6 +121,15 @@ class TestCrudHorarios:
         h_id = r.json()["id"]
         r2 = client.delete(f"/horarios/{h_id}", headers=auth_headers(tok))
         assert r2.status_code == 200
+        assert r2.json()["mensaje"] == "Horario eliminado"
+        assert r2.json()["eliminado"] is True
+
+        r3 = client.post("/horarios", json={
+            "laboratorio_id": lab.id, "dia_semana": 3,
+            "hora_inicio": "07:00", "hora_fin": "09:00",
+            "cuatrimestre": "ENE-ABR-2026",
+        }, headers=auth_headers(tok))
+        assert r3.status_code == 201
 
     def test_horario_formato_invalido_422(self, client, db):
         tok, lab = self._setup(client, db)

@@ -373,6 +373,21 @@ def crear_horario(
         data.hora_fin,
     )
 
+    # Recuperar un turno idéntico archivado, en vez de acumular duplicados.
+    inactivo = db.query(HorarioDisponible).filter(
+        HorarioDisponible.laboratorio_id == data.laboratorio_id,
+        HorarioDisponible.dia_semana == data.dia_semana,
+        HorarioDisponible.hora_inicio == data.hora_inicio,
+        HorarioDisponible.hora_fin == data.hora_fin,
+        HorarioDisponible.cuatrimestre == data.cuatrimestre,
+        HorarioDisponible.activo == False,
+    ).order_by(HorarioDisponible.id.desc()).first()
+    if inactivo:
+        inactivo.activo = True
+        db.commit()
+        db.refresh(inactivo)
+        return _serializar_horario(inactivo, db)
+
     # Verificar duplicado
     dup = db.query(HorarioDisponible).filter(
         HorarioDisponible.laboratorio_id == data.laboratorio_id,
@@ -562,8 +577,8 @@ def editar_horario(
     return _serializar_horario(h, db)
 
 
-@router.delete("/{horario_id}", summary="Desactivar horario")
-def desactivar_horario(
+@router.delete("/{horario_id}", summary="Eliminar horario")
+def eliminar_horario(
     horario_id: int,
     db: Session = Depends(get_db),
     _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
@@ -576,10 +591,24 @@ def desactivar_horario(
         Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
     ).first()
     if reservado:
-        raise HTTPException(status_code=409, detail="No se puede desactivar: el horario tiene reservaciones activas")
-    h.activo = False
+        raise HTTPException(status_code=409, detail="No se puede eliminar: el horario tiene reservaciones activas")
+
+    # Eliminar realmente si no hay historial. Si lo hay, archivar para mantener
+    # la trazabilidad de reservaciones y bloqueos anteriores.
+    tiene_historial = (
+        db.query(Reservacion).filter(Reservacion.horario_id == horario_id).first() is not None
+        or db.query(BloqueoSlot).filter(BloqueoSlot.horario_id == horario_id).first() is not None
+    )
+    if tiene_historial:
+        h.activo = False
+    else:
+        db.delete(h)
     db.commit()
-    return {"mensaje": "Horario desactivado"}
+    return {
+        "mensaje": "Horario eliminado",
+        "eliminado": not tiene_historial,
+        "conserva_historial": tiene_historial,
+    }
 
 
 # ─── Vista de disponibilidad semanal ──────────────────────────────────────────
