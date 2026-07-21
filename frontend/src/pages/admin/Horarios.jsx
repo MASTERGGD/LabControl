@@ -1226,6 +1226,14 @@ export default function Horarios() {
                 return { background: isDay ? '#f8fafc' : 'rgba(16,185,129,0.04)', border: isDay ? '1px solid #e2e8f0' : '1px dashed rgba(74,222,128,0.2)' };
               })();
               const cellCursor = esInactivo ? 'default' : esReservado || esBloqueado || esDisputa ? 'pointer' : esSuperAdmin ? 'pointer' : 'crosshair';
+              const abrirBloqueo = (event) => {
+                event?.preventDefault();
+                event?.stopPropagation();
+                setIsDragging(false);
+                setDragStartKey(null);
+                setSelectedCells(new Set());
+                setSlotBloqueo(slot);
+              };
 
               return (
                 <div
@@ -1247,10 +1255,10 @@ export default function Horarios() {
                     if (startDia !== String(dia)) return;
                     setSelectedCells(prev => new Set([...prev, cellKey]));
                   }}
-                  onClick={() => {
-                    if (isDragging) return;
+                  onClick={event => {
                     if (esInactivo) return;
-                    if (esBloqueado) { setSlotBloqueo(slot); return; }
+                    if (esBloqueado) { abrirBloqueo(event); return; }
+                    if (isDragging) return;
                     if (esReservado) { setSlotDetalle(slot); return; }
                     setSlotEditar(slot);
                   }}>
@@ -1262,6 +1270,19 @@ export default function Horarios() {
                       {bloqueo && (
                         <p className="text-xs leading-tight truncate" style={{ color: isDay ? '#8b5cf6' : 'rgba(196,181,253,0.7)' }}>{bloqueo.motivo}</p>
                       )}
+                      <button
+                        type="button"
+                        onClick={abrirBloqueo}
+                        className="mt-auto w-full rounded-md px-2 py-1 text-xs font-semibold transition-colors"
+                        style={{
+                          color: isDay ? '#6d28d9' : '#f5f3ff',
+                          background: isDay ? '#ede9fe' : 'rgba(139,92,246,0.28)',
+                          border: isDay ? '1px solid #c4b5fd' : '1px solid rgba(196,181,253,0.4)',
+                        }}
+                        title="Ver el bloqueo y habilitar este horario"
+                      >
+                        Desbloquear
+                      </button>
                     </>
                   )}
 
