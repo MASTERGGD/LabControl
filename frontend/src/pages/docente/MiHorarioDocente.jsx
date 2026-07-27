@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const PERIODOS_UTECAN = [
+  { numero: 1, inicio: '08:00', fin: '09:00' },
+  { numero: 2, inicio: '09:00', fin: '09:45' },
+  { numero: 3, inicio: '10:15', fin: '11:00', recesoAntes: true },
+  { numero: 4, inicio: '11:00', fin: '12:00' },
+  { numero: 5, inicio: '12:00', fin: '13:00' },
+  { numero: 6, inicio: '13:00', fin: '14:00' },
+  { numero: 7, inicio: '14:00', fin: '15:00' },
+  { numero: 8, inicio: '15:00', fin: '16:00' },
+];
 const TIPOS = [
   ['CLASE', 'Clase'],
   ['TUTORIA', 'Tutoría'],
@@ -24,13 +34,13 @@ const VACIO = {
   materia_id: '', espacio_nombre: '', laboratorio_id: '', observaciones: '',
 };
 
-function ModalActividad({ catalogos, periodoId, actividad, onClose, onGuardada }) {
+function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose, onGuardada }) {
   const [form, setForm] = useState(actividad ? {
     ...VACIO, ...actividad,
     grupo_academico_id: actividad.grupo_academico_id || '',
     materia_id: actividad.materia_id || '',
     laboratorio_id: actividad.laboratorio_id || '',
-  } : VACIO);
+  } : { ...VACIO, ...preseleccion });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const esClase = form.tipo_actividad === 'CLASE';
@@ -87,7 +97,7 @@ function ModalActividad({ catalogos, periodoId, actividad, onClose, onGuardada }
             </select>
           </label>
           <label className="text-sm text-slate-300">Día
-            <select className="input-dark mt-1 w-full" value={form.dia_semana} onChange={(e) => cambiar('dia_semana', Number(e.target.value))}>
+            <select disabled={Boolean(preseleccion)} className="input-dark mt-1 w-full disabled:opacity-70" value={form.dia_semana} onChange={(e) => cambiar('dia_semana', Number(e.target.value))}>
               {DIAS.map((dia, indice) => <option key={dia} value={indice}>{dia}</option>)}
             </select>
           </label>
@@ -111,10 +121,10 @@ function ModalActividad({ catalogos, periodoId, actividad, onClose, onGuardada }
             <input required className="input-dark mt-1 w-full" value={form.actividad_nombre} onChange={(e) => cambiar('actividad_nombre', e.target.value)} placeholder={esClase ? 'Nombre de la materia' : 'Ej. Tutoría grupal'} />
           </label>
           <label className="text-sm text-slate-300">Hora de inicio
-            <input required type="time" className="input-dark mt-1 w-full" value={form.hora_inicio} onChange={(e) => cambiar('hora_inicio', e.target.value)} />
+            <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_inicio} onChange={(e) => cambiar('hora_inicio', e.target.value)} />
           </label>
           <label className="text-sm text-slate-300">Hora de fin
-            <input required type="time" className="input-dark mt-1 w-full" value={form.hora_fin} onChange={(e) => cambiar('hora_fin', e.target.value)} />
+            <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_fin} onChange={(e) => cambiar('hora_fin', e.target.value)} />
           </label>
           <label className="text-sm text-slate-300">Laboratorio registrado
             <select className="input-dark mt-1 w-full" value={form.laboratorio_id} onChange={(e) => cambiar('laboratorio_id', e.target.value)}>
@@ -173,7 +183,11 @@ export default function MiHorarioDocente() {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
-  const porDia = useMemo(() => DIAS.map((_, indice) => horario.filter((h) => h.dia_semana === indice)), [horario]);
+  const actividadEnPeriodo = (dia, periodo) => horario.find((item) => (
+    item.dia_semana === dia
+    && item.hora_inicio < periodo.fin
+    && item.hora_fin > periodo.inicio
+  ));
 
   const guardada = ({ advertencias = [] }) => {
     setModal(null);
@@ -215,7 +229,7 @@ export default function MiHorarioDocente() {
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
-            <button onClick={() => setModal('nuevo')} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Agregar bloque</button>
+            <button onClick={() => setModal({ tipo: 'nuevo' })} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Agregar bloque</button>
           </div>
         </div>
 
@@ -241,34 +255,83 @@ export default function MiHorarioDocente() {
           </section>
         )}
 
-        <div className="grid min-w-[1000px] grid-cols-6 gap-3 overflow-x-auto pb-3">
-          {DIAS.map((dia, indice) => (
-            <section key={dia} className="glass min-h-[360px] rounded-2xl p-3">
-              <h2 className="mb-3 border-b border-white/10 pb-2 text-center text-sm font-bold text-slate-300">{dia}</h2>
-              <div className="space-y-2">
-                {porDia[indice].map((item) => (
-                  <article key={item.id} className={`rounded-xl border p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <span className="text-xs font-bold text-emerald-300">{item.hora_inicio}–{item.hora_fin}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-white">{item.actividad_nombre}</p>
-                    <p className="mt-1 text-xs text-slate-400">{item.grupo}{item.carrera ? ` · ${item.carrera}` : ''}</p>
-                    <p className="text-xs text-slate-500">{item.espacio_nombre || 'Sin espacio indicado'}</p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                      {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
-                      <button onClick={() => setModal(item)} className="text-blue-300">Editar</button>
-                      <button onClick={() => eliminar(item.id)} className="text-red-300">Retirar</button>
-                    </div>
-                  </article>
-                ))}
-                {!cargando && porDia[indice].length === 0 && <p className="pt-8 text-center text-xs text-slate-600">Sin actividades</p>}
-              </div>
-            </section>
-          ))}
+        <div className="glass overflow-x-auto rounded-2xl">
+          <table className="min-w-[1100px] w-full table-fixed">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="w-28 p-4 text-left text-xs font-bold text-slate-400">HORA</th>
+                {DIAS.map((dia) => <th key={dia} className="border-l border-white/10 p-4 text-center text-sm font-bold text-slate-300">{dia.toUpperCase()}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {PERIODOS_UTECAN.map((periodo) => (
+                <Fragment key={periodo.numero}>
+                  {periodo.recesoAntes && (
+                    <tr className="border-y border-white/10 bg-amber-500/5">
+                      <td />
+                      <td colSpan={6} className="p-2 text-center text-xs font-medium tracking-widest text-amber-300">☕ RECESO · 09:45–10:15</td>
+                    </tr>
+                  )}
+                  <tr className="border-b border-white/10">
+                    <td className="p-4 align-top">
+                      <p className="font-mono text-sm font-bold text-white">{periodo.inicio}</p>
+                      <p className="font-mono text-xs text-slate-500">{periodo.fin}</p>
+                    </td>
+                    {DIAS.map((dia, diaIndice) => {
+                      const item = actividadEnPeriodo(diaIndice, periodo);
+                      const comienzaAqui = item?.hora_inicio === periodo.inicio;
+                      return (
+                        <td key={`${dia}-${periodo.numero}`} className="border-l border-white/10 p-2 align-top">
+                          {item ? (
+                            comienzaAqui ? (
+                              <article className={`min-h-24 rounded-xl border p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
+                                <div className="flex items-start justify-between gap-1">
+                                  <span className="text-xs font-bold text-emerald-300">{item.hora_inicio}–{item.hora_fin}</span>
+                                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
+                                </div>
+                                <p className="mt-1 text-sm font-semibold text-white">{item.actividad_nombre}</p>
+                                <p className="text-xs text-slate-400">{item.grupo || item.tipo_actividad}</p>
+                                <p className="truncate text-xs text-slate-500">{item.espacio_nombre || 'Sin salón'}</p>
+                                <div className="mt-2 flex gap-2 text-[11px]">
+                                  {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
+                                  <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>
+                                  <button onClick={() => eliminar(item.id)} className="text-red-300">Retirar</button>
+                                </div>
+                              </article>
+                            ) : (
+                              <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-[11px] text-slate-600">Continuación</div>
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={cargando}
+                              onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaIndice, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
+                              className="group flex min-h-24 w-full flex-col items-start rounded-xl border border-dashed border-emerald-500/20 p-3 text-left transition hover:border-emerald-400/60 hover:bg-emerald-500/10"
+                            >
+                              <span className="font-mono text-xs text-emerald-400">{periodo.inicio}–{periodo.fin}</span>
+                              <span className="mt-auto text-xs text-slate-600 group-hover:text-emerald-300">+ Agregar actividad</span>
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
-      {modal && <ModalActividad catalogos={catalogos} periodoId={periodoId} actividad={modal === 'nuevo' ? null : modal} onClose={() => setModal(null)} onGuardada={guardada} />}
+      {modal && (
+        <ModalActividad
+          catalogos={catalogos}
+          periodoId={periodoId}
+          actividad={modal.tipo === 'editar' ? modal.actividad : null}
+          preseleccion={modal.preseleccion}
+          onClose={() => setModal(null)}
+          onGuardada={guardada}
+        />
+      )}
     </AdminLayout>
   );
 }

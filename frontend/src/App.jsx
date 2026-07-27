@@ -57,6 +57,7 @@ import ValidarConsulta from './pages/ValidarConsulta';
 import ValidarActivo from './pages/ValidarActivo';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -256,8 +257,9 @@ function AppRoutes() {
           <Mantenimiento />
         </RutaProtegida>
       }/>
-      <Route path="/admin/catalogo" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+      <Route path="/admin/catalogo" element={<Navigate to="/division-carrera/materias" replace />}/>
+      <Route path="/division-carrera/materias" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE]}>
           <Catalogo modo="materias" />
         </RutaProtegida>
       }/>

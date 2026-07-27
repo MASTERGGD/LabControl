@@ -374,6 +374,13 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>,
   },
 
+  // Grupo: Dirección de División de Carrera
+  { divider: true, label: 'Dirección de División de Carrera', roles: ['SUPER_ADMIN','ADMINISTRATIVO'], permiso: 'division_carrera:manage' },
+  {
+    label: 'Materias', path: '/division-carrera/materias', roles: ['SUPER_ADMIN'], permiso: 'division_carrera:manage', inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253"/></svg>,
+  },
+
   // Grupo: Personas
   { divider: true, label: 'Personas', roles: ['SUPER_ADMIN','ADMINISTRATIVO'] },
   {
@@ -383,10 +390,6 @@ const NAV_ITEMS = [
   {
     label: 'Departamentos', path: '/admin/departamentos', roles: ['SUPER_ADMIN','ADMINISTRATIVO'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V7a2 2 0 00-2-2h-3V3H10v2H7a2 2 0 00-2 2v14m14 0h2M5 21H3m4-8h2m-2 4h2m6-4h2m-2 4h2M9 9h6"/></svg>,
-  },
-  {
-    label: 'Catálogos', path: '/admin/catalogo', roles: ['SUPER_ADMIN'], inGroup: true,
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>,
   },
   {
     label: 'Adeudos y préstamos', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN'], inGroup: true,
@@ -543,6 +546,7 @@ const BREADCRUMB_MAP = {
   '/admin/consulta-persona':  [{ label: 'Adeudos y préstamos' }],
   '/admin/historial-alumno':  [{ label: 'Historial de laboratorio' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
+  '/division-carrera/materias': [{ label: 'Dirección de División de Carrera' }, { label: 'Materias' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
   '/comunicados':             [{ label: 'Mis Comunicados' }],
   '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],

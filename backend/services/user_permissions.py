@@ -13,6 +13,7 @@ PERM_COMUNICADOS_WRITE = "comunicados:write"
 PERM_INVENTARIO_WRITE = "inventario:write"
 PERM_INVENTARIO_VALIDATE = "inventario:validar"
 PERM_SERVICIOS_ESCOLARES_MANAGE = "servicios_escolares:manage"
+PERM_DIVISION_CARRERA_MANAGE = "division_carrera:manage"
 
 
 def _normalizar_catalogo(value: str | None) -> str:
@@ -29,6 +30,18 @@ def es_departamento_servicios_escolares(departamento: Departamento | None) -> bo
     clave = _normalizar_catalogo(getattr(departamento, "clave", "")).replace(" ", "")
     nombre = _normalizar_catalogo(getattr(departamento, "nombre", ""))
     return clave in {"SE", "DSE", "DPSE", "SERVICIOSESCOLARES"} or "SERVICIOS ESCOLARES" in nombre
+
+
+def es_departamento_division_carrera(departamento: Departamento | None) -> bool:
+    if not departamento:
+        return False
+    clave = _normalizar_catalogo(getattr(departamento, "clave", "")).replace(" ", "")
+    nombre = _normalizar_catalogo(getattr(departamento, "nombre", ""))
+    return (
+        clave in {"DC", "DDC", "DV", "DIVISIONCARRERA", "DIRECCIONDIVISION"}
+        or ("DIVISION" in nombre and "CARRERA" in nombre)
+        or "DIRECCION DE DIVISION" in nombre
+    )
 
 
 def es_responsable_departamento(db: Session, usuario: Usuario, departamento_id: int | None) -> bool:
@@ -154,6 +167,26 @@ def puede_gestionar_servicios_escolares(db: Session, usuario: Usuario) -> bool:
     return bool(departamentos_servicios_escolares(db, usuario))
 
 
+def puede_gestionar_materias(db: Session, usuario: Usuario) -> bool:
+    if not usuario:
+        return False
+    if usuario.rol == RolUsuario.SUPER_ADMIN:
+        return True
+    departamento = (
+        db.query(Departamento).filter(
+            Departamento.id == usuario.departamento_id,
+            Departamento.activo == True,
+        ).first()
+        if usuario.departamento_id else None
+    )
+    if not es_departamento_division_carrera(departamento):
+        return False
+    return (
+        es_responsable_departamento(db, usuario, departamento.id)
+        or tiene_permiso_departamento(db, usuario, PERM_DIVISION_CARRERA_MANAGE, departamento.id)
+    )
+
+
 def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) -> bool:
     try:
         return db.query(UsuarioPermiso.id).filter(
@@ -210,4 +243,6 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
         permisos.add(PERM_INVENTARIO_VALIDATE)
     if puede_gestionar_servicios_escolares(db, usuario):
         permisos.add(PERM_SERVICIOS_ESCOLARES_MANAGE)
+    if puede_gestionar_materias(db, usuario):
+        permisos.add(PERM_DIVISION_CARRERA_MANAGE)
     return sorted(permisos)

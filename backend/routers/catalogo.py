@@ -6,6 +6,7 @@ from database import get_db
 from models.catalogo import CatalogoAlumno, CatalogoMateria, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
+from services.user_permissions import puede_gestionar_materias
 import openpyxl
 import io
 import datetime
@@ -117,6 +118,18 @@ _admin_roles = require_roles(
     RolUsuario.SUPER_ADMIN,
     RolUsuario.SERVICIOS_ESCOLARES,
 )
+
+
+def _gestor_materias(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if not puede_gestionar_materias(db, current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="La gestión de materias corresponde a Dirección de División de Carrera.",
+        )
+    return current_user
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -553,7 +566,7 @@ def buscar_materias(
 def crear_materia(
     data: MateriaCreate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(_admin_roles),
+    current_user: Usuario = Depends(_gestor_materias),
 ):
     m = CatalogoMateria(
         nombre               = _norm(data.nombre),
@@ -572,7 +585,7 @@ def actualizar_materia(
     materia_id: int,
     data: MateriaUpdate,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(_admin_roles),
+    current_user: Usuario = Depends(_gestor_materias),
 ):
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
@@ -588,7 +601,7 @@ def actualizar_materia(
 def eliminar_materia(
     materia_id: int,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(_admin_roles),
+    current_user: Usuario = Depends(_gestor_materias),
 ):
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
@@ -602,7 +615,7 @@ def eliminar_materia(
 async def importar_materias(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(_admin_roles),
+    current_user: Usuario = Depends(_gestor_materias),
 ):
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")

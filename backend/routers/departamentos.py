@@ -23,6 +23,8 @@ from services.user_permissions import (
     PERM_INVENTARIO_VALIDATE,
     PERM_INVENTARIO_WRITE,
     PERM_SERVICIOS_ESCOLARES_MANAGE,
+    PERM_DIVISION_CARRERA_MANAGE,
+    es_departamento_division_carrera,
     es_departamento_servicios_escolares,
     es_responsable_departamento,
     tiene_permiso_departamento,
@@ -192,6 +194,7 @@ PERMISOS_DEPARTAMENTO = {
     PERM_INVENTARIO_WRITE,
     PERM_INVENTARIO_VALIDATE,
     PERM_SERVICIOS_ESCOLARES_MANAGE,
+    PERM_DIVISION_CARRERA_MANAGE,
 }
 
 
@@ -209,6 +212,7 @@ def _puede_administrar_permisos_departamento(dep: Departamento, usuario: Usuario
 def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: int) -> dict:
     dep = db.query(Departamento).filter(Departamento.id == departamento_id).first()
     es_depto_servicios = es_departamento_servicios_escolares(dep)
+    es_depto_division = es_departamento_division_carrera(dep)
     permisos_activos = {
         row[0]
         for row in db.query(UsuarioPermiso.permiso).filter(
@@ -228,6 +232,9 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
         or es_responsable
         or u.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.SERVICIOS_ESCOLARES)
     )
+    puede_division_carrera = es_depto_division and (
+        PERM_DIVISION_CARRERA_MANAGE in permisos_activos or es_responsable
+    )
     return {
         "id": u.id,
         "nombre": u.nombre,
@@ -240,12 +247,14 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
             PERM_INVENTARIO_WRITE: puede_inventario,
             PERM_INVENTARIO_VALIDATE: puede_validar_inventario,
             PERM_SERVICIOS_ESCOLARES_MANAGE: puede_servicios_escolares,
+            PERM_DIVISION_CARRERA_MANAGE: puede_division_carrera,
         },
         "puede_enviar_comunicados": puede_comunicados,
         "puede_gestionar_inventario": puede_inventario,
         "puede_validar_inventario": puede_validar_inventario,
         "puede_inventario_institucional": puede_inventario_institucional,
         "puede_gestionar_servicios_escolares": puede_servicios_escolares,
+        "puede_gestionar_materias": puede_division_carrera,
     }
 
 
@@ -367,6 +376,8 @@ def actualizar_permiso_departamental(
         raise HTTPException(status_code=422, detail="Permiso departamental invalido")
     if data.permiso == PERM_SERVICIOS_ESCOLARES_MANAGE and not es_departamento_servicios_escolares(dep):
         raise HTTPException(status_code=422, detail="Este permiso solo aplica al departamento de Servicios Escolares")
+    if data.permiso == PERM_DIVISION_CARRERA_MANAGE and not es_departamento_division_carrera(dep):
+        raise HTTPException(status_code=422, detail="Este permiso solo aplica a Dirección de División de Carrera")
     if data.scope_global and data.permiso != PERM_INVENTARIO_VALIDATE:
         raise HTTPException(status_code=422, detail="Solo inventario institucional puede ser global")
     if data.scope_global and current_user.rol != RolUsuario.SUPER_ADMIN:

@@ -759,9 +759,9 @@ export default function Catalogo({ modo = 'completo' }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">{modo === 'alumnos' ? 'Alumnos' : 'Catálogos académicos'}</h1>
+          <h1 className="text-2xl font-bold text-white">{modo === 'alumnos' ? 'Alumnos' : 'Materias'}</h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            {modo === 'alumnos' ? 'Altas, importación e inscripciones por periodo y grupo' : 'Materias por periodo para la operación académica'}
+            {modo === 'alumnos' ? 'Altas, importación e inscripciones por periodo y grupo' : 'Catálogo académico administrado por Dirección de División de Carrera'}
           </p>
           <span className="inline-flex items-center gap-1.5 mt-1.5 bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium px-2.5 py-1 rounded-full">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

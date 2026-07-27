@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
+from models.departamento import Departamento
 from models.catalogo import (
     CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno,
     PeriodoEscolar,
@@ -94,3 +95,45 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert cerrada.status_code == 200, cerrada.text
     assert cerrada.json()["resumen"]["falta"] == 1
     assert cerrada.json()["resumen"]["presente"] == 1
+
+
+def test_materias_corresponden_a_division_de_carrera(client, db):
+    division = Departamento(
+        nombre="Dirección de División de Carrera", clave="DDC", activo=True
+    )
+    db.add(division)
+    db.flush()
+    responsable = Usuario(
+        nombre="Responsable División", email="division@test.mx",
+        password_hash=hashear_password("Division123!"),
+        rol=RolUsuario.ADMINISTRATIVO, activo=True, departamento_id=division.id,
+    )
+    escolares = Usuario(
+        nombre="Servicios Escolares", email="escolares@test.mx",
+        password_hash=hashear_password("Escolares123!"),
+        rol=RolUsuario.SERVICIOS_ESCOLARES, activo=True,
+    )
+    db.add_all([responsable, escolares])
+    db.flush()
+    division.responsable_id = responsable.id
+    db.commit()
+
+    payload = {
+        "nombre": "Programación",
+        "carrera": "TIEID",
+        "cuatrimestre_oficial": 3,
+        "periodo": "MAY-AGO 2026",
+    }
+    token_division = get_token(client, responsable.email, "Division123!")
+    creada = client.post(
+        "/catalogo/materias", json=payload, headers=auth_headers(token_division)
+    )
+    assert creada.status_code == 201, creada.text
+
+    token_escolares = get_token(client, escolares.email, "Escolares123!")
+    denegada = client.post(
+        "/catalogo/materias",
+        json={**payload, "nombre": "Materia no autorizada"},
+        headers=auth_headers(token_escolares),
+    )
+    assert denegada.status_code == 403
