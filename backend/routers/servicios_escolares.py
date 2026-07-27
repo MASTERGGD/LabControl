@@ -16,6 +16,7 @@ import datetime
 import secrets
 import string
 import unicodedata
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,12 +27,13 @@ from typing import Optional
 from database import get_db
 from dependencies import get_current_user, hashear_password
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno, CatalogoCarrera
+from models.catalogo import CatalogoAlumno, CatalogoCarrera, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from services.auditoria import registrar, Accion, Recurso
 from services.user_permissions import puede_gestionar_servicios_escolares
 
 router = APIRouter(prefix="/servicios-escolares", tags=["Servicios Escolares"])
+_organizacion_lock = threading.Lock()
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -65,6 +67,55 @@ def _gen_password(length: int = 10) -> str:
 
 def _norm_text(v: str | None) -> str:
     return " ".join((v or "").strip().split())
+
+
+def _ensure_organizacion_desde_catalogo(db: Session):
+    """Convierte registros heredados en periodos, grupos e inscripciones."""
+    with _organizacion_lock:
+        _ensure_organizacion_bloqueada(db)
+
+
+def _ensure_organizacion_bloqueada(db: Session):
+    cambios = False
+    for alumno in db.query(CatalogoAlumno).filter(CatalogoAlumno.activo == True).all():
+        clave = _norm_text(alumno.periodo).upper()
+        carrera = _norm_text(alumno.carrera)
+        grupo_letra = _norm_text(alumno.grupo).upper()
+        if not clave or not carrera or not grupo_letra or not alumno.cuatrimestre:
+            continue
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
+        if not periodo:
+            periodo = PeriodoEscolar(clave=clave, activo=True)
+            db.add(periodo); db.flush(); cambios = True
+        grupo = db.query(GrupoAcademico).filter(
+            GrupoAcademico.periodo_id == periodo.id,
+            GrupoAcademico.carrera == carrera,
+            GrupoAcademico.cuatrimestre == alumno.cuatrimestre,
+            GrupoAcademico.grupo == grupo_letra,
+        ).first()
+        if not grupo:
+            grupo = GrupoAcademico(periodo_id=periodo.id, carrera=carrera,
+                cuatrimestre=alumno.cuatrimestre, grupo=grupo_letra, activo=True)
+            db.add(grupo); db.flush(); cambios = True
+        existe = db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            InscripcionAlumno.grupo_academico_id == grupo.id,
+        ).first()
+        if not existe:
+            db.add(InscripcionAlumno(alumno_id=alumno.id,
+                grupo_academico_id=grupo.id, estado="ACTIVO")); cambios = True
+        elif existe.estado != "ACTIVO":
+            existe.estado = "ACTIVO"; cambios = True
+        inscripciones_anteriores = db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            InscripcionAlumno.grupo_academico_id != grupo.id,
+            InscripcionAlumno.estado == "ACTIVO",
+        ).all()
+        for inscripcion in inscripciones_anteriores:
+            inscripcion.estado = "INACTIVO"
+            cambios = True
+    if cambios:
+        db.commit()
 
 
 def _clave_desde_nombre(nombre: str) -> str:
@@ -904,3 +955,74 @@ def guardar_ficha(
     db.commit()
     db.refresh(ficha)
     return _serializar_ficha_completa(ficha)
+# ─── Organización académica ───
+
+@router.get("/organizacion/resumen", summary="Resumen de grupos e inscripciones")
+def resumen_organizacion(
+    periodo: str = Query(""),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    _ensure_organizacion_desde_catalogo(db)
+    grupos_q = db.query(GrupoAcademico).join(PeriodoEscolar)
+    ins_q = db.query(InscripcionAlumno).join(GrupoAcademico).join(PeriodoEscolar)
+    if periodo.strip():
+        grupos_q = grupos_q.filter(PeriodoEscolar.clave == periodo.strip())
+        ins_q = ins_q.filter(PeriodoEscolar.clave == periodo.strip())
+    grupos = grupos_q.filter(GrupoAcademico.activo == True).all()
+    inscritos = ins_q.filter(InscripcionAlumno.estado == "ACTIVO").count()
+    return {
+        "periodos": db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).count(),
+        "grupos": len(grupos),
+        "inscripciones_activas": inscritos,
+        "grupos_sin_alumnos": sum(1 for g in grupos if not any(i.estado == "ACTIVO" for i in g.inscripciones)),
+        "alumnos_sin_grupo": db.query(CatalogoAlumno).filter(
+            CatalogoAlumno.activo == True,
+            ~CatalogoAlumno.id.in_(db.query(InscripcionAlumno.alumno_id).filter(InscripcionAlumno.estado == "ACTIVO"))
+        ).count(),
+    }
+
+
+@router.get("/periodos", summary="Listar periodos escolares")
+def listar_periodos_escolares(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    _ensure_organizacion_desde_catalogo(db)
+    return [{"id": p.id, "clave": p.clave, "activo": p.activo, "es_actual": p.es_actual}
+            for p in db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()]
+
+
+@router.get("/grupos", summary="Listar grupos académicos")
+def listar_grupos_academicos(
+    periodo: str = Query(""),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    _ensure_organizacion_desde_catalogo(db)
+    q = db.query(GrupoAcademico).join(PeriodoEscolar)
+    if periodo.strip():
+        q = q.filter(PeriodoEscolar.clave == periodo.strip())
+    result = []
+    for g in q.order_by(PeriodoEscolar.id.desc(), GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all():
+        total = sum(1 for i in g.inscripciones if i.estado == "ACTIVO")
+        result.append({"id": g.id, "periodo": g.periodo.clave, "carrera": g.carrera,
+            "cuatrimestre": g.cuatrimestre, "grupo": g.grupo, "turno": g.turno,
+            "activo": g.activo, "total_alumnos": total})
+    return result
+
+
+@router.get("/grupos/{grupo_id}/alumnos", summary="Alumnos inscritos en un grupo")
+def alumnos_de_grupo(
+    grupo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    grupo = db.query(GrupoAcademico).get(grupo_id)
+    if not grupo:
+        raise HTTPException(404, "Grupo no encontrado")
+    return [_serializar_alumno(i.alumno) for i in grupo.inscripciones if i.estado == "ACTIVO"]

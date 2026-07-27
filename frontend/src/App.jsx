@@ -38,6 +38,8 @@ import ConsultaPersona from './pages/admin/ConsultaPersona';
 import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
 import MiHistorial from './pages/docente/MiHistorial';
+import MiHorarioDocente from './pages/docente/MiHorarioDocente';
+import ClaseAsistencia from './pages/docente/ClaseAsistencia';
 import EspaciosAdmin from './pages/admin/EspaciosAdmin';
 import ApartarEspacio from './pages/espacios/ApartarEspacio';
 import BandejaEspacios from './pages/espacios/BandejaEspacios';
@@ -48,7 +50,7 @@ import TutoriaAdmin from './pages/admin/TutoriaAdmin';
 import MisTutorados from './pages/docente/MisTutorados';
 import ConsultorioMedico from './pages/medico/ConsultorioMedico';
 import AlumnoEstudioSocioeconomico from './pages/alumno/AlumnoEstudioSocioeconomico';
-import SEAlumnos from './pages/servicios_escolares/SEAlumnos';
+import SEGrupos from './pages/servicios_escolares/SEGrupos';
 import SEFichas from './pages/servicios_escolares/SEFichas';
 import AutoAsignacion from './pages/AutoAsignacion';
 import ValidarConsulta from './pages/ValidarConsulta';
@@ -174,7 +176,12 @@ function AppRoutes() {
       />
       <Route path="/servicios-escolares/alumnos" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
-          <SEAlumnos />
+          <Catalogo modo="alumnos" />
+        </RutaProtegida>
+      }/>
+      <Route path="/servicios-escolares/grupos" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
+          <SEGrupos />
         </RutaProtegida>
       }/>
       <Route path="/servicios-escolares/estudios-socioeconomicos" element={
@@ -251,7 +258,7 @@ function AppRoutes() {
       }/>
       <Route path="/admin/catalogo" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
-          <Catalogo />
+          <Catalogo modo="materias" />
         </RutaProtegida>
       }/>
       <Route path="/admin/reportes" element={
@@ -341,7 +348,17 @@ function AppRoutes() {
       }/>
       <Route path="/docente/horario" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <MiHorarioDocente />
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/laboratorio" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <SesionClase />
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/clase/:claseId" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <ClaseAsistencia />
         </RutaProtegida>
       }/>
       <Route path="/docente/sesion/:sesionId" element={

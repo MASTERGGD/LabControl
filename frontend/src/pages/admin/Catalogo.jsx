@@ -652,8 +652,8 @@ function ModalMateria({ materia, periodos, carreras, onClose, onGuardado }) {
 //  Página principal
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export default function Catalogo() {
-  const [tab, setTab]         = useState('alumnos');  // 'alumnos' | 'materias'
+export default function Catalogo({ modo = 'completo' }) {
+  const [tab, setTab] = useState(modo === 'materias' ? 'materias' : 'alumnos');
 
   // Datos
   const [alumnos, setAlumnos]   = useState([]);
@@ -759,9 +759,9 @@ export default function Catalogo() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Catálogos</h1>
+          <h1 className="text-2xl font-bold text-white">{modo === 'alumnos' ? 'Alumnos' : 'Catálogos académicos'}</h1>
           <p className="text-slate-400 text-sm mt-0.5">
-            Alumnos y materias por periodo — base para autocomplete en el sistema
+            {modo === 'alumnos' ? 'Altas, importación e inscripciones por periodo y grupo' : 'Materias por periodo para la operación académica'}
           </p>
           <span className="inline-flex items-center gap-1.5 mt-1.5 bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium px-2.5 py-1 rounded-full">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -791,7 +791,7 @@ export default function Catalogo() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-gray-800/60 rounded-xl p-1 w-fit border border-gray-700">
+      {modo === 'completo' && <div className="flex gap-1 mb-6 bg-gray-800/60 rounded-xl p-1 w-fit border border-gray-700">
         {[
           { key: 'alumnos',  label: '🎓 Alumnos',  count: alumnos.length  },
           { key: 'materias', label: '📚 Materias', count: materias.length },
@@ -808,7 +808,7 @@ export default function Catalogo() {
             </span>
           </button>
         ))}
-      </div>
+      </div>}
 
       {/* ── TAB ALUMNOS ──────────────────────────────────────────────────────── */}
       {tab === 'alumnos' && (

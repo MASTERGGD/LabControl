@@ -1,0 +1,96 @@
+import datetime
+from zoneinfo import ZoneInfo
+
+from dependencies import hashear_password
+from models.usuario import Usuario, RolUsuario
+from models.catalogo import (
+    CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno,
+    PeriodoEscolar,
+)
+from tests.conftest import auth_headers, get_token
+
+
+def test_flujo_horario_clase_y_asistencia(client, db):
+    docente = Usuario(
+        nombre="Docente Horario",
+        email="docencia@test.mx",
+        password_hash=hashear_password("Docente123!"),
+        rol=RolUsuario.DOCENTE,
+        activo=True,
+    )
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, periodo])
+    db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=3, grupo="A", activo=True
+    )
+    materia = CatalogoMateria(
+        nombre="Bases de datos", carrera="TIEID", cuatrimestre_oficial=3,
+        periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, materia])
+    db.flush()
+    alumnos = [
+        CatalogoAlumno(
+            matricula=f"UTC{i}", apellido_paterno=f"Alumno{i}", apellido_materno="",
+            nombres="Prueba", carrera="TIEID", cuatrimestre=3, grupo="A",
+            periodo=periodo.clave, activo=True,
+        )
+        for i in (1, 2)
+    ]
+    db.add_all(alumnos)
+    db.flush()
+    db.add_all([
+        InscripcionAlumno(alumno_id=a.id, grupo_academico_id=grupo.id, estado="ACTIVO")
+        for a in alumnos
+    ])
+    db.commit()
+
+    token = get_token(client, docente.email, "Docente123!")
+    headers = auth_headers(token)
+    dia_hoy = datetime.datetime.now(ZoneInfo("America/Mexico_City")).weekday()
+    payload = {
+        "periodo_id": periodo.id,
+        "grupo_academico_id": grupo.id,
+        "materia_id": materia.id,
+        "tipo_actividad": "CLASE",
+        "actividad_nombre": materia.nombre,
+        "dia_semana": dia_hoy,
+        "hora_inicio": "08:00",
+        "hora_fin": "09:00",
+        "espacio_nombre": "S3",
+    }
+    creada = client.post("/docencia/horario", json=payload, headers=headers)
+    assert creada.status_code == 200, creada.text
+    carga_id = creada.json()["carga"]["id"]
+    activada = client.post(f"/docencia/horario/{carga_id}/activar", headers=headers)
+    assert activada.status_code == 200, activada.text
+
+    solapada = client.post(
+        "/docencia/horario",
+        json={**payload, "hora_inicio": "08:30", "hora_fin": "09:30"},
+        headers=headers,
+    )
+    assert solapada.status_code == 409
+
+    iniciada = client.post(f"/docencia/horario/{carga_id}/iniciar", headers=headers)
+    assert iniciada.status_code == 200, iniciada.text
+    clase = iniciada.json()
+    assert clase["estado"] == "ABIERTA"
+    assert clase["resumen"]["total"] == 2
+    asistencia_id = clase["alumnos"][0]["asistencia_id"]
+
+    falta = client.patch(
+        f"/docencia/clases/{clase['id']}/asistencia/{asistencia_id}",
+        json={"estado": "FALTA", "observacion": "No asistió"},
+        headers=headers,
+    )
+    assert falta.status_code == 200, falta.text
+    cerrada = client.post(
+        f"/docencia/clases/{clase['id']}/cerrar",
+        json={"observacion_general": "Clase finalizada"},
+        headers=headers,
+    )
+    assert cerrada.status_code == 200, cerrada.text
+    assert cerrada.json()["resumen"]["falta"] == 1
+    assert cerrada.json()["resumen"]["presente"] == 1

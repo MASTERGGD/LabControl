@@ -32,6 +32,55 @@ class CatalogoAlumno(Base):
     )
 
 
+class PeriodoEscolar(Base):
+    __tablename__ = "periodos_escolares"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    clave      = Column(String(20), nullable=False, unique=True, index=True)
+    activo     = Column(Boolean, default=True, nullable=False)
+    es_actual  = Column(Boolean, default=False, nullable=False)
+    creado_en  = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    grupos = relationship("GrupoAcademico", back_populates="periodo")
+
+
+class GrupoAcademico(Base):
+    __tablename__ = "grupos_academicos"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    periodo_id    = Column(Integer, ForeignKey("periodos_escolares.id"), nullable=False, index=True)
+    carrera       = Column(String(180), nullable=False, index=True)
+    cuatrimestre  = Column(Integer, nullable=False)
+    grupo         = Column(String(10), nullable=False)
+    turno         = Column(String(20), nullable=True)
+    activo        = Column(Boolean, default=True, nullable=False)
+    creado_en     = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    periodo      = relationship("PeriodoEscolar", back_populates="grupos")
+    inscripciones = relationship("InscripcionAlumno", back_populates="grupo_academico")
+
+    __table_args__ = (
+        UniqueConstraint("periodo_id", "carrera", "cuatrimestre", "grupo", name="uq_grupo_academico"),
+    )
+
+
+class InscripcionAlumno(Base):
+    __tablename__ = "inscripciones_alumnos"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    alumno_id           = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=False, index=True)
+    grupo_academico_id  = Column(Integer, ForeignKey("grupos_academicos.id"), nullable=False, index=True)
+    estado              = Column(String(20), default="ACTIVO", nullable=False)
+    inscrito_en         = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    alumno          = relationship("CatalogoAlumno")
+    grupo_academico = relationship("GrupoAcademico", back_populates="inscripciones")
+
+    __table_args__ = (
+        UniqueConstraint("alumno_id", "grupo_academico_id", name="uq_inscripcion_alumno_grupo"),
+    )
+
+
 class CatalogoMateria(Base):
     __tablename__ = "catalogo_materias"
 

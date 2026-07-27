@@ -353,9 +353,13 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Docencia
-  { divider: true, label: 'Laboratorios', roles: ['DOCENTE'] },
+  { divider: true, label: 'Docencia', roles: ['DOCENTE'] },
   {
-    label: 'Solicitar laboratorio', path: '/docente/horario', roles: ['DOCENTE'], inGroup: true,
+    label: 'Mi horario docente', path: '/docente/horario', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
+  },
+  {
+    label: 'Solicitar laboratorio', path: '/docente/laboratorio', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
@@ -406,6 +410,10 @@ const NAV_ITEMS = [
   {
     label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
+  },
+  {
+    label: 'Grupos e inscripciones', path: '/servicios-escolares/grupos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4M9 20H3v-2a4 4 0 014-4h2m7-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   },
   {
     label: 'Estudios socioeconómicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
@@ -509,9 +517,11 @@ const BREADCRUMB_MAP = {
   '/administrativo':          [{ label: 'Inicio Administrativo' }],
   '/servicios-escolares':     [{ label: 'Servicios Escolares' }],
   '/servicios-escolares/alumnos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Alumnos' }],
+  '/servicios-escolares/grupos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Grupos e inscripciones' }],
   '/servicios-escolares/estudios-socioeconomicos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Estudios socioeconómicos' }],
   '/docente':                 [{ label: 'Inicio Docente' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
+  '/docente/laboratorio':     [{ label: 'Solicitar laboratorio' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],
   '/admin/usuarios':          [{ label: 'Usuarios' }],

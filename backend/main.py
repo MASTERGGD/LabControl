@@ -40,6 +40,7 @@ from routers import tutoria as tutoria_router
 from routers import consultorio as consultorio_router
 from routers import servicios_escolares as servicios_escolares_router
 from routers import system as system_router
+from routers import docencia as docencia_router
 
 from ws.mapa import websocket_mapa
 
@@ -50,7 +51,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "r8s9t0u1v2w3"
+_ALEMBIC_HEAD = "t0u1v2w3x4y5"
 
 
 def _current_db_version() -> str | None:
@@ -197,6 +198,7 @@ app.include_router(tutoria_router.router)
 app.include_router(consultorio_router.router)
 app.include_router(servicios_escolares_router.router)
 app.include_router(system_router.router)
+app.include_router(docencia_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

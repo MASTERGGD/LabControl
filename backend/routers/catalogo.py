@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
-from models.catalogo import CatalogoAlumno, CatalogoMateria
+from models.catalogo import CatalogoAlumno, CatalogoMateria, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 import openpyxl
@@ -54,6 +54,39 @@ class MateriaUpdate(BaseModel):
 
 def _norm(val) -> str:
     return str(val).strip() if val is not None else ""
+
+def _sincronizar_inscripcion(db, alumno):
+    clave = _norm(alumno.periodo).upper()
+    periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
+    if not periodo:
+        periodo = PeriodoEscolar(clave=clave, activo=True)
+        db.add(periodo); db.flush()
+    grupo = db.query(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo.id,
+        GrupoAcademico.carrera == alumno.carrera,
+        GrupoAcademico.cuatrimestre == alumno.cuatrimestre,
+        GrupoAcademico.grupo == alumno.grupo.upper(),
+    ).first()
+    if not grupo:
+        grupo = GrupoAcademico(periodo_id=periodo.id, carrera=alumno.carrera,
+            cuatrimestre=alumno.cuatrimestre, grupo=alumno.grupo.upper(), activo=True)
+        db.add(grupo); db.flush()
+    inscripcion = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.alumno_id == alumno.id,
+        InscripcionAlumno.grupo_academico_id == grupo.id,
+    ).first()
+    if not inscripcion:
+        db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
+    else:
+        inscripcion.estado = "ACTIVO"
+    # Un registro de alumno representa su inscripción en un periodo concreto.
+    # Si cambia de grupo, carrera o cuatrimestre, la asociación anterior debe
+    # quedar inactiva para evitar que aparezca simultáneamente en dos grupos.
+    db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.alumno_id == alumno.id,
+        InscripcionAlumno.grupo_academico_id != grupo.id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).update({"estado": "INACTIVO"}, synchronize_session=False)
 
 def _serializar_alumno(a: CatalogoAlumno) -> dict:
     return {
@@ -245,6 +278,8 @@ def crear_alumno(
         periodo          = periodo,
     )
     db.add(alumno)
+    db.flush()
+    _sincronizar_inscripcion(db, alumno)
     db.commit()
     db.refresh(alumno)
     return _serializar_alumno(alumno)
@@ -264,6 +299,7 @@ def actualizar_alumno(
         if field == "grupo" and val:
             val = val.upper()
         setattr(a, field, val)
+    _sincronizar_inscripcion(db, a)
     db.commit()
     db.refresh(a)
     return _serializar_alumno(a)
@@ -356,8 +392,11 @@ async def importar_alumnos(
             })
             continue
 
+        # La misma matrícula puede tener historial en varios periodos. Se debe
+        # actualizar exclusivamente el registro del periodo importado.
         existente = db.query(CatalogoAlumno).filter(
             CatalogoAlumno.matricula == matricula,
+            CatalogoAlumno.periodo == periodo,
         ).first()
 
         nombre_completo = f"{apellido_paterno} {apellido_materno} {nombres}".strip()
@@ -418,6 +457,10 @@ async def importar_alumnos(
                 ))
 
     if not preview:
+        db.flush()
+        matriculas = [_norm(r[0]) for r in ws.iter_rows(min_row=5, values_only=True) if r and r[0]]
+        for alumno in db.query(CatalogoAlumno).filter(CatalogoAlumno.matricula.in_(matriculas)).all():
+            _sincronizar_inscripcion(db, alumno)
         db.commit()
 
     return {
