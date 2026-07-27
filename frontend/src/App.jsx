@@ -221,7 +221,7 @@ function AppRoutes() {
       <Route
         path="/admin/departamentos"
         element={
-          <RutaProtegida rolesPermitidos={['SUPER_ADMIN','ADMINISTRATIVO']}>
+          <RutaProtegida rolesPermitidos={['SUPER_ADMIN','ADMINISTRATIVO','SERVICIOS_ESCOLARES']} permisosPermitidos={[PERM_SERVICIOS_ESCOLARES_MANAGE, PERM_DIVISION_CARRERA_MANAGE]}>
             <Departamentos />
           </RutaProtegida>
         }

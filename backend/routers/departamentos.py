@@ -97,6 +97,7 @@ def listar_departamentos(
         RolUsuario.SUPER_ADMIN,
         RolUsuario.LAB_ADMIN,
         RolUsuario.ADMINISTRATIVO,
+        RolUsuario.SERVICIOS_ESCOLARES,
         RolUsuario.DOCENTE,
     )),
 ):

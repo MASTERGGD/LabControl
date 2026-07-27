@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useToast } from '../../context/ToastContext';
@@ -6,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const EMPTY = { nombre: '', clave: '', descripcion: '', activo: true };
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
+const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
 
 const normalizarCatalogo = value => String(value || '')
   .normalize('NFD')
@@ -20,6 +22,31 @@ const esDepartamentoServiciosEscolares = departamento => {
   const nombre = normalizarCatalogo(departamento?.nombre);
   return ['SE', 'DSE', 'DPSE', 'SERVICIOSESCOLARES'].includes(clave)
     || nombre.includes('SERVICIOS ESCOLARES');
+};
+
+const esDepartamentoDivisionCarrera = departamento => {
+  const clave = normalizarCatalogo(departamento?.clave).replace(/\s/g, '');
+  const nombre = normalizarCatalogo(departamento?.nombre);
+  return ['DC', 'DDC', 'DV', 'DIVISIONCARRERA', 'DIRECCIONDIVISION'].includes(clave)
+    || (nombre.includes('DIVISION') && nombre.includes('CARRERA'))
+    || nombre.includes('DIRECCION DE DIVISION');
+};
+
+const funcionesDepartamento = departamento => {
+  if (esDepartamentoServiciosEscolares(departamento)) {
+    return [
+      { label: 'Panel escolar', descripcion: 'Resumen del área', path: '/servicios-escolares' },
+      { label: 'Alumnos', descripcion: 'Altas, edición e importación', path: '/servicios-escolares/alumnos' },
+      { label: 'Grupos e inscripciones', descripcion: 'Organización por período', path: '/servicios-escolares/grupos' },
+      { label: 'Estudios socioeconómicos', descripcion: 'Seguimiento de solicitudes', path: '/servicios-escolares/estudios-socioeconomicos' },
+    ];
+  }
+  if (esDepartamentoDivisionCarrera(departamento)) {
+    return [
+      { label: 'Materias', descripcion: 'Catálogo por carrera y cuatrimestre', path: '/division-carrera/materias' },
+    ];
+  }
+  return [];
 };
 
 /* Devuelve siglas de máx 5 chars; si la clave ya es corta la usa tal cual */
@@ -207,6 +234,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
   const [savingId, setSavingId] = useState(null);
   const isSuperAdmin = usuarioActual?.rol === 'SUPER_ADMIN';
   const mostrarServiciosEscolares = esDepartamentoServiciosEscolares(departamento);
+  const mostrarDivisionCarrera = esDepartamentoDivisionCarrera(departamento);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -293,6 +321,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                     <th className="px-3 py-3 text-center font-semibold">Validacion</th>
                     {isSuperAdmin && <th className="px-3 py-3 text-center font-semibold">Institucional</th>}
                     {mostrarServiciosEscolares && <th className="px-3 py-3 text-center font-semibold">Escolares</th>}
+                    {mostrarDivisionCarrera && <th className="px-3 py-3 text-center font-semibold">Materias</th>}
                     <th className="px-3 py-3 text-center font-semibold">Comunicados</th>
                   </tr>
                 </thead>
@@ -360,6 +389,19 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                             checked={!!u.puede_gestionar_servicios_escolares}
                             disabled={u.es_responsable || savingId === u.id}
                             onChange={() => toggle(u, PERM_SERVICIOS_ESCOLARES_MANAGE, 'puede_gestionar_servicios_escolares')}
+                          />
+                        </td>
+                      )}
+                      {mostrarDivisionCarrera && (
+                        <td className="px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Materias para ${u.nombre}`}
+                            title="Permite administrar el catálogo de materias de Dirección de División de Carrera."
+                            className="w-4 h-4 rounded accent-violet-500"
+                            checked={!!u.puede_gestionar_materias}
+                            disabled={u.es_responsable || savingId === u.id}
+                            onChange={() => toggle(u, PERM_DIVISION_CARRERA_MANAGE, 'puede_gestionar_materias')}
                           />
                         </td>
                       )}
@@ -519,6 +561,7 @@ function ModalImportar({ onClose, onImported }) {
 }
 
 export default function Departamentos() {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { usuario } = useAuth();
   const [departamentos, setDepartamentos] = useState([]);
@@ -556,7 +599,9 @@ export default function Departamentos() {
 
   const departamentosPermitidos = isSuperAdmin
     ? departamentos
-    : departamentos.filter(dep => dep.responsable_id === usuario?.id);
+    : departamentos.filter(dep => (
+      dep.responsable_id === usuario?.id || dep.id === usuario?.departamento_id
+    ));
   const visibles = departamentosPermitidos.filter(dep => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return true;
@@ -654,6 +699,32 @@ export default function Departamentos() {
                     <svg className="w-3 h-3 text-slate-600 group-hover:text-slate-400 shrink-0 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6-6 3 3-6 6H9v-3z"/>
                     </svg>
+                  )}
+                </div>
+
+                <div className="border-t border-white/5 pt-3">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Funciones del departamento</p>
+                  {funcionesDepartamento(dep).length > 0 ? (
+                    <div className="grid gap-2">
+                      {funcionesDepartamento(dep).map(funcion => (
+                        <button
+                          key={funcion.path}
+                          type="button"
+                          onClick={() => navigate(funcion.path)}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-3 py-2.5 text-left transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-white">{funcion.label}</span>
+                            <span className="block truncate text-[11px] text-slate-500">{funcion.descripcion}</span>
+                          </span>
+                          <span className="text-emerald-400">→</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">
+                      Sin funciones operativas configuradas todavía.
+                    </div>
                   )}
                 </div>
 

@@ -126,7 +126,7 @@ export const ROUTE_PERMISSIONS = {
   '/admin/laboratorios':          [SA, LA, RL],
   '/admin/laboratorios/:labId':   [SA, LA, RL],
   '/admin/usuarios':              [SA],
-  '/admin/departamentos':         [SA, AD],
+  '/admin/departamentos':         [SA, AD, SE],
   '/admin/horarios':              [SA, LA],
   '/admin/reservaciones':         [SA, LA, DO],
   '/admin/inventario':            [SA, LA, RL, AD],

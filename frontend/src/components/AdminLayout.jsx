@@ -359,6 +359,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
+    label: 'Departamentos', path: '/admin/departamentos', roles: ['SUPER_ADMIN','ADMINISTRATIVO','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V7a2 2 0 00-2-2h-3V3H10v2H7a2 2 0 00-2 2v14m14 0h2M5 21H3m4-8h2m-2 4h2m6-4h2m-2 4h2M9 9h6"/></svg>,
+  },
+  {
     label: 'Solicitar laboratorio', path: '/docente/laboratorio', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
@@ -375,9 +379,9 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Dirección de División de Carrera
-  { divider: true, label: 'Dirección de División de Carrera', roles: ['SUPER_ADMIN','ADMINISTRATIVO'], permiso: 'division_carrera:manage' },
+  { divider: true, label: 'Dirección de División de Carrera', roles: [], permiso: 'division_carrera:manage' },
   {
-    label: 'Materias', path: '/division-carrera/materias', roles: ['SUPER_ADMIN'], permiso: 'division_carrera:manage', inGroup: true,
+    label: 'Materias', path: '/division-carrera/materias', roles: [], permiso: 'division_carrera:manage', inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253"/></svg>,
   },
 
@@ -386,10 +390,6 @@ const NAV_ITEMS = [
   {
     label: 'Usuarios', path: '/admin/usuarios', roles: ['SUPER_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>,
-  },
-  {
-    label: 'Departamentos', path: '/admin/departamentos', roles: ['SUPER_ADMIN','ADMINISTRATIVO'], inGroup: true,
-    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V7a2 2 0 00-2-2h-3V3H10v2H7a2 2 0 00-2 2v14m14 0h2M5 21H3m4-8h2m-2 4h2m6-4h2m-2 4h2M9 9h6"/></svg>,
   },
   {
     label: 'Adeudos y préstamos', path: '/admin/consulta-persona', roles: ['SUPER_ADMIN'], inGroup: true,
@@ -405,21 +405,21 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Espacios
-  { divider: true, label: 'Servicios Escolares', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE },
+  { divider: true, label: 'Servicios Escolares', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE },
   {
-    label: 'Panel escolares', path: '/servicios-escolares', exact: true, roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
+    label: 'Panel escolares', path: '/servicios-escolares', exact: true, roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h8M8 15h5"/></svg>,
   },
   {
-    label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
+    label: 'Alumnos', path: '/servicios-escolares/alumnos', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   },
   {
-    label: 'Grupos e inscripciones', path: '/servicios-escolares/grupos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
+    label: 'Grupos e inscripciones', path: '/servicios-escolares/grupos', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4M9 20H3v-2a4 4 0 014-4h2m7-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   },
   {
-    label: 'Estudios socioeconómicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SUPER_ADMIN','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
+    label: 'Estudios socioeconómicos', path: '/servicios-escolares/estudios-socioeconomicos', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
   },
 
