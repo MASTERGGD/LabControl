@@ -1,7 +1,7 @@
 import datetime
 
 from sqlalchemy import (
-    Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text,
+    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -55,6 +55,12 @@ class ClaseDocente(Base):
     inicio = Column(DateTime, nullable=False, default=_utcnow)
     fin = Column(DateTime, nullable=True)
     observacion_general = Column(Text, nullable=True)
+    tema_impartido = Column(String(300), nullable=True)
+    avance_planeacion = Column(Integer, nullable=True)
+    actividades_realizadas = Column(Text, nullable=True)
+    tarea_asignada = Column(Text, nullable=True)
+    incidencias = Column(Text, nullable=True)
+    tema_pendiente = Column(Text, nullable=True)
 
     carga = relationship("CargaDocente", back_populates="clases")
     asistencias = relationship("AsistenciaDocente", back_populates="clase", cascade="all, delete-orphan")
@@ -74,4 +80,23 @@ class AsistenciaDocente(Base):
     actualizado_en = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
 
     clase = relationship("ClaseDocente", back_populates="asistencias")
+    alumno = relationship("CatalogoAlumno")
+
+
+class SeguimientoAlumnoDocente(Base):
+    __tablename__ = "seguimientos_alumnos_docente"
+
+    id = Column(Integer, primary_key=True)
+    docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    carga_docente_id = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=False, index=True)
+    alumno_id = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=False, index=True)
+    tipo = Column(String(25), nullable=False)
+    titulo = Column(String(180), nullable=False)
+    detalle = Column(Text, nullable=True)
+    calificacion = Column(Float, nullable=True)
+    estado = Column(String(20), nullable=False, default="REGISTRADO")
+    creado_en = Column(DateTime, nullable=False, default=_utcnow)
+
+    docente = relationship("Usuario")
+    carga = relationship("CargaDocente")
     alumno = relationship("CatalogoAlumno")

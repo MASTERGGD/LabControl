@@ -10,11 +10,13 @@ from database import get_db
 from dependencies import get_current_user
 from models.usuario import Usuario, RolUsuario
 from models.catalogo import (
-    CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar,
+    CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar,
 )
 from models.laboratorio import Laboratorio
 from models.espacio import EspacioInstitucional
-from models.docencia import CargaDocente, ClaseDocente, AsistenciaDocente
+from models.docencia import (
+    AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
+)
 
 
 router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
@@ -64,10 +66,45 @@ class AsistenciaInput(BaseModel):
 
 class CierreInput(BaseModel):
     observacion_general: Optional[str] = Field(None, max_length=1000)
+    tema_impartido: Optional[str] = Field(None, max_length=300)
+    avance_planeacion: Optional[int] = Field(None, ge=0, le=100)
+    actividades_realizadas: Optional[str] = Field(None, max_length=2000)
+    tarea_asignada: Optional[str] = Field(None, max_length=1500)
+    incidencias: Optional[str] = Field(None, max_length=1500)
+    tema_pendiente: Optional[str] = Field(None, max_length=1000)
 
 
 class CorreccionInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
+
+
+class SeguimientoInput(BaseModel):
+    tipo: str
+    titulo: str = Field(..., min_length=2, max_length=180)
+    detalle: Optional[str] = Field(None, max_length=2000)
+    calificacion: Optional[float] = Field(None, ge=0, le=10)
+    estado: str = Field("REGISTRADO", max_length=20)
+
+    @model_validator(mode="after")
+    def validar(self):
+        self.tipo = self.tipo.upper()
+        self.estado = self.estado.upper()
+        if self.tipo not in {"OBSERVACION", "ACUERDO", "CALIFICACION", "TUTORIA"}:
+            raise ValueError("Tipo de seguimiento no válido")
+        if self.tipo == "CALIFICACION" and self.calificacion is None:
+            raise ValueError("La calificación es obligatoria")
+        return self
+
+
+class EstadoSeguimientoInput(BaseModel):
+    estado: str
+
+    @model_validator(mode="after")
+    def validar(self):
+        self.estado = self.estado.upper()
+        if self.estado not in {"PENDIENTE", "ATENDIDO", "CERRADO"}:
+            raise ValueError("Estado de seguimiento no válido")
+        return self
 
 
 def _docente_objetivo(user: Usuario) -> int:
@@ -148,6 +185,14 @@ def _serializar_clase(clase: ClaseDocente):
         "inicio": clase.inicio.isoformat() if clase.inicio else None,
         "fin": clase.fin.isoformat() if clase.fin else None,
         "observacion_general": clase.observacion_general,
+        "bitacora": {
+            "tema_impartido": clase.tema_impartido,
+            "avance_planeacion": clase.avance_planeacion,
+            "actividades_realizadas": clase.actividades_realizadas,
+            "tarea_asignada": clase.tarea_asignada,
+            "incidencias": clase.incidencias,
+            "tema_pendiente": clase.tema_pendiente,
+        },
         "carga": {
             "id": carga.id,
             "actividad_nombre": carga.actividad_nombre,
@@ -440,6 +485,13 @@ def cerrar_clase(
     clase.fin = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     if data.observacion_general:
         clase.observacion_general = data.observacion_general
+    for campo in (
+        "tema_impartido", "avance_planeacion", "actividades_realizadas",
+        "tarea_asignada", "incidencias", "tema_pendiente",
+    ):
+        valor = getattr(data, campo)
+        if valor is not None:
+            setattr(clase, campo, valor)
     db.commit()
     return _serializar_clase(clase)
 
@@ -490,6 +542,13 @@ def seguimiento_grupo(
         InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
         InscripcionAlumno.estado == "ACTIVO",
     ).all()
+    registros = db.query(SeguimientoAlumnoDocente).filter(
+        SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+        SeguimientoAlumnoDocente.docente_id == current_user.id,
+    ).order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
+    registros_por_alumno = {}
+    for registro in registros:
+        registros_por_alumno.setdefault(registro.alumno_id, []).append(registro)
     alumnos = {
         i.alumno_id: {
             "alumno_id": i.alumno_id,
@@ -514,9 +573,37 @@ def seguimiento_grupo(
         fila["porcentaje_asistencia"] = round(
             (asistio / total_clases * 100) if total_clases else 0, 1
         )
-        fila["alerta"] = total_clases > 0 and (
-            fila["falta"] >= 3 or fila["porcentaje_asistencia"] < 80
+        estados_recientes = []
+        for clase in clases:
+            asistencia = next((a for a in clase.asistencias if a.alumno_id == fila["alumno_id"]), None)
+            if asistencia:
+                estados_recientes.append(asistencia.estado)
+        faltas_consecutivas = 0
+        for estado in estados_recientes:
+            if estado != "FALTA":
+                break
+            faltas_consecutivas += 1
+        regs_alumno = registros_por_alumno.get(fila["alumno_id"], [])
+        calificaciones = [r.calificacion for r in reversed(regs_alumno) if r.tipo == "CALIFICACION" and r.calificacion is not None]
+        descenso = (
+            len(calificaciones) >= 4
+            and (sum(calificaciones[-2:]) / 2) <= (sum(calificaciones[-4:-2]) / 2) - 1
         )
+        alertas = []
+        if faltas_consecutivas >= 2:
+            alertas.append({"tipo": "FALTAS_CONSECUTIVAS", "nivel": "ALTO" if faltas_consecutivas >= 3 else "MEDIO", "mensaje": f"{faltas_consecutivas} faltas consecutivas", "accion": "Contactar al alumno y documentar el motivo."})
+        riesgo_proyectado = total_clases >= 4 and ((asistio / (total_clases + 1)) * 100) < 80
+        if total_clases and (fila["porcentaje_asistencia"] < 80 or riesgo_proyectado):
+            alertas.append({"tipo": "RIESGO_INASISTENCIA", "nivel": "ALTO", "mensaje": "En riesgo por límite de inasistencias", "accion": "Revisar justificantes y canalizar a tutoría si corresponde."})
+        if calificaciones and (calificaciones[-1] < 7 or descenso):
+            alertas.append({"tipo": "DESEMPENO", "nivel": "MEDIO", "mensaje": "Descenso o desempeño académico bajo", "accion": "Acordar una actividad de recuperación y fecha de revisión."})
+        requiere_tutoria = any(r.tipo == "TUTORIA" and r.estado not in {"ATENDIDO", "CERRADO"} for r in regs_alumno)
+        if requiere_tutoria:
+            alertas.append({"tipo": "TUTORIA", "nivel": "MEDIO", "mensaje": "Seguimiento de tutoría pendiente", "accion": "Confirmar atención y registrar el acuerdo alcanzado."})
+        fila["faltas_consecutivas"] = faltas_consecutivas
+        fila["alertas"] = alertas
+        fila["alerta"] = bool(alertas)
+        fila["ultima_calificacion"] = calificaciones[-1] if calificaciones else None
         filas.append(fila)
     filas.sort(key=lambda x: x["nombre"])
     promedio = round(
@@ -528,9 +615,122 @@ def seguimiento_grupo(
         "total_alumnos": len(filas),
         "promedio_asistencia": promedio,
         "alumnos_en_alerta": sum(1 for f in filas if f["alerta"]),
+        "clases_sin_cerrar": [
+            {"id": c.id, "fecha": c.fecha.isoformat(), "estado": c.estado}
+            for c in clases if c.estado != "CERRADA"
+        ],
         "alumnos": filas,
         "clases": [_serializar_clase(c) for c in clases[:12]],
     }
+
+
+def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_id: int):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == docente_id,
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    inscripcion = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id if carga else -1,
+        InscripcionAlumno.alumno_id == alumno_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).first()
+    if not carga or not inscripcion:
+        raise HTTPException(404, "Alumno no encontrado en este grupo")
+    return carga, inscripcion.alumno
+
+
+@router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}")
+def ficha_alumno_docente(
+    carga_id: int,
+    alumno_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+    ).order_by(ClaseDocente.fecha.desc()).all()
+    asistencias = []
+    conteos = {estado.lower(): 0 for estado in ESTADOS_ASISTENCIA}
+    for clase in clases:
+        asistencia = next((a for a in clase.asistencias if a.alumno_id == alumno.id), None)
+        if asistencia:
+            conteos[asistencia.estado.lower()] += 1
+            asistencias.append({
+                "fecha": clase.fecha.isoformat(),
+                "estado": asistencia.estado,
+                "observacion": asistencia.observacion,
+            })
+    registros = db.query(SeguimientoAlumnoDocente).filter(
+        SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+        SeguimientoAlumnoDocente.alumno_id == alumno.id,
+        SeguimientoAlumnoDocente.docente_id == current_user.id,
+    ).order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
+    total = len(asistencias)
+    asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
+    seguimiento = seguimiento_grupo(carga_id, db, current_user)
+    alertas = next(
+        (fila["alertas"] for fila in seguimiento["alumnos"] if fila["alumno_id"] == alumno.id),
+        [],
+    )
+    return {
+        "alumno": {
+            "id": alumno.id, "matricula": alumno.matricula,
+            "nombre": f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip(),
+            "carrera": alumno.carrera, "cuatrimestre": alumno.cuatrimestre, "grupo": alumno.grupo,
+        },
+        "carga": _serializar_carga(carga, db),
+        "resumen": {**conteos, "total": total, "porcentaje_asistencia": round((asistio / total * 100) if total else 0, 1)},
+        "alertas": alertas,
+        "asistencias": asistencias,
+        "registros": [{
+            "id": r.id, "tipo": r.tipo, "titulo": r.titulo, "detalle": r.detalle,
+            "calificacion": r.calificacion, "estado": r.estado,
+            "creado_en": r.creado_en.isoformat(),
+        } for r in registros],
+    }
+
+
+@router.post("/seguimiento/{carga_id}/alumnos/{alumno_id}/registros")
+def registrar_seguimiento_alumno(
+    carga_id: int,
+    alumno_id: int,
+    data: SeguimientoInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    registro = SeguimientoAlumnoDocente(
+        docente_id=current_user.id, carga_docente_id=carga.id, alumno_id=alumno.id,
+        tipo=data.tipo, titulo=data.titulo.strip(), detalle=data.detalle,
+        calificacion=data.calificacion, estado=data.estado,
+    )
+    db.add(registro)
+    db.commit()
+    db.refresh(registro)
+    return {"id": registro.id, "mensaje": "Seguimiento registrado"}
+
+
+@router.patch("/seguimiento/registros/{registro_id}")
+def actualizar_estado_seguimiento(
+    registro_id: int,
+    data: EstadoSeguimientoInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    registro = db.query(SeguimientoAlumnoDocente).filter(
+        SeguimientoAlumnoDocente.id == registro_id,
+        SeguimientoAlumnoDocente.docente_id == current_user.id,
+    ).first()
+    if not registro:
+        raise HTTPException(404, "Registro de seguimiento no encontrado")
+    if registro.tipo not in {"ACUERDO", "TUTORIA"}:
+        raise HTTPException(409, "Este registro no maneja estado")
+    registro.estado = data.estado
+    db.commit()
+    return {"id": registro.id, "estado": registro.estado}
 
 
 @router.get("/historial")

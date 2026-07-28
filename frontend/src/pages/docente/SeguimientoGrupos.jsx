@@ -51,16 +51,35 @@ export default function SeguimientoGrupos() {
                 <div key={label} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{value}</p><p className="text-xs text-slate-400">{label}</p></div>
               ))}
             </div>
+            {datos.clases_sin_cerrar?.length > 0 && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                <p className="font-semibold text-amber-300">Tienes {datos.clases_sin_cerrar.length} asistencia(s) sin cerrar</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {datos.clases_sin_cerrar.map((clase) => (
+                    <button key={clase.id} onClick={() => navigate(`/docente/clase/${clase.id}`)} className="rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-200">
+                      {clase.fecha} · Continuar cierre
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="glass overflow-x-auto rounded-2xl">
               <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold text-white">{cargaActual?.actividad_nombre}</h2><p className="text-xs text-slate-400">{cargaActual?.grupo} · {cargaActual?.carrera}</p></div>
-              <table className="w-full min-w-[760px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Estado</th></tr></thead>
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Alertas y acción sugerida</th><th></th></tr></thead>
                 <tbody className="divide-y divide-white/5">
                   {datos.alumnos.map((a) => <tr key={a.alumno_id}>
                     <td className="px-5 py-3"><p className="font-medium text-white">{a.nombre}</p><p className="text-xs text-slate-500">{a.matricula}</p></td>
                     <td className="text-emerald-400">{a.presente}</td><td className="text-red-400">{a.falta}</td><td className="text-amber-400">{a.retardo}</td><td className="text-blue-400">{a.justificada}</td>
                     <td className="font-semibold text-white">{a.porcentaje_asistencia}%</td>
-                    <td>{a.alerta ? <span className="rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-300">Requiere atención</span> : <span className="text-xs text-emerald-400">Regular</span>}</td>
+                    <td className="max-w-sm py-3 pr-4">
+                      {a.alertas?.length ? (
+                        <div className="space-y-2">
+                          {a.alertas.map((alerta) => <div key={alerta.tipo}><p className="text-xs font-semibold text-red-300">{alerta.mensaje}</p><p className="text-xs text-slate-400">{alerta.accion}</p></div>)}
+                        </div>
+                      ) : <span className="text-xs text-emerald-400">Sin alertas activas</span>}
+                    </td>
+                    <td className="pr-5"><button onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)} className="whitespace-nowrap rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">Ver ficha →</button></td>
                   </tr>)}
                 </tbody>
               </table>

@@ -89,12 +89,22 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert falta.status_code == 200, falta.text
     cerrada = client.post(
         f"/docencia/clases/{clase['id']}/cerrar",
-        json={"observacion_general": "Clase finalizada"},
+        json={
+            "observacion_general": "Clase finalizada",
+            "tema_impartido": "Consultas y relaciones",
+            "avance_planeacion": 85,
+            "actividades_realizadas": "Ejercicio guiado",
+            "tarea_asignada": "Modelo relacional",
+            "incidencias": "",
+            "tema_pendiente": "Índices",
+        },
         headers=headers,
     )
     assert cerrada.status_code == 200, cerrada.text
     assert cerrada.json()["resumen"]["falta"] == 1
     assert cerrada.json()["resumen"]["presente"] == 1
+    assert cerrada.json()["bitacora"]["tema_impartido"] == "Consultas y relaciones"
+    assert cerrada.json()["bitacora"]["avance_planeacion"] == 85
 
     bloqueada = client.patch(
         f"/docencia/clases/{clase['id']}/asistencia/{asistencia_id}",
@@ -125,6 +135,35 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert seguimiento.status_code == 200, seguimiento.text
     assert seguimiento.json()["total_clases"] == 1
     assert seguimiento.json()["alumnos"][0]["justificada"] == 1
+
+    alumno_id = clase["alumnos"][0]["alumno_id"]
+    registro = client.post(
+        f"/docencia/seguimiento/{carga_id}/alumnos/{alumno_id}/registros",
+        json={
+            "tipo": "CALIFICACION", "titulo": "Primer parcial",
+            "detalle": "Evaluación escrita", "calificacion": 8.5,
+        },
+        headers=headers,
+    )
+    assert registro.status_code == 200, registro.text
+    ficha = client.get(
+        f"/docencia/seguimiento/{carga_id}/alumnos/{alumno_id}",
+        headers=headers,
+    )
+    assert ficha.status_code == 200, ficha.text
+    assert ficha.json()["registros"][0]["calificacion"] == 8.5
+    acuerdo = client.post(
+        f"/docencia/seguimiento/{carga_id}/alumnos/{alumno_id}/registros",
+        json={"tipo": "ACUERDO", "titulo": "Actividad de recuperación", "estado": "PENDIENTE"},
+        headers=headers,
+    )
+    atendido = client.patch(
+        f"/docencia/seguimiento/registros/{acuerdo.json()['id']}",
+        json={"estado": "ATENDIDO"},
+        headers=headers,
+    )
+    assert atendido.status_code == 200
+    assert atendido.json()["estado"] == "ATENDIDO"
 
 
 def test_materias_corresponden_a_division_de_carrera(client, db):
