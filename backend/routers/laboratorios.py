@@ -114,7 +114,9 @@ def _enriquecer_lab(lab: Laboratorio) -> dict:
 
 
 def _departamentos_visibles_laboratorios(db: Session, usuario: Usuario) -> list[int] | None:
-    if usuario.rol == RolUsuario.SUPER_ADMIN or puede_validar_inventario_global(db, usuario):
+    # Los docentes necesitan consultar el catálogo institucional completo para
+    # solicitar un laboratorio; no deben quedar sujetos al alcance de inventario.
+    if usuario.rol in (RolUsuario.SUPER_ADMIN, RolUsuario.DOCENTE) or puede_validar_inventario_global(db, usuario):
         return None
     ids = set(departamentos_inventario(db, usuario))
     ids.update(departamentos_validacion_inventario(db, usuario))

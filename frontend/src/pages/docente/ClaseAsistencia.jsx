@@ -140,7 +140,10 @@ export default function ClaseAsistencia() {
           </div>
         </div>
         {modal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{ backgroundColor: 'rgba(2, 6, 23, 0.72)' }}
+          >
             <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>

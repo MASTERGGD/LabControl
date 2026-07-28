@@ -113,6 +113,17 @@ class TestCrudLaboratorio:
         assert "Activo" in nombres
         assert "Inactivo" not in nombres
 
+    def test_docente_sin_departamento_ve_laboratorios_activos(self, client, db):
+        _usuario(db, "Docente", "docente@lab.mx", RolUsuario.DOCENTE)
+        token = get_token(client, "docente@lab.mx", "Test1234!")
+        activo = _lab(db, "Laboratorio disponible", activo=True)
+        _lab(db, "Laboratorio inactivo", activo=False)
+
+        r = client.get("/laboratorios?solo_activos=true", headers=auth_headers(token))
+
+        assert r.status_code == 200
+        assert [lab["id"] for lab in r.json()] == [activo.id]
+
     def test_editar_lab(self, client, db):
         token = _admin_token(client, db)
         lab = _lab(db, "Original")

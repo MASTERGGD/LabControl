@@ -1870,13 +1870,19 @@ export default function SesionClase() {
   const [modalLibre, setModalLibre]           = useState(false);
   const [solicRecibidas, setSolicRecibidas]   = useState([]);
   const [accionando, setAccionando]           = useState(null); // reservacion_id en proceso
+  const [errorLaboratorios, setErrorLaboratorios] = useState('');
 
   // Cargar laboratorios
   useEffect(() => {
     api.get('/laboratorios?solo_activos=true').then(res => {
-      setLaboratorios(res.data);
-      if (res.data.length > 0) setLabId(res.data[0].id);
-    }).catch(() => {});
+      const disponibles = Array.isArray(res.data) ? res.data : [];
+      setLaboratorios(disponibles);
+      setErrorLaboratorios('');
+      if (disponibles.length > 0) setLabId(disponibles[0].id);
+    }).catch((err) => {
+      setLaboratorios([]);
+      setErrorLaboratorios(err.response?.data?.detail || 'No se pudieron cargar los laboratorios.');
+    });
   }, []);
 
   // Verificar si hay sesión activa
@@ -2087,7 +2093,15 @@ export default function SesionClase() {
       </div>
 
       {/* Leyenda + Grid */}
-      {loading ? (
+      {errorLaboratorios ? (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm text-red-600">
+          {errorLaboratorios}
+        </div>
+      ) : laboratorios.length === 0 ? (
+        <div className="py-20 text-center text-slate-500">
+          <p>No hay laboratorios activos disponibles.</p>
+        </div>
+      ) : loading ? (
         <div className="flex items-center justify-center py-20">
           <svg className="animate-spin w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
