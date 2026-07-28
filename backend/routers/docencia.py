@@ -66,6 +66,10 @@ class CierreInput(BaseModel):
     observacion_general: Optional[str] = Field(None, max_length=1000)
 
 
+class CorreccionInput(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=500)
+
+
 def _docente_objetivo(user: Usuario) -> int:
     return user.id
 
@@ -409,7 +413,7 @@ def cambiar_asistencia(
     ).first()
     if not asistencia:
         raise HTTPException(404, "Registro de asistencia no encontrado")
-    if asistencia.clase.estado != "ABIERTA":
+    if asistencia.clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia de esta clase ya está cerrada")
     asistencia.estado = estado
     asistencia.observacion = data.observacion
@@ -430,11 +434,103 @@ def cerrar_clase(
     ).first()
     if not clase:
         raise HTTPException(404, "Clase no encontrada")
+    if clase.estado not in {"ABIERTA", "CORRECCION"}:
+        raise HTTPException(409, "La asistencia ya está cerrada")
     clase.estado = "CERRADA"
     clase.fin = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-    clase.observacion_general = data.observacion_general
+    if data.observacion_general:
+        clase.observacion_general = data.observacion_general
     db.commit()
     return _serializar_clase(clase)
+
+
+@router.post("/clases/{clase_id}/habilitar-correccion")
+def habilitar_correccion(
+    clase_id: int,
+    data: CorreccionInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    if clase.estado != "CERRADA":
+        raise HTTPException(409, "Solo se puede corregir una asistencia cerrada")
+    marca = _ahora_mx().strftime("%d/%m/%Y %H:%M")
+    registro = f"[Corrección {marca}] {data.motivo.strip()}"
+    clase.observacion_general = "\n".join(
+        parte for parte in [clase.observacion_general, registro] if parte
+    )
+    clase.estado = "CORRECCION"
+    db.commit()
+    return _serializar_clase(clase)
+
+
+@router.get("/seguimiento/{carga_id}")
+def seguimiento_grupo(
+    carga_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Carga docente con grupo no encontrada")
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+    ).order_by(ClaseDocente.fecha.desc()).all()
+    inscripciones = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).all()
+    alumnos = {
+        i.alumno_id: {
+            "alumno_id": i.alumno_id,
+            "matricula": i.alumno.matricula,
+            "nombre": (
+                f"{i.alumno.apellido_paterno} {i.alumno.apellido_materno} {i.alumno.nombres}"
+            ).strip(),
+            "presente": 0, "falta": 0, "retardo": 0, "justificada": 0,
+        }
+        for i in inscripciones
+    }
+    for clase in clases:
+        for asistencia in clase.asistencias:
+            fila = alumnos.get(asistencia.alumno_id)
+            if fila:
+                clave = asistencia.estado.lower()
+                fila[clave] = fila.get(clave, 0) + 1
+    total_clases = len(clases)
+    filas = []
+    for fila in alumnos.values():
+        asistio = fila["presente"] + fila["retardo"] + fila["justificada"]
+        fila["porcentaje_asistencia"] = round(
+            (asistio / total_clases * 100) if total_clases else 0, 1
+        )
+        fila["alerta"] = total_clases > 0 and (
+            fila["falta"] >= 3 or fila["porcentaje_asistencia"] < 80
+        )
+        filas.append(fila)
+    filas.sort(key=lambda x: x["nombre"])
+    promedio = round(
+        sum(f["porcentaje_asistencia"] for f in filas) / len(filas), 1
+    ) if filas else 0
+    return {
+        "carga": _serializar_carga(carga, db),
+        "total_clases": total_clases,
+        "total_alumnos": len(filas),
+        "promedio_asistencia": promedio,
+        "alumnos_en_alerta": sum(1 for f in filas if f["alerta"]),
+        "alumnos": filas,
+        "clases": [_serializar_clase(c) for c in clases[:12]],
+    }
 
 
 @router.get("/historial")

@@ -96,6 +96,36 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert cerrada.json()["resumen"]["falta"] == 1
     assert cerrada.json()["resumen"]["presente"] == 1
 
+    bloqueada = client.patch(
+        f"/docencia/clases/{clase['id']}/asistencia/{asistencia_id}",
+        json={"estado": "PRESENTE"},
+        headers=headers,
+    )
+    assert bloqueada.status_code == 409
+    correccion = client.post(
+        f"/docencia/clases/{clase['id']}/habilitar-correccion",
+        json={"motivo": "El alumno presentó justificante"},
+        headers=headers,
+    )
+    assert correccion.status_code == 200, correccion.text
+    assert correccion.json()["estado"] == "CORRECCION"
+    corregida = client.patch(
+        f"/docencia/clases/{clase['id']}/asistencia/{asistencia_id}",
+        json={"estado": "JUSTIFICADA"},
+        headers=headers,
+    )
+    assert corregida.status_code == 200, corregida.text
+    recerrada = client.post(
+        f"/docencia/clases/{clase['id']}/cerrar",
+        json={},
+        headers=headers,
+    )
+    assert recerrada.status_code == 200
+    seguimiento = client.get(f"/docencia/seguimiento/{carga_id}", headers=headers)
+    assert seguimiento.status_code == 200, seguimiento.text
+    assert seguimiento.json()["total_clases"] == 1
+    assert seguimiento.json()["alumnos"][0]["justificada"] == 1
+
 
 def test_materias_corresponden_a_division_de_carrera(client, db):
     division = Departamento(
