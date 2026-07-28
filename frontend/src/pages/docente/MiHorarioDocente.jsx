@@ -34,6 +34,19 @@ const VACIO = {
   materia_id: '', espacio_nombre: '', laboratorio_id: '', observaciones: '',
 };
 
+const minutosDeHora = (hora = '00:00') => {
+  const [horas, minutos] = hora.split(':').map(Number);
+  return (horas * 60) + minutos;
+};
+
+const estadoActividad = (item, minutoActual) => {
+  if (item.clase_estado === 'CERRADA') return 'FINALIZADA';
+  if (['ABIERTA', 'CORRECCION'].includes(item.clase_estado)) return 'EN_CURSO';
+  if (minutoActual < minutosDeHora(item.hora_inicio)) return 'PROXIMA';
+  if (minutoActual <= minutosDeHora(item.hora_fin)) return 'ACTUAL';
+  return 'PENDIENTE';
+};
+
 function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose, onGuardada }) {
   const [form, setForm] = useState(actividad ? {
     ...VACIO, ...actividad,
@@ -43,10 +56,35 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   } : { ...VACIO, ...preseleccion });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [materiaBusqueda, setMateriaBusqueda] = useState(actividad?.actividad_nombre || '');
+  const [buscadorMateriaAbierto, setBuscadorMateriaAbierto] = useState(false);
   const esClase = form.tipo_actividad === 'CLASE';
+  const grupoSeleccionado = catalogos.grupos.find((g) => String(g.id) === String(form.grupo_academico_id));
+  const materiasFiltradas = catalogos.materias
+    .filter((materia) => {
+      const texto = `${materia.nombre} ${materia.carrera || ''}`.toLocaleLowerCase('es');
+      return texto.includes(materiaBusqueda.trim().toLocaleLowerCase('es'));
+    })
+    .sort((a, b) => {
+      const aCoincide = grupoSeleccionado?.carrera && a.carrera === grupoSeleccionado.carrera ? 0 : 1;
+      const bCoincide = grupoSeleccionado?.carrera && b.carrera === grupoSeleccionado.carrera ? 0 : 1;
+      return aCoincide - bCoincide || a.nombre.localeCompare(b.nombre, 'es');
+    })
+    .filter((materia, indice, lista) => (
+      lista.findIndex((otra) => otra.nombre === materia.nombre && otra.carrera === materia.carrera) === indice
+    ))
+    .slice(0, 10);
+  const finalesDisponibles = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))]
+    .filter((fin) => fin > form.hora_inicio);
 
   const cambiar = (campo, valor) => {
-    setForm((actual) => ({ ...actual, [campo]: valor }));
+    setForm((actual) => {
+      if (campo === 'hora_inicio' && actual.hora_fin <= valor) {
+        const siguienteFin = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))].find((fin) => fin > valor);
+        return { ...actual, hora_inicio: valor, hora_fin: siguienteFin || actual.hora_fin };
+      }
+      return { ...actual, [campo]: valor };
+    });
     if (campo === 'materia_id') {
       const materia = catalogos.materias.find((m) => String(m.id) === String(valor));
       if (materia) setForm((actual) => ({ ...actual, materia_id: valor, actividad_nombre: materia.nombre }));
@@ -56,9 +94,26 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
       if (lab) setForm((actual) => ({ ...actual, laboratorio_id: valor, espacio_nombre: lab.nombre }));
     }
   };
+  const seleccionarMateria = (materia) => {
+    setForm((actual) => ({ ...actual, materia_id: materia.id, actividad_nombre: materia.nombre }));
+    setMateriaBusqueda(materia.nombre);
+    setBuscadorMateriaAbierto(false);
+  };
+  const duracion = (fin) => {
+    const incluyeReceso = form.hora_inicio < '10:15' && fin > '09:45';
+    const total = minutosDeHora(fin) - minutosDeHora(form.hora_inicio) - (incluyeReceso ? 30 : 0);
+    const horas = Math.floor(total / 60);
+    const minutos = total % 60;
+    const tiempoClase = [horas ? `${horas} h` : '', minutos ? `${minutos} min` : ''].filter(Boolean).join(' ');
+    return `${tiempoClase}${incluyeReceso ? ' de clase + receso' : ''}`;
+  };
 
   const guardar = async (evento) => {
     evento.preventDefault();
+    if (esClase && !form.materia_id) {
+      setError('Selecciona una materia de los resultados de búsqueda.');
+      return;
+    }
     setGuardando(true);
     setError('');
     const payload = {
@@ -103,12 +158,44 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
           </label>
           {esClase && (
             <>
-              <label className="text-sm text-slate-300">Materia
-                <select className="input-dark mt-1 w-full" value={form.materia_id} onChange={(e) => cambiar('materia_id', e.target.value)}>
-                  <option value="">Selecciona una materia</option>
-                  {catalogos.materias.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-                </select>
-              </label>
+              <div className="relative text-sm text-slate-300">
+                <label htmlFor="materia-busqueda">Materia *</label>
+                <div className="relative mt-1">
+                  <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>
+                  </svg>
+                  <input
+                    id="materia-busqueda"
+                    required
+                    className="input-dark w-full pl-9"
+                    value={materiaBusqueda}
+                    onFocus={() => setBuscadorMateriaAbierto(true)}
+                    onBlur={() => window.setTimeout(() => setBuscadorMateriaAbierto(false), 150)}
+                    onChange={(e) => {
+                      setMateriaBusqueda(e.target.value);
+                      setForm((actual) => ({ ...actual, materia_id: '', actividad_nombre: e.target.value }));
+                      setBuscadorMateriaAbierto(true);
+                    }}
+                    placeholder="Escribe el nombre de la materia"
+                    autoComplete="off"
+                  />
+                </div>
+                {buscadorMateriaAbierto && (
+                  <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-white/10 bg-slate-900 p-1 shadow-2xl">
+                    {materiasFiltradas.length ? materiasFiltradas.map((materia) => (
+                      <button key={materia.id} type="button" onMouseDown={() => seleccionarMateria(materia)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10">
+                        <span className="block font-medium text-white">{materia.nombre}</span>
+                        <span className="block text-xs text-slate-400">{materia.carrera || 'Materia común'}</span>
+                      </button>
+                    )) : (
+                      <p className="px-3 py-4 text-center text-xs text-slate-400">No se encontraron materias.</p>
+                    )}
+                  </div>
+                )}
+                {form.materia_id && (
+                  <p className="mt-1.5 text-xs text-emerald-400">✓ Materia seleccionada{grupoSeleccionado?.carrera ? ` para ${grupoSeleccionado.carrera}` : ''}</p>
+                )}
+              </div>
               <label className="text-sm text-slate-300">Grupo *
                 <select required className="input-dark mt-1 w-full" value={form.grupo_academico_id} onChange={(e) => cambiar('grupo_academico_id', e.target.value)}>
                   <option value="">Selecciona un grupo</option>
@@ -123,8 +210,11 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
           <label className="text-sm text-slate-300">Hora de inicio
             <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_inicio} onChange={(e) => cambiar('hora_inicio', e.target.value)} />
           </label>
-          <label className="text-sm text-slate-300">Hora de fin
-            <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_fin} onChange={(e) => cambiar('hora_fin', e.target.value)} />
+          <label className="text-sm text-slate-300">Hora de fin y duración
+            <select required className="input-dark mt-1 w-full" value={form.hora_fin} onChange={(e) => cambiar('hora_fin', e.target.value)}>
+              {finalesDisponibles.map((fin) => <option key={fin} value={fin}>{fin} · {duracion(fin)}</option>)}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">Puedes extender la clase por varios periodos.</span>
           </label>
           <label className="text-sm text-slate-300">Laboratorio registrado
             <select className="input-dark mt-1 w-full" value={form.laboratorio_id} onChange={(e) => cambiar('laboratorio_id', e.target.value)}>
@@ -159,8 +249,10 @@ export default function MiHorarioDocente() {
   const [horario, setHorario] = useState([]);
   const [hoy, setHoy] = useState([]);
   const [modal, setModal] = useState(null);
+  const [agendaAbierta, setAgendaAbierta] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
+  const [ahora, setAhora] = useState(() => new Date());
 
   const cargar = useCallback(async (idPeriodo) => {
     setCargando(true);
@@ -183,6 +275,10 @@ export default function MiHorarioDocente() {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setAhora(new Date()), 60000);
+    return () => window.clearInterval(intervalo);
+  }, []);
   const actividadEnPeriodo = (dia, periodo) => horario.find((item) => (
     item.dia_semana === dia
     && item.hora_inicio < periodo.fin
@@ -216,6 +312,32 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
   };
+  const minutoActual = (ahora.getHours() * 60) + ahora.getMinutes();
+  const agendaHoy = hoy.map((item) => ({ ...item, estadoDia: estadoActividad(item, minutoActual) }));
+  const actividadPrincipal = (
+    agendaHoy.find((item) => item.estadoDia === 'EN_CURSO')
+    || agendaHoy.find((item) => item.estadoDia === 'ACTUAL')
+    || agendaHoy.find((item) => item.estadoDia === 'PROXIMA')
+    || agendaHoy.at(-1)
+  );
+  const estadoPrincipal = actividadPrincipal?.estadoDia;
+  const tituloPrincipal = estadoPrincipal === 'EN_CURSO'
+    ? 'Clase en curso'
+    : estadoPrincipal === 'ACTUAL'
+      ? 'Tu actividad actual'
+      : estadoPrincipal === 'PROXIMA'
+        ? 'Tu siguiente actividad'
+        : 'Última actividad de hoy';
+  const textoAccionClase = (item) => (
+    item.clase_estado === 'CERRADA'
+      ? 'Ver o corregir asistencia'
+      : item.clase_id
+        ? 'Continuar clase'
+        : 'Iniciar clase'
+  );
+  const abrirClase = (item) => (
+    item.clase_id ? navigate(`/docente/clase/${item.clase_id}`) : iniciar(item.id)
+  );
 
   return (
     <AdminLayout>
@@ -229,28 +351,40 @@ export default function MiHorarioDocente() {
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
-            <button onClick={() => setModal({ tipo: 'nuevo' })} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Agregar bloque</button>
           </div>
         </div>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
 
-        {hoy.length > 0 && (
-          <section className="glass rounded-2xl p-4">
-            <h2 className="mb-3 font-semibold text-white">Clases y actividades de hoy</h2>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {hoy.map((item) => (
-                <div key={item.id} className={`rounded-xl border p-4 ${TIPO_ESTILO[item.tipo_actividad]}`}>
-                  <div className="flex justify-between gap-3">
-                    <div><p className="font-semibold text-white">{item.actividad_nombre}</p><p className="text-xs text-slate-400">{item.hora_inicio}–{item.hora_fin} · {item.grupo || item.tipo_actividad}</p></div>
-                    {item.tipo_actividad === 'CLASE' && (
-                      <button onClick={() => item.clase_id ? navigate(`/docente/clase/${item.clase_id}`) : iniciar(item.id)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
-                        {item.clase_estado === 'CERRADA' ? 'Ver resumen' : item.clase_id ? 'Continuar' : 'Iniciar clase'}
-                      </button>
-                    )}
-                  </div>
+        {actividadPrincipal && (
+          <section className="glass overflow-hidden rounded-2xl">
+            <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300 sm:flex">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
                 </div>
-              ))}
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{tituloPrincipal}</p>
+                  <h2 className="mt-1 truncate text-xl font-bold text-white">{actividadPrincipal.actividad_nombre}</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {actividadPrincipal.hora_inicio}–{actividadPrincipal.hora_fin}
+                    {' · '}{actividadPrincipal.grupo || actividadPrincipal.tipo_actividad}
+                    {' · '}{actividadPrincipal.espacio_nombre || 'Espacio sin especificar'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {actividadPrincipal.tipo_actividad === 'CLASE' && (
+                  <button onClick={() => abrirClase(actividadPrincipal)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">
+                    {textoAccionClase(actividadPrincipal)}
+                  </button>
+                )}
+                <button onClick={() => setAgendaAbierta(true)} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5">
+                  Ver agenda de hoy ({hoy.length})
+                </button>
+              </div>
             </div>
           </section>
         )}
@@ -322,6 +456,62 @@ export default function MiHorarioDocente() {
           </table>
         </div>
       </div>
+      {agendaAbierta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setAgendaAbierta(false)}>
+          <section onMouseDown={(e) => e.stopPropagation()} className="glass max-h-[88vh] w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl">
+            <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-white">Agenda de hoy</h2>
+                <p className="text-sm text-slate-400">{hoy.length} {hoy.length === 1 ? 'actividad programada' : 'actividades programadas'}</p>
+              </div>
+              <button onClick={() => setAgendaAbierta(false)} className="text-2xl text-slate-400 hover:text-white" aria-label="Cerrar agenda">×</button>
+            </header>
+            <div className="max-h-[70vh] overflow-y-auto p-4">
+              <ol className="space-y-2">
+                {agendaHoy.map((item) => {
+                  const destacada = item.id === actividadPrincipal.id;
+                  const etiqueta = {
+                    FINALIZADA: 'Finalizada',
+                    EN_CURSO: 'En curso',
+                    ACTUAL: 'Ahora',
+                    PROXIMA: 'Próxima',
+                    PENDIENTE: 'Pendiente',
+                  }[item.estadoDia];
+                  return (
+                    <li key={item.id} className={`rounded-xl border p-4 ${destacada ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 gap-3">
+                          <div className="w-24 shrink-0">
+                            <p className="font-mono text-sm font-bold text-white">{item.hora_inicio}</p>
+                            <p className="font-mono text-xs text-slate-500">{item.hora_fin}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-white">{item.actividad_nombre}</p>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${destacada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>{etiqueta}</span>
+                            </div>
+                            <p className="mt-0.5 text-xs text-slate-400">{item.grupo || item.tipo_actividad} · {item.espacio_nombre || 'Sin espacio'}</p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+                          {item.tipo_actividad === 'CLASE' && (
+                            <button onClick={() => abrirClase(item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
+                              {textoAccionClase(item)}
+                            </button>
+                          )}
+                          <button onClick={() => { setAgendaAbierta(false); setModal({ tipo: 'editar', actividad: item }); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">
+                            Editar bloque
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </div>
+          </section>
+        </div>
+      )}
       {modal && (
         <ModalActividad
           catalogos={catalogos}
