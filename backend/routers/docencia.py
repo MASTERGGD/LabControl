@@ -84,6 +84,7 @@ class SeguimientoInput(BaseModel):
     detalle: Optional[str] = Field(None, max_length=2000)
     calificacion: Optional[float] = Field(None, ge=0, le=10)
     estado: str = Field("REGISTRADO", max_length=20)
+    fecha_revision: Optional[datetime.date] = None
 
     @model_validator(mode="after")
     def validar(self):
@@ -688,6 +689,7 @@ def ficha_alumno_docente(
         "registros": [{
             "id": r.id, "tipo": r.tipo, "titulo": r.titulo, "detalle": r.detalle,
             "calificacion": r.calificacion, "estado": r.estado,
+            "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
             "creado_en": r.creado_en.isoformat(),
         } for r in registros],
     }
@@ -705,7 +707,7 @@ def registrar_seguimiento_alumno(
     registro = SeguimientoAlumnoDocente(
         docente_id=current_user.id, carga_docente_id=carga.id, alumno_id=alumno.id,
         tipo=data.tipo, titulo=data.titulo.strip(), detalle=data.detalle,
-        calificacion=data.calificacion, estado=data.estado,
+        calificacion=data.calificacion, estado=data.estado, fecha_revision=data.fecha_revision,
     )
     db.add(registro)
     db.commit()

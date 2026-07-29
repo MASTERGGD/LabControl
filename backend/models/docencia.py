@@ -95,6 +95,7 @@ class SeguimientoAlumnoDocente(Base):
     detalle = Column(Text, nullable=True)
     calificacion = Column(Float, nullable=True)
     estado = Column(String(20), nullable=False, default="REGISTRADO")
+    fecha_revision = Column(Date, nullable=True)
     creado_en = Column(DateTime, nullable=False, default=_utcnow)
 
     docente = relationship("Usuario")
