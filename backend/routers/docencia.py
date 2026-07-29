@@ -100,12 +100,15 @@ class SeguimientoInput(BaseModel):
 
 class EstadoSeguimientoInput(BaseModel):
     estado: str
+    resultado_atencion: Optional[str] = Field(None, max_length=2000)
 
     @model_validator(mode="after")
     def validar(self):
         self.estado = self.estado.upper()
         if self.estado not in {"PENDIENTE", "ATENDIDO", "CERRADO"}:
             raise ValueError("Estado de seguimiento no válido")
+        if self.estado in {"ATENDIDO", "CERRADO"} and not (self.resultado_atencion or "").strip():
+            raise ValueError("El resultado de la atención es obligatorio")
         return self
 
 
@@ -881,6 +884,8 @@ def ficha_alumno_docente(
             "id": r.id, "tipo": r.tipo, "titulo": r.titulo, "detalle": r.detalle,
             "calificacion": r.calificacion, "estado": r.estado,
             "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
+            "resultado_atencion": r.resultado_atencion,
+            "atendido_en": r.atendido_en.isoformat() if r.atendido_en else None,
             "creado_en": r.creado_en.isoformat(),
         } for r in registros],
     }
@@ -922,6 +927,8 @@ def actualizar_estado_seguimiento(
     if registro.tipo not in {"ACUERDO", "TUTORIA"}:
         raise HTTPException(409, "Este registro no maneja estado")
     registro.estado = data.estado
+    registro.resultado_atencion = data.resultado_atencion.strip() if data.resultado_atencion else None
+    registro.atendido_en = datetime.datetime.utcnow() if data.estado in {"ATENDIDO", "CERRADO"} else None
     db.commit()
     return {"id": registro.id, "estado": registro.estado}
 

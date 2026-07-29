@@ -197,7 +197,7 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert ficha_acuerdo.json()["registros"][0]["fecha_revision"] == "2026-08-05"
     atendido = client.patch(
         f"/docencia/seguimiento/registros/{acuerdo.json()['id']}",
-        json={"estado": "ATENDIDO"},
+        json={"estado": "ATENDIDO", "resultado_atencion": "Se contactó al alumno y se acordó una revisión semanal."},
         headers=headers,
     )
     assert atendido.status_code == 200

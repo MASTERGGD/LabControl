@@ -329,6 +329,8 @@ export default function MiHorarioDocente() {
   const [horario, setHorario] = useState([]);
   const [hoy, setHoy] = useState([]);
   const [modal, setModal] = useState(null);
+  const [actividadARetirar, setActividadARetirar] = useState(null);
+  const [retirando, setRetirando] = useState(false);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -383,10 +385,19 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo activar el bloque.');
     }
   };
-  const eliminar = async (id) => {
-    if (!window.confirm('¿Retirar esta actividad de tu horario?')) return;
-    await api.delete(`/docencia/horario/${id}`);
-    cargar(periodoId);
+  const eliminar = async () => {
+    if (!actividadARetirar || retirando) return;
+    setRetirando(true);
+    try {
+      await api.delete(`/docencia/horario/${actividadARetirar.id}`);
+      setActividadARetirar(null);
+      setMensaje('La actividad se retiró correctamente del horario.');
+      cargar(periodoId);
+    } catch (err) {
+      setMensaje(err.response?.data?.detail || 'No se pudo retirar la actividad.');
+    } finally {
+      setRetirando(false);
+    }
   };
   const iniciar = async (id) => {
     try {
@@ -517,7 +528,7 @@ export default function MiHorarioDocente() {
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white">Activar</button>}
                         <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300">Editar</button>
-                        <button onClick={() => eliminar(item.id)} className="rounded-xl border border-red-500/20 px-3 py-2.5 text-xs font-semibold text-red-400">Retirar</button>
+                        <button onClick={() => setActividadARetirar(item)} className="rounded-xl border border-red-500/20 px-3 py-2.5 text-xs font-semibold text-red-400">Retirar</button>
                       </div>
                     </article>
                   ) : (
@@ -578,7 +589,7 @@ export default function MiHorarioDocente() {
                                 <div className="mt-2 flex gap-2 text-[11px]">
                                   {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
                                   <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>
-                                  <button onClick={() => eliminar(item.id)} className="text-red-300">Retirar</button>
+                                  <button onClick={() => setActividadARetirar(item)} className="text-red-300">Retirar</button>
                                 </div>
                               </article>
                             ) : (
@@ -657,6 +668,72 @@ export default function MiHorarioDocente() {
                   );
                 })}
               </ol>
+            </div>
+          </section>
+        </div>
+      )}
+      {actividadARetirar && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+          onMouseDown={() => !retirando && setActividadARetirar(null)}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="titulo-retirar-actividad"
+            onMouseDown={(e) => e.stopPropagation()}
+            className="glass w-full max-w-md overflow-hidden rounded-2xl border border-red-500/20 shadow-2xl"
+          >
+            <div className="p-5 sm:p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-500/15 text-red-300">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 9v3.5m0 3h.01M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <h2 id="titulo-retirar-actividad" className="text-lg font-bold text-white">Retirar actividad</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-400">
+                    Esta actividad dejará de aparecer en tu horario docente.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="font-semibold text-white">{actividadARetirar.actividad_nombre}</p>
+                <p className="mt-1 text-sm text-slate-400">
+                  {DIAS[actividadARetirar.dia_semana]} · {actividadARetirar.hora_inicio}–{actividadARetirar.hora_fin}
+                  {actividadARetirar.grupo ? ` · ${actividadARetirar.grupo}` : ''}
+                </p>
+                {actividadARetirar.espacio_nombre && (
+                  <p className="mt-1 text-xs text-slate-500">{actividadARetirar.espacio_nombre}</p>
+                )}
+              </div>
+
+              {actividadARetirar.estado_reserva_laboratorio === 'RESERVADO' && (
+                <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm leading-5 text-amber-200">
+                  También se liberará la reservación de laboratorio vinculada a esta actividad.
+                </p>
+              )}
+
+              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={retirando}
+                  onClick={() => setActividadARetirar(null)}
+                  className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 disabled:opacity-50"
+                >
+                  Conservar actividad
+                </button>
+                <button
+                  type="button"
+                  disabled={retirando}
+                  onClick={eliminar}
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-500 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {retirando ? 'Retirando…' : 'Sí, retirar actividad'}
+                </button>
+              </div>
             </div>
           </section>
         </div>
