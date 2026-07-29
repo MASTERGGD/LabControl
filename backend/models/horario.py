@@ -31,6 +31,7 @@ class Reservacion(Base):
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=False)
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     docente_suplente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    carga_docente_id = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=True, index=True)
     materia             = Column(String, nullable=False)
     carrera             = Column(String, nullable=True)   # carrera académica de la materia
     cuatrimestre        = Column(String, nullable=False)  # período escolar (ej. "ENE-ABR-2025")
@@ -43,6 +44,7 @@ class Reservacion(Base):
     horario     = relationship("HorarioDisponible", back_populates="reservaciones")
     laboratorio = relationship("Laboratorio", back_populates="reservaciones")
     docente     = relationship("Usuario", back_populates="reservaciones", foreign_keys=[docente_id])
+    carga_docente = relationship("CargaDocente")
     sesiones    = relationship("SesionClase", back_populates="reservacion")
     solicitudes = relationship("SolicitudConflicto", back_populates="reservacion", cascade="all, delete-orphan")
     requerimiento = relationship("RequerimientoClase", back_populates="reservacion", uselist=False, cascade="all, delete-orphan")

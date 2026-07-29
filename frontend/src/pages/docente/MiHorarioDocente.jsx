@@ -48,6 +48,7 @@ const estadoActividad = (item, minutoActual) => {
 };
 
 function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose, onGuardada }) {
+  const navigate = useNavigate();
   const [form, setForm] = useState(actividad ? {
     ...VACIO, ...actividad,
     grupo_academico_id: actividad.grupo_academico_id || '',
@@ -58,6 +59,8 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   const [guardando, setGuardando] = useState(false);
   const [materiaBusqueda, setMateriaBusqueda] = useState(actividad?.actividad_nombre || '');
   const [buscadorMateriaAbierto, setBuscadorMateriaAbierto] = useState(false);
+  const [disponibilidadLab, setDisponibilidadLab] = useState(null);
+  const [verificandoLab, setVerificandoLab] = useState(false);
   const esClase = form.tipo_actividad === 'CLASE';
   const grupoSeleccionado = catalogos.grupos.find((g) => String(g.id) === String(form.grupo_academico_id));
   const materiasFiltradas = catalogos.materias
@@ -76,6 +79,13 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     .slice(0, 10);
   const finalesDisponibles = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))]
     .filter((fin) => fin > form.hora_inicio);
+  const crearPayload = () => ({
+    ...form,
+    periodo_id: Number(periodoId),
+    grupo_academico_id: esClase && form.grupo_academico_id ? Number(form.grupo_academico_id) : null,
+    materia_id: esClase && form.materia_id ? Number(form.materia_id) : null,
+    laboratorio_id: form.laboratorio_id ? Number(form.laboratorio_id) : null,
+  });
 
   const cambiar = (campo, valor) => {
     setForm((actual) => {
@@ -108,7 +118,31 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     return `${tiempoClase}${incluyeReceso ? ' de clase + receso' : ''}`;
   };
 
-  const guardar = async (evento) => {
+  useEffect(() => {
+    if (!esClase || !form.laboratorio_id || !form.grupo_academico_id || !form.materia_id) {
+      setDisponibilidadLab(null);
+      return undefined;
+    }
+    const timer = window.setTimeout(async () => {
+      setVerificandoLab(true);
+      try {
+        const { data } = await api.post('/docencia/horario/verificar-laboratorio', crearPayload(), {
+          params: actividad?.id ? { carga_id: actividad.id } : {},
+        });
+        setDisponibilidadLab(data);
+      } catch {
+        setDisponibilidadLab({ estado: 'ERROR' });
+      } finally {
+        setVerificandoLab(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    esClase, form.laboratorio_id, form.grupo_academico_id, form.materia_id,
+    form.dia_semana, form.hora_inicio, form.hora_fin, periodoId, actividad?.id,
+  ]);
+
+  const guardar = async (evento, reservarLaboratorio = false) => {
     evento.preventDefault();
     if (esClase && !form.materia_id) {
       setError('Selecciona una materia de los resultados de búsqueda.');
@@ -116,20 +150,19 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     }
     setGuardando(true);
     setError('');
-    const payload = {
-      ...form,
-      periodo_id: Number(periodoId),
-      grupo_academico_id: esClase && form.grupo_academico_id ? Number(form.grupo_academico_id) : null,
-      materia_id: esClase && form.materia_id ? Number(form.materia_id) : null,
-      laboratorio_id: form.laboratorio_id ? Number(form.laboratorio_id) : null,
-    };
+    const payload = crearPayload();
     try {
       const { data } = actividad
         ? await api.put(`/docencia/horario/${actividad.id}`, payload)
         : await api.post('/docencia/horario', payload);
+      const cargaGuardada = data.carga;
+      if (reservarLaboratorio && cargaGuardada?.id) {
+        await api.post(`/docencia/horario/${cargaGuardada.id}/reservar-laboratorio`);
+      }
       onGuardada(data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo guardar la actividad.');
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : detail?.mensaje || 'No se pudo guardar o reservar la actividad.');
     } finally {
       setGuardando(false);
     }
@@ -226,6 +259,48 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
             <input className="input-dark mt-1 w-full" value={form.espacio_nombre} onChange={(e) => cambiar('espacio_nombre', e.target.value)} placeholder="Ej. S3, Aula 2" list="espacios-docencia" />
             <datalist id="espacios-docencia">{catalogos.espacios.map((e) => <option key={e.id} value={e.nombre} />)}</datalist>
           </label>
+          {form.laboratorio_id && esClase && (
+            <div className="sm:col-span-2">
+              <div className={`rounded-xl border p-4 ${
+                disponibilidadLab?.estado === 'DISPONIBLE' ? 'border-emerald-500/30 bg-emerald-500/10'
+                  : disponibilidadLab?.estado === 'RESERVADO' ? 'border-blue-500/30 bg-blue-500/10'
+                    : 'border-amber-500/30 bg-amber-500/10'
+              }`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {verificandoLab ? 'Verificando disponibilidad…' : ({
+                        DISPONIBLE: 'Laboratorio disponible en todo el horario',
+                        RESERVADO: 'Laboratorio reservado para esta clase',
+                        OCUPADO: 'El laboratorio está ocupado',
+                        SOLICITADO: 'Ya solicitaste uno de estos periodos',
+                        BLOQUEADO: 'El laboratorio tiene un bloqueo institucional',
+                        SIN_HORARIOS: 'El laboratorio no tiene horarios configurados',
+                        COBERTURA_INCOMPLETA: 'No hay cobertura para todo el horario',
+                        ERROR: 'No se pudo verificar la disponibilidad',
+                      }[disponibilidadLab?.estado] || 'Selecciona materia y grupo para verificar')}
+                    </p>
+                    {disponibilidadLab?.ocupaciones?.map((ocupacion, indice) => (
+                      <p key={`${ocupacion.hora}-${indice}`} className="mt-1 text-xs text-slate-400">
+                        {ocupacion.hora} · {ocupacion.materia || ocupacion.motivo}
+                        {ocupacion.docente ? ` · ${ocupacion.docente}` : ''}
+                        {ocupacion.grupo ? ` · ${ocupacion.grupo}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                  {['OCUPADO', 'SOLICITADO', 'BLOQUEADO'].includes(disponibilidadLab?.estado) && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/docente/laboratorio?lab=${form.laboratorio_id}&cuatrimestre=${encodeURIComponent(catalogos.periodos.find((p) => String(p.id) === String(periodoId))?.clave?.replace(' ', '-') || '')}&dia=${form.dia_semana}&inicio=${form.hora_inicio}`)}
+                      className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300"
+                    >
+                      Ver en panel de laboratorio
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <label className="text-sm text-slate-300 sm:col-span-2">Observaciones
             <textarea className="input-dark mt-1 min-h-20 w-full" value={form.observaciones || ''} onChange={(e) => cambiar('observaciones', e.target.value)} />
           </label>
@@ -233,9 +308,14 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
         </div>
         <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
           <button type="button" onClick={onClose} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm text-slate-300">Cancelar</button>
-          <button disabled={guardando} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+          <button disabled={guardando} className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50">
             {guardando ? 'Guardando...' : 'Guardar borrador'}
           </button>
+          {form.laboratorio_id && disponibilidadLab?.estado === 'DISPONIBLE' && (
+            <button type="button" disabled={guardando || verificandoLab} onClick={(e) => guardar(e, true)} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              Guardar y reservar laboratorio
+            </button>
+          )}
         </div>
       </form>
     </div>
@@ -430,6 +510,7 @@ export default function MiHorarioDocente() {
                           <p className="font-mono text-sm font-bold text-emerald-400">{item.hora_inicio}–{item.hora_fin}</p>
                           <h3 className="mt-1 font-semibold text-white">{item.actividad_nombre}</h3>
                           <p className="mt-0.5 text-xs text-slate-400">{item.grupo || item.tipo_actividad} · {item.espacio_nombre || 'Sin salón'}</p>
+                          {item.laboratorio_id && <p className={`mt-1 text-xs font-semibold ${item.estado_reserva_laboratorio === 'RESERVADO' ? 'text-blue-400' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'text-amber-400' : 'text-red-400'}`}>{item.estado_reserva_laboratorio === 'RESERVADO' ? 'Laboratorio reservado' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'Laboratorio en disputa' : 'Laboratorio sin reservar'}</p>}
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
                       </div>
@@ -493,6 +574,7 @@ export default function MiHorarioDocente() {
                                 <p className="mt-1 text-sm font-semibold text-white">{item.actividad_nombre}</p>
                                 <p className="text-xs text-slate-400">{item.grupo || item.tipo_actividad}</p>
                                 <p className="truncate text-xs text-slate-500">{item.espacio_nombre || 'Sin salón'}</p>
+                                {item.laboratorio_id && <p className={`mt-1 text-[10px] font-semibold ${item.estado_reserva_laboratorio === 'RESERVADO' ? 'text-blue-300' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'text-amber-300' : 'text-red-300'}`}>{item.estado_reserva_laboratorio === 'RESERVADO' ? 'Lab reservado' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'Lab en disputa' : 'Lab sin reservar'}</p>}
                                 <div className="mt-2 flex gap-2 text-[11px]">
                                   {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
                                   <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>

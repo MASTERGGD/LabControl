@@ -14,6 +14,7 @@ from models.catalogo import (
 )
 from models.laboratorio import Laboratorio
 from models.espacio import EspacioInstitucional
+from models.horario import BloqueoSlot, HorarioDisponible, Reservacion, SolicitudConflicto
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
 )
@@ -112,6 +113,101 @@ def _docente_objetivo(user: Usuario) -> int:
     return user.id
 
 
+def _normalizar_periodo(clave: str | None) -> str:
+    return "-".join((clave or "").strip().upper().replace("_", "-").split()).replace("--", "-")
+
+
+def _slots_para_carga(db: Session, data: CargaInput):
+    if not data.laboratorio_id:
+        return [], "SIN_LABORATORIO"
+    periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_id).first()
+    candidatos = db.query(HorarioDisponible).filter(
+        HorarioDisponible.laboratorio_id == data.laboratorio_id,
+        HorarioDisponible.dia_semana == data.dia_semana,
+        HorarioDisponible.activo == True,
+    ).order_by(HorarioDisponible.hora_inicio).all()
+    candidatos = [
+        h for h in candidatos
+        if _normalizar_periodo(h.cuatrimestre) == _normalizar_periodo(periodo.clave if periodo else "")
+        and h.hora_inicio < data.hora_fin and h.hora_fin > data.hora_inicio
+    ]
+    if not candidatos:
+        return [], "SIN_HORARIOS"
+    cursor = data.hora_inicio
+    seleccionados = []
+    for slot in candidatos:
+        if slot.hora_fin <= cursor:
+            continue
+        if slot.hora_inicio > cursor:
+            if not (cursor == "09:45" and slot.hora_inicio == "10:15"):
+                return candidatos, "COBERTURA_INCOMPLETA"
+        seleccionados.append(slot)
+        cursor = max(cursor, slot.hora_fin)
+        if cursor >= data.hora_fin:
+            break
+    if cursor < data.hora_fin:
+        return seleccionados, "COBERTURA_INCOMPLETA"
+    return seleccionados, None
+
+
+def _estado_laboratorio(db: Session, data: CargaInput, current_user: Usuario, carga_id: int | None = None):
+    slots, problema = _slots_para_carga(db, data)
+    lab = db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id).first() if data.laboratorio_id else None
+    respuesta = {
+        "estado": problema or "DISPONIBLE",
+        "laboratorio_id": data.laboratorio_id,
+        "laboratorio_nombre": lab.nombre if lab else None,
+        "slots": [],
+        "ocupaciones": [],
+    }
+    if problema:
+        return respuesta
+    todos_vinculados = True
+    for slot in slots:
+        bloqueo = db.query(BloqueoSlot).filter(
+            BloqueoSlot.horario_id == slot.id, BloqueoSlot.activo == True,
+        ).first()
+        reserva = db.query(Reservacion).filter(
+            Reservacion.horario_id == slot.id,
+            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
+        ).first()
+        respuesta["slots"].append({"id": slot.id, "hora_inicio": slot.hora_inicio, "hora_fin": slot.hora_fin})
+        if bloqueo:
+            respuesta["estado"] = "BLOQUEADO"
+            respuesta["ocupaciones"].append({"hora": f"{slot.hora_inicio}–{slot.hora_fin}", "motivo": bloqueo.motivo})
+            todos_vinculados = False
+        elif reserva and not (carga_id and reserva.carga_docente_id == carga_id):
+            docente = db.query(Usuario).filter(Usuario.id == reserva.docente_id).first()
+            mi_solicitud = db.query(SolicitudConflicto).filter(
+                SolicitudConflicto.reservacion_id == reserva.id,
+                SolicitudConflicto.solicitante_id == current_user.id,
+                SolicitudConflicto.estado == "PENDIENTE",
+            ).first()
+            respuesta["estado"] = "SOLICITADO" if mi_solicitud else "OCUPADO"
+            respuesta["ocupaciones"].append({
+                "hora": f"{slot.hora_inicio}–{slot.hora_fin}",
+                "reservacion_id": reserva.id,
+                "docente": docente.nombre if docente else "Docente",
+                "materia": reserva.materia,
+                "grupo": reserva.grupo,
+            })
+            todos_vinculados = False
+        elif not reserva or not (carga_id and reserva.carga_docente_id == carga_id):
+            todos_vinculados = False
+    if todos_vinculados and slots:
+        respuesta["estado"] = "RESERVADO"
+    return respuesta
+
+
+def _cancelar_reservas_carga(db: Session, carga_id: int):
+    reservas = db.query(Reservacion).filter(
+        Reservacion.carga_docente_id == carga_id,
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA"]),
+    ).all()
+    for reserva in reservas:
+        reserva.estado = "CANCELADA"
+
+
 def _traslapa(inicio_a, fin_a, inicio_b, fin_b):
     return inicio_a < fin_b and fin_a > inicio_b
 
@@ -146,6 +242,14 @@ def _advertencias(db: Session, carga: CargaDocente, excluir_id=None):
 def _serializar_carga(c: CargaDocente, db: Session):
     grupo = c.grupo_academico
     lab = c.laboratorio
+    reservas_lab = db.query(Reservacion).filter(
+        Reservacion.carga_docente_id == c.id,
+        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
+    ).all()
+    estado_reserva_lab = (
+        "EN_DISPUTA" if any(r.estado == "EN_DISPUTA" for r in reservas_lab)
+        else "RESERVADO" if reservas_lab else "SIN_RESERVACION"
+    )
     return {
         "id": c.id,
         "periodo_id": c.periodo_id,
@@ -163,6 +267,7 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "hora_fin": c.hora_fin,
         "espacio_nombre": lab.nombre if lab else c.espacio_nombre,
         "laboratorio_id": c.laboratorio_id,
+        "estado_reserva_laboratorio": estado_reserva_lab if c.laboratorio_id else None,
         "estado": c.estado,
         "observaciones": c.observaciones,
         "puede_iniciar_hoy": (
@@ -314,6 +419,12 @@ def actualizar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    cambia_laboratorio = any(
+        getattr(carga, campo) != getattr(data, campo)
+        for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
+    )
+    if cambia_laboratorio:
+        _cancelar_reservas_carga(db, carga.id)
     for campo, valor in data.model_dump().items():
         setattr(carga, campo, valor)
     carga.estado = "BORRADOR"
@@ -352,9 +463,89 @@ def eliminar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _cancelar_reservas_carga(db, carga.id)
     carga.activo = False
     db.commit()
     return {"mensaje": "Actividad retirada del horario"}
+
+
+@router.post("/horario/verificar-laboratorio")
+def verificar_laboratorio_carga(
+    data: CargaInput,
+    carga_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    if carga_id:
+        propia = db.query(CargaDocente.id).filter(
+            CargaDocente.id == carga_id, CargaDocente.docente_id == current_user.id,
+        ).first()
+        if not propia:
+            raise HTTPException(404, "Actividad no encontrada")
+    return _estado_laboratorio(db, data, current_user, carga_id)
+
+
+@router.get("/horario/{carga_id}/estado-laboratorio")
+def estado_laboratorio_carga(
+    carga_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id, CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not carga:
+        raise HTTPException(404, "Actividad no encontrada")
+    data = CargaInput.model_validate({
+        campo: getattr(carga, campo) for campo in CargaInput.model_fields
+    })
+    return _estado_laboratorio(db, data, current_user, carga.id)
+
+
+@router.post("/horario/{carga_id}/reservar-laboratorio")
+def reservar_laboratorio_carga(
+    carga_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga or not carga.laboratorio_id or not carga.grupo_academico:
+        raise HTTPException(422, "La clase debe tener laboratorio, materia y grupo")
+    data = CargaInput.model_validate({
+        campo: getattr(carga, campo) for campo in CargaInput.model_fields
+    })
+    disponibilidad = _estado_laboratorio(db, data, current_user, carga.id)
+    if disponibilidad["estado"] == "RESERVADO":
+        return disponibilidad
+    if disponibilidad["estado"] != "DISPONIBLE":
+        raise HTTPException(409, {
+            "mensaje": "El laboratorio no está disponible en todo el horario.",
+            "disponibilidad": disponibilidad,
+        })
+    for slot in disponibilidad["slots"]:
+        db.add(Reservacion(
+            horario_id=slot["id"],
+            laboratorio_id=carga.laboratorio_id,
+            docente_id=current_user.id,
+            carga_docente_id=carga.id,
+            materia=carga.actividad_nombre,
+            carrera=carga.grupo_academico.carrera,
+            cuatrimestre=carga.periodo.clave,
+            cuatrimestre_materia=str(carga.grupo_academico.cuatrimestre),
+            grupo=f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}",
+            estado="PROGRAMADA",
+            creado_por=current_user.id,
+            observaciones="Reservación vinculada desde Mi horario docente",
+        ))
+    db.commit()
+    disponibilidad["estado"] = "RESERVADO"
+    return disponibilidad
 
 
 @router.get("/hoy")

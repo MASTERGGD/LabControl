@@ -8,6 +8,8 @@ from models.catalogo import (
     CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno,
     PeriodoEscolar,
 )
+from models.horario import HorarioDisponible, Reservacion
+from models.laboratorio import Laboratorio
 from tests.conftest import auth_headers, get_token
 
 
@@ -31,6 +33,13 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     )
     db.add_all([grupo, materia])
     db.flush()
+    laboratorio = Laboratorio(nombre="Laboratorio docente", categoria="COMPUTO", activo=True)
+    db.add(laboratorio)
+    db.flush()
+    db.add(HorarioDisponible(
+        laboratorio_id=laboratorio.id, dia_semana=datetime.datetime.now(ZoneInfo("America/Mexico_City")).weekday(),
+        hora_inicio="08:00", hora_fin="09:00", cuatrimestre="MAY-AGO-2026", activo=True,
+    ))
     alumnos = [
         CatalogoAlumno(
             matricula=f"UTC{i}", apellido_paterno=f"Alumno{i}", apellido_materno="",
@@ -60,12 +69,33 @@ def test_flujo_horario_clase_y_asistencia(client, db):
         "hora_inicio": "08:00",
         "hora_fin": "09:00",
         "espacio_nombre": "S3",
+        "laboratorio_id": laboratorio.id,
     }
     creada = client.post("/docencia/horario", json=payload, headers=headers)
     assert creada.status_code == 200, creada.text
     carga_id = creada.json()["carga"]["id"]
     activada = client.post(f"/docencia/horario/{carga_id}/activar", headers=headers)
     assert activada.status_code == 200, activada.text
+    disponible = client.post(
+        "/docencia/horario/verificar-laboratorio",
+        params={"carga_id": carga_id},
+        json=payload,
+        headers=headers,
+    )
+    assert disponible.status_code == 200, disponible.text
+    assert disponible.json()["estado"] == "DISPONIBLE"
+    reservada = client.post(
+        f"/docencia/horario/{carga_id}/reservar-laboratorio", headers=headers,
+    )
+    assert reservada.status_code == 200, reservada.text
+    assert reservada.json()["estado"] == "RESERVADO"
+    assert db.query(Reservacion).filter(Reservacion.carga_docente_id == carga_id).count() == 1
+    ocupada = client.post(
+        "/docencia/horario/verificar-laboratorio", json=payload, headers=headers,
+    )
+    assert ocupada.status_code == 200
+    assert ocupada.json()["estado"] == "OCUPADO"
+    assert ocupada.json()["ocupaciones"][0]["docente"] == docente.nombre
 
     solapada = client.post(
         "/docencia/horario",

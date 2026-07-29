@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
 import { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
@@ -1313,7 +1313,7 @@ function GridSemanal({ slots, onSlotClick }) {
 
 // ─── Vista móvil: un día a la vez con tabs ────────────────────────────────────
 
-function GridMobile({ slots, onSlotClick, isDay = false }) {
+function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
   const dias = [...new Set(slots.map(s => s.dia_semana))].sort();
   const gruposConsecutivos = detectarGruposConsecutivos(slots);
 
@@ -1321,8 +1321,11 @@ function GridMobile({ slots, onSlotClick, isDay = false }) {
   const hoy = new Date().getDay(); // 0=Dom,1=Lun...
   const hoyIdx = hoy === 0 ? 5 : hoy - 1; // convertir a 0=Lun
   const [diaActivo, setDiaActivo] = useState(
-    dias.includes(hoyIdx) ? hoyIdx : dias[0] ?? 0
+    dias.includes(initialDia) ? initialDia : dias.includes(hoyIdx) ? hoyIdx : dias[0] ?? 0
   );
+  useEffect(() => {
+    if (dias.includes(initialDia)) setDiaActivo(initialDia);
+  }, [initialDia, slots.length]);
 
   const slotsDia = slots
     .filter(s => s.dia_semana === diaActivo)
@@ -1855,14 +1858,19 @@ function ModalSolicitarSala({ onClose }) {
 
 export default function SesionClase() {
   const navigate    = useNavigate();
+  const [searchParams] = useSearchParams();
   const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const esMobil     = useEsMobil();
 
   const [laboratorios, setLaboratorios]       = useState([]);
-  const [labId, setLabId]                     = useState('');
-  const [cuatrimestre, setCuatrimestre]       = useState(getCuatrimestreActual);
+  const labSolicitado = searchParams.get('lab') || '';
+  const cuatrimestreSolicitado = searchParams.get('cuatrimestre') || '';
+  const diaParam = searchParams.get('dia');
+  const diaSolicitado = diaParam === null ? undefined : Number(diaParam);
+  const [labId, setLabId]                     = useState(labSolicitado);
+  const [cuatrimestre, setCuatrimestre]       = useState(cuatrimestreSolicitado || getCuatrimestreActual);
   const [slots, setSlots]                     = useState([]);
   const [loading, setLoading]                 = useState(false);
   const [sesionActiva, setSesionActiva]       = useState(null);
@@ -1878,12 +1886,15 @@ export default function SesionClase() {
       const disponibles = Array.isArray(res.data) ? res.data : [];
       setLaboratorios(disponibles);
       setErrorLaboratorios('');
-      if (disponibles.length > 0) setLabId(disponibles[0].id);
+      if (disponibles.length > 0) {
+        const solicitadoExiste = disponibles.some((lab) => String(lab.id) === String(labSolicitado));
+        setLabId(solicitadoExiste ? labSolicitado : disponibles[0].id);
+      }
     }).catch((err) => {
       setLaboratorios([]);
       setErrorLaboratorios(err.response?.data?.detail || 'No se pudieron cargar los laboratorios.');
     });
-  }, []);
+  }, [labSolicitado]);
 
   // Verificar si hay sesión activa
   const cargarSesionActiva = useCallback(async () => {
@@ -2122,7 +2133,7 @@ export default function SesionClase() {
             <Leyenda />
           </div>
           {esMobil
-            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} isDay={isDay} />
+            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} isDay={isDay} initialDia={diaSolicitado} />
             : <GridSemanal slots={slots} onSlotClick={handleSlotClick} />
           }
         </>
