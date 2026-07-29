@@ -253,6 +253,10 @@ export default function MiHorarioDocente() {
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
   const [ahora, setAhora] = useState(() => new Date());
+  const [diaMovil, setDiaMovil] = useState(() => {
+    const dia = (new Date().getDay() + 6) % 7;
+    return dia <= 5 ? dia : 0;
+  });
 
   const cargar = useCallback(async (idPeriodo) => {
     setCargando(true);
@@ -342,12 +346,12 @@ export default function MiHorarioDocente() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Mi horario docente</h1>
-            <p className="text-sm text-slate-400">Captura en SIGA el horario oficial entregado por tu Dirección de División.</p>
+            <p className="hidden text-sm text-slate-400 sm:block">Captura en SIGA el horario oficial entregado por tu Dirección de División.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="w-full sm:w-auto">
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
@@ -358,7 +362,7 @@ export default function MiHorarioDocente() {
 
         {actividadPrincipal && (
           <section className="glass overflow-hidden rounded-2xl">
-            <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:p-5">
               <div className="flex min-w-0 items-start gap-4">
                 <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300 sm:flex">
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -367,8 +371,8 @@ export default function MiHorarioDocente() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{tituloPrincipal}</p>
-                  <h2 className="mt-1 truncate text-xl font-bold text-white">{actividadPrincipal.actividad_nombre}</h2>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <h2 className="mt-1 text-lg font-bold text-white sm:truncate sm:text-xl">{actividadPrincipal.actividad_nombre}</h2>
+                  <p className="mt-1 text-xs text-slate-400 sm:text-sm">
                     {actividadPrincipal.hora_inicio}–{actividadPrincipal.hora_fin}
                     {' · '}{actividadPrincipal.grupo || actividadPrincipal.tipo_actividad}
                     {' · '}{actividadPrincipal.espacio_nombre || 'Espacio sin especificar'}
@@ -381,7 +385,7 @@ export default function MiHorarioDocente() {
                     {textoAccionClase(actividadPrincipal)}
                   </button>
                 )}
-                <button onClick={() => setAgendaAbierta(true)} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5">
+                <button onClick={() => setAgendaAbierta(true)} className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5 sm:flex-none">
                   Ver agenda de hoy ({hoy.length})
                 </button>
               </div>
@@ -389,7 +393,70 @@ export default function MiHorarioDocente() {
           </section>
         )}
 
-        <div className="glass overflow-x-auto rounded-2xl">
+        <section className="space-y-3 md:hidden">
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {DIAS.map((dia, indice) => (
+              <button
+                key={dia}
+                type="button"
+                onClick={() => setDiaMovil(indice)}
+                className={`min-w-[62px] shrink-0 rounded-xl border px-3 py-2 text-center transition ${
+                  diaMovil === indice
+                    ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-300'
+                    : 'border-white/10 bg-white/[0.03] text-slate-400'
+                }`}
+              >
+                <span className="block text-[10px] font-bold uppercase">{dia.slice(0, 2)}</span>
+                <span className="block text-xs">{dia}</span>
+              </button>
+            ))}
+          </div>
+          <div className="space-y-2">
+            {PERIODOS_UTECAN.map((periodo) => {
+              const item = actividadEnPeriodo(diaMovil, periodo);
+              const comienzaAqui = item?.hora_inicio === periodo.inicio;
+              if (item && !comienzaAqui) return null;
+              return (
+                <Fragment key={periodo.numero}>
+                  {periodo.recesoAntes && (
+                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-xs font-semibold text-amber-400">
+                      Receso · 09:45–10:15
+                    </div>
+                  )}
+                  {item ? (
+                    <article className={`rounded-2xl border p-4 ${TIPO_ESTILO[item.tipo_actividad]}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-mono text-sm font-bold text-emerald-400">{item.hora_inicio}–{item.hora_fin}</p>
+                          <h3 className="mt-1 font-semibold text-white">{item.actividad_nombre}</h3>
+                          <p className="mt-0.5 text-xs text-slate-400">{item.grupo || item.tipo_actividad} · {item.espacio_nombre || 'Sin salón'}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white">Activar</button>}
+                        <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300">Editar</button>
+                        <button onClick={() => eliminar(item.id)} className="rounded-xl border border-red-500/20 px-3 py-2.5 text-xs font-semibold text-red-400">Retirar</button>
+                      </div>
+                    </article>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={cargando}
+                      onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaMovil, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
+                      className="flex w-full items-center justify-between rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/[0.04] px-4 py-4 text-left"
+                    >
+                      <span><b className="block font-mono text-sm text-emerald-400">{periodo.inicio}–{periodo.fin}</b><small className="text-slate-500">Horario disponible</small></span>
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-400">+ Asignar</span>
+                    </button>
+                  )}
+                </Fragment>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className="glass hidden overflow-x-auto rounded-2xl md:block">
           <table className="min-w-[1100px] w-full table-fixed">
             <thead>
               <tr className="border-b border-white/10">
