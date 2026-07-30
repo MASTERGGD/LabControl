@@ -109,6 +109,25 @@ body.theme-day {
 .theme-muted { color: var(--text-muted); }
 .theme-divider { border-color: var(--surface-border); }
 
+/* Lista de asistencia: conserva la guía visual entre alumno y estado en
+   monitores amplios, también cuando se usa el tema claro. */
+body.theme-day .attendance-row {
+  border-bottom-color: #e2e8f0;
+}
+body.theme-day .attendance-row:nth-child(even) {
+  background: #f8fafc;
+}
+body.theme-day .attendance-row:hover,
+body.theme-day .attendance-row:focus-within {
+  background: #ecfdf5;
+  border-left-color: #10b981;
+}
+body.theme-day .attendance-row:hover .attendance-row-index,
+body.theme-day .attendance-row:focus-within .attendance-row-index {
+  background: #d1fae5;
+  color: #047857;
+}
+
 /* Las acciones verdes solidas siempre usan texto blanco en ambos temas. */
 button[class~="bg-emerald-500"],
 button[class~="bg-emerald-600"],

@@ -128,25 +128,33 @@ export default function ClaseAsistencia() {
         </div>
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
-        <div className="glass overflow-hidden rounded-2xl">
+        <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
             <h2 className="font-semibold text-white">Lista del grupo</h2>
             <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente las excepciones.</p>
           </div>
-          <div className="divide-y divide-white/5">
+          <div>
             {clase.alumnos.map((alumno, indice) => (
-              <div key={alumno.asistencia_id} className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/5 text-sm text-slate-400">{indice + 1}</span>
-                  <div className="min-w-0"><p className="truncate font-medium text-white">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.matricula}</p></div>
+              <div
+                key={alumno.asistencia_id}
+                className={`attendance-row group grid grid-cols-[40px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 border-b border-l-4 border-b-white/5 border-l-transparent px-4 py-3.5 transition-all duration-150 last:border-b-0 hover:border-l-emerald-500 hover:bg-emerald-500/[0.08] focus-within:border-l-emerald-500 focus-within:bg-emerald-500/[0.08] sm:px-5 lg:grid-cols-[48px_minmax(280px,1fr)_410px] lg:gap-x-3 ${
+                  indice % 2 === 1 ? 'bg-white/[0.025]' : 'bg-transparent'
+                }`}
+              >
+                <span className="attendance-row-index flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-sm text-slate-400 transition-colors group-hover:bg-emerald-500/20 group-hover:font-semibold group-hover:text-emerald-300 group-focus-within:bg-emerald-500/20 group-focus-within:font-semibold group-focus-within:text-emerald-300">
+                  {indice + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-white">{alumno.nombre}</p>
+                  <p className="text-xs text-slate-500">{alumno.matricula}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex">
+                <div className="col-span-2 grid grid-cols-2 gap-2 pl-[52px] sm:grid-cols-4 sm:pl-0 lg:col-span-1 lg:grid-cols-4">
                   {ESTADOS.map(([valor, etiqueta, color]) => (
                     <button
                       key={valor}
                       disabled={!['ABIERTA', 'CORRECCION'].includes(clase.estado)}
                       onClick={() => cambiar(alumno.asistencia_id, valor)}
-                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${alumno.estado === valor ? `${color} text-white` : 'bg-white/5 text-slate-400 hover:bg-white/10'} disabled:cursor-not-allowed`}
+                      className={`rounded-lg px-2 py-2 text-xs font-semibold transition ${alumno.estado === valor ? `${color} text-white shadow-sm` : 'bg-white/5 text-slate-400 hover:bg-white/10'} disabled:cursor-not-allowed`}
                     >
                       {etiqueta}
                     </button>
