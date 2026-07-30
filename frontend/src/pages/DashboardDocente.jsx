@@ -199,6 +199,7 @@ export default function DashboardDocente() {
   const [proximaClase,  setProximaClase]   = useState(null);
   const [solicitudes,   setSolicitudes]    = useState({ total: 0, pendientes: 0 });
   const [clasesSemana,  setClasesSemana]   = useState(null);
+  const [operacion,     setOperacion]      = useState(null);
   const [countdown,     setCountdown]      = useState('');
   const [loading,       setLoading]        = useState(true);
 
@@ -206,11 +207,12 @@ export default function DashboardDocente() {
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
-      const [resComunicados, resSesion, resReservaciones, resSolicitudes] = await Promise.allSettled([
+      const [resComunicados, resSesion, resReservaciones, resSolicitudes, resOperacion] = await Promise.allSettled([
         api.get('/comunicados/pendientes-count'),
         api.get('/sesiones/activas'),
         api.get('/horarios/reservaciones'),
         api.get('/espacios/mis-solicitudes'),
+        api.get('/docencia/dashboard'),
       ]);
 
       // Comunicados pendientes
@@ -251,6 +253,9 @@ export default function DashboardDocente() {
           pendientes: sol.filter(s => ['PENDIENTE', 'EN_REVISION'].includes(s.estado)).length,
         });
       }
+      if (resOperacion.status === 'fulfilled') {
+        setOperacion(resOperacion.value.data);
+      }
     } finally {
       setLoading(false);
     }
@@ -286,6 +291,18 @@ export default function DashboardDocente() {
     color: 'text-blue-400',
     dot: 'bg-blue-400',
   });
+  if (operacion?.resumen.asistencias_pendientes > 0) atencionItems.unshift({
+    label: `${operacion.resumen.asistencias_pendientes} asistencia(s) requieren registro o cierre`,
+    path: '/docente/horario',
+    color: 'text-red-400',
+    dot: 'bg-red-400',
+  });
+  if (operacion?.resumen.acuerdos_pendientes > 0) atencionItems.push({
+    label: `${operacion.resumen.acuerdos_pendientes} acuerdo(s) académico(s) pendientes`,
+    path: '/docente/seguimiento',
+    color: 'text-amber-400',
+    dot: 'bg-amber-400',
+  });
 
   return (
     <AdminLayout>
@@ -320,34 +337,51 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Stats en tiempo real ───────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 2xl:grid-cols-3 gap-3 2xl:gap-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard
+            icon="🗓"
+            label="Clases hoy"
+            value={operacion?.resumen.clases_hoy ?? '…'}
+            sub={`${operacion?.resumen.clases_cerradas ?? 0} cerrada(s)`}
+            onClick={() => navigate('/docente/horario')}
+          />
+          <StatCard
+            icon="⚠️"
+            label="Asistencias pendientes"
+            value={operacion?.resumen.asistencias_pendientes ?? '…'}
+            sub="Por registrar o cerrar"
+            urgent={operacion?.resumen.asistencias_pendientes > 0}
+            onClick={() => navigate('/docente/horario')}
+          />
+          <StatCard
+            icon="👥"
+            label="Grupos activos"
+            value={operacion?.resumen.grupos_activos ?? '…'}
+            sub={`${clasesSemana ?? 0} clase(s) esta semana`}
+            onClick={() => navigate('/docente/seguimiento')}
+          />
+          <StatCard
+            icon="🚨"
+            label="Alumnos en atención"
+            value={operacion?.resumen.alumnos_atencion ?? '…'}
+            sub="Con indicadores académicos"
+            urgent={operacion?.resumen.alumnos_atencion > 0}
+            onClick={() => navigate('/docente/seguimiento')}
+          />
+          <StatCard
+            icon="📌"
+            label="Acuerdos pendientes"
+            value={operacion?.resumen.acuerdos_pendientes ?? '…'}
+            sub="Seguimiento académico"
+            onClick={() => navigate('/docente/seguimiento')}
+          />
           <StatCard
             icon="📢"
             label="Comunicados"
             value={pendientesComunicados ?? '…'}
             sub={pendientesComunicados === 0 ? 'Estás al día ✓' : `${pendientesComunicados} sin leer`}
-            badge={pendientesComunicados > 0 ? `${pendientesComunicados} pendiente${pendientesComunicados > 1 ? 's' : ''}` : null}
-            badgeColor="bg-amber-500/20 text-amber-300"
             urgent={pendientesComunicados > 0}
             onClick={() => navigate('/comunicados')}
-          />
-          <StatCard
-            icon="🏛"
-            label="Solicitudes"
-            value={solicitudes.total ?? '…'}
-            sub={solicitudes.pendientes > 0
-              ? `${solicitudes.pendientes} en revisión`
-              : solicitudes.total > 0 ? 'Sin pendientes' : 'Sin solicitudes'}
-            badge={solicitudes.pendientes > 0 ? 'En revisión' : null}
-            badgeColor="bg-blue-500/20 text-blue-300"
-            onClick={() => navigate('/espacios/mis-solicitudes')}
-          />
-          <StatCard
-            icon="🗓"
-            label="Esta semana"
-            value={clasesSemana ?? '…'}
-            sub={clasesSemana === 1 ? 'clase programada' : clasesSemana > 1 ? 'clases programadas' : 'Sin clases'}
-            onClick={() => navigate('/docente/horario')}
           />
         </div>
 
@@ -377,6 +411,82 @@ export default function DashboardDocente() {
             </div>
           </div>
         )}
+
+        {/* ── Jornada de hoy ─────────────────────────────────────────── */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
+            <div>
+              <h2 className="font-bold text-white">Mi jornada de hoy</h2>
+              <p className="text-xs text-slate-500">Clases, espacios y estado de la asistencia.</p>
+            </div>
+            <button onClick={() => navigate('/docente/horario')} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Ver horario completo →</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] text-left text-sm">
+              <thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Hora</th><th>Materia</th><th>Grupo</th><th>Espacio</th><th>Estado</th><th className="pr-5 text-right"></th></tr></thead>
+              <tbody className="divide-y divide-white/5">
+                {operacion?.jornada.map(item => {
+                  const estado = {
+                    PROGRAMADA: ['Programada', 'bg-blue-500/15 text-blue-300'],
+                    EN_CURSO: ['En curso', 'bg-emerald-500/15 text-emerald-300'],
+                    CERRADA: ['Cerrada', 'bg-slate-500/15 text-slate-400'],
+                    CORRECCION: ['En corrección', 'bg-amber-500/15 text-amber-300'],
+                    SIN_REGISTRO: ['Sin registro', 'bg-red-500/15 text-red-300'],
+                  }[item.estado] || [item.estado, 'bg-slate-500/15 text-slate-400'];
+                  return (
+                    <tr key={item.carga_id} className="hover:bg-white/3">
+                      <td className="px-5 py-3 font-bold text-white">{item.hora_inicio}–{item.hora_fin}</td>
+                      <td><p className="font-semibold text-white">{item.materia}</p><p className="text-xs text-slate-500">{item.carrera}</p></td>
+                      <td className="text-slate-400">{item.grupo}</td>
+                      <td className="text-slate-400">{item.espacio}</td>
+                      <td><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${estado[1]}`}>{estado[0]}</span></td>
+                      <td className="pr-5 text-right"><button onClick={() => navigate(item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.clase_id ? 'Abrir clase' : 'Ir al horario'} →</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {!loading && !operacion?.jornada.length && <p className="p-8 text-center text-sm text-slate-500">No tienes clases programadas para hoy.</p>}
+          </div>
+        </div>
+
+        {/* ── Panorama de grupos y alumnos prioritarios ─────────────── */}
+        <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+          <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+              <div><h2 className="font-bold text-white">Panorama de mis grupos</h2><p className="text-xs text-slate-500">Asistencia y alertas de las materias que impartes.</p></div>
+              <button onClick={() => navigate('/docente/seguimiento')} className="text-xs font-semibold text-blue-400">Ver seguimiento →</button>
+            </div>
+            <div className="grid gap-3 p-4 md:grid-cols-2">
+              {operacion?.grupos.map(grupo => (
+                <button key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="rounded-xl border border-white/8 bg-white/3 p-4 text-left hover:border-blue-500/30 hover:bg-blue-500/5">
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500">{grupo.grupo} · {grupo.carrera}</p></div>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{grupo.alumnos_alerta} alerta(s)</span>}</div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div><b className="block text-base text-white">{grupo.total_alumnos}</b><span className="text-slate-500">Alumnos</span></div>
+                    <div><b className={`block text-base ${grupo.asistencia_promedio < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{grupo.asistencia_promedio}%</b><span className="text-slate-500">Asistencia</span></div>
+                    <div><b className="block text-base text-amber-400">{grupo.acuerdos_pendientes}</b><span className="text-slate-500">Acuerdos</span></div>
+                  </div>
+                  <p className="mt-3 text-[10px] text-slate-500">{grupo.total_clases} clase(s) registrada(s){grupo.ultima_clase ? ` · Última: ${new Date(`${grupo.ultima_clase}T12:00:00`).toLocaleDateString('es-MX')}` : ''}</p>
+                </button>
+              ))}
+              {!loading && !operacion?.grupos.length && <p className="col-span-full p-6 text-center text-sm text-slate-500">Todavía no hay grupos activos configurados.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+            <div className="border-b border-white/8 px-5 py-4"><h2 className="font-bold text-white">Alumnos que requieren atención</h2><p className="text-xs text-slate-500">Prioridad calculada con asistencias y seguimiento.</p></div>
+            <div className="divide-y divide-white/5">
+              {operacion?.alumnos_prioritarios.slice(0, 5).map(alumno => (
+                <button key={`${alumno.carga_id}-${alumno.alumno_id}`} onClick={() => navigate(`/docente/seguimiento/${alumno.carga_id}/alumno/${alumno.alumno_id}`)} className="flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-white/3">
+                  <span className={`mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${alumno.prioridad === 'ALTA' ? 'bg-red-400' : 'bg-amber-400'}`} />
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-white">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.grupo} · {alumno.materia}</p><p className={`mt-1 text-xs ${alumno.prioridad === 'ALTA' ? 'text-red-300' : 'text-amber-300'}`}>{alumno.motivos[0]}</p></div>
+                  <span className="text-xs font-bold text-slate-400">{alumno.asistencia}%</span>
+                </button>
+              ))}
+              {!loading && !operacion?.alumnos_prioritarios.length && <p className="p-8 text-center text-sm text-slate-500">No hay alertas académicas activas.</p>}
+            </div>
+          </div>
+        </div>
 
         {/* ── Accesos rápidos (chips) ────────────────────────────────── */}
         <div>

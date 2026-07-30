@@ -207,6 +207,16 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert atendido.status_code == 200
     assert atendido.json()["estado"] == "ATENDIDO"
 
+    dashboard = client.get("/docencia/dashboard", headers=headers)
+    assert dashboard.status_code == 200, dashboard.text
+    tablero = dashboard.json()
+    assert tablero["resumen"]["clases_hoy"] == 1
+    assert tablero["resumen"]["clases_cerradas"] == 1
+    assert tablero["jornada"][0]["materia"] == materia.nombre
+    assert tablero["jornada"][0]["estado"] == "CERRADA"
+    assert tablero["grupos"][0]["total_alumnos"] == 2
+    assert tablero["grupos"][0]["asistencia_promedio"] == 100.0
+
 
 def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):
     docente = Usuario(

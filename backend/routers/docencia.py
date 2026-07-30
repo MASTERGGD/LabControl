@@ -1168,3 +1168,135 @@ def historial_clases(
         CargaDocente.docente_id == current_user.id
     ).order_by(ClaseDocente.fecha.desc(), ClaseDocente.inicio.desc()).limit(100).all()
     return [_serializar_clase(clase) for clase in clases]
+
+
+@router.get("/dashboard", summary="Resumen operativo del panel docente")
+def dashboard_docente(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    ahora = _ahora_mx()
+    hoy = ahora.date()
+    cargas = db.query(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.estado == "ACTIVO",
+    ).order_by(CargaDocente.hora_inicio).all()
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id.in_([carga.id for carga in cargas]),
+    ).all() if cargas else []
+    clase_por_carga_fecha = {
+        (clase.carga_docente_id, clase.fecha): clase for clase in clases
+    }
+
+    jornada = []
+    for carga in cargas:
+        if carga.dia_semana != hoy.weekday():
+            continue
+        clase = clase_por_carga_fecha.get((carga.id, hoy))
+        hora_fin = datetime.datetime.combine(
+            hoy, datetime.time.fromisoformat(carga.hora_fin),
+            tzinfo=MX,
+        )
+        if clase:
+            estado = {
+                "ABIERTA": "EN_CURSO",
+                "CORRECCION": "CORRECCION",
+                "CERRADA": "CERRADA",
+            }.get(clase.estado, clase.estado)
+        elif ahora > hora_fin:
+            estado = "SIN_REGISTRO"
+        else:
+            estado = "PROGRAMADA"
+        jornada.append({
+            "carga_id": carga.id,
+            "clase_id": clase.id if clase else None,
+            "materia": carga.actividad_nombre,
+            "grupo": (
+                f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
+                if carga.grupo_academico else "Sin grupo"
+            ),
+            "carrera": carga.grupo_academico.carrera if carga.grupo_academico else None,
+            "espacio": (
+                carga.laboratorio.nombre if carga.laboratorio
+                else carga.espacio_nombre or "Sin espacio"
+            ),
+            "hora_inicio": carga.hora_inicio,
+            "hora_fin": carga.hora_fin,
+            "estado": estado,
+            "resumen": _serializar_clase(clase)["resumen"] if clase else None,
+        })
+
+    grupos = []
+    alumnos_prioritarios = []
+    acuerdos_pendientes = 0
+    for carga in cargas:
+        if not carga.grupo_academico_id:
+            continue
+        seguimiento = seguimiento_grupo(carga.id, db, current_user)
+        pendientes_carga = db.query(SeguimientoAlumnoDocente.id).filter(
+            SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+            SeguimientoAlumnoDocente.docente_id == current_user.id,
+            SeguimientoAlumnoDocente.tipo == "ACUERDO",
+            SeguimientoAlumnoDocente.estado == "PENDIENTE",
+        ).count()
+        acuerdos_pendientes += pendientes_carga
+        grupos.append({
+            "carga_id": carga.id,
+            "materia": carga.actividad_nombre,
+            "grupo": seguimiento["carga"]["grupo"],
+            "carrera": seguimiento["carga"]["carrera"],
+            "total_alumnos": seguimiento["total_alumnos"],
+            "total_clases": seguimiento["total_clases"],
+            "asistencia_promedio": seguimiento["promedio_asistencia"],
+            "alumnos_alerta": seguimiento["alumnos_en_alerta"],
+            "acuerdos_pendientes": pendientes_carga,
+            "ultima_clase": max(
+                (clase.fecha for clase in clases if clase.carga_docente_id == carga.id),
+                default=None,
+            ),
+        })
+        for alumno in seguimiento["alumnos"]:
+            if not alumno["alertas"]:
+                continue
+            alumnos_prioritarios.append({
+                "alumno_id": alumno["alumno_id"],
+                "carga_id": carga.id,
+                "nombre": alumno["nombre"],
+                "matricula": alumno["matricula"],
+                "materia": carga.actividad_nombre,
+                "grupo": seguimiento["carga"]["grupo"],
+                "asistencia": alumno["porcentaje_asistencia"],
+                "faltas": alumno["falta"],
+                "faltas_consecutivas": alumno["faltas_consecutivas"],
+                "motivos": [alerta["mensaje"] for alerta in alumno["alertas"]],
+                "prioridad": (
+                    "ALTA" if any(alerta["nivel"] == "ALTO" for alerta in alumno["alertas"])
+                    else "MEDIA"
+                ),
+            })
+    alumnos_prioritarios.sort(key=lambda item: (
+        0 if item["prioridad"] == "ALTA" else 1,
+        item["asistencia"],
+        item["nombre"],
+    ))
+    pendientes_asistencia = sum(
+        1 for item in jornada
+        if item["estado"] in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}
+    )
+    return {
+        "fecha": hoy.isoformat(),
+        "resumen": {
+            "clases_hoy": len(jornada),
+            "clases_cerradas": sum(1 for item in jornada if item["estado"] == "CERRADA"),
+            "asistencias_pendientes": pendientes_asistencia,
+            "grupos_activos": len(grupos),
+            "alumnos_atencion": len(alumnos_prioritarios),
+            "acuerdos_pendientes": acuerdos_pendientes,
+        },
+        "jornada": jornada,
+        "grupos": grupos,
+        "alumnos_prioritarios": alumnos_prioritarios[:8],
+    }
