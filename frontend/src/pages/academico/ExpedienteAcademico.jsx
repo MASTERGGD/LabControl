@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -273,12 +273,136 @@ function Timeline({ items }) {
   );
 }
 
+const ESTADO_ALUMNO = {
+  RIESGO: 'border-red-500/30 bg-red-500/10 text-red-500',
+  ATENCION: 'border-amber-500/30 bg-amber-500/10 text-amber-500',
+  REGULAR: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500',
+  SIN_DATOS: 'border-slate-500/30 bg-slate-500/10 text-slate-500',
+};
+
+function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const [panorama, setPanorama] = useState(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [estado, setEstado] = useState('TODOS');
+  const [pagina, setPagina] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const cargar = useCallback(async () => {
+    if (!grupoId) return;
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/expediente-academico/panorama/grupos/${grupoId}/alumnos`, {
+        params: { q: busqueda, estado, pagina, limite: 25 },
+      });
+      setPanorama(data);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo cargar el panorama del grupo.');
+    } finally {
+      setLoading(false);
+    }
+  }, [grupoId, busqueda, estado, pagina]);
+
+  useEffect(() => {
+    const timer = setTimeout(cargar, 250);
+    return () => clearTimeout(timer);
+  }, [cargar]);
+
+  useEffect(() => { setPagina(1); }, [grupoId, busqueda, estado]);
+
+  if (!grupoId) return null;
+  if (!panorama && loading) return <Panel className="p-10 text-center text-sm text-slate-500">Calculando indicadores del grupo…</Panel>;
+  if (!panorama) return <Panel className="p-8 text-center text-sm text-red-400">{error || 'Sin información del grupo.'}</Panel>;
+
+  const r = panorama.resumen;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
+        <Kpi label="Alumnos" value={r.total_alumnos} />
+        <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} tone={r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
+        <Kpi label="Prom. evidencias" value={r.promedio_evidencias} hint="No oficial" tone="text-violet-400" />
+        <Kpi label="En riesgo" value={r.alumnos_riesgo} tone={r.alumnos_riesgo ? 'text-red-400' : 'text-emerald-400'} />
+        <Kpi label="Requieren atención" value={r.alumnos_atencion} tone="text-amber-400" />
+        <Kpi label="Sin información" value={r.sin_datos} tone="text-slate-400" />
+        <Kpi label="Acuerdos pendientes" value={r.acuerdos_pendientes} tone="text-orange-400" />
+        <Kpi label="Cobertura" value={`${r.cobertura_asistencia}%`} hint="Asistencias capturadas" tone="text-cyan-400" />
+      </div>
+
+      <Panel className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold">{panorama.grupo.cuatrimestre}° {panorama.grupo.grupo} · {panorama.grupo.carrera}</h2>
+            <p className="text-xs text-slate-500">{panorama.grupo.periodo} · {r.materias} materias · {r.clases_registradas} clases registradas · {r.faltas_totales} faltas</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-64" placeholder="Buscar en este grupo…" />
+            <select value={estado} onChange={e => setEstado(e.target.value)} className="input-dark w-48">
+              <option value="TODOS">Todos los estados</option>
+              <option value="RIESGO">En riesgo</option>
+              <option value="ATENCION">Requieren atención</option>
+              <option value="REGULAR">Regulares</option>
+              <option value="SIN_DATOS">Sin información</option>
+            </select>
+          </div>
+        </div>
+      </Panel>
+
+      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+      <Panel className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1050px] text-left text-sm">
+            <thead className={`text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-white/[0.035] text-slate-400'}`}>
+              <tr>
+                <th className="px-5 py-3">Alumno</th>
+                <th className="px-3 py-3 text-center">Asistencia</th>
+                <th className="px-3 py-3 text-center">Promedio</th>
+                <th className="px-3 py-3 text-center">Faltas</th>
+                <th className="px-3 py-3 text-center">Consecutivas</th>
+                <th className="px-3 py-3 text-center">Pendientes</th>
+                <th className="px-3 py-3">Estado</th>
+                <th className="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
+              {panorama.alumnos.map(alumno => (
+                <tr key={alumno.id} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
+                  <td className="px-5 py-3"><p className="font-semibold">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.matricula}</p></td>
+                  <td className={`px-3 py-3 text-center font-bold ${alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td>
+                  <td className={`px-3 py-3 text-center font-bold ${alumno.promedio_evidencias != null && alumno.promedio_evidencias < 7 ? 'text-red-400' : ''}`}>{alumno.promedio_evidencias ?? '—'}</td>
+                  <td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td>
+                  <td className="px-3 py-3 text-center">{alumno.faltas_consecutivas || '—'}</td>
+                  <td className="px-3 py-3 text-center">{alumno.acuerdos_pendientes + alumno.reportes_abiertos}</td>
+                  <td className="px-3 py-3"><Badge className={ESTADO_ALUMNO[alumno.estado]}>{labelEstado(alumno.estado)}</Badge></td>
+                  <td className="px-5 py-3 text-right"><button onClick={() => seleccionarAlumno(alumno.id)} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10">Ver expediente →</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!panorama.alumnos.length && <p className="p-8 text-center text-sm text-slate-500">No hay alumnos que coincidan con los filtros.</p>}
+        </div>
+        <div className={`flex items-center justify-between border-t px-5 py-3 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
+          <p className="text-xs text-slate-500">{panorama.paginacion.total} alumno(s) · Página {panorama.paginacion.pagina} de {panorama.paginacion.paginas}</p>
+          <div className="flex gap-2">
+            <button disabled={pagina <= 1} onClick={() => setPagina(p => p - 1)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs disabled:opacity-30">Anterior</button>
+            <button disabled={pagina >= panorama.paginacion.paginas} onClick={() => setPagina(p => p + 1)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs disabled:opacity-30">Siguiente</button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
 export default function ExpedienteAcademico() {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [searchParams, setSearchParams] = useSearchParams();
   const [busqueda, setBusqueda] = useState('');
   const [alumnos, setAlumnos] = useState([]);
+  const [grupos, setGrupos] = useState([]);
+  const [grupoId, setGrupoId] = useState(Number(searchParams.get('grupo')) || null);
   const [alumnoId, setAlumnoId] = useState(Number(searchParams.get('alumno')) || null);
   const [data, setData] = useState(null);
   const [tab, setTab] = useState('resumen');
@@ -286,15 +410,26 @@ export default function ExpedienteAcademico() {
   const [error, setError] = useState('');
 
   const buscar = useCallback(async (texto = '') => {
+    if (texto.trim().length < 2) {
+      setAlumnos([]);
+      return;
+    }
     try {
-      const { data: rows } = await api.get(`/expediente-academico/alumnos?q=${encodeURIComponent(texto)}`);
+      const { data: rows } = await api.get(`/expediente-academico/alumnos?q=${encodeURIComponent(texto)}&limite=20`);
       setAlumnos(rows);
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo consultar el padrón de alumnos.');
     }
   }, []);
 
-  useEffect(() => { buscar(''); }, [buscar]);
+  useEffect(() => {
+    api.get('/expediente-academico/panorama/grupos')
+      .then(({ data: rows }) => {
+        setGrupos(rows);
+        if (!grupoId && rows.length) setGrupoId(rows[0].id);
+      })
+      .catch(err => setError(err.response?.data?.detail || 'No se pudieron consultar los grupos.'));
+  }, []);
   useEffect(() => {
     const timer = setTimeout(() => buscar(busqueda), 300);
     return () => clearTimeout(timer);
@@ -311,41 +446,64 @@ export default function ExpedienteAcademico() {
 
   const seleccionar = id => {
     setAlumnoId(id); setTab('resumen'); setSearchParams({ alumno: String(id) });
+    setBusqueda('');
+    setAlumnos([]);
   };
-  const alumnoSeleccionado = useMemo(() => alumnos.find(a => a.id === alumnoId), [alumnos, alumnoId]);
+  const volverPanorama = () => {
+    setAlumnoId(null);
+    setData(null);
+    setSearchParams(grupoId ? { grupo: String(grupoId) } : {});
+  };
+  const seleccionarGrupo = id => {
+    setGrupoId(id);
+    setSearchParams({ grupo: String(id) });
+  };
 
   return (
     <AdminLayout>
       <div className={`mx-auto max-w-[1800px] space-y-5 ${isDay ? 'text-slate-950' : 'text-white'}`}>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">Seguimiento institucional</p>
-          <h1 className="mt-1 text-2xl font-bold">Expediente Académico Integral</h1>
-          <p className="mt-1 text-sm text-slate-500">Panorama consolidado de materias, asistencia, evidencias, acuerdos y Tutoría.</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">Seguimiento institucional</p>
+            <h1 className="mt-1 text-2xl font-bold">Expediente Académico Integral</h1>
+            <p className="mt-1 text-sm text-slate-500">Panorama por grupo y expediente consolidado de cada alumno.</p>
+          </div>
+          <div className="relative w-full max-w-md">
+            <label className="text-xs font-semibold text-slate-500">Búsqueda directa de alumno</label>
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark mt-1" placeholder="Escribe nombre o matrícula…" />
+            {busqueda.trim().length >= 2 && (
+              <Panel className="absolute right-0 top-full z-30 mt-2 max-h-80 w-full overflow-y-auto shadow-2xl">
+                {alumnos.map(alumno => (
+                  <button key={alumno.id} onClick={() => seleccionar(alumno.id)} className={`w-full border-b px-4 py-3 text-left ${isDay ? 'border-slate-100 hover:bg-slate-50' : 'border-white/5 hover:bg-white/5'}`}>
+                    <p className="text-sm font-semibold">{alumno.nombre}</p>
+                    <p className="text-xs text-slate-500">{alumno.matricula} · {alumno.cuatrimestre}° {alumno.grupo} · {alumno.carrera}</p>
+                  </button>
+                ))}
+                {!alumnos.length && <p className="p-5 text-center text-sm text-slate-500">No se encontraron alumnos.</p>}
+              </Panel>
+            )}
+          </div>
         </div>
 
-        <div className="grid items-start gap-5 xl:grid-cols-[330px_minmax(0,1fr)]">
-          <Panel className="overflow-hidden xl:sticky xl:top-4">
-            <div className="border-b border-white/10 p-4">
-              <label className="text-xs font-semibold text-slate-500">Buscar alumno
-                <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark mt-2" placeholder="Nombre o matrícula..." />
-              </label>
-              <p className="mt-2 text-[10px] text-slate-500">{alumnos.length} resultado(s) accesible(s)</p>
-            </div>
-            <div className="max-h-[65vh] overflow-y-auto">
-              {alumnos.map(a => (
-                <button key={a.id} onClick={() => seleccionar(a.id)} className={`w-full border-b px-4 py-3 text-left transition ${isDay ? 'border-slate-100 hover:bg-slate-50' : 'border-white/5 hover:bg-white/5'} ${a.id === alumnoId ? 'border-l-4 border-l-blue-500 bg-blue-500/10' : 'border-l-4 border-l-transparent'}`}>
-                  <p className="truncate text-sm font-semibold">{a.nombre}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{a.matricula} · {a.carrera}</p>
-                  <p className="text-[10px] text-slate-500">{a.cuatrimestre}° {a.grupo} · {a.periodo}</p>
+        {!alumnoId && (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {grupos.map(grupo => (
+                <button key={grupo.id} onClick={() => seleccionarGrupo(grupo.id)} className={`rounded-2xl border p-4 text-left transition ${grupo.id === grupoId ? 'border-blue-500 bg-blue-500/10 shadow-sm' : isDay ? 'border-slate-200 bg-white hover:border-blue-300' : 'border-white/10 bg-slate-900/55 hover:border-blue-500/40'}`}>
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-bold">{grupo.cuatrimestre}° {grupo.grupo} · {grupo.carrera}</p><p className="mt-1 text-xs text-slate-500">{grupo.periodo}{grupo.turno ? ` · ${grupo.turno}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-bold text-blue-400">{grupo.total_alumnos}</span></div>
+                  <p className="mt-3 text-xs text-slate-500">{grupo.materias} materia(s) configurada(s)</p>
                 </button>
               ))}
-              {!alumnos.length && <p className="p-6 text-center text-sm text-slate-500">No se encontraron alumnos.</p>}
             </div>
-          </Panel>
+            {!grupos.length && <Panel className="p-10 text-center text-sm text-slate-500">No hay grupos académicos accesibles.</Panel>}
+            <PanoramaGrupo grupoId={grupoId} seleccionarAlumno={seleccionar} />
+          </div>
+        )}
 
+        {alumnoId && (
           <div className="min-w-0">
-            {!alumnoId && <Panel className="p-12 text-center"><p className="text-4xl">◎</p><h2 className="mt-3 text-lg font-semibold">Selecciona un alumno</h2><p className="mt-1 text-sm text-slate-500">Consulta su panorama académico completo durante el cuatrimestre.</p></Panel>}
-            {loading && <Panel className="p-12 text-center text-sm text-slate-500">Cargando expediente de {alumnoSeleccionado?.nombre || 'alumno'}…</Panel>}
+            <button onClick={volverPanorama} className="mb-3 text-sm font-semibold text-blue-400 hover:text-blue-300">← Volver al panorama del grupo</button>
+            {loading && <Panel className="p-12 text-center text-sm text-slate-500">Cargando expediente del alumno…</Panel>}
             {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
             {data && !loading && (
               <div className="space-y-5">
@@ -370,7 +528,7 @@ export default function ExpedienteAcademico() {
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </AdminLayout>
   );

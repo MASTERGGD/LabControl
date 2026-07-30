@@ -37,6 +37,29 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     db.commit()
 
     admin_headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    grupos = client.get(
+        "/expediente-academico/panorama/grupos", headers=admin_headers,
+    )
+    assert grupos.status_code == 200, grupos.text
+    assert any(
+        grupo["id"] == carga.grupo_academico_id
+        and grupo["total_alumnos"] == 1
+        for grupo in grupos.json()
+    )
+    panorama = client.get(
+        f"/expediente-academico/panorama/grupos/{carga.grupo_academico_id}/alumnos",
+        params={"pagina": 1, "limite": 25},
+        headers=admin_headers,
+    )
+    assert panorama.status_code == 200, panorama.text
+    vista_grupo = panorama.json()
+    assert vista_grupo["resumen"]["total_alumnos"] == 1
+    assert vista_grupo["resumen"]["asistencia_global"] == 50.0
+    assert vista_grupo["resumen"]["alumnos_riesgo"] == 1
+    assert vista_grupo["alumnos"][0]["id"] == alumno.id
+    assert vista_grupo["alumnos"][0]["estado"] == "RIESGO"
+    assert vista_grupo["paginacion"]["total"] == 1
+
     respuesta = client.get(
         f"/expediente-academico/alumnos/{alumno.id}", headers=admin_headers,
     )
@@ -54,7 +77,7 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
 
 
 def test_solo_tutor_asignado_consulta_expediente(client, db):
-    reportante, tutor, alumno, _, _ = _escenario(db)
+    reportante, tutor, alumno, carga, _ = _escenario(db)
     ajeno = Usuario(
         nombre="Docente ajeno", email="ajeno@utecan.edu.mx",
         password_hash=hashear_password("Ajeno123!"), rol=RolUsuario.DOCENTE, activo=True,
@@ -68,6 +91,12 @@ def test_solo_tutor_asignado_consulta_expediente(client, db):
     )
     assert lista_docente_materia.status_code == 200
     assert alumno.id not in [row["id"] for row in lista_docente_materia.json()]
+    grupos_docente_materia = client.get(
+        "/expediente-academico/panorama/grupos",
+        headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
+    )
+    assert grupos_docente_materia.status_code == 200
+    assert grupos_docente_materia.json() == []
 
     detalle_docente_materia = client.get(
         f"/expediente-academico/alumnos/{alumno.id}",
@@ -81,6 +110,14 @@ def test_solo_tutor_asignado_consulta_expediente(client, db):
     )
     assert lista_tutor.status_code == 200
     assert alumno.id in [row["id"] for row in lista_tutor.json()]
+    grupos_tutor = client.get(
+        "/expediente-academico/panorama/grupos",
+        headers=auth_headers(get_token(client, tutor.email, "Tutor123!")),
+    )
+    assert grupos_tutor.status_code == 200
+    assert [grupo["id"] for grupo in grupos_tutor.json()] == [
+        carga.grupo_academico_id,
+    ]
 
     detalle_tutor = client.get(
         f"/expediente-academico/alumnos/{alumno.id}",

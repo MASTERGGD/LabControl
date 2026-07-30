@@ -1,6 +1,7 @@
 """Expediente Académico Integral — consolidación institucional del alumno."""
 import datetime
 from collections import defaultdict
+import math
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -222,6 +223,280 @@ def _semaforo(materias, acuerdos, reportes):
         nivel = "VERDE"
         razones.append("Sin indicadores críticos en los registros disponibles")
     return nivel, razones, asistencia_global
+
+
+def _grupos_accesibles(db: Session, usuario: Usuario):
+    ids = _ids_alumnos_accesibles(db, usuario)
+    consulta = (
+        db.query(GrupoAcademico)
+        .join(
+            InscripcionAlumno,
+            InscripcionAlumno.grupo_academico_id == GrupoAcademico.id,
+        )
+        .filter(
+            GrupoAcademico.activo == True,
+            InscripcionAlumno.estado == "ACTIVO",
+        )
+    )
+    if ids is not None:
+        if not ids:
+            return []
+        consulta = consulta.filter(InscripcionAlumno.alumno_id.in_(ids))
+    return consulta.distinct().order_by(
+        GrupoAcademico.periodo_id.desc(), GrupoAcademico.carrera,
+        GrupoAcademico.cuatrimestre, GrupoAcademico.grupo,
+    ).all()
+
+
+@router.get("/panorama/grupos", summary="Grupos accesibles para seguimiento académico")
+def panorama_grupos(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    ids_accesibles = _ids_alumnos_accesibles(db, current_user)
+    grupos = _grupos_accesibles(db, current_user)
+    resultado = []
+    for grupo in grupos:
+        alumnos_query = db.query(InscripcionAlumno.alumno_id).filter(
+            InscripcionAlumno.grupo_academico_id == grupo.id,
+            InscripcionAlumno.estado == "ACTIVO",
+        )
+        if ids_accesibles is not None:
+            alumnos_query = alumnos_query.filter(
+                InscripcionAlumno.alumno_id.in_(ids_accesibles),
+            )
+        total = alumnos_query.distinct().count()
+        materias = db.query(CargaDocente.id).filter(
+            CargaDocente.grupo_academico_id == grupo.id,
+            CargaDocente.tipo_actividad == "CLASE",
+            CargaDocente.activo == True,
+        ).count()
+        periodo = grupo.periodo.clave if grupo.periodo else None
+        resultado.append({
+            "id": grupo.id,
+            "carrera": grupo.carrera,
+            "cuatrimestre": grupo.cuatrimestre,
+            "grupo": grupo.grupo,
+            "turno": grupo.turno,
+            "periodo": periodo,
+            "total_alumnos": total,
+            "materias": materias,
+        })
+    return resultado
+
+
+@router.get(
+    "/panorama/grupos/{grupo_id}/alumnos",
+    summary="Indicadores y alumnos paginados de un grupo",
+)
+def panorama_alumnos_grupo(
+    grupo_id: int,
+    q: str = Query(default="", max_length=100),
+    estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|SIN_DATOS)$"),
+    pagina: int = Query(default=1, ge=1),
+    limite: int = Query(default=25, ge=10, le=100),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    grupos_permitidos = {grupo.id for grupo in _grupos_accesibles(db, current_user)}
+    if grupo_id not in grupos_permitidos:
+        raise HTTPException(403, "No tienes acceso académico a este grupo")
+    grupo = db.query(GrupoAcademico).filter(GrupoAcademico.id == grupo_id).first()
+
+    ids_accesibles = _ids_alumnos_accesibles(db, current_user)
+    consulta_alumnos = (
+        db.query(CatalogoAlumno)
+        .join(
+            InscripcionAlumno,
+            InscripcionAlumno.alumno_id == CatalogoAlumno.id,
+        )
+        .filter(
+            InscripcionAlumno.grupo_academico_id == grupo_id,
+            InscripcionAlumno.estado == "ACTIVO",
+            CatalogoAlumno.activo == True,
+        )
+    )
+    if ids_accesibles is not None:
+        consulta_alumnos = consulta_alumnos.filter(
+            CatalogoAlumno.id.in_(ids_accesibles),
+        )
+    alumnos = consulta_alumnos.distinct().all()
+    alumno_ids = [alumno.id for alumno in alumnos]
+
+    cargas = db.query(CargaDocente).filter(
+        CargaDocente.grupo_academico_id == grupo_id,
+        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.activo == True,
+    ).all()
+    carga_ids = [carga.id for carga in cargas]
+    clases = (
+        db.query(ClaseDocente).filter(
+            ClaseDocente.carga_docente_id.in_(carga_ids),
+        ).all() if carga_ids else []
+    )
+    clase_ids = [clase.id for clase in clases]
+    fecha_clase = {clase.id: clase.fecha for clase in clases}
+    asistencias = (
+        db.query(AsistenciaDocente).filter(
+            AsistenciaDocente.clase_docente_id.in_(clase_ids),
+            AsistenciaDocente.alumno_id.in_(alumno_ids),
+        ).all() if clase_ids and alumno_ids else []
+    )
+    seguimientos = (
+        db.query(SeguimientoAlumnoDocente).filter(
+            SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
+            SeguimientoAlumnoDocente.alumno_id.in_(alumno_ids),
+        ).all() if carga_ids and alumno_ids else []
+    )
+    reportes = (
+        db.query(ReporteTutor).filter(
+            ReporteTutor.alumno_id.in_(alumno_ids),
+        ).all() if alumno_ids else []
+    )
+
+    asistencia_por_alumno = defaultdict(list)
+    for asistencia in asistencias:
+        asistencia_por_alumno[asistencia.alumno_id].append(asistencia)
+    seguimiento_por_alumno = defaultdict(list)
+    for registro in seguimientos:
+        seguimiento_por_alumno[registro.alumno_id].append(registro)
+    reportes_por_alumno = defaultdict(list)
+    for reporte in reportes:
+        reportes_por_alumno[reporte.alumno_id].append(reporte)
+
+    filas = []
+    for alumno in alumnos:
+        registros_asistencia = asistencia_por_alumno[alumno.id]
+        conteos = {estado_asistencia.lower(): 0 for estado_asistencia in ESTADOS_ASISTENCIA}
+        for asistencia in registros_asistencia:
+            if asistencia.estado in ESTADOS_ASISTENCIA:
+                conteos[asistencia.estado.lower()] += 1
+        total_asistencia = len(registros_asistencia)
+        asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
+        porcentaje = round(asistio * 100 / total_asistencia, 1) if total_asistencia else None
+
+        ordenadas = sorted(
+            registros_asistencia,
+            key=lambda item: fecha_clase.get(item.clase_docente_id, datetime.date.min),
+            reverse=True,
+        )
+        faltas_consecutivas = 0
+        for asistencia in ordenadas:
+            if asistencia.estado != "FALTA":
+                break
+            faltas_consecutivas += 1
+
+        registros = seguimiento_por_alumno[alumno.id]
+        calificaciones = [
+            registro.calificacion for registro in registros
+            if registro.tipo == "CALIFICACION" and registro.calificacion is not None
+        ]
+        promedio = (
+            round(sum(calificaciones) / len(calificaciones), 1)
+            if calificaciones else None
+        )
+        acuerdos_pendientes = sum(
+            1 for registro in registros
+            if registro.tipo == "ACUERDO" and registro.estado == "PENDIENTE"
+        )
+        reportes_abiertos = sum(
+            1 for reporte in reportes_por_alumno[alumno.id]
+            if reporte.estado in ESTADOS_ABIERTOS
+        )
+        tiene_datos = total_asistencia > 0 or promedio is not None
+        if not tiene_datos:
+            semaforo = "SIN_DATOS"
+        elif (porcentaje is not None and porcentaje < 80) or (
+            promedio is not None and promedio < 7
+        ) or faltas_consecutivas >= 3:
+            semaforo = "RIESGO"
+        elif (porcentaje is not None and porcentaje < 90) or (
+            promedio is not None and promedio < 8
+        ) or faltas_consecutivas >= 2 or acuerdos_pendientes or reportes_abiertos:
+            semaforo = "ATENCION"
+        else:
+            semaforo = "REGULAR"
+        filas.append({
+            "id": alumno.id,
+            "matricula": alumno.matricula,
+            "nombre": _nombre_alumno(alumno),
+            "asistencia": porcentaje,
+            "promedio_evidencias": promedio,
+            "faltas": conteos["falta"],
+            "retardos": conteos["retardo"],
+            "justificadas": conteos["justificada"],
+            "faltas_consecutivas": faltas_consecutivas,
+            "acuerdos_pendientes": acuerdos_pendientes,
+            "reportes_abiertos": reportes_abiertos,
+            "estado": semaforo,
+        })
+
+    todas_filas = filas
+    termino = q.strip().lower()
+    if termino:
+        filas = [
+            fila for fila in filas
+            if termino in fila["nombre"].lower() or termino in fila["matricula"].lower()
+        ]
+    if estado != "TODOS":
+        filas = [fila for fila in filas if fila["estado"] == estado]
+    prioridad = {"RIESGO": 0, "ATENCION": 1, "SIN_DATOS": 2, "REGULAR": 3}
+    filas.sort(key=lambda fila: (prioridad[fila["estado"]], fila["nombre"]))
+
+    total_filtrado = len(filas)
+    inicio = (pagina - 1) * limite
+    paginadas = filas[inicio:inicio + limite]
+    total_registros = len(asistencias)
+    asistencia_global = (
+        round(
+            sum(
+                1 for asistencia in asistencias
+                if asistencia.estado in {"PRESENTE", "RETARDO", "JUSTIFICADA"}
+            ) * 100 / total_registros,
+            1,
+        ) if total_registros else None
+    )
+    promedios = [
+        fila["promedio_evidencias"] for fila in todas_filas
+        if fila["promedio_evidencias"] is not None
+    ]
+    return {
+        "grupo": {
+            "id": grupo.id, "carrera": grupo.carrera,
+            "cuatrimestre": grupo.cuatrimestre, "grupo": grupo.grupo,
+            "turno": grupo.turno,
+            "periodo": grupo.periodo.clave if grupo.periodo else None,
+        },
+        "resumen": {
+            "total_alumnos": len(alumnos),
+            "asistencia_global": asistencia_global,
+            "promedio_evidencias": (
+                round(sum(promedios) / len(promedios), 1) if promedios else None
+            ),
+            "alumnos_riesgo": sum(1 for fila in todas_filas if fila["estado"] == "RIESGO"),
+            "alumnos_atencion": sum(1 for fila in todas_filas if fila["estado"] == "ATENCION"),
+            "sin_datos": sum(1 for fila in todas_filas if fila["estado"] == "SIN_DATOS"),
+            "faltas_totales": sum(fila["faltas"] for fila in todas_filas),
+            "acuerdos_pendientes": sum(fila["acuerdos_pendientes"] for fila in todas_filas),
+            "reportes_abiertos": sum(fila["reportes_abiertos"] for fila in todas_filas),
+            "materias": len({
+                carga.materia_id or carga.actividad_nombre.strip().upper()
+                for carga in cargas
+            }),
+            "clases_registradas": len(clases),
+            "cobertura_asistencia": (
+                round(total_registros * 100 / (len(alumnos) * len(clases)), 1)
+                if alumnos and clases else 0
+            ),
+        },
+        "alumnos": paginadas,
+        "paginacion": {
+            "pagina": pagina,
+            "limite": limite,
+            "total": total_filtrado,
+            "paginas": max(1, math.ceil(total_filtrado / limite)),
+        },
+    }
 
 
 @router.get("/alumnos", summary="Buscar alumnos accesibles para expediente")
