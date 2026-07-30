@@ -74,7 +74,7 @@ function StatCard({ icon, label, value, sub, badge, badgeColor = '', urgent, onC
   return (
     <button
       onClick={onClick}
-      className={`group w-full text-left rounded-2xl border p-4 transition-all duration-200
+      className={`dashboard-surface ${urgent ? 'dashboard-urgent' : ''} group w-full text-left rounded-2xl border p-4 transition-all duration-200
         hover:-translate-y-0.5 hover:shadow-lg
         ${urgent
           ? 'border-red-500/35 bg-gradient-to-br from-red-500/12 to-red-500/4 hover:from-red-500/18'
@@ -163,7 +163,7 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
           </p>
           <button
             onClick={onIr}
-            className="mt-2 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors
+            className="mt-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors
               flex items-center gap-1 ml-auto"
           >
             Ver horario
@@ -387,7 +387,7 @@ export default function DashboardDocente() {
 
         {/* ── Atención requerida ─────────────────────────────────────── */}
         {atencionItems.length > 0 && (
-          <div className="rounded-2xl border border-white/8 bg-white/2 p-4">
+          <div className="dashboard-surface rounded-2xl border border-white/8 p-4">
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-3">
               Atención requerida
             </p>
@@ -413,13 +413,13 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Jornada de hoy ─────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+        <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
             <div>
               <h2 className="font-bold text-white">Mi jornada de hoy</h2>
               <p className="text-xs text-slate-500">Clases, espacios y estado de la asistencia.</p>
             </div>
-            <button onClick={() => navigate('/docente/horario')} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Ver horario completo →</button>
+            <button onClick={() => navigate('/docente/horario')} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo →</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">
@@ -452,14 +452,14 @@ export default function DashboardDocente() {
 
         {/* ── Panorama de grupos y alumnos prioritarios ─────────────── */}
         <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-          <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+          <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
               <div><h2 className="font-bold text-white">Panorama de mis grupos</h2><p className="text-xs text-slate-500">Asistencia y alertas de las materias que impartes.</p></div>
-              <button onClick={() => navigate('/docente/seguimiento')} className="text-xs font-semibold text-blue-400">Ver seguimiento →</button>
+              <button onClick={() => navigate('/docente/seguimiento')} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver seguimiento →</button>
             </div>
             <div className="grid gap-3 p-4 md:grid-cols-2">
               {operacion?.grupos.map(grupo => (
-                <button key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="rounded-xl border border-white/8 bg-white/3 p-4 text-left hover:border-blue-500/30 hover:bg-blue-500/5">
+                <button key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="dashboard-subtle rounded-xl border border-white/8 p-4 text-left hover:border-emerald-500/30 hover:bg-emerald-500/5">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500">{grupo.grupo} · {grupo.carrera}</p></div>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{grupo.alumnos_alerta} alerta(s)</span>}</div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
                     <div><b className="block text-base text-white">{grupo.total_alumnos}</b><span className="text-slate-500">Alumnos</span></div>
@@ -473,7 +473,7 @@ export default function DashboardDocente() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/8 bg-white/3 overflow-hidden">
+          <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
             <div className="border-b border-white/8 px-5 py-4"><h2 className="font-bold text-white">Alumnos que requieren atención</h2><p className="text-xs text-slate-500">Prioridad calculada con asistencias y seguimiento.</p></div>
             <div className="divide-y divide-white/5">
               {operacion?.alumnos_prioritarios.slice(0, 5).map(alumno => (
@@ -498,8 +498,8 @@ export default function DashboardDocente() {
               <button
                 key={a.path}
                 onClick={() => navigate(a.path)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/8
-                  bg-white/3 hover:bg-white/6 text-slate-400 hover:text-white text-sm
+                className="dashboard-subtle flex items-center gap-2 px-4 py-2 rounded-xl border border-white/8
+                  hover:bg-white/6 text-slate-400 hover:text-white text-sm
                   transition-all duration-150"
               >
                 <span className="text-base leading-none">{a.icon}</span>

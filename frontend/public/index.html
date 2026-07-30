@@ -39,7 +39,7 @@
         --border:       #334155;
         --border-light: rgba(255,255,255,0.07);
         --blue:         #3b82f6;
-        --emerald:      #10b981;
+        --emerald:      #34D399;
         --text:         #f1f5f9;
         --text-muted:   #94a3b8;
         --glass-bg:     rgba(30,41,59,0.6);
@@ -50,9 +50,11 @@
         --accent-primary-dark: #2563eb;
         --accent-primary-glow: rgba(59,130,246,0.38);
         --accent-secondary:    #0EA5E9;
-        --accent-success:      #10b981;
-        --accent-success-dark: #059669;
-        --accent-success-glow: rgba(16,185,129,0.38);
+        --accent-success:      #34D399;
+        --accent-success-dark: #10B981;
+        --accent-success-glow: rgba(52,211,153,0.30);
+        --accent-warning:      #FBBF24;
+        --accent-warning-soft: #FCD34D;
 
         /* â”€â”€ Variables de estructura de layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
         --layout-bg:         #0f172a;
@@ -127,18 +129,18 @@
         --accent-success-glow: rgba(0,122,83,0.20);
 
         /* â”€â”€ Colores base (modo claro) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-        --bg:           #F5F7FA;
+        --bg:           #F6F8FA;
         --surface:      #ffffff;
         --surface-2:    #F2F6F4;
-        --border:       #E2E8F0;
+        --border:       #DCE3EA;
         --border-light: rgba(15,23,42,0.08);
         --text:         #0F172A;
-        --text-muted:   #64748B;
-        --glass-bg:     rgba(255,255,255,0.88);
-        --glass-border: rgba(15,23,42,0.08);
+        --text-muted:   #475569;
+        --glass-bg:     #FFFFFF;
+        --glass-border: #DCE3EA;
 
         /* â”€â”€ Layout estructura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-        --layout-bg:         #F5F7FA;
+        --layout-bg:         #F6F8FA;
         --sidebar-from:      #0D2533;
         --sidebar-to:        #061B26;
         --sidebar-border:    rgba(255,255,255,0.08);
@@ -158,6 +160,8 @@
         --topbar-icon-color:     #6b7280;
         --topbar-hover-bg:       #E7F5EE;
         --main-text:             #0F172A;
+        --text-secondary:        #475569;
+        --text-tertiary:         #64748B;
         --sidebar-subtitle:      #A8C7BC;
 
         /* â”€â”€ Tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -202,8 +206,8 @@
       /* Glass cards â†’ fondo blanco/crema */
       body.theme-day .glass {
         background: #FFFFFF !important;
-        border-color: #CBD5E1 !important;
-        box-shadow: 0 20px 60px rgba(15,23,42,0.14) !important;
+        border-color: #DCE3EA !important;
+        box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 6px 18px rgba(15,23,42,0.035) !important;
       }
       body.theme-day .glass-sm {
         background: #F8FAFC !important;
@@ -211,8 +215,8 @@
       }
       body.theme-day .glass-dark {
         background: #FFFFFF !important;
-        border-color: #CBD5E1 !important;
-        box-shadow: 0 20px 60px rgba(15,23,42,0.14) !important;
+        border-color: #DCE3EA !important;
+        box-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 6px 18px rgba(15,23,42,0.035) !important;
       }
 
       /* Inputs */
@@ -274,7 +278,7 @@
       body.theme-day main .text-slate-200 { color: #0F172A !important; }
       body.theme-day main .text-slate-300 { color: #374151 !important; }
       body.theme-day main .text-slate-400 { color: #475569 !important; }
-      body.theme-day main .text-slate-500 { color: #64748B !important; }
+      body.theme-day main .text-slate-500 { color: #475569 !important; }
       body.theme-day main [class*="bg-slate-950"],
       body.theme-day main [class*="bg-slate-900"],
       body.theme-day main [class*="bg-slate-800"] {
@@ -599,7 +603,7 @@
 
       /* Tables */
       body.theme-day table thead th,
-      body.theme-day table thead td { color: #6b7280 !important; }
+      body.theme-day table thead td { color: #475569 !important; }
       body.theme-day table tbody tr { border-color: rgba(15,23,42,0.06) !important; }
       body.theme-day table tbody td { color: #0F172A; }
 
@@ -609,7 +613,7 @@
 
       /* Breadcrumb */
       body.theme-day nav .text-slate-500,
-      body.theme-day nav .text-slate-600 { color: #9ca3af !important; }
+      body.theme-day nav .text-slate-600 { color: #64748B !important; }
       body.theme-day nav .text-slate-300 { color: #374151 !important; }
       body.theme-day nav .text-slate-400 { color: #64748B !important; }
 
@@ -981,5 +985,3 @@
     </script>
   </body>
 </html>
-
-
