@@ -28,7 +28,10 @@ const ESTADO_MATERIA = {
   SIN_DATOS: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
 };
 
-const fmt = value => value ? new Date(value).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : '—';
+const fmt = value => value
+  ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value)
+    .toLocaleDateString('es-MX', { dateStyle: 'medium' })
+  : '—';
 const fmtFechaHora = value => value ? new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 const labelEstado = value => String(value || '—').replaceAll('_', ' ');
 
@@ -151,10 +154,26 @@ function Resumen({ data, setTab }) {
   );
 }
 
-function Asistencia({ materias }) {
+function Asistencia({ data }) {
+  const materias = data.materias;
+  const [excluirJustificadas, setExcluirJustificadas] = useState(true);
+  const patron = data.patrones_asistencia?.[
+    excluirJustificadas ? 'excluyendo_justificadas' : 'incluyendo_justificadas'
+  ];
   const max = Math.max(100, ...materias.map(m => m.porcentaje_asistencia || 0));
+  const tonoConfianza = {
+    ALTA: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+    MEDIA: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+    BAJA: 'border-slate-500/30 bg-slate-500/10 text-slate-400',
+  };
+  const colorCelda = bloque => {
+    if (!bloque.total) return 'bg-slate-500/5 text-slate-500';
+    if (bloque.porcentaje_asistencia < 70) return 'bg-red-500/20 text-red-400';
+    if (bloque.porcentaje_asistencia < 90) return 'bg-amber-500/20 text-amber-400';
+    return 'bg-emerald-500/20 text-emerald-400';
+  };
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Panel className="p-5">
         <h2 className="font-semibold">Comparación entre materias</h2>
         <p className="mt-1 text-xs text-slate-500">Permite detectar si las ausencias se concentran en asignaturas específicas.</p>
@@ -175,6 +194,111 @@ function Asistencia({ materias }) {
           })}
         </div>
       </Panel>
+
+      {patron && (
+        <>
+          <Panel className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="font-semibold">Patrones de asistencia</h2>
+                <p className="mt-1 text-xs text-slate-500">Analiza cuándo ocurren las ausencias y si el alumno entra a clases posteriores.</p>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-500">
+                <input type="checkbox" checked={excluirJustificadas} onChange={e => setExcluirJustificadas(e.target.checked)} className="h-4 w-4 accent-blue-600" />
+                Excluir justificadas del análisis
+              </label>
+            </div>
+            <div className="mt-4 rounded-xl border border-blue-500/25 bg-blue-500/[0.08] p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-blue-400">Hallazgo principal</p>
+                <Badge className={tonoConfianza[patron.resumen.confianza]}>Confianza {patron.resumen.confianza.toLowerCase()}</Badge>
+              </div>
+              <p className="mt-2 text-sm text-slate-400">{patron.resumen.hallazgo}</p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <Kpi label="Registros analizados" value={patron.resumen.registros_analizados} />
+              <Kpi label="Faltas analizadas" value={patron.resumen.faltas} tone="text-red-400" />
+              <Kpi label="Faltas tempranas" value={patron.resumen.faltas_tempranas} hint={`${patron.resumen.porcentaje_faltas_tempranas}% del total`} tone="text-orange-400" />
+              <Kpi label="Ausencias parciales" value={patron.resumen.dias_ausencia_parcial} tone="text-amber-400" />
+              <Kpi label="Ausencias completas" value={patron.resumen.dias_ausencia_completa} tone="text-red-400" />
+              <Kpi label="Faltó y entró después" value={patron.resumen.primera_hora_ausente_luego_asistio} tone="text-violet-400" />
+            </div>
+          </Panel>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Panel className="overflow-hidden">
+              <div className="px-5 py-4">
+                <h2 className="font-semibold">Desempeño por bloque horario</h2>
+                <p className="text-xs text-slate-500">Identifica los horarios con mayor concentración de faltas o retardos.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left text-sm">
+                  <thead className="bg-white/[0.035] text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Horario</th><th className="text-center">Clases</th><th className="text-center">Faltas</th><th className="text-center">Retardos</th><th className="pr-5 text-right">Asistencia</th></tr></thead>
+                  <tbody className="divide-y divide-white/5">
+                    {patron.bloques.map(bloque => (
+                      <tr key={`${bloque.hora_inicio}-${bloque.hora_fin}`}>
+                        <td className="px-5 py-3 font-semibold">{bloque.hora_inicio}–{bloque.hora_fin}</td>
+                        <td className="text-center">{bloque.total}</td>
+                        <td className="text-center text-red-400">{bloque.falta}</td>
+                        <td className="text-center text-amber-400">{bloque.retardo}</td>
+                        <td className="pr-5 text-right font-bold">{bloque.porcentaje_asistencia}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!patron.bloques.length && <p className="p-8 text-center text-sm text-slate-500">No hay registros suficientes.</p>}
+              </div>
+            </Panel>
+
+            <Panel className="overflow-hidden">
+              <div className="px-5 py-4">
+                <h2 className="font-semibold">Mapa semanal</h2>
+                <p className="text-xs text-slate-500">Porcentaje de asistencia acumulado por día y horario.</p>
+              </div>
+              <div className="overflow-x-auto p-4 pt-0">
+                <table className="w-full min-w-[620px] border-separate border-spacing-1 text-xs">
+                  <thead><tr><th className="p-2 text-left text-slate-500">Día</th>{patron.bloques.map(b => <th key={`${b.hora_inicio}-${b.hora_fin}`} className="p-2 text-center text-slate-500">{b.hora_inicio}</th>)}</tr></thead>
+                  <tbody>
+                    {patron.mapa_semanal.map(dia => (
+                      <tr key={dia.dia_num}>
+                        <th className="p-2 text-left font-semibold">{dia.dia}</th>
+                        {dia.bloques.map(bloque => (
+                          <td key={`${dia.dia_num}-${bloque.hora_inicio}`} title={`${bloque.total} registro(s), ${bloque.falta} falta(s), ${bloque.retardo} retardo(s)`} className={`rounded-lg p-3 text-center font-bold ${colorCelda(bloque)}`}>
+                            {bloque.total ? `${bloque.porcentaje_asistencia}%` : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>🟢 90–100%</span><span>🟡 70–89%</span><span>🔴 Menor a 70%</span><span>Gris: sin clase registrada</span></div>
+              </div>
+            </Panel>
+          </div>
+
+          <Panel className="overflow-hidden">
+            <div className="px-5 py-4">
+              <h2 className="font-semibold">Días con ausencia parcial</h2>
+              <p className="text-xs text-slate-500">Días en los que faltó a una clase, pero sí tuvo asistencia registrada en otra.</p>
+            </div>
+            <div className="divide-y divide-white/5">
+              {patron.ausencias_parciales.map(dia => (
+                <div key={dia.fecha} className="grid gap-3 px-5 py-4 md:grid-cols-[160px_1fr]">
+                  <div><p className="font-semibold">{fmt(dia.fecha)}</p>{dia.primera_hora_ausente && <Badge className="mt-1 border-red-500/30 bg-red-500/10 text-red-400">Faltó a primera hora</Badge>}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {dia.registros.map((registro, index) => (
+                      <div key={`${registro.hora_inicio}-${index}`} className={`rounded-lg border px-3 py-2 text-xs ${registro.estado === 'FALTA' ? 'border-red-500/30 bg-red-500/10 text-red-400' : registro.estado === 'RETARDO' ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'}`}>
+                        <b>{registro.hora_inicio}</b> · {registro.materia}<span className="ml-1 opacity-75">({labelEstado(registro.estado)})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {!patron.ausencias_parciales.length && <p className="p-8 text-center text-sm text-slate-500">No se detectaron días con ausencia parcial.</p>}
+            </div>
+          </Panel>
+        </>
+      )}
     </div>
   );
 }
@@ -520,7 +644,7 @@ export default function ExpedienteAcademico() {
 
                 {tab === 'resumen' && <Resumen data={data} setTab={setTab} />}
                 {tab === 'materias' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Materias del cuatrimestre</h2><p className="text-xs text-slate-500">Resultados calculados a partir de registros disponibles en SIGA.</p></div><MateriasTable materias={data.materias} /></Panel>}
-                {tab === 'asistencia' && <Asistencia materias={data.materias} />}
+                {tab === 'asistencia' && <Asistencia data={data} />}
                 {tab === 'evaluaciones' && <Evaluaciones data={data} />}
                 {tab === 'acuerdos' && <Acuerdos acuerdos={data.acuerdos} />}
                 {tab === 'tutoria' && <Tutoria tutoria={data.tutoria} />}

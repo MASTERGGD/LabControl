@@ -225,6 +225,155 @@ def _semaforo(materias, acuerdos, reportes):
     return nivel, razones, asistencia_global
 
 
+def _calcular_patron_asistencia(
+    cargas: list[CargaDocente],
+    clases: list[ClaseDocente],
+    asistencias: list[AsistenciaDocente],
+    excluir_justificadas: bool = False,
+):
+    carga_por_id = {carga.id: carga for carga in cargas}
+    clase_por_id = {clase.id: clase for clase in clases}
+    registros = []
+    for asistencia in asistencias:
+        if excluir_justificadas and asistencia.estado == "JUSTIFICADA":
+            continue
+        clase = clase_por_id.get(asistencia.clase_docente_id)
+        carga = carga_por_id.get(clase.carga_docente_id) if clase else None
+        if not clase or not carga:
+            continue
+        registros.append({
+            "fecha": clase.fecha,
+            "dia_semana": clase.fecha.weekday(),
+            "hora_inicio": carga.hora_inicio,
+            "hora_fin": carga.hora_fin,
+            "materia": carga.actividad_nombre,
+            "estado": asistencia.estado,
+        })
+
+    bloques = defaultdict(list)
+    dias_semana = defaultdict(list)
+    fechas = defaultdict(list)
+    for registro in registros:
+        bloques[(registro["hora_inicio"], registro["hora_fin"])].append(registro)
+        dias_semana[registro["dia_semana"]].append(registro)
+        fechas[registro["fecha"]].append(registro)
+
+    def resumir(items):
+        conteos = {estado.lower(): 0 for estado in ESTADOS_ASISTENCIA}
+        for item in items:
+            conteos[item["estado"].lower()] += 1
+        total = len(items)
+        asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
+        return {
+            "total": total,
+            **conteos,
+            "porcentaje_asistencia": round(asistio * 100 / total, 1) if total else None,
+        }
+
+    resumen_bloques = [
+        {
+            "hora_inicio": hora_inicio,
+            "hora_fin": hora_fin,
+            **resumir(items),
+        }
+        for (hora_inicio, hora_fin), items in sorted(bloques.items())
+    ]
+    nombres_dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+    mapa = []
+    for dia_num in sorted(dias_semana):
+        items_dia = dias_semana[dia_num]
+        celdas = []
+        for (hora_inicio, hora_fin), items_bloque in sorted(bloques.items()):
+            coincidentes = [
+                item for item in items_dia
+                if item["hora_inicio"] == hora_inicio and item["hora_fin"] == hora_fin
+            ]
+            celdas.append({
+                "hora_inicio": hora_inicio,
+                "hora_fin": hora_fin,
+                **resumir(coincidentes),
+            })
+        mapa.append({
+            "dia_num": dia_num,
+            "dia": nombres_dias[dia_num],
+            "bloques": celdas,
+        })
+
+    ausencias_parciales = []
+    ausencias_completas = 0
+    primera_hora_ausente_luego_asistio = 0
+    for fecha, items in sorted(fechas.items(), reverse=True):
+        ordenados = sorted(items, key=lambda item: item["hora_inicio"])
+        tiene_falta = any(item["estado"] == "FALTA" for item in ordenados)
+        tiene_asistencia = any(
+            item["estado"] in {"PRESENTE", "RETARDO", "JUSTIFICADA"}
+            for item in ordenados
+        )
+        if tiene_falta and tiene_asistencia:
+            if ordenados[0]["estado"] == "FALTA" and any(
+                item["estado"] in {"PRESENTE", "RETARDO", "JUSTIFICADA"}
+                for item in ordenados[1:]
+            ):
+                primera_hora_ausente_luego_asistio += 1
+            ausencias_parciales.append({
+                "fecha": fecha.isoformat(),
+                "primera_hora_ausente": ordenados[0]["estado"] == "FALTA",
+                "registros": [{
+                    "hora_inicio": item["hora_inicio"],
+                    "hora_fin": item["hora_fin"],
+                    "materia": item["materia"],
+                    "estado": item["estado"],
+                } for item in ordenados],
+            })
+        elif tiene_falta and not tiene_asistencia:
+            ausencias_completas += 1
+
+    horas = sorted({registro["hora_inicio"] for registro in registros})
+    horas_tempranas = set(horas[:2])
+    faltas = [registro for registro in registros if registro["estado"] == "FALTA"]
+    faltas_tempranas = sum(
+        1 for registro in faltas if registro["hora_inicio"] in horas_tempranas
+    )
+    concentracion = round(faltas_tempranas * 100 / len(faltas), 1) if faltas else 0
+    if len(registros) >= 20 and len(faltas) >= 3:
+        confianza = "ALTA"
+    elif len(registros) >= 8 and len(faltas) >= 2:
+        confianza = "MEDIA"
+    else:
+        confianza = "BAJA"
+
+    if primera_hora_ausente_luego_asistio >= 2:
+        hallazgo = (
+            f"En {primera_hora_ausente_luego_asistio} días faltó a su primera clase "
+            "registrada y asistió a clases posteriores."
+        )
+    elif faltas and concentracion >= 60:
+        hallazgo = f"El {concentracion}% de sus faltas se concentra en los dos primeros horarios."
+    elif faltas:
+        hallazgo = "No se observa una concentración horaria suficientemente clara."
+    else:
+        hallazgo = "No hay faltas en los registros analizados."
+    if confianza == "BAJA":
+        hallazgo += " Aún hay pocos registros para establecer una tendencia."
+
+    return {
+        "resumen": {
+            "registros_analizados": len(registros),
+            "faltas": len(faltas),
+            "faltas_tempranas": faltas_tempranas,
+            "porcentaje_faltas_tempranas": concentracion,
+            "dias_ausencia_parcial": len(ausencias_parciales),
+            "dias_ausencia_completa": ausencias_completas,
+            "primera_hora_ausente_luego_asistio": primera_hora_ausente_luego_asistio,
+            "confianza": confianza,
+            "hallazgo": hallazgo,
+        },
+        "bloques": resumen_bloques,
+        "mapa_semanal": mapa,
+        "ausencias_parciales": ausencias_parciales[:20],
+    }
+
+
 def _grupos_accesibles(db: Session, usuario: Usuario):
     ids = _ids_alumnos_accesibles(db, usuario)
     consulta = (
@@ -597,16 +746,27 @@ def expediente_alumno(
         carga.id: carga.actividad_nombre for carga in cargas
     }
     carga_ids = list(carga_materia)
+    clases_patron = []
+    asistencias_patron = []
     if carga_ids:
-        excepciones = (
-            db.query(AsistenciaDocente, ClaseDocente)
-            .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
-            .filter(
+        clases_patron = db.query(ClaseDocente).filter(
+            ClaseDocente.carga_docente_id.in_(carga_ids),
+        ).all()
+        ids_clases_patron = [clase.id for clase in clases_patron]
+        asistencias_patron = (
+            db.query(AsistenciaDocente).filter(
                 AsistenciaDocente.alumno_id == alumno.id,
-                AsistenciaDocente.estado.in_(["FALTA", "RETARDO", "JUSTIFICADA"]),
-                ClaseDocente.carga_docente_id.in_(carga_ids),
-            ).all()
+                AsistenciaDocente.clase_docente_id.in_(ids_clases_patron),
+            ).all() if ids_clases_patron else []
         )
+        excepciones = [
+            (asistencia, next(
+                clase for clase in clases_patron
+                if clase.id == asistencia.clase_docente_id
+            ))
+            for asistencia in asistencias_patron
+            if asistencia.estado in {"FALTA", "RETARDO", "JUSTIFICADA"}
+        ]
         for asistencia, clase in excepciones:
             timeline.append({
                 "tipo": "ASISTENCIA", "fecha": clase.fecha.isoformat(),
@@ -686,6 +846,15 @@ def expediente_alumno(
             "semaforo": nivel, "razones_semaforo": razones,
         },
         "materias": materias,
+        "patrones_asistencia": {
+            "incluyendo_justificadas": _calcular_patron_asistencia(
+                cargas, clases_patron, asistencias_patron,
+            ),
+            "excluyendo_justificadas": _calcular_patron_asistencia(
+                cargas, clases_patron, asistencias_patron,
+                excluir_justificadas=True,
+            ),
+        },
         "acuerdos": [{
             "id": a.id, "titulo": a.titulo, "detalle": a.detalle,
             "estado": a.estado,
