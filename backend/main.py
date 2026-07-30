@@ -41,6 +41,7 @@ from routers import consultorio as consultorio_router
 from routers import servicios_escolares as servicios_escolares_router
 from routers import system as system_router
 from routers import docencia as docencia_router
+from routers import expediente_academico as expediente_academico_router
 
 from ws.mapa import websocket_mapa
 
@@ -199,6 +200,7 @@ app.include_router(consultorio_router.router)
 app.include_router(servicios_escolares_router.router)
 app.include_router(system_router.router)
 app.include_router(docencia_router.router)
+app.include_router(expediente_academico_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

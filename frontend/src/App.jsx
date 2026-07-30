@@ -57,6 +57,7 @@ import SEFichas from './pages/servicios_escolares/SEFichas';
 import AutoAsignacion from './pages/AutoAsignacion';
 import ValidarConsulta from './pages/ValidarConsulta';
 import ValidarActivo from './pages/ValidarActivo';
+import ExpedienteAcademico from './pages/academico/ExpedienteAcademico';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
@@ -263,6 +264,14 @@ function AppRoutes() {
       <Route path="/division-carrera/materias" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE]}>
           <Catalogo modo="materias" />
+        </RutaProtegida>
+      }/>
+      <Route path="/expediente-academico" element={
+        <RutaProtegida
+          rolesPermitidos={['SUPER_ADMIN','DOCENTE','TUTORIA_ADMIN','SERVICIOS_ESCOLARES','ALUMNO']}
+          permisosPermitidos={PERM_DIVISION_CARRERA_MANAGE}
+        >
+          <ExpedienteAcademico />
         </RutaProtegida>
       }/>
       <Route path="/admin/reportes" element={

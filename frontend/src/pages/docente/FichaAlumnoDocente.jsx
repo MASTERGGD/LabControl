@@ -193,7 +193,10 @@ export default function FichaAlumnoDocente() {
             <h1 className="text-2xl font-bold text-white">{datos?.alumno.nombre || 'Ficha individual'}</h1>
             {datos && <p className="text-sm text-slate-400">{datos.alumno.matricula} · {datos.carga.actividad_nombre} · {datos.carga.grupo}</p>}
           </div>
-          <button onClick={() => setModalRegistro(true)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Registrar seguimiento</button>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => navigate(`/expediente-academico?alumno=${alumnoId}`)} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Expediente integral</button>
+            <button onClick={() => setModalRegistro(true)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Registrar seguimiento</button>
+          </div>
         </div>
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}

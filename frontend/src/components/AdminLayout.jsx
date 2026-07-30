@@ -385,6 +385,15 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Dirección de División de Carrera
+  { divider: true, label: 'Seguimiento académico', roles: ['SUPER_ADMIN','DOCENTE','TUTORIA_ADMIN','SERVICIOS_ESCOLARES','ALUMNO'], permiso: 'division_carrera:manage' },
+  {
+    label: 'Expediente académico', path: '/expediente-academico',
+    roles: ['SUPER_ADMIN','DOCENTE','TUTORIA_ADMIN','SERVICIOS_ESCOLARES','ALUMNO'],
+    permiso: 'division_carrera:manage', inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422A12.083 12.083 0 0118 13.5C18 16.538 15.314 19 12 19s-6-2.462-6-5.5c0-1.025.304-1.985.84-2.922L12 14z"/></svg>,
+  },
+
+  // Grupo: Dirección de División de Carrera
   { divider: true, label: 'Dirección de División de Carrera', roles: [], permiso: 'division_carrera:manage', ocultarSuperAdmin: true },
   {
     label: 'Materias', path: '/division-carrera/materias', roles: [], permiso: 'division_carrera:manage', inGroup: true, ocultarSuperAdmin: true,
@@ -554,6 +563,7 @@ const BREADCRUMB_MAP = {
   '/admin/historial-alumno':  [{ label: 'Historial de laboratorio' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
   '/division-carrera/materias': [{ label: 'Dirección de División de Carrera' }, { label: 'Materias' }],
+  '/expediente-academico':   [{ label: 'Seguimiento académico' }, { label: 'Expediente integral' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
   '/comunicados':             [{ label: 'Mis Comunicados' }],
   '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
