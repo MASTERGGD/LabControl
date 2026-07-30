@@ -10,6 +10,10 @@ from models.catalogo import (
 )
 from models.horario import HorarioDisponible, Reservacion
 from models.laboratorio import Laboratorio
+from models.docencia import (
+    AsistenciaDocente, CargaDocente, ClaseDocente,
+    DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
+)
 from tests.conftest import auth_headers, get_token
 
 
@@ -202,6 +206,112 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     )
     assert atendido.status_code == 200
     assert atendido.json()["estado"] == "ATENDIDO"
+
+
+def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):
+    docente = Usuario(
+        nombre="Marco Docente", email="marco.justifica@test.mx",
+        password_hash=hashear_password("Marco123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    )
+    docente_ajeno = Usuario(
+        nombre="Docente Ajeno", email="ajeno.justifica@test.mx",
+        password_hash=hashear_password("Ajeno123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    )
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, docente_ajeno, periodo])
+    db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=3,
+        grupo="A", activo=True,
+    )
+    alumna = CatalogoAlumno(
+        matricula="UTC-KAREN", apellido_paterno="Cabrera",
+        apellido_materno="", nombres="Karen", carrera="TIEID",
+        cuatrimestre=3, grupo="A", periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, alumna])
+    db.flush()
+    db.add(InscripcionAlumno(
+        alumno_id=alumna.id, grupo_academico_id=grupo.id, estado="ACTIVO",
+    ))
+    carga = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id,
+        grupo_academico_id=grupo.id, tipo_actividad="CLASE",
+        actividad_nombre="Cálculo Integral", dia_semana=0,
+        hora_inicio="08:00", hora_fin="09:00", estado="ACTIVO", activo=True,
+    )
+    db.add(carga)
+    db.flush()
+    clases = [
+        ClaseDocente(
+            carga_docente_id=carga.id, fecha=datetime.date(2026, 7, dia),
+            estado="CERRADA",
+        )
+        for dia in (20, 22)
+    ]
+    db.add_all(clases)
+    db.flush()
+    faltas = [
+        AsistenciaDocente(
+            clase_docente_id=clase.id, alumno_id=alumna.id, estado="FALTA",
+        )
+        for clase in clases
+    ]
+    db.add_all(faltas)
+    db.commit()
+
+    headers = auth_headers(get_token(client, docente.email, "Marco123!"))
+    disponibles = client.get(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumna.id}/faltas",
+        params={"fecha_inicio": "2026-07-20", "fecha_fin": "2026-07-22"},
+        headers=headers,
+    )
+    assert disponibles.status_code == 200, disponibles.text
+    assert [fila["asistencia_id"] for fila in disponibles.json()["faltas"]] == [
+        falta.id for falta in faltas
+    ]
+
+    ajeno = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumna.id}/justificar-faltas",
+        json={
+            "fecha_inicio": "2026-07-20", "fecha_fin": "2026-07-22",
+            "asistencia_ids": [falta.id for falta in faltas],
+            "motivo": "Justificante emitido por División de Carrera",
+        },
+        headers=auth_headers(get_token(client, docente_ajeno.email, "Ajeno123!")),
+    )
+    assert ajeno.status_code == 404
+
+    respuesta = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumna.id}/justificar-faltas",
+        json={
+            "fecha_inicio": "2026-07-20", "fecha_fin": "2026-07-22",
+            "asistencia_ids": [falta.id for falta in faltas],
+            "motivo": "Justificante emitido por División de Carrera",
+            "folio": "DC-2026-0142",
+        },
+        headers=headers,
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json()["faltas_justificadas"] == 2
+    db.expire_all()
+    assert all(
+        falta.estado == "JUSTIFICADA"
+        and "DC-2026-0142" in (falta.observacion or "")
+        for falta in faltas
+    )
+    justificacion = db.query(JustificacionAsistenciaDocente).one()
+    assert justificacion.docente_id == docente.id
+    assert justificacion.motivo == "Justificante emitido por División de Carrera"
+    detalles = db.query(DetalleJustificacionAsistencia).all()
+    assert len(detalles) == 2
+    assert all(
+        detalle.estado_anterior == "FALTA"
+        and detalle.estado_nuevo == "JUSTIFICADA"
+        for detalle in detalles
+    )
 
 
 def test_materias_corresponden_a_division_de_carrera(client, db):

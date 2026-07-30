@@ -16,7 +16,9 @@ from models.laboratorio import Laboratorio
 from models.espacio import EspacioInstitucional
 from models.horario import BloqueoSlot, HorarioDisponible, Reservacion, SolicitudConflicto
 from models.docencia import (
-    AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
+    AsistenciaDocente, CargaDocente, ClaseDocente,
+    DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
+    SeguimientoAlumnoDocente,
 )
 from models.tutoria import AsignacionTutoria, GrupoTutorado, ReporteTutor
 from routers.notificaciones import crear_notificacion
@@ -79,6 +81,24 @@ class CierreInput(BaseModel):
 
 class CorreccionInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
+
+
+class JustificacionMultipleInput(BaseModel):
+    fecha_inicio: datetime.date
+    fecha_fin: datetime.date
+    asistencia_ids: list[int] = Field(..., min_length=1, max_length=100)
+    motivo: str = Field(..., min_length=5, max_length=1000)
+    folio: Optional[str] = Field(None, max_length=100)
+
+    @model_validator(mode="after")
+    def validar(self):
+        if self.fecha_fin < self.fecha_inicio:
+            raise ValueError("La fecha final debe ser igual o posterior a la inicial")
+        if len(set(self.asistencia_ids)) != len(self.asistencia_ids):
+            raise ValueError("Hay faltas repetidas en la selección")
+        self.motivo = self.motivo.strip()
+        self.folio = self.folio.strip() if self.folio else None
+        return self
 
 
 class SeguimientoInput(BaseModel):
@@ -837,14 +857,136 @@ def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_
         CargaDocente.activo == True,
         CargaDocente.tipo_actividad == "CLASE",
     ).first()
+    if not carga:
+        raise HTTPException(404, "Alumno no encontrado en este grupo")
     inscripcion = db.query(InscripcionAlumno).filter(
-        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id if carga else -1,
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
         InscripcionAlumno.alumno_id == alumno_id,
         InscripcionAlumno.estado == "ACTIVO",
     ).first()
-    if not carga or not inscripcion:
+    if not inscripcion:
         raise HTTPException(404, "Alumno no encontrado en este grupo")
     return carga, inscripcion.alumno
+
+
+@router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}/faltas")
+def faltas_justificables(
+    carga_id: int,
+    alumno_id: int,
+    fecha_inicio: datetime.date,
+    fecha_fin: datetime.date,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(
+        db, carga_id, alumno_id, current_user.id,
+    )
+    if fecha_fin < fecha_inicio:
+        raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
+    faltas = (
+        db.query(AsistenciaDocente, ClaseDocente)
+        .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
+        .filter(
+            ClaseDocente.carga_docente_id == carga.id,
+            ClaseDocente.fecha.between(fecha_inicio, fecha_fin),
+            AsistenciaDocente.alumno_id == alumno.id,
+            AsistenciaDocente.estado == "FALTA",
+        )
+        .order_by(ClaseDocente.fecha.asc())
+        .all()
+    )
+    return {
+        "alumno": {
+            "id": alumno.id,
+            "matricula": alumno.matricula,
+            "nombre": (
+                f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}"
+            ).strip(),
+        },
+        "materia": carga.actividad_nombre,
+        "faltas": [
+            {
+                "asistencia_id": asistencia.id,
+                "clase_id": clase.id,
+                "fecha": clase.fecha.isoformat(),
+                "horario": f"{carga.hora_inicio}–{carga.hora_fin}",
+                "estado": asistencia.estado,
+            }
+            for asistencia, clase in faltas
+        ],
+    }
+
+
+@router.post("/seguimiento/{carga_id}/alumnos/{alumno_id}/justificar-faltas")
+def justificar_faltas_multiples(
+    carga_id: int,
+    alumno_id: int,
+    data: JustificacionMultipleInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(
+        db, carga_id, alumno_id, current_user.id,
+    )
+    registros = (
+        db.query(AsistenciaDocente, ClaseDocente)
+        .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
+        .filter(
+            AsistenciaDocente.id.in_(data.asistencia_ids),
+            AsistenciaDocente.alumno_id == alumno.id,
+            ClaseDocente.carga_docente_id == carga.id,
+            ClaseDocente.fecha.between(data.fecha_inicio, data.fecha_fin),
+        )
+        .all()
+    )
+    if len(registros) != len(data.asistencia_ids):
+        raise HTTPException(
+            422, "Una o más asistencias no pertenecen al alumno, materia o periodo indicado",
+        )
+    no_justificables = [
+        asistencia.id for asistencia, _ in registros
+        if asistencia.estado != "FALTA"
+    ]
+    if no_justificables:
+        raise HTTPException(
+            409, "Solo se pueden justificar registros que actualmente sean faltas",
+        )
+
+    justificacion = JustificacionAsistenciaDocente(
+        docente_id=current_user.id,
+        carga_docente_id=carga.id,
+        alumno_id=alumno.id,
+        fecha_inicio=data.fecha_inicio,
+        fecha_fin=data.fecha_fin,
+        motivo=data.motivo,
+        folio=data.folio,
+    )
+    db.add(justificacion)
+    db.flush()
+    marca = _ahora_mx().strftime("%d/%m/%Y %H:%M")
+    referencia = f" · Folio {data.folio}" if data.folio else ""
+    nota = f"[Justificada {marca}{referencia}] {data.motivo}"
+    for asistencia, _ in registros:
+        db.add(DetalleJustificacionAsistencia(
+            justificacion_id=justificacion.id,
+            asistencia_id=asistencia.id,
+            estado_anterior=asistencia.estado,
+            estado_nuevo="JUSTIFICADA",
+        ))
+        asistencia.estado = "JUSTIFICADA"
+        asistencia.observacion = "\n".join(
+            parte for parte in [asistencia.observacion, nota] if parte
+        )
+    db.commit()
+    return {
+        "id": justificacion.id,
+        "alumno_id": alumno.id,
+        "faltas_justificadas": len(registros),
+        "fecha_inicio": data.fecha_inicio.isoformat(),
+        "fecha_fin": data.fecha_fin.isoformat(),
+        "motivo": data.motivo,
+        "folio": data.folio,
+    }
 
 
 @router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}")

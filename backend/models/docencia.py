@@ -83,6 +83,55 @@ class AsistenciaDocente(Base):
     alumno = relationship("CatalogoAlumno")
 
 
+class JustificacionAsistenciaDocente(Base):
+    __tablename__ = "justificaciones_asistencia_docente"
+
+    id = Column(Integer, primary_key=True)
+    docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    carga_docente_id = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=False, index=True)
+    alumno_id = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=False, index=True)
+    fecha_inicio = Column(Date, nullable=False)
+    fecha_fin = Column(Date, nullable=False)
+    motivo = Column(Text, nullable=False)
+    folio = Column(String(100), nullable=True)
+    creado_en = Column(DateTime, nullable=False, default=_utcnow)
+
+    docente = relationship("Usuario")
+    carga = relationship("CargaDocente")
+    alumno = relationship("CatalogoAlumno")
+    detalles = relationship(
+        "DetalleJustificacionAsistencia", back_populates="justificacion",
+        cascade="all, delete-orphan",
+    )
+
+
+class DetalleJustificacionAsistencia(Base):
+    __tablename__ = "detalles_justificacion_asistencia"
+    __table_args__ = (
+        UniqueConstraint(
+            "justificacion_id", "asistencia_id",
+            name="uq_detalle_justificacion_asistencia",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    justificacion_id = Column(
+        Integer, ForeignKey("justificaciones_asistencia_docente.id"),
+        nullable=False, index=True,
+    )
+    asistencia_id = Column(
+        Integer, ForeignKey("asistencias_docentes.id"), nullable=False, index=True,
+    )
+    estado_anterior = Column(String(20), nullable=False)
+    estado_nuevo = Column(String(20), nullable=False, default="JUSTIFICADA")
+    creado_en = Column(DateTime, nullable=False, default=_utcnow)
+
+    justificacion = relationship(
+        "JustificacionAsistenciaDocente", back_populates="detalles",
+    )
+    asistencia = relationship("AsistenciaDocente")
+
+
 class SeguimientoAlumnoDocente(Base):
     __tablename__ = "seguimientos_alumnos_docente"
 
