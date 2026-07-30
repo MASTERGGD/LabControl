@@ -161,6 +161,35 @@ class RegistroSesionAlumno(Base):
 # ─── 6. Canalización ─────────────────────────────────────────────────────────
 # F-DC-08: el tutor levanta la solicitud; el responsable de tutoría la atiende.
 
+class ReporteTutor(Base):
+    """Aviso de un docente de materia al tutor asignado al alumno."""
+    __tablename__ = "reportes_tutor"
+
+    id                    = Column(Integer, primary_key=True, index=True)
+    alumno_id             = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=False, index=True)
+    reportado_por_id      = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    tutor_destinatario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
+    grupo_tutorado_id     = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=True, index=True)
+    carga_docente_id      = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=True, index=True)
+    seguimiento_docente_id = Column(
+        Integer, ForeignKey("seguimientos_alumnos_docente.id"), nullable=True, unique=True, index=True
+    )
+
+    categoria       = Column(String(30), nullable=False, default="ACADEMICO")
+    prioridad       = Column(String(15), nullable=False, default="MEDIA")
+    titulo          = Column(String(180), nullable=False)
+    detalle         = Column(Text, nullable=True)
+    confidencial    = Column(Boolean, nullable=False, default=False)
+    estado          = Column(String(25), nullable=False, default="ENVIADO", index=True)
+    resultado       = Column(Text, nullable=True)
+    canalizacion_id = Column(Integer, ForeignKey("canalizaciones.id"), nullable=True)
+
+    creado_en      = Column(DateTime, default=_now, nullable=False)
+    recibido_en    = Column(DateTime, nullable=True)
+    actualizado_en = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    cerrado_en     = Column(DateTime, nullable=True)
+
+
 class Canalizacion(Base):
     __tablename__ = "canalizaciones"
 

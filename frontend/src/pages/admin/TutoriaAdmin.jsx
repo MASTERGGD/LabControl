@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
@@ -1211,14 +1211,17 @@ function AlumnoRiesgoCard({ alumno, onVerSeguimiento }) {
 }
 
 export default function TutoriaAdmin() {
+  const [searchParams] = useSearchParams();
   const { themeKey } = useTheme();
   const isDay = themeKey === "day";
   const { toast: showToast } = useToast();
   const navigate = useNavigate();
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(searchParams.get("tab") === "reportes-tutor" ? "reportes-tutor" : "dashboard");
   const [dash, setDash] = useState(null);
   const [grupos, setGrupos] = useState([]);
   const [canalizaciones, setCanalizaciones] = useState([]);
+  const [reportesTutor, setReportesTutor] = useState([]);
+  const [asignandoReporte, setAsignandoReporte] = useState({});
   const [informes, setInformes] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [modal, setModal] = useState(null); // null | "grupo" | "importar" | {type:"atender", can}
@@ -1298,6 +1301,27 @@ export default function TutoriaAdmin() {
       showToast("Error al cargar canalizaciones", "error");
     }
   }, [filtroEstadoCan, showToast]);
+
+  const cargarReportesTutor = useCallback(async () => {
+    try {
+      const { data } = await api.get("/tutoria/reportes-tutor");
+      setReportesTutor(data);
+    } catch {
+      showToast("Error al cargar reportes enviados a tutoría", "error");
+    }
+  }, [showToast]);
+
+  const asignarReporte = async (reporte) => {
+    const grupoId = Number(asignandoReporte[reporte.id]);
+    if (!grupoId) return showToast("Selecciona el grupo tutorado del alumno", "error");
+    try {
+      await api.put(`/tutoria/reportes-tutor/${reporte.id}/asignar`, { grupo_tutorado_id: grupoId });
+      showToast("Reporte enviado al tutor del grupo", "success");
+      cargarReportesTutor();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo asignar el reporte", "error");
+    }
+  };
 
   const cargarInformes = useCallback(async () => {
     try {
@@ -1433,16 +1457,18 @@ export default function TutoriaAdmin() {
     cargarDocentes();
     cargarGrupos();
     cargarAlertas();
+    cargarReportesTutor();
   }, []);
 
   useEffect(() => {
     if (tab === "grupos") cargarGrupos();
     if (tab === "canalizaciones") cargarCanalizaciones();
+    if (tab === "reportes-tutor") cargarReportesTutor();
     if (tab === "informes") cargarInformes();
     if (tab === "cierre") cargarCierres();
     if (tab === "programacion") cargarProgramaciones();
     if (tab === "documentos") cargarDocumentosCtrl();
-  }, [tab, filtroEstadoCan, cargarGrupos, cargarCanalizaciones, cargarInformes, cargarCierres, cargarProgramaciones, cargarDocumentosCtrl]);
+  }, [tab, filtroEstadoCan, cargarGrupos, cargarCanalizaciones, cargarReportesTutor, cargarInformes, cargarCierres, cargarProgramaciones, cargarDocumentosCtrl]);
 
   useEffect(() => {
     if (tab === "riesgo")   cargarAlumnosRiesgo();
@@ -1559,6 +1585,7 @@ export default function TutoriaAdmin() {
   const TABS = [
     { id: "dashboard",      label: "Dashboard",        badge: alertasAltas > 0 ? alertasAltas : null },
     { id: "grupos",         label: "Grupos" },
+    { id: "reportes-tutor", label: "Reportes docentes", badge: reportesTutor.filter(r => r.estado === "SIN_TUTOR").length || null },
     { id: "canalizaciones", label: "Canalizaciones",   badge: (dash?.canalizaciones_pendientes > 0) ? dash.canalizaciones_pendientes : null },
     { id: "informes",       label: "Informes" },
     { id: "riesgo",         label: "Alumnos en riesgo" },
@@ -1939,6 +1966,43 @@ export default function TutoriaAdmin() {
       )}
 
       {/* â”€â”€ CANALIZACIONES â”€â”€ */}
+      {tab === "reportes-tutor" && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Reportes enviados por docentes</h2>
+            <p className="text-sm text-slate-400">Supervisión del flujo docente → tutor. Los casos sin tutor requieren asignación.</p>
+          </div>
+          {reportesTutor.map(r => (
+            <article key={r.id} className={`rounded-xl border p-4 ${r.estado === "SIN_TUTOR" ? "border-red-500/30 bg-red-500/[0.07]" : isDay ? "border-slate-200 bg-white" : "border-slate-700/50 bg-slate-800/60"}`}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-400">{r.categoria}</span>
+                    <span className={r.prioridad === "ALTA" ? "text-red-400" : "text-slate-500"}>Prioridad {r.prioridad}</span>
+                    {r.confidencial && <span className="text-purple-400">Confidencial</span>}
+                  </div>
+                  <h3 className="mt-1 font-semibold">{r.titulo}</h3>
+                  <p className="text-sm text-slate-400">{r.alumno_nombre} · {r.matricula} · {r.materia || "Sin materia"}</p>
+                  <p className="text-xs text-slate-500">Reportó: {r.reportado_por} · Tutor: {r.tutor_destinatario || "Sin asignar"}</p>
+                  {r.detalle && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}
+                </div>
+                <span className={`text-xs font-semibold ${r.estado === "SIN_TUTOR" ? "text-red-400" : "text-amber-400"}`}>{r.estado.replaceAll("_", " ")}</span>
+              </div>
+              {r.estado === "SIN_TUTOR" && (
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+                  <select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark max-w-md">
+                    <option value="">Seleccionar grupo tutorado del alumno</option>
+                    {grupos.map(g => <option key={g.id} value={g.id}>{g.carrera} · {g.grupo} · {g.periodo} · {g.tutor_nombre}</option>)}
+                  </select>
+                  <button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Asignar y notificar</button>
+                </div>
+              )}
+            </article>
+          ))}
+          {reportesTutor.length === 0 && <p className="py-8 text-center text-sm text-slate-500">Todavía no hay reportes de docentes.</p>}
+        </div>
+      )}
+
       {tab === "canalizaciones" && (
         <div className="space-y-4">
           <div className="flex gap-2 flex-wrap">

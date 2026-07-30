@@ -5,7 +5,8 @@ import api from '../../hooks/useApi';
 
 const FORM_INICIAL = {
   tipo: 'OBSERVACION', titulo: '', detalle: '', calificacion: '',
-  estado: 'REGISTRADO', fecha_revision: '',
+  estado: 'REGISTRADO', fecha_revision: '', categoria_reporte: 'ACADEMICO',
+  prioridad_reporte: 'MEDIA', confidencial: false,
 };
 const PESTANAS = [
   ['RESUMEN', 'Resumen'],
@@ -32,6 +33,7 @@ export default function FichaAlumnoDocente() {
   const [form, setForm] = useState(FORM_INICIAL);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const [mensaje, setMensaje] = useState('');
   const [pestana, setPestana] = useState('RESUMEN');
   const [modalRegistro, setModalRegistro] = useState(false);
   const [modalAtencion, setModalAtencion] = useState(null);
@@ -56,7 +58,7 @@ export default function FichaAlumnoDocente() {
     e.preventDefault();
     setGuardando(true);
     try {
-      await api.post(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}/registros`, {
+      const { data } = await api.post(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}/registros`, {
         ...form,
         calificacion: form.tipo === 'CALIFICACION' ? Number(form.calificacion) : null,
         fecha_revision: ['ACUERDO', 'TUTORIA'].includes(form.tipo) && form.fecha_revision
@@ -66,6 +68,7 @@ export default function FichaAlumnoDocente() {
       setForm(FORM_INICIAL);
       setModalRegistro(false);
       setPestana(form.tipo);
+      setMensaje(data.mensaje || 'Seguimiento registrado.');
       cargar();
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo guardar el seguimiento.');
@@ -149,7 +152,8 @@ export default function FichaAlumnoDocente() {
       {['ACUERDO', 'TUTORIA'].includes(r.tipo) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2 py-1 text-xs ${r.estado === 'PENDIENTE' ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{r.estado}</span>
-          {r.estado === 'PENDIENTE' && <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="text-xs font-semibold text-emerald-400">Registrar atención</button>}
+          {r.estado === 'PENDIENTE' && r.tipo === 'ACUERDO' && <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="text-xs font-semibold text-emerald-400">Registrar atención</button>}
+          {r.estado === 'PENDIENTE' && r.tipo === 'TUTORIA' && <span className="text-xs text-blue-300">Enviado al tutor del grupo</span>}
         </div>
       )}
     </article>
@@ -173,7 +177,9 @@ export default function FichaAlumnoDocente() {
           </div>
           {r.fecha_revision && <p className={`shrink-0 text-xs font-medium ${vencido ? 'text-red-300' : 'text-slate-500'}`}>{fechaTexto(`${r.fecha_revision}T12:00:00`, false)}</p>}
         </div>
-        <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="mt-3 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Registrar atención →</button>
+        {r.tipo === 'ACUERDO'
+          ? <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="mt-3 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Registrar atención →</button>
+          : <p className="mt-3 text-xs font-semibold text-blue-300">Pendiente de atención por el tutor →</p>}
       </article>
     );
   };
@@ -191,6 +197,7 @@ export default function FichaAlumnoDocente() {
         </div>
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+        {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
         {datos && (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -366,7 +373,7 @@ export default function FichaAlumnoDocente() {
                   <option value="OBSERVACION">Observación docente</option>
                   <option value="CALIFICACION">Calificación parcial</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
-                  <option value="TUTORIA">Requiere tutoría</option>
+                  <option value="TUTORIA">Enviar reporte al tutor del grupo</option>
                 </select>
               </label>
               <label className="mt-3 block text-sm text-slate-300">Título
@@ -375,6 +382,33 @@ export default function FichaAlumnoDocente() {
               {form.tipo === 'CALIFICACION' && <label className="mt-3 block text-sm text-slate-300">Calificación
                 <input required type="number" min="0" max="10" step="0.1" value={form.calificacion} onChange={(e) => setForm({ ...form, calificacion: e.target.value })} className="input-dark mt-1" />
               </label>}
+              {form.tipo === 'TUTORIA' && (
+                <div className="mt-3 space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
+                  <p className="text-xs text-blue-200">El reporte se enviará al tutor asignado al grupo. Si aún no existe tutor, llegará al Responsable de Tutoría.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-sm text-slate-300">Categoría
+                      <select value={form.categoria_reporte} onChange={(e) => setForm({ ...form, categoria_reporte: e.target.value })} className="input-dark mt-1">
+                        <option value="ACADEMICO">Académico</option>
+                        <option value="ASISTENCIA">Asistencia</option>
+                        <option value="CONDUCTA">Conducta</option>
+                        <option value="PERSONAL">Personal</option>
+                        <option value="OTRO">Otro</option>
+                      </select>
+                    </label>
+                    <label className="text-sm text-slate-300">Prioridad
+                      <select value={form.prioridad_reporte} onChange={(e) => setForm({ ...form, prioridad_reporte: e.target.value })} className="input-dark mt-1">
+                        <option value="BAJA">Baja</option>
+                        <option value="MEDIA">Media</option>
+                        <option value="ALTA">Alta</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                    <input type="checkbox" checked={form.confidencial} onChange={(e) => setForm({ ...form, confidencial: e.target.checked })} />
+                    Contiene información sensible
+                  </label>
+                </div>
+              )}
               {['ACUERDO', 'TUTORIA'].includes(form.tipo) && <label className="mt-3 block text-sm text-slate-300">Fecha de revisión
                 <input required type="date" value={form.fecha_revision} onChange={(e) => setForm({ ...form, fecha_revision: e.target.value })} className="input-dark mt-1" />
               </label>}
@@ -384,7 +418,7 @@ export default function FichaAlumnoDocente() {
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" onClick={() => setModalRegistro(false)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={guardando} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando...' : 'Guardar'}</button>
+              <button disabled={guardando} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando...' : form.tipo === 'TUTORIA' ? 'Enviar al tutor' : 'Guardar'}</button>
             </footer>
           </form>
         </div>

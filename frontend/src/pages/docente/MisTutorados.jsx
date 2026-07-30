@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
@@ -704,16 +705,32 @@ function TabSesiones({ grupoId }) {
 //  PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MisTutorados() {
+  const [searchParams] = useSearchParams();
   const { toast: showToast } = useToast();
   const [grupos, setGrupos] = useState([]);
   const [grupoSel, setGrupoSel] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
   const [canalizaciones, setCanalizaciones] = useState([]);
+  const [reportesTutor, setReportesTutor] = useState([]);
   const [pendientes, setPendientes] = useState(null);
-  const [tab, setTab] = useState("agenda");
+  const [tab, setTab] = useState(searchParams.get("tab") === "reportes" ? "reportes" : "agenda");
   const [modal, setModal] = useState(null); // null | "sesion" | "canalizar"
   const [expandido, setExpandido] = useState(null);
   const [registrarGrupoId, setRegistrarGrupoId] = useState(null);
+  const [atenderReporte, setAtenderReporte] = useState(null);
+  const [resultadoReporte, setResultadoReporte] = useState("");
+  const [canalizarReporte, setCanalizarReporte] = useState(null);
+  const [formCanalizarReporte, setFormCanalizarReporte] = useState({
+    tipo_psicologico: false, tipo_pedagogico: true, tipo_personal: false,
+    modalidad: "INDIVIDUAL", motivo: "",
+  });
+
+  const cargarReportesTutor = useCallback(async () => {
+    try {
+      const { data } = await api.get("/tutoria/reportes-tutor?bandeja=RECIBIDOS");
+      setReportesTutor(data);
+    } catch { setReportesTutor([]); }
+  }, []);
 
   const cargarPendientes = useCallback(async () => {
     try {
@@ -728,6 +745,7 @@ export default function MisTutorados() {
       if (data.length > 0) setGrupoSel(data[0]);
     }).catch(() => showToast("Error al cargar grupos", "error"));
     cargarPendientes();
+    cargarReportesTutor();
   }, []);
 
   useEffect(() => {
@@ -742,6 +760,7 @@ export default function MisTutorados() {
 
   const urgentes = pendientes?.resumen?.urgente || 0;
   const canPend  = canalizaciones.filter(c => c.estado === "PENDIENTE").length;
+  const reportesPend = reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"].includes(r.estado)).length;
 
   if (grupos.length === 0) return (
     <AdminLayout>
@@ -760,6 +779,7 @@ export default function MisTutorados() {
     { id: "alumnos",        label: "Mi Grupo",        badge: null },
     { id: "sesiones",       label: "Sesiones",        badge: null },
     { id: "informe",        label: "Informe F-DC-09", badge: null },
+    { id: "reportes",       label: "Reportes recibidos", badge: reportesPend || null, badgeColor: "bg-red-500" },
     { id: "canalizaciones", label: "Canalizaciones",  badge: canPend > 0 ? canPend : null, badgeColor: "bg-amber-500" },
   ];
 
@@ -780,6 +800,32 @@ export default function MisTutorados() {
       if (updated) setGrupoSel(updated);
     });
     api.get("/tutoria/canalizaciones").then(({ data }) => setCanalizaciones(data)).catch(() => {});
+    cargarReportesTutor();
+  };
+
+  const cambiarEstadoReporte = async (reporte, estado, resultado = null) => {
+    try {
+      await api.put(`/tutoria/reportes-tutor/${reporte.id}/estado`, { estado, resultado });
+      showToast(`Reporte marcado como ${estado.toLowerCase().replaceAll("_", " ")}`, "success");
+      setAtenderReporte(null);
+      setResultadoReporte("");
+      cargarReportesTutor();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo actualizar el reporte", "error");
+    }
+  };
+
+  const convertirEnCanalizacion = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/tutoria/reportes-tutor/${canalizarReporte.id}/canalizar`, formCanalizarReporte);
+      showToast("Reporte convertido en canalización F-DC-08", "success");
+      setCanalizarReporte(null);
+      setFormCanalizarReporte({ tipo_psicologico: false, tipo_pedagogico: true, tipo_personal: false, modalidad: "INDIVIDUAL", motivo: "" });
+      recargarTodo();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo canalizar el reporte", "error");
+    }
   };
 
   return (
@@ -933,6 +979,44 @@ export default function MisTutorados() {
           <InformeBimestral grupo={grupoSel} />
         )}
 
+        {tab === "reportes" && (
+          <div className="space-y-3">
+            {reportesTutor.length === 0 && (
+              <p className="py-8 text-center text-sm text-slate-500">No tienes reportes de docentes pendientes o históricos.</p>
+            )}
+            {reportesTutor.map(r => (
+              <article key={r.id} className={`rounded-xl border p-4 ${r.prioridad === "ALTA" ? "border-red-500/30 bg-red-500/[0.07]" : "border-slate-700/60 bg-slate-800/60"}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+                      <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-300">{r.categoria}</span>
+                      <span className={`rounded-full px-2 py-0.5 ${r.prioridad === "ALTA" ? "bg-red-500/20 text-red-300" : "bg-white/5 text-slate-400"}`}>Prioridad {r.prioridad}</span>
+                      {r.confidencial && <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-purple-300">Confidencial</span>}
+                    </div>
+                    <h3 className="mt-2 font-semibold text-white">{r.titulo}</h3>
+                    <p className="mt-0.5 text-sm text-slate-300">{r.alumno_nombre} · {r.matricula}</p>
+                    <p className="text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</p>
+                    {r.detalle && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-400">{r.detalle}</p>}
+                    {r.resultado && <p className="mt-3 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-200"><b>Resultado:</b> {r.resultado}</p>}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-semibold text-amber-300">{r.estado.replaceAll("_", " ")}</p>
+                    <p className="mt-1 text-xs text-slate-500">{r.creado_en ? new Date(r.creado_en).toLocaleString("es-MX") : ""}</p>
+                  </div>
+                </div>
+                {!["ATENDIDO", "CERRADO", "CANALIZADO"].includes(r.estado) && (
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
+                    {r.estado === "ENVIADO" && <button onClick={() => cambiarEstadoReporte(r, "RECIBIDO")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold">Confirmar recepción</button>}
+                    {["ENVIADO", "RECIBIDO"].includes(r.estado) && <button onClick={() => cambiarEstadoReporte(r, "EN_SEGUIMIENTO")} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold">Iniciar seguimiento</button>}
+                    <button onClick={() => { setAtenderReporte(r); setResultadoReporte(""); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold">Resolver y cerrar</button>
+                    <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
         {/* ── CANALIZACIONES ── */}
         {tab === "canalizaciones" && (
           <div className="space-y-3">
@@ -982,6 +1066,49 @@ export default function MisTutorados() {
           <ModalCanalizar alumnos={alumnos} grupoId={grupoSel.id}
             onClose={() => setModal(null)}
             onGuardado={recargarTodo} />
+        )}
+        {atenderReporte && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={() => setAtenderReporte(null)}>
+            <form onSubmit={(e) => { e.preventDefault(); cambiarEstadoReporte(atenderReporte, "CERRADO", resultadoReporte); }} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl">
+              <div className="border-b border-white/10 p-5">
+                <h2 className="font-semibold">Resolver reporte</h2>
+                <p className="mt-1 text-xs text-slate-400">{atenderReporte.alumno_nombre} · {atenderReporte.titulo}</p>
+              </div>
+              <div className="p-5">
+                <label className="text-sm text-slate-300">Resultado de la atención *
+                  <textarea required minLength={3} rows={5} value={resultadoReporte} onChange={e => setResultadoReporte(e.target.value)} className="input-dark mt-1" placeholder="Entrevista, acuerdos y seguimiento realizado" />
+                </label>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-white/10 p-4">
+                <button type="button" onClick={() => setAtenderReporte(null)} className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300">Cancelar</button>
+                <button className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold">Cerrar reporte</button>
+              </div>
+            </form>
+          </div>
+        )}
+        {canalizarReporte && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={() => setCanalizarReporte(null)}>
+            <form onSubmit={convertirEnCanalizacion} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl">
+              <div className="border-b border-white/10 p-5">
+                <h2 className="font-semibold">Generar canalización F-DC-08</h2>
+                <p className="mt-1 text-xs text-slate-400">El reporte conservará el vínculo con la canalización institucional.</p>
+              </div>
+              <div className="space-y-4 p-5">
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {[["tipo_pedagogico", "Pedagógica"], ["tipo_psicologico", "Psicológica"], ["tipo_personal", "Personal"]].map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={formCanalizarReporte[key]} onChange={e => setFormCanalizarReporte({ ...formCanalizarReporte, [key]: e.target.checked })} />{label}</label>
+                  ))}
+                </div>
+                <label className="block text-sm text-slate-300">Motivo *
+                  <textarea required minLength={5} rows={5} value={formCanalizarReporte.motivo} onChange={e => setFormCanalizarReporte({ ...formCanalizarReporte, motivo: e.target.value })} className="input-dark mt-1" />
+                </label>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-white/10 p-4">
+                <button type="button" onClick={() => setCanalizarReporte(null)} className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300">Cancelar</button>
+                <button className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold">Crear F-DC-08</button>
+              </div>
+            </form>
+          </div>
         )}
       </div>
     </AdminLayout>

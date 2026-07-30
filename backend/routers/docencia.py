@@ -18,6 +18,8 @@ from models.horario import BloqueoSlot, HorarioDisponible, Reservacion, Solicitu
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
 )
+from models.tutoria import AsignacionTutoria, GrupoTutorado, ReporteTutor
+from routers.notificaciones import crear_notificacion
 
 
 router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
@@ -86,6 +88,9 @@ class SeguimientoInput(BaseModel):
     calificacion: Optional[float] = Field(None, ge=0, le=10)
     estado: str = Field("REGISTRADO", max_length=20)
     fecha_revision: Optional[datetime.date] = None
+    categoria_reporte: str = Field("ACADEMICO", max_length=30)
+    prioridad_reporte: str = Field("MEDIA", max_length=15)
+    confidencial: bool = False
 
     @model_validator(mode="after")
     def validar(self):
@@ -95,6 +100,12 @@ class SeguimientoInput(BaseModel):
             raise ValueError("Tipo de seguimiento no válido")
         if self.tipo == "CALIFICACION" and self.calificacion is None:
             raise ValueError("La calificación es obligatoria")
+        self.categoria_reporte = self.categoria_reporte.upper()
+        self.prioridad_reporte = self.prioridad_reporte.upper()
+        if self.categoria_reporte not in {"ACADEMICO", "ASISTENCIA", "CONDUCTA", "PERSONAL", "OTRO"}:
+            raise ValueError("Categoría de reporte no válida")
+        if self.prioridad_reporte not in {"BAJA", "MEDIA", "ALTA"}:
+            raise ValueError("Prioridad de reporte no válida")
         return self
 
 
@@ -906,9 +917,80 @@ def registrar_seguimiento_alumno(
         calificacion=data.calificacion, estado=data.estado, fecha_revision=data.fecha_revision,
     )
     db.add(registro)
+    db.flush()
+
+    reporte = None
+    tutor = None
+    if data.tipo == "TUTORIA":
+        asignacion = (
+            db.query(AsignacionTutoria)
+            .join(GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id)
+            .filter(
+                AsignacionTutoria.alumno_id == alumno.id,
+                AsignacionTutoria.activo == True,
+                GrupoTutorado.activo == True,
+            )
+            .order_by(AsignacionTutoria.asignado_en.desc())
+            .first()
+        )
+        grupo_tutorado = (
+            db.query(GrupoTutorado).filter(GrupoTutorado.id == asignacion.grupo_tutorado_id).first()
+            if asignacion else None
+        )
+        tutor = (
+            db.query(Usuario).filter(Usuario.id == grupo_tutorado.tutor_id, Usuario.activo == True).first()
+            if grupo_tutorado else None
+        )
+        reporte = ReporteTutor(
+            alumno_id=alumno.id,
+            reportado_por_id=current_user.id,
+            tutor_destinatario_id=tutor.id if tutor else None,
+            grupo_tutorado_id=grupo_tutorado.id if grupo_tutorado else None,
+            carga_docente_id=carga.id,
+            seguimiento_docente_id=registro.id,
+            categoria=data.categoria_reporte,
+            prioridad=data.prioridad_reporte,
+            titulo=data.titulo.strip(),
+            detalle=data.detalle,
+            confidencial=data.confidencial,
+            estado="ENVIADO" if tutor else "SIN_TUTOR",
+        )
+        db.add(reporte)
+        db.flush()
+
+        alumno_nombre = f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+        if tutor:
+            crear_notificacion(
+                db, tutor.id, "tutoria_reporte",
+                "Nuevo reporte de un docente",
+                f"{current_user.nombre} reportó un caso de {alumno_nombre}: {data.titulo.strip()}.",
+                "/docente/mis-tutorados?tab=reportes", enviar_email=False,
+            )
+        else:
+            responsables = db.query(Usuario).filter(
+                Usuario.rol.in_([RolUsuario.TUTORIA_ADMIN, RolUsuario.SUPER_ADMIN]),
+                Usuario.activo == True,
+            ).all()
+            for responsable in responsables:
+                crear_notificacion(
+                    db, responsable.id, "tutoria_reporte_sin_tutor",
+                    "Reporte sin tutor asignado",
+                    f"{alumno_nombre} tiene un reporte pendiente, pero no cuenta con tutor activo.",
+                    "/admin/tutoria?tab=reportes-tutor", enviar_email=False,
+                )
     db.commit()
     db.refresh(registro)
-    return {"id": registro.id, "mensaje": "Seguimiento registrado"}
+    return {
+        "id": registro.id,
+        "reporte_tutor_id": reporte.id if reporte else None,
+        "destinatario": tutor.nombre if tutor else None,
+        "estado_envio": reporte.estado if reporte else None,
+        "mensaje": (
+            f"Reporte enviado a {tutor.nombre}" if reporte and tutor
+            else "Reporte enviado al Responsable de Tutoría para asignación" if reporte
+            else "Seguimiento registrado"
+        ),
+    }
 
 
 @router.patch("/seguimiento/registros/{registro_id}")
@@ -924,7 +1006,9 @@ def actualizar_estado_seguimiento(
     ).first()
     if not registro:
         raise HTTPException(404, "Registro de seguimiento no encontrado")
-    if registro.tipo not in {"ACUERDO", "TUTORIA"}:
+    if registro.tipo == "TUTORIA":
+        raise HTTPException(409, "El reporte debe ser atendido por el tutor destinatario")
+    if registro.tipo != "ACUERDO":
         raise HTTPException(409, "Este registro no maneja estado")
     registro.estado = data.estado
     registro.resultado_atencion = data.resultado_atencion.strip() if data.resultado_atencion else None

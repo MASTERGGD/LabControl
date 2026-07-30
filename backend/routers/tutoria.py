@@ -11,12 +11,14 @@ from database import get_db
 from models.tutoria import (
     GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico,
     SesionTutoria, RegistroSesionAlumno, Canalizacion,
+    ReporteTutor,
     InformeBimestral, DetalleInformeBimestral,
     DocumentoControladoTutoria, ProgramacionSesionTutoria,
     HistorialEstadoTutoria, CierreTutoria,
 )
 from models.notificacion import Notificacion
 from models.catalogo import CatalogoAlumno
+from models.docencia import CargaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 import datetime, io, json, openpyxl
@@ -109,6 +111,20 @@ class CanalizacionAtender(BaseModel):
     tipo_servicio:        str  = Field(..., min_length=2)
     fecha_atencion:       str  = Field(..., description="YYYY-MM-DD")
     descripcion_atencion: str  = Field(..., min_length=5)
+
+class ReporteTutorEstadoUpdate(BaseModel):
+    estado: str
+    resultado: Optional[str] = Field(default=None, max_length=2000)
+
+class ReporteTutorAsignar(BaseModel):
+    grupo_tutorado_id: int
+
+class ReporteTutorCanalizar(BaseModel):
+    tipo_psicologico: bool = False
+    tipo_pedagogico: bool = False
+    tipo_personal: bool = False
+    modalidad: str = "INDIVIDUAL"
+    motivo: Optional[str] = Field(default=None, max_length=2000)
 
 class InformeTextosUpdate(BaseModel):
     principal_problematica: Optional[str] = None
@@ -2055,6 +2071,225 @@ def listar_sesiones(
 # ═══════════════════════════════════════════════════════════════════════════════
 #  CANALIZACIONES (F-DC-08)
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
+    alumno = db.query(CatalogoAlumno).filter(CatalogoAlumno.id == reporte.alumno_id).first()
+    reportante = db.query(Usuario).filter(Usuario.id == reporte.reportado_por_id).first()
+    tutor = (
+        db.query(Usuario).filter(Usuario.id == reporte.tutor_destinatario_id).first()
+        if reporte.tutor_destinatario_id else None
+    )
+    grupo = (
+        db.query(GrupoTutorado).filter(GrupoTutorado.id == reporte.grupo_tutorado_id).first()
+        if reporte.grupo_tutorado_id else None
+    )
+    carga = (
+        db.query(CargaDocente).filter(CargaDocente.id == reporte.carga_docente_id).first()
+        if reporte.carga_docente_id else None
+    )
+    return {
+        "id": reporte.id,
+        "alumno_id": reporte.alumno_id,
+        "alumno_nombre": (
+            f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+            if alumno else "Alumno"
+        ),
+        "matricula": alumno.matricula if alumno else None,
+        "reportado_por_id": reporte.reportado_por_id,
+        "reportado_por": reportante.nombre if reportante else None,
+        "tutor_destinatario_id": reporte.tutor_destinatario_id,
+        "tutor_destinatario": tutor.nombre if tutor else None,
+        "grupo_tutorado_id": reporte.grupo_tutorado_id,
+        "grupo": grupo.grupo if grupo else (alumno.grupo if alumno else None),
+        "carrera": grupo.carrera if grupo else (alumno.carrera if alumno else None),
+        "periodo": grupo.periodo if grupo else None,
+        "materia": carga.actividad_nombre if carga else None,
+        "categoria": reporte.categoria,
+        "prioridad": reporte.prioridad,
+        "titulo": reporte.titulo,
+        "detalle": reporte.detalle,
+        "confidencial": reporte.confidencial,
+        "estado": reporte.estado,
+        "resultado": reporte.resultado,
+        "canalizacion_id": reporte.canalizacion_id,
+        "creado_en": reporte.creado_en.isoformat() if reporte.creado_en else None,
+        "recibido_en": reporte.recibido_en.isoformat() if reporte.recibido_en else None,
+        "actualizado_en": reporte.actualizado_en.isoformat() if reporte.actualizado_en else None,
+        "cerrado_en": reporte.cerrado_en.isoformat() if reporte.cerrado_en else None,
+    }
+
+
+@router.get("/reportes-tutor", summary="Bandeja de reportes enviados por docentes")
+def listar_reportes_tutor(
+    estado: Optional[str] = None,
+    bandeja: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    q = db.query(ReporteTutor)
+    if current_user.rol == RolUsuario.DOCENTE:
+        if (bandeja or "").upper() == "RECIBIDOS":
+            q = q.filter(ReporteTutor.tutor_destinatario_id == current_user.id)
+        elif (bandeja or "").upper() == "ENVIADOS":
+            q = q.filter(ReporteTutor.reportado_por_id == current_user.id)
+        else:
+            q = q.filter(
+                (ReporteTutor.tutor_destinatario_id == current_user.id)
+                | (ReporteTutor.reportado_por_id == current_user.id)
+            )
+    elif current_user.rol not in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN}:
+        raise HTTPException(403, "No tienes acceso a reportes de tutoría")
+    if estado:
+        q = q.filter(ReporteTutor.estado == estado.upper())
+    return [
+        _ser_reporte_tutor(r, db)
+        for r in q.order_by(ReporteTutor.creado_en.desc()).all()
+    ]
+
+
+@router.put("/reportes-tutor/{reporte_id}/estado", summary="Dar seguimiento a un reporte recibido")
+def actualizar_reporte_tutor(
+    reporte_id: int,
+    data: ReporteTutorEstadoUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).first()
+    if not reporte:
+        raise HTTPException(404, "Reporte no encontrado")
+    puede_atender = (
+        current_user.rol in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN}
+        or reporte.tutor_destinatario_id == current_user.id
+    )
+    if not puede_atender:
+        raise HTTPException(403, "Solo el tutor destinatario puede atender este reporte")
+    estado = data.estado.upper()
+    validos = {"RECIBIDO", "EN_SEGUIMIENTO", "ATENDIDO", "CERRADO"}
+    if estado not in validos:
+        raise HTTPException(422, "Estado de reporte no válido")
+    if estado in {"ATENDIDO", "CERRADO"} and not (data.resultado or "").strip():
+        raise HTTPException(422, "Debes registrar el resultado de la atención")
+
+    ahora = _now()
+    reporte.estado = estado
+    reporte.resultado = (data.resultado or "").strip() or reporte.resultado
+    if estado == "RECIBIDO" and not reporte.recibido_en:
+        reporte.recibido_en = ahora
+    if estado in {"ATENDIDO", "CERRADO"}:
+        reporte.cerrado_en = ahora
+        if reporte.seguimiento_docente_id:
+            seguimiento = db.query(SeguimientoAlumnoDocente).filter(
+                SeguimientoAlumnoDocente.id == reporte.seguimiento_docente_id
+            ).first()
+            if seguimiento:
+                seguimiento.estado = "ATENDIDO"
+                seguimiento.resultado_atencion = reporte.resultado
+                seguimiento.atendido_en = ahora
+
+    crear_notificacion(
+        db, reporte.reportado_por_id, "tutoria_reporte_estado",
+        f"Reporte de tutoría: {estado.replace('_', ' ').title()}",
+        f"El reporte “{reporte.titulo}” cambió a {estado.replace('_', ' ').lower()}.",
+        f"/docente/seguimiento/{reporte.carga_docente_id}/alumnos/{reporte.alumno_id}",
+        enviar_email=False,
+    )
+    db.commit()
+    return _ser_reporte_tutor(reporte, db)
+
+
+@router.put("/reportes-tutor/{reporte_id}/asignar", summary="Asignar un reporte sin tutor")
+def asignar_reporte_tutor(
+    reporte_id: int,
+    data: ReporteTutorAsignar,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_resp_roles),
+):
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).first()
+    grupo = db.query(GrupoTutorado).filter(
+        GrupoTutorado.id == data.grupo_tutorado_id, GrupoTutorado.activo == True
+    ).first()
+    if not reporte:
+        raise HTTPException(404, "Reporte no encontrado")
+    if not grupo:
+        raise HTTPException(404, "Grupo tutorado activo no encontrado")
+    asignacion = db.query(AsignacionTutoria).filter(
+        AsignacionTutoria.grupo_tutorado_id == grupo.id,
+        AsignacionTutoria.alumno_id == reporte.alumno_id,
+        AsignacionTutoria.activo == True,
+    ).first()
+    if not asignacion:
+        raise HTTPException(409, "El alumno no está asignado a ese grupo tutorado")
+    reporte.grupo_tutorado_id = grupo.id
+    reporte.tutor_destinatario_id = grupo.tutor_id
+    reporte.estado = "ENVIADO"
+    _notificar_usuario(
+        db, grupo.tutor_id, "tutoria_reporte",
+        "Nuevo reporte asignado",
+        f"Se te asignó el reporte “{reporte.titulo}”.",
+        "/docente/mis-tutorados?tab=reportes",
+    )
+    db.commit()
+    return _ser_reporte_tutor(reporte, db)
+
+
+@router.post("/reportes-tutor/{reporte_id}/canalizar", status_code=status.HTTP_201_CREATED,
+             summary="Convertir un reporte recibido en F-DC-08")
+def canalizar_reporte_tutor(
+    reporte_id: int,
+    data: ReporteTutorCanalizar,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).first()
+    if not reporte:
+        raise HTTPException(404, "Reporte no encontrado")
+    if current_user.rol not in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN} and (
+        reporte.tutor_destinatario_id != current_user.id
+    ):
+        raise HTTPException(403, "Solo el tutor destinatario puede canalizar el reporte")
+    if reporte.canalizacion_id:
+        raise HTTPException(409, "Este reporte ya fue canalizado")
+    if not reporte.tutor_destinatario_id or not reporte.grupo_tutorado_id:
+        raise HTTPException(409, "Primero asigna el reporte a un tutor")
+    if not (data.tipo_psicologico or data.tipo_pedagogico or data.tipo_personal):
+        raise HTTPException(422, "Debes seleccionar al menos un tipo de canalización")
+
+    canalizacion = Canalizacion(
+        tutor_id=reporte.tutor_destinatario_id,
+        alumno_id=reporte.alumno_id,
+        grupo_tutorado_id=reporte.grupo_tutorado_id,
+        fecha_solicitud=_now(),
+        tipo_psicologico=data.tipo_psicologico,
+        tipo_pedagogico=data.tipo_pedagogico,
+        tipo_personal=data.tipo_personal,
+        modalidad=data.modalidad.upper(),
+        motivo=(data.motivo or reporte.detalle or reporte.titulo).strip(),
+        estado="PENDIENTE",
+    )
+    doc = _documento_vigente(db, "F-DC-08")
+    canalizacion.documento_codigo = doc["codigo"]
+    canalizacion.documento_version = doc["version"]
+    canalizacion.documento_efectivo = doc["fecha_efectivo"]
+    db.add(canalizacion)
+    db.flush()
+    reporte.canalizacion_id = canalizacion.id
+    reporte.estado = "CANALIZADO"
+    reporte.recibido_en = reporte.recibido_en or _now()
+    _notificar_responsables(
+        db, "tutoria_canalizacion", "Nueva canalización de tutoría",
+        f"El reporte “{reporte.titulo}” fue convertido en canalización F-DC-08.",
+        "/admin/tutoria",
+    )
+    crear_notificacion(
+        db, reporte.reportado_por_id, "tutoria_reporte_estado",
+        "Reporte canalizado",
+        f"El tutor canalizó el reporte “{reporte.titulo}” al Responsable de Tutoría.",
+        f"/docente/seguimiento/{reporte.carga_docente_id}/alumnos/{reporte.alumno_id}",
+        enviar_email=False,
+    )
+    db.commit()
+    return {"reporte": _ser_reporte_tutor(reporte, db), "canalizacion": _ser_canalizacion(canalizacion, db)}
+
 
 @router.get("/canalizaciones", summary="Listar canalizaciones")
 def listar_canalizaciones(
