@@ -53,8 +53,8 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert any(evento["tipo"] == "EVALUACION" for evento in data["timeline"])
 
 
-def test_docente_solo_consulta_alumnos_relacionados(client, db):
-    reportante, _, alumno, _, _ = _escenario(db)
+def test_solo_tutor_asignado_consulta_expediente(client, db):
+    reportante, tutor, alumno, _, _ = _escenario(db)
     ajeno = Usuario(
         nombre="Docente ajeno", email="ajeno@utecan.edu.mx",
         password_hash=hashear_password("Ajeno123!"), rol=RolUsuario.DOCENTE, activo=True,
@@ -62,12 +62,31 @@ def test_docente_solo_consulta_alumnos_relacionados(client, db):
     db.add(ajeno)
     db.commit()
 
-    propios = client.get(
+    lista_docente_materia = client.get(
         "/expediente-academico/alumnos",
         headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
     )
-    assert propios.status_code == 200
-    assert alumno.id in [row["id"] for row in propios.json()]
+    assert lista_docente_materia.status_code == 200
+    assert alumno.id not in [row["id"] for row in lista_docente_materia.json()]
+
+    detalle_docente_materia = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}",
+        headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
+    )
+    assert detalle_docente_materia.status_code == 403
+
+    lista_tutor = client.get(
+        "/expediente-academico/alumnos",
+        headers=auth_headers(get_token(client, tutor.email, "Tutor123!")),
+    )
+    assert lista_tutor.status_code == 200
+    assert alumno.id in [row["id"] for row in lista_tutor.json()]
+
+    detalle_tutor = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}",
+        headers=auth_headers(get_token(client, tutor.email, "Tutor123!")),
+    )
+    assert detalle_tutor.status_code == 200
 
     denegado = client.get(
         f"/expediente-academico/alumnos/{alumno.id}",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
@@ -705,6 +705,7 @@ function TabSesiones({ grupoId }) {
 //  PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MisTutorados() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast: showToast } = useToast();
   const [grupos, setGrupos] = useState([]);
@@ -955,6 +956,16 @@ export default function MisTutorados() {
                           <p className="text-xs text-slate-300 mt-0.5">{a.estado_observaciones}</p>
                         </div>
                       )}
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          navigate(`/expediente-academico?alumno=${a.id}`);
+                        }}
+                        className="mt-3 inline-flex items-center rounded-lg border border-blue-500/50 bg-blue-600/15 px-3 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-600/30 hover:text-white"
+                      >
+                        Ver expediente académico integral
+                      </button>
                     </div>
                   )}
                 </div>

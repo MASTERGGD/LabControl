@@ -43,28 +43,10 @@ def _acceso_institucional(db: Session, usuario: Usuario) -> bool:
 
 
 def _ids_alumnos_accesibles(db: Session, usuario: Usuario):
-    """Subconsulta práctica de IDs visibles para docentes, tutores y alumnos."""
+    """IDs visibles: únicamente tutorados para DOCENTE; acceso global institucional."""
     if _acceso_institucional(db, usuario):
         return None
-    if usuario.rol == RolUsuario.ALUMNO:
-        return {
-            row[0] for row in db.query(CatalogoAlumno.id).filter(
-                CatalogoAlumno.usuario_id == usuario.id
-            ).all()
-        }
     if usuario.rol == RolUsuario.DOCENTE:
-        impartidos = {
-            row[0] for row in (
-                db.query(InscripcionAlumno.alumno_id)
-                .join(GrupoAcademico, GrupoAcademico.id == InscripcionAlumno.grupo_academico_id)
-                .join(CargaDocente, CargaDocente.grupo_academico_id == GrupoAcademico.id)
-                .filter(
-                    CargaDocente.docente_id == usuario.id,
-                    CargaDocente.activo == True,
-                    InscripcionAlumno.estado == "ACTIVO",
-                ).distinct().all()
-            )
-        }
         tutorados = {
             row[0] for row in (
                 db.query(AsignacionTutoria.alumno_id)
@@ -76,7 +58,7 @@ def _ids_alumnos_accesibles(db: Session, usuario: Usuario):
                 ).distinct().all()
             )
         }
-        return impartidos | tutorados
+        return tutorados
     return set()
 
 
