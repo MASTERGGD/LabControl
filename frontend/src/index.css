@@ -107,6 +107,8 @@ body.theme-day {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 .input-dark::placeholder { color: var(--input-placeholder-color); }
+.input-dark.input-with-leading-icon { padding-left: 2.75rem; }
+.input-dark.input-with-trailing-action { padding-right: 2.5rem; }
 
 .theme-title { color: var(--text-primary); }
 .theme-text { color: var(--text-secondary); }

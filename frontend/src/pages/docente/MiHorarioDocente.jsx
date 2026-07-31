@@ -200,7 +200,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                   <input
                     id="materia-busqueda"
                     required
-                    className="input-dark w-full pl-9"
+                    className="input-dark input-with-leading-icon w-full"
                     value={materiaBusqueda}
                     onFocus={() => setBuscadorMateriaAbierto(true)}
                     onBlur={() => window.setTimeout(() => setBuscadorMateriaAbierto(false), 150)}

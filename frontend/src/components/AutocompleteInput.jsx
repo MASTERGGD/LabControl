@@ -206,7 +206,7 @@ export default function AutocompleteInput({
           onChange={e => { onChange(e.target.value); }}
           onFocus={() => { if (sugerencias.length > 0) { calcPos(); setAbierto(true); } }}
           onKeyDown={handleKeyDown}
-          className={`input-dark pr-8 ${className}`}
+          className={`input-dark input-with-trailing-action ${className}`}
           autoComplete="off"
         />
         {cargando && (
