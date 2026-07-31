@@ -110,6 +110,11 @@ body.theme-day {
 .input-dark.input-with-leading-icon { padding-left: 2.75rem; }
 .input-dark.input-with-trailing-action { padding-right: 2.5rem; }
 
+/* El calendario nativo debe seguir el tema visual activo. Sin esta regla,
+   Chrome puede mostrar el selector oscuro aun cuando la aplicación está en día. */
+.themed-date-input { color-scheme: dark; }
+body.theme-day .themed-date-input { color-scheme: light; }
+
 .theme-title { color: var(--text-primary); }
 .theme-text { color: var(--text-secondary); }
 .theme-muted { color: var(--text-muted); }
