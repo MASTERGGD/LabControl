@@ -180,6 +180,7 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
 // Acceso rápido compacto (row de chips)
 const ACCESOS = [
   { label: 'Mi horario docente',    path: '/docente/horario',       icon: '📅' },
+  { label: 'Historial de clases',   path: '/docente/historial-clases', icon: '📖' },
   { label: 'Solicitar laboratorio', path: '/docente/laboratorio',   icon: '🖥️' },
   { label: 'Solicitar sala o espacio', path: '/espacios/apartar',   icon: '🏛' },
   { label: 'Mis solicitudes de espacios', path: '/espacios/mis-solicitudes', icon: '📋' },

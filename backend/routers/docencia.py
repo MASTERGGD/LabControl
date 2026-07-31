@@ -407,6 +407,8 @@ def _serializar_clase(clase: ClaseDocente):
         },
         "carga": {
             "id": carga.id,
+            "periodo_id": carga.periodo_id,
+            "periodo": carga.periodo.clave if carga.periodo else None,
             "actividad_nombre": carga.actividad_nombre,
             "grupo": (
                 f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
@@ -1648,7 +1650,7 @@ def historial_clases(
 ):
     clases = db.query(ClaseDocente).join(CargaDocente).filter(
         CargaDocente.docente_id == current_user.id
-    ).order_by(ClaseDocente.fecha.desc(), ClaseDocente.inicio.desc()).limit(100).all()
+    ).order_by(ClaseDocente.fecha.desc(), ClaseDocente.inicio.desc()).limit(500).all()
     return [_serializar_clase(clase) for clase in clases]
 
 

@@ -363,6 +363,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
+    label: 'Historial de clases', path: '/docente/historial-clases', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 15l2 2 4-4"/></svg>,
+  },
+  {
     label: 'Seguimiento de grupos', path: '/docente/seguimiento', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m4 6V7m4 10v-3M4 20h16M6 4h12a2 2 0 012 2v14H4V6a2 2 0 012-2z"/></svg>,
   },
@@ -542,6 +546,7 @@ const BREADCRUMB_MAP = {
   '/docente/seguimiento':     [{ label: 'Seguimiento de grupos' }],
   '/docente/laboratorio':     [{ label: 'Solicitar laboratorio' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
+  '/docente/historial-clases': [{ label: 'Historial de clases' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],
   '/admin/usuarios':          [{ label: 'Usuarios' }],
   '/admin/departamentos':     [{ label: 'Departamentos' }],

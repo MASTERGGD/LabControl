@@ -141,6 +141,7 @@ export const ROUTE_PERMISSIONS = {
   '/admin/sesion/:sesionId/asistencia':   [SA, LA, DO],
   '/docente':                             [DO],
   '/docente/horario':             [DO],
+  '/docente/historial-clases':    [DO],
   '/docente/laboratorio':         [DO],
   '/docente/clase/:claseId':      [DO],
   '/docente/reservaciones':       [DO],
