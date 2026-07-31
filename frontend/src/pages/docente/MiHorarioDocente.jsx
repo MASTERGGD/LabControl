@@ -331,6 +331,7 @@ export default function MiHorarioDocente() {
   const [modal, setModal] = useState(null);
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
+  const [copiando, setCopiando] = useState(false);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -352,7 +353,8 @@ export default function MiHorarioDocente() {
         api.get('/docencia/hoy'),
       ]);
       setHorario(horarioRes.data);
-      setHoy(hoyRes.data);
+      const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
+      setHoy(periodoElegido?.es_actual ? hoyRes.data : []);
     } catch {
       setMensaje('No se pudo cargar el módulo docente.');
     } finally {
@@ -370,6 +372,26 @@ export default function MiHorarioDocente() {
     && item.hora_inicio < periodo.fin
     && item.hora_fin > periodo.inicio
   ));
+  const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
+  const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
+  const periodoAnterior = catalogos.periodos.find((p) => !p.es_actual);
+
+  const copiarHorarioAnterior = async () => {
+    if (!periodoAnterior || copiando) return;
+    setCopiando(true);
+    try {
+      const { data } = await api.post('/docencia/horario/copiar-periodo', {
+        periodo_origen_id: periodoAnterior.id,
+        periodo_destino_id: Number(periodoId),
+      });
+      setMensaje(`${data.mensaje} Revisa cada clase y asigna el grupo y la materia del nuevo cuatrimestre.`);
+      await cargar(periodoId);
+    } catch (err) {
+      setMensaje(err.response?.data?.detail || 'No se pudo copiar el horario anterior.');
+    } finally {
+      setCopiando(false);
+    }
+  };
 
   const guardada = ({ advertencias = [] }) => {
     setModal(null);
@@ -450,8 +472,24 @@ export default function MiHorarioDocente() {
         </div>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
+        {!esPeriodoActual && periodoSeleccionado && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            Estás consultando {periodoSeleccionado.clave}. Este horario es histórico: puedes revisarlo, pero no editarlo ni iniciar clases.
+          </div>
+        )}
+        {esPeriodoActual && !horario.length && periodoAnterior && !cargando && (
+          <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-emerald-200">Comienza el horario de {periodoSeleccionado?.clave}</p>
+              <p className="text-sm text-slate-300">Puedes tomar la distribución de {periodoAnterior.clave} como borrador. Los grupos, materias y laboratorios deberán validarse nuevamente.</p>
+            </div>
+            <button disabled={copiando} onClick={copiarHorarioAnterior} className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {copiando ? 'Copiando…' : 'Tomar horario anterior como base'}
+            </button>
+          </div>
+        )}
 
-        {actividadPrincipal && (
+        {esPeriodoActual && actividadPrincipal && (
           <section className="glass overflow-hidden rounded-2xl">
             <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:p-5">
               <div className="flex min-w-0 items-start gap-4">
@@ -525,16 +563,16 @@ export default function MiHorarioDocente() {
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
                       </div>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
+                      {esPeriodoActual && <div className="mt-4 grid grid-cols-2 gap-2">
                         {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-semibold text-white">Activar</button>}
                         <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300">Editar</button>
                         <button onClick={() => setActividadARetirar(item)} className="rounded-xl border border-red-500/20 px-3 py-2.5 text-xs font-semibold text-red-400">Retirar</button>
-                      </div>
+                      </div>}
                     </article>
                   ) : (
                     <button
                       type="button"
-                      disabled={cargando}
+                      disabled={cargando || !esPeriodoActual}
                       onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaMovil, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
                       className="flex w-full items-center justify-between rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/[0.04] px-4 py-4 text-left"
                     >
@@ -586,11 +624,11 @@ export default function MiHorarioDocente() {
                                 <p className="text-xs text-slate-400">{item.grupo || item.tipo_actividad}</p>
                                 <p className="truncate text-xs text-slate-500">{item.espacio_nombre || 'Sin salón'}</p>
                                 {item.laboratorio_id && <p className={`mt-1 text-[10px] font-semibold ${item.estado_reserva_laboratorio === 'RESERVADO' ? 'text-blue-300' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'text-amber-300' : 'text-red-300'}`}>{item.estado_reserva_laboratorio === 'RESERVADO' ? 'Lab reservado' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'Lab en disputa' : 'Lab sin reservar'}</p>}
-                                <div className="mt-2 flex gap-2 text-[11px]">
+                                {esPeriodoActual && <div className="mt-2 flex gap-2 text-[11px]">
                                   {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
                                   <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>
                                   <button onClick={() => setActividadARetirar(item)} className="text-red-300">Retirar</button>
-                                </div>
+                                </div>}
                               </article>
                             ) : (
                               <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-[11px] text-slate-600">Continuación</div>
@@ -598,7 +636,7 @@ export default function MiHorarioDocente() {
                           ) : (
                             <button
                               type="button"
-                              disabled={cargando}
+                              disabled={cargando || !esPeriodoActual}
                               onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaIndice, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
                               className="group flex min-h-24 w-full flex-col items-start rounded-xl border border-dashed border-emerald-500/20 p-3 text-left transition hover:border-emerald-400/60 hover:bg-emerald-500/10"
                             >

@@ -64,6 +64,11 @@ class CargaInput(BaseModel):
         return self
 
 
+class CopiarHorarioInput(BaseModel):
+    periodo_origen_id: int
+    periodo_destino_id: int
+
+
 class AsistenciaInput(BaseModel):
     estado: str
     observacion: Optional[str] = Field(None, max_length=500)
@@ -145,6 +150,32 @@ class EstadoSeguimientoInput(BaseModel):
 
 def _docente_objetivo(user: Usuario) -> int:
     return user.id
+
+
+def _periodo_actual(db: Session):
+    return db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.activo == True,
+        PeriodoEscolar.es_actual == True,
+    ).order_by(PeriodoEscolar.id.desc()).first()
+
+
+def _validar_periodo_actual(db: Session, periodo_id: int):
+    periodo = _periodo_actual(db)
+    if not periodo:
+        raise HTTPException(
+            409,
+            "No hay un periodo escolar actual configurado. Solicita a Servicios Escolares que active el cuatrimestre.",
+        )
+    if periodo.id != periodo_id:
+        raise HTTPException(
+            409,
+            f"{periodo.clave} es el periodo actual. El periodo seleccionado permanece disponible solo para consulta.",
+        )
+    return periodo
+
+
+def _validar_carga_actual(db: Session, carga: CargaDocente):
+    return _validar_periodo_actual(db, carga.periodo_id)
 
 
 def _normalizar_periodo(clave: str | None) -> str:
@@ -418,8 +449,14 @@ def mi_horario(
         CargaDocente.docente_id == _docente_objetivo(current_user),
         CargaDocente.activo == True,
     )
-    if periodo_id:
-        q = q.filter(CargaDocente.periodo_id == periodo_id)
+    elegido = periodo_id
+    if not elegido:
+        actual = _periodo_actual(db)
+        elegido = actual.id if actual else None
+    if elegido:
+        q = q.filter(CargaDocente.periodo_id == elegido)
+    else:
+        return []
     return [_serializar_carga(c, db) for c in q.order_by(
         CargaDocente.dia_semana, CargaDocente.hora_inicio
     ).all()]
@@ -432,6 +469,7 @@ def crear_carga(
     current_user: Usuario = Depends(get_current_user),
 ):
     _solo_docente(current_user)
+    _validar_periodo_actual(db, data.periodo_id)
     carga = CargaDocente(docente_id=current_user.id, estado="BORRADOR", **data.model_dump())
     db.add(carga)
     db.flush()
@@ -453,6 +491,8 @@ def actualizar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _validar_carga_actual(db, carga)
+    _validar_periodo_actual(db, data.periodo_id)
     cambia_laboratorio = any(
         getattr(carga, campo) != getattr(data, campo)
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
@@ -480,6 +520,7 @@ def activar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _validar_carga_actual(db, carga)
     avisos = _advertencias(db, carga, carga.id)
     carga.estado = "ACTIVO"
     db.commit()
@@ -497,10 +538,77 @@ def eliminar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _validar_carga_actual(db, carga)
     _cancelar_reservas_carga(db, carga.id)
     carga.activo = False
     db.commit()
     return {"mensaje": "Actividad retirada del horario"}
+
+
+@router.post("/horario/copiar-periodo")
+def copiar_horario_periodo(
+    data: CopiarHorarioInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    if data.periodo_origen_id == data.periodo_destino_id:
+        raise HTTPException(422, "El periodo de origen y destino deben ser diferentes")
+    destino = _validar_periodo_actual(db, data.periodo_destino_id)
+    origen = db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.id == data.periodo_origen_id,
+        PeriodoEscolar.activo == True,
+    ).first()
+    if not origen:
+        raise HTTPException(404, "Periodo de origen no encontrado")
+    existentes = db.query(CargaDocente.id).filter(
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.periodo_id == destino.id,
+        CargaDocente.activo == True,
+    ).first()
+    if existentes:
+        raise HTTPException(
+            409,
+            "El periodo actual ya tiene actividades. La copia se detuvo para evitar duplicados.",
+        )
+    cargas_origen = db.query(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.periodo_id == origen.id,
+        CargaDocente.activo == True,
+    ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all()
+    if not cargas_origen:
+        raise HTTPException(404, "No hay actividades en el periodo de origen")
+    nuevas = []
+    for anterior in cargas_origen:
+        es_clase = anterior.tipo_actividad == "CLASE"
+        nueva = CargaDocente(
+            docente_id=current_user.id,
+            periodo_id=destino.id,
+            grupo_academico_id=None if es_clase else anterior.grupo_academico_id,
+            materia_id=None if es_clase else anterior.materia_id,
+            tipo_actividad=anterior.tipo_actividad,
+            actividad_nombre=anterior.actividad_nombre,
+            dia_semana=anterior.dia_semana,
+            hora_inicio=anterior.hora_inicio,
+            hora_fin=anterior.hora_fin,
+            espacio_nombre=anterior.espacio_nombre,
+            laboratorio_id=None,
+            estado="BORRADOR",
+            observaciones=(
+                f"Copiado de {origen.clave}. Revalidar grupo, materia y espacio."
+                if es_clase else f"Copiado de {origen.clave}. Revalidar espacio."
+            ),
+        )
+        db.add(nueva)
+        nuevas.append(nueva)
+    db.commit()
+    for nueva in nuevas:
+        db.refresh(nueva)
+    return {
+        "mensaje": f"Se copiaron {len(nuevas)} actividades como borradores.",
+        "total": len(nuevas),
+        "cargas": [_serializar_carga(carga, db) for carga in nuevas],
+    }
 
 
 @router.post("/horario/verificar-laboratorio")
@@ -551,6 +659,7 @@ def reservar_laboratorio_carga(
     ).first()
     if not carga or not carga.laboratorio_id or not carga.grupo_academico:
         raise HTTPException(422, "La clase debe tener laboratorio, materia y grupo")
+    _validar_carga_actual(db, carga)
     data = CargaInput.model_validate({
         campo: getattr(carga, campo) for campo in CargaInput.model_fields
     })
@@ -589,11 +698,15 @@ def clases_de_hoy(
 ):
     _solo_docente(current_user)
     hoy = _ahora_mx()
+    actual = _periodo_actual(db)
+    if not actual:
+        return []
     cargas = db.query(CargaDocente).filter(
         CargaDocente.docente_id == current_user.id,
         CargaDocente.activo == True,
         CargaDocente.estado == "ACTIVO",
         CargaDocente.dia_semana == hoy.weekday(),
+        CargaDocente.periodo_id == actual.id,
     ).order_by(CargaDocente.hora_inicio).all()
     resultado = []
     for carga in cargas:
@@ -622,6 +735,7 @@ def iniciar_clase(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _validar_carga_actual(db, carga)
     if carga.tipo_actividad != "CLASE" or not carga.grupo_academico_id:
         raise HTTPException(400, "Solo una clase con grupo puede generar asistencia")
     if carga.estado != "ACTIVO":
@@ -684,6 +798,7 @@ def cambiar_asistencia(
     ).first()
     if not asistencia:
         raise HTTPException(404, "Registro de asistencia no encontrado")
+    _validar_carga_actual(db, asistencia.clase.carga)
     if asistencia.clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia de esta clase ya está cerrada")
     asistencia.estado = estado
@@ -705,6 +820,7 @@ def cerrar_clase(
     ).first()
     if not clase:
         raise HTTPException(404, "Clase no encontrada")
+    _validar_carga_actual(db, clase.carga)
     if clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia ya está cerrada")
     clase.estado = "CERRADA"
@@ -735,6 +851,7 @@ def habilitar_correccion(
     ).first()
     if not clase:
         raise HTTPException(404, "Clase no encontrada")
+    _validar_carga_actual(db, clase.carga)
     if clase.estado != "CERRADA":
         raise HTTPException(409, "Solo se puede corregir una asistencia cerrada")
     marca = _ahora_mx().strftime("%d/%m/%Y %H:%M")
@@ -881,6 +998,7 @@ def faltas_justificables(
     carga, alumno = _carga_y_alumno_docente(
         db, carga_id, alumno_id, current_user.id,
     )
+    _validar_carga_actual(db, carga)
     if fecha_fin < fecha_inicio:
         raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
     faltas = (
@@ -928,6 +1046,7 @@ def justificar_faltas_multiples(
     carga, alumno = _carga_y_alumno_docente(
         db, carga_id, alumno_id, current_user.id,
     )
+    _validar_carga_actual(db, carga)
     registros = (
         db.query(AsistenciaDocente, ClaseDocente)
         .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
@@ -1053,6 +1172,7 @@ def registrar_seguimiento_alumno(
     current_user: Usuario = Depends(get_current_user),
 ):
     carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    _validar_carga_actual(db, carga)
     registro = SeguimientoAlumnoDocente(
         docente_id=current_user.id, carga_docente_id=carga.id, alumno_id=alumno.id,
         tipo=data.tipo, titulo=data.titulo.strip(), detalle=data.detalle,
@@ -1148,6 +1268,7 @@ def actualizar_estado_seguimiento(
     ).first()
     if not registro:
         raise HTTPException(404, "Registro de seguimiento no encontrado")
+    _validar_carga_actual(db, registro.carga)
     if registro.tipo == "TUTORIA":
         raise HTTPException(409, "El reporte debe ser atendido por el tutor destinatario")
     if registro.tipo != "ACUERDO":
@@ -1178,11 +1299,22 @@ def dashboard_docente(
     _solo_docente(current_user)
     ahora = _ahora_mx()
     hoy = ahora.date()
+    actual = _periodo_actual(db)
+    if not actual:
+        return {
+            "periodo": None,
+            "resumen": {
+                "clases_hoy": 0, "clases_cerradas": 0, "asistencias_pendientes": 0,
+                "grupos_activos": 0, "alumnos_atencion": 0, "acuerdos_pendientes": 0,
+            },
+            "jornada": [], "grupos": [], "alumnos_prioritarios": [],
+        }
     cargas = db.query(CargaDocente).filter(
         CargaDocente.docente_id == current_user.id,
         CargaDocente.activo == True,
         CargaDocente.tipo_actividad == "CLASE",
         CargaDocente.estado == "ACTIVO",
+        CargaDocente.periodo_id == actual.id,
     ).order_by(CargaDocente.hora_inicio).all()
     clases = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id.in_([carga.id for carga in cargas]),
@@ -1288,6 +1420,7 @@ def dashboard_docente(
     )
     return {
         "fecha": hoy.isoformat(),
+        "periodo": {"id": actual.id, "clave": actual.clave},
         "resumen": {
             "clases_hoy": len(jornada),
             "clases_cerradas": sum(1 for item in jornada if item["estado"] == "CERRADA"),

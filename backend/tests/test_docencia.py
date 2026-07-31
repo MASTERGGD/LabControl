@@ -218,6 +218,80 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     assert tablero["grupos"][0]["asistencia_promedio"] == 100.0
 
 
+def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):
+    docente = Usuario(
+        nombre="Docente Cambio Periodo",
+        email="cambio.periodo@test.mx",
+        password_hash=hashear_password("Periodo123!"),
+        rol=RolUsuario.DOCENTE,
+        activo=True,
+    )
+    anterior = PeriodoEscolar(clave="ENE-ABR 2026", activo=True, es_actual=False)
+    actual = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, anterior, actual])
+    db.flush()
+    carga_anterior = CargaDocente(
+        docente_id=docente.id,
+        periodo_id=anterior.id,
+        tipo_actividad="CLASE",
+        actividad_nombre="Materia anterior",
+        dia_semana=datetime.datetime.now(ZoneInfo("America/Mexico_City")).weekday(),
+        hora_inicio="08:00",
+        hora_fin="09:00",
+        espacio_nombre="Aula 1",
+        estado="ACTIVO",
+        activo=True,
+    )
+    db.add(carga_anterior)
+    db.commit()
+
+    headers = auth_headers(get_token(client, docente.email, "Periodo123!"))
+    horario_actual = client.get("/docencia/horario", headers=headers)
+    assert horario_actual.status_code == 200
+    assert horario_actual.json() == []
+
+    historial = client.get(
+        "/docencia/horario",
+        params={"periodo_id": anterior.id},
+        headers=headers,
+    )
+    assert historial.status_code == 200
+    assert [carga["id"] for carga in historial.json()] == [carga_anterior.id]
+
+    iniciar_historica = client.post(
+        f"/docencia/horario/{carga_anterior.id}/iniciar",
+        headers=headers,
+    )
+    assert iniciar_historica.status_code == 409
+    assert "solo para consulta" in iniciar_historica.json()["detail"]
+
+    copia = client.post(
+        "/docencia/horario/copiar-periodo",
+        json={
+            "periodo_origen_id": anterior.id,
+            "periodo_destino_id": actual.id,
+        },
+        headers=headers,
+    )
+    assert copia.status_code == 200, copia.text
+    assert copia.json()["total"] == 1
+    copiada = copia.json()["cargas"][0]
+    assert copiada["periodo_id"] == actual.id
+    assert copiada["estado"] == "BORRADOR"
+    assert copiada["grupo_academico_id"] is None
+    assert copiada["laboratorio_id"] is None
+
+    duplicada = client.post(
+        "/docencia/horario/copiar-periodo",
+        json={
+            "periodo_origen_id": anterior.id,
+            "periodo_destino_id": actual.id,
+        },
+        headers=headers,
+    )
+    assert duplicada.status_code == 409
+
+
 def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):
     docente = Usuario(
         nombre="Marco Docente", email="marco.justifica@test.mx",

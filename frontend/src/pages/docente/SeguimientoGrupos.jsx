@@ -13,18 +13,36 @@ export default function SeguimientoGrupos() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [cargas, setCargas] = useState([]);
+  const [periodos, setPeriodos] = useState([]);
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
   const [justificacion, setJustificacion] = useState(null);
   const seleccion = params.get('carga') || '';
+  const periodoId = params.get('periodo') || '';
+  const periodoSeleccionado = periodos.find((p) => String(p.id) === periodoId);
+  const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
 
   useEffect(() => {
-    api.get('/docencia/horario').then(({ data }) => {
+    api.get('/docencia/catalogos').then(({ data }) => {
+      setPeriodos(data.periodos);
+      const elegido = periodoId || String(data.periodo_sugerido_id || '');
+      if (!periodoId && elegido) setParams({ periodo: elegido }, { replace: true });
+    }).catch(() => setError('No se pudieron cargar los periodos escolares.'));
+  }, []);
+
+  useEffect(() => {
+    if (!periodoId) return;
+    setDatos(null);
+    api.get('/docencia/horario', { params: { periodo_id: periodoId } }).then(({ data }) => {
       const clases = data.filter((c) => c.tipo_actividad === 'CLASE' && c.grupo_academico_id);
       setCargas(clases);
-      if (!seleccion && clases.length) setParams({ carga: String(clases[0].id) }, { replace: true });
+      const existe = clases.some((c) => String(c.id) === seleccion);
+      setParams({
+        periodo: periodoId,
+        ...(existe ? { carga: seleccion } : clases.length ? { carga: String(clases[0].id) } : {}),
+      }, { replace: true });
     }).catch(() => setError('No se pudieron cargar tus grupos.'));
-  }, []);
+  }, [periodoId]);
 
   useEffect(() => {
     if (!seleccion) return;
@@ -128,12 +146,21 @@ export default function SeguimientoGrupos() {
           <p className="text-sm text-slate-400">Consulta asistencias por materia, detecta faltas recurrentes y revisa sesiones anteriores.</p>
         </div>
         <div className="glass rounded-2xl p-4">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Periodo escolar</label>
+          <select value={periodoId} onChange={(e) => setParams({ periodo: e.target.value })} className="mb-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+            {periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}{p.es_actual ? ' · Actual' : ' · Histórico'}</option>)}
+          </select>
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Materia y grupo</label>
-          <select value={seleccion} onChange={(e) => setParams({ carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
+          <select value={seleccion} onChange={(e) => setParams({ periodo: periodoId, carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
             {!cargas.length && <option value="">Sin clases configuradas</option>}
             {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}</option>)}
           </select>
         </div>
+        {!esPeriodoActual && periodoSeleccionado && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+            Estás consultando el historial de {periodoSeleccionado.clave}. La información permanece disponible, pero no se permiten correcciones.
+          </div>
+        )}
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {datos && (
           <>
@@ -172,7 +199,7 @@ export default function SeguimientoGrupos() {
                     </td>
                     <td className="pr-5">
                       <div className="flex items-center justify-end gap-2">
-                        {a.falta > 0 && (
+                        {esPeriodoActual && a.falta > 0 && (
                           <button onClick={() => abrirJustificacion(a)} className="whitespace-nowrap rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-300 hover:bg-blue-500/20">
                             Justificar faltas
                           </button>
