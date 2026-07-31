@@ -1,6 +1,8 @@
 import datetime
 from zoneinfo import ZoneInfo
 
+import routers.docencia as docencia_router
+
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.departamento import Departamento
@@ -324,6 +326,78 @@ def test_servicios_escolares_confirma_periodo_vigente(client, db):
     db.refresh(vigente)
     assert vigente.es_actual is True
     assert anterior.es_actual is False
+
+
+def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
+    ahora = datetime.datetime(2026, 7, 31, 10, 0, tzinfo=ZoneInfo("America/Mexico_City"))
+    monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: ahora)
+    docente = Usuario(
+        nombre="Docente Extemporáneo", email="extemporaneo@test.mx",
+        password_hash=hashear_password("Extemporaneo123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    )
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, periodo])
+    db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=3, grupo="A", activo=True,
+    )
+    alumno = CatalogoAlumno(
+        matricula="UTC-EXT-1", apellido_paterno="Pérez", apellido_materno="",
+        nombres="Karen", carrera="TIEID", cuatrimestre=3, grupo="A",
+        periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, alumno])
+    db.flush()
+    db.add(InscripcionAlumno(
+        alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO",
+    ))
+    vigente = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        tipo_actividad="CLASE", actividad_nombre="Clase del jueves",
+        dia_semana=3, hora_inicio="08:00", hora_fin="09:00",
+        estado="ACTIVO", activo=True,
+    )
+    vencida = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        tipo_actividad="CLASE", actividad_nombre="Clase del miércoles",
+        dia_semana=2, hora_inicio="08:00", hora_fin="09:00",
+        estado="ACTIVO", activo=True,
+    )
+    db.add_all([vigente, vencida])
+    db.commit()
+    headers = auth_headers(get_token(client, docente.email, "Extemporaneo123!"))
+
+    disponibles = client.get("/docencia/capturas-extemporaneas/disponibles", headers=headers)
+    assert disponibles.status_code == 200, disponibles.text
+    assert [(item["carga_id"], item["fecha"]) for item in disponibles.json()] == [
+        (vigente.id, "2026-07-30"),
+    ]
+
+    creada = client.post(
+        f"/docencia/horario/{vigente.id}/captura-extemporanea",
+        headers=headers,
+        json={"fecha": "2026-07-30", "motivo": "No fue posible capturar al finalizar."},
+    )
+    assert creada.status_code == 200, creada.text
+    assert creada.json()["es_extemporanea"] is True
+    assert creada.json()["resumen"]["total"] == 1
+    assert creada.json()["motivo_extemporaneo"] == "No fue posible capturar al finalizar."
+
+    duplicada = client.post(
+        f"/docencia/horario/{vigente.id}/captura-extemporanea",
+        headers=headers,
+        json={"fecha": "2026-07-30", "motivo": "Segundo intento inválido."},
+    )
+    assert duplicada.status_code == 409
+
+    fuera_plazo = client.post(
+        f"/docencia/horario/{vencida.id}/captura-extemporanea",
+        headers=headers,
+        json={"fecha": "2026-07-29", "motivo": "Intento fuera del plazo permitido."},
+    )
+    assert fuera_plazo.status_code == 409
+    assert "48 horas" in fuera_plazo.json()["detail"]
 
 
 def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):

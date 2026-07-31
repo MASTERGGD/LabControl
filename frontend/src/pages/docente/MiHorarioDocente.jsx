@@ -332,6 +332,10 @@ export default function MiHorarioDocente() {
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
   const [copiando, setCopiando] = useState(false);
+  const [extemporaneas, setExtemporaneas] = useState([]);
+  const [modalExtemporanea, setModalExtemporanea] = useState(null);
+  const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
+  const [creandoExtemporanea, setCreandoExtemporanea] = useState(false);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
@@ -348,13 +352,15 @@ export default function MiHorarioDocente() {
       const elegido = idPeriodo || cats.periodo_sugerido_id;
       setCatalogos(cats);
       setPeriodoId(String(elegido || ''));
-      const [horarioRes, hoyRes] = await Promise.all([
+      const [horarioRes, hoyRes, extemporaneasRes] = await Promise.all([
         api.get('/docencia/horario', { params: elegido ? { periodo_id: elegido } : {} }),
         api.get('/docencia/hoy'),
+        api.get('/docencia/capturas-extemporaneas/disponibles'),
       ]);
       setHorario(horarioRes.data);
       const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
       setHoy(periodoElegido?.es_actual ? hoyRes.data : []);
+      setExtemporaneas(periodoElegido?.es_actual ? extemporaneasRes.data : []);
     } catch {
       setMensaje('No se pudo cargar el módulo docente.');
     } finally {
@@ -429,6 +435,24 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
   };
+  const crearExtemporanea = async (e) => {
+    e.preventDefault();
+    if (!modalExtemporanea || motivoExtemporaneo.trim().length < 5) return;
+    setCreandoExtemporanea(true);
+    try {
+      const { data } = await api.post(
+        `/docencia/horario/${modalExtemporanea.carga_id}/captura-extemporanea`,
+        { fecha: modalExtemporanea.fecha, motivo: motivoExtemporaneo.trim() },
+      );
+      setModalExtemporanea(null);
+      setMotivoExtemporaneo('');
+      navigate(`/docente/clase/${data.id}`);
+    } catch (err) {
+      setMensaje(err.response?.data?.detail || 'No se pudo abrir la captura extemporánea.');
+    } finally {
+      setCreandoExtemporanea(false);
+    }
+  };
   const minutoActual = (ahora.getHours() * 60) + ahora.getMinutes();
   const agendaHoy = hoy.map((item) => ({ ...item, estadoDia: estadoActividad(item, minutoActual) }));
   const actividadPrincipal = (
@@ -464,7 +488,16 @@ export default function MiHorarioDocente() {
             <h1 className="text-2xl font-bold text-white">Mi horario docente</h1>
             <p className="hidden text-sm text-slate-400 sm:block">Captura en SIGA el horario oficial entregado por tu Dirección de División.</p>
           </div>
-          <div className="w-full sm:w-auto">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            {esPeriodoActual && extemporaneas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setModalExtemporanea(extemporaneas[0]); setMotivoExtemporaneo(''); }}
+                className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"
+              >
+                Capturar clase anterior ({extemporaneas.length})
+              </button>
+            )}
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
@@ -708,6 +741,59 @@ export default function MiHorarioDocente() {
               </ol>
             </div>
           </section>
+        </div>
+      )}
+      {modalExtemporanea && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !creandoExtemporanea && setModalExtemporanea(null)}>
+          <form onSubmit={crearExtemporanea} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-amber-500/20 bg-slate-900 shadow-2xl">
+            <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <h2 className="font-semibold text-white">Capturar clase anterior</h2>
+                <p className="mt-1 text-xs text-slate-400">Disponible únicamente durante las 48 horas posteriores al inicio programado.</p>
+              </div>
+              <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="text-2xl text-slate-400">×</button>
+            </header>
+            <div className="space-y-4 p-5">
+              <label className="block text-sm text-slate-300">Clase pendiente
+                <select
+                  value={`${modalExtemporanea.carga_id}|${modalExtemporanea.fecha}`}
+                  onChange={(e) => {
+                    const [cargaId, fecha] = e.target.value.split('|');
+                    setModalExtemporanea(extemporaneas.find((item) => String(item.carga_id) === cargaId && item.fecha === fecha));
+                  }}
+                  className="input-dark mt-1"
+                >
+                  {extemporaneas.map((item) => (
+                    <option key={`${item.carga_id}-${item.fecha}`} value={`${item.carga_id}|${item.fecha}`}>
+                      {item.fecha} · {item.hora_inicio} · {item.materia} · {item.grupo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] p-4">
+                <p className="font-semibold text-white">{modalExtemporanea.materia}</p>
+                <p className="mt-1 text-sm text-slate-300">{modalExtemporanea.fecha} · {modalExtemporanea.hora_inicio}–{modalExtemporanea.hora_fin} · {modalExtemporanea.grupo}</p>
+                <p className="mt-1 text-xs text-amber-300">El registro quedará identificado como captura extemporánea.</p>
+              </div>
+              <label className="block text-sm text-slate-300">Motivo de la captura tardía *
+                <textarea
+                  required
+                  minLength={5}
+                  maxLength={500}
+                  rows={3}
+                  value={motivoExtemporaneo}
+                  onChange={(e) => setMotivoExtemporaneo(e.target.value)}
+                  className="input-dark mt-1"
+                  placeholder="Ej. La clase sí se impartió, pero no fue posible registrar la asistencia al finalizar."
+                />
+              </label>
+              <p className="text-xs text-slate-500">Todos los alumnos iniciarán como presentes; marca únicamente las excepciones y cierra la asistencia normalmente.</p>
+            </div>
+            <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
+              <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
+              <button disabled={creandoExtemporanea || motivoExtemporaneo.trim().length < 5} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Abriendo…' : 'Capturar asistencia'}</button>
+            </footer>
+          </form>
         </div>
       )}
       {actividadARetirar && (

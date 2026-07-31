@@ -120,7 +120,7 @@ export default function ClaseAsistencia() {
           </div>
           <div className="flex items-center gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${clase.estado === 'ABIERTA' ? 'bg-emerald-500/20 text-emerald-300' : clase.estado === 'CORRECCION' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-300'}`}>
-              {clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : 'Asistencia cerrada'}
+              {clase.es_extemporanea && clase.estado === 'ABIERTA' ? 'Captura extemporánea' : clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : 'Asistencia cerrada'}
             </span>
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white">Corregir asistencia</button>}
@@ -136,6 +136,12 @@ export default function ClaseAsistencia() {
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
+        {clase.es_extemporanea && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+            <p className="font-semibold">Asistencia capturada de forma extemporánea</p>
+            <p className="mt-1 text-xs text-amber-200">Motivo registrado: {clase.motivo_extemporaneo}</p>
+          </div>
+        )}
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
             <h2 className="font-semibold text-white">Lista del grupo</h2>

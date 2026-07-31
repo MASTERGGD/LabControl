@@ -2,7 +2,7 @@ import datetime
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text,
-    UniqueConstraint,
+    UniqueConstraint, false,
 )
 from sqlalchemy.orm import relationship
 
@@ -61,6 +61,9 @@ class ClaseDocente(Base):
     tarea_asignada = Column(Text, nullable=True)
     incidencias = Column(Text, nullable=True)
     tema_pendiente = Column(Text, nullable=True)
+    es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
+    motivo_extemporaneo = Column(Text, nullable=True)
+    capturada_extemporanea_en = Column(DateTime, nullable=True)
 
     carga = relationship("CargaDocente", back_populates="clases")
     asistencias = relationship("AsistenciaDocente", back_populates="clase", cascade="all, delete-orphan")

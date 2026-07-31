@@ -69,6 +69,11 @@ class CopiarHorarioInput(BaseModel):
     periodo_destino_id: int
 
 
+class CapturaExtemporaneaInput(BaseModel):
+    fecha: datetime.date
+    motivo: str = Field(..., min_length=5, max_length=500)
+
+
 class AsistenciaInput(BaseModel):
     estado: str
     observacion: Optional[str] = Field(None, max_length=500)
@@ -386,6 +391,12 @@ def _serializar_clase(clase: ClaseDocente):
         "inicio": clase.inicio.isoformat() if clase.inicio else None,
         "fin": clase.fin.isoformat() if clase.fin else None,
         "observacion_general": clase.observacion_general,
+        "es_extemporanea": clase.es_extemporanea,
+        "motivo_extemporaneo": clase.motivo_extemporaneo,
+        "capturada_extemporanea_en": (
+            clase.capturada_extemporanea_en.isoformat()
+            if clase.capturada_extemporanea_en else None
+        ),
         "bitacora": {
             "tema_impartido": clase.tema_impartido,
             "avance_planeacion": clase.avance_planeacion,
@@ -422,6 +433,23 @@ def _serializar_clase(clase: ClaseDocente):
             for a in sorted(asistencias, key=lambda x: (x.alumno.apellido_paterno, x.alumno.nombres))
         ],
     }
+
+
+def _fecha_programada_carga(carga: CargaDocente, fecha: datetime.date):
+    hora = datetime.time.fromisoformat(carga.hora_inicio)
+    return datetime.datetime.combine(fecha, hora, tzinfo=MX)
+
+
+def _validar_ventana_extemporanea(carga: CargaDocente, fecha: datetime.date):
+    ahora = _ahora_mx()
+    programada = _fecha_programada_carga(carga, fecha)
+    if carga.dia_semana != fecha.weekday():
+        raise HTTPException(422, "La fecha no corresponde al día programado de esta clase")
+    if programada > ahora:
+        raise HTTPException(409, "La clase todavía no ha ocurrido")
+    if ahora - programada > datetime.timedelta(hours=48):
+        raise HTTPException(409, "El plazo de 48 horas para capturar esta asistencia ya venció")
+    return programada
 
 
 @router.get("/catalogos")
@@ -725,6 +753,105 @@ def reservar_laboratorio_carga(
     db.commit()
     disponibilidad["estado"] = "RESERVADO"
     return disponibilidad
+
+
+@router.get("/capturas-extemporaneas/disponibles")
+def capturas_extemporaneas_disponibles(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    actual = _periodo_actual(db)
+    if not actual:
+        return []
+    ahora = _ahora_mx()
+    cargas = db.query(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.periodo_id == actual.id,
+        CargaDocente.activo == True,
+        CargaDocente.estado == "ACTIVO",
+        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.grupo_academico_id.isnot(None),
+    ).all()
+    opciones = []
+    for dias_atras in range(0, 3):
+        fecha = ahora.date() - datetime.timedelta(days=dias_atras)
+        for carga in cargas:
+            if carga.dia_semana != fecha.weekday():
+                continue
+            programada = _fecha_programada_carga(carga, fecha)
+            if programada > ahora or ahora - programada > datetime.timedelta(hours=48):
+                continue
+            existe = db.query(ClaseDocente.id).filter(
+                ClaseDocente.carga_docente_id == carga.id,
+                ClaseDocente.fecha == fecha,
+            ).first()
+            if existe:
+                continue
+            opciones.append({
+                "carga_id": carga.id,
+                "fecha": fecha.isoformat(),
+                "materia": carga.actividad_nombre,
+                "grupo": (
+                    f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
+                    if carga.grupo_academico else None
+                ),
+                "carrera": carga.grupo_academico.carrera if carga.grupo_academico else None,
+                "hora_inicio": carga.hora_inicio,
+                "hora_fin": carga.hora_fin,
+                "vence_en": (programada + datetime.timedelta(hours=48)).isoformat(),
+            })
+    opciones.sort(key=lambda item: (item["fecha"], item["hora_inicio"]), reverse=True)
+    return opciones
+
+
+@router.post("/horario/{carga_id}/captura-extemporanea")
+def crear_captura_extemporanea(
+    carga_id: int,
+    data: CapturaExtemporaneaInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.estado == "ACTIVO",
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Clase programada no encontrada")
+    _validar_carga_actual(db, carga)
+    _validar_ventana_extemporanea(carga, data.fecha)
+    existente = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.fecha == data.fecha,
+    ).first()
+    if existente:
+        raise HTTPException(409, "Esta clase ya tiene un registro de asistencia")
+    clase = ClaseDocente(
+        carga_docente_id=carga.id,
+        fecha=data.fecha,
+        estado="ABIERTA",
+        es_extemporanea=True,
+        motivo_extemporaneo=data.motivo.strip(),
+        capturada_extemporanea_en=datetime.datetime.utcnow(),
+    )
+    db.add(clase)
+    db.flush()
+    inscripciones = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).all()
+    for inscripcion in inscripciones:
+        db.add(AsistenciaDocente(
+            clase_docente_id=clase.id,
+            alumno_id=inscripcion.alumno_id,
+            estado="PRESENTE",
+        ))
+    db.commit()
+    db.refresh(clase)
+    return _serializar_clase(clase)
 
 
 @router.get("/hoy")
