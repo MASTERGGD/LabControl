@@ -19,7 +19,9 @@ export default function SEGrupos() {
   const [detalle, setDetalle] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
   const [error, setError] = useState('');
+  const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
+  const [activandoPeriodo, setActivandoPeriodo] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -84,6 +86,32 @@ export default function SEGrupos() {
     }
   };
 
+  const periodoSeleccionado = periodos.find((item) => item.clave === periodo);
+
+  const establecerActual = async () => {
+    if (!periodoSeleccionado || activandoPeriodo) return;
+    const confirmado = window.confirm(
+      `¿Establecer ${periodoSeleccionado.clave} como periodo actual? Esto cerrará la operación docente de los demás periodos.`,
+    );
+    if (!confirmado) return;
+    setActivandoPeriodo(true);
+    setError('');
+    setMensaje('');
+    try {
+      const { data } = await api.patch(`/servicios-escolares/periodos/${periodoSeleccionado.id}/establecer-actual`);
+      setPeriodos((actuales) => actuales.map((item) => ({
+        ...item,
+        es_actual: item.id === periodoSeleccionado.id,
+        es_actual_configurado: item.id === periodoSeleccionado.id,
+      })));
+      setMensaje(data.mensaje);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo establecer el periodo actual.');
+    } finally {
+      setActivandoPeriodo(false);
+    }
+  };
+
   const indicadores = [
     ['Grupos', resumen.grupos],
     ['Inscripciones', resumen.inscripciones_activas],
@@ -110,6 +138,37 @@ export default function SEGrupos() {
           </select>
         </div>
 
+        {periodoSeleccionado && (
+          <div className={`rounded-xl border px-4 py-3 ${
+            periodoSeleccionado.es_actual
+              ? 'border-emerald-500/30 bg-emerald-500/10'
+              : 'border-amber-500/30 bg-amber-500/10'
+          }`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className={`font-semibold ${periodoSeleccionado.es_actual ? 'text-emerald-200' : 'text-amber-200'}`}>
+                  {periodoSeleccionado.es_actual ? 'Periodo vigente' : 'Periodo histórico o de preparación'} · {periodoSeleccionado.clave}
+                </p>
+                <p className="text-sm text-slate-300">
+                  {periodoSeleccionado.coincide_con_fecha
+                    ? 'Este periodo corresponde a la fecha actual.'
+                    : 'Este periodo no corresponde al bloque académico calculado para la fecha actual.'}
+                </p>
+              </div>
+              {periodoSeleccionado.coincide_con_fecha && !periodoSeleccionado.es_actual_configurado && (
+                <button
+                  type="button"
+                  disabled={activandoPeriodo}
+                  onClick={establecerActual}
+                  className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {activandoPeriodo ? 'Estableciendo…' : 'Establecer como actual'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {indicadores.map(([etiqueta, valor]) => (
             <div key={etiqueta} className="glass rounded-xl p-4">
@@ -122,6 +181,11 @@ export default function SEGrupos() {
         {error && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
+          </div>
+        )}
+        {mensaje && (
+          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+            {mensaje}
           </div>
         )}
 

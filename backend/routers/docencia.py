@@ -153,10 +153,17 @@ def _docente_objetivo(user: Usuario) -> int:
 
 
 def _periodo_actual(db: Session):
-    return db.query(PeriodoEscolar).filter(
+    periodos = db.query(PeriodoEscolar).filter(
         PeriodoEscolar.activo == True,
-        PeriodoEscolar.es_actual == True,
-    ).order_by(PeriodoEscolar.id.desc()).first()
+    ).order_by(PeriodoEscolar.id.desc()).all()
+    hoy = _ahora_mx()
+    bloque = "ENE-ABR" if hoy.month <= 4 else "MAY-AGO" if hoy.month <= 8 else "SEP-DIC"
+    esperado = _normalizar_periodo(f"{bloque} {hoy.year}")
+    por_fecha = next(
+        (periodo for periodo in periodos if _normalizar_periodo(periodo.clave) == esperado),
+        None,
+    )
+    return por_fecha or next((periodo for periodo in periodos if periodo.es_actual), None)
 
 
 def _validar_periodo_actual(db: Session, periodo_id: int):
@@ -404,7 +411,8 @@ def catalogos_docente(
     periodos = db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).order_by(
         PeriodoEscolar.id.desc()
     ).all()
-    elegido = periodo_id or next((p.id for p in periodos if p.es_actual), None)
+    actual = _periodo_actual(db)
+    elegido = periodo_id or (actual.id if actual else None)
     if not elegido and periodos:
         hoy = _ahora_mx()
         bloque = "ENE-ABR" if hoy.month <= 4 else "MAY-AGO" if hoy.month <= 8 else "SEP-DIC"
@@ -427,7 +435,12 @@ def catalogos_docente(
     ).all()
     return {
         "periodo_sugerido_id": elegido,
-        "periodos": [{"id": p.id, "clave": p.clave, "es_actual": p.es_actual} for p in periodos],
+        "periodos": [{
+            "id": p.id,
+            "clave": p.clave,
+            "es_actual": bool(actual and p.id == actual.id),
+            "es_actual_configurado": p.es_actual,
+        } for p in periodos],
         "grupos": [{
             "id": g.id, "carrera": g.carrera, "cuatrimestre": g.cuatrimestre,
             "grupo": g.grupo, "label": f"{g.cuatrimestre}° {g.grupo} · {g.carrera}",

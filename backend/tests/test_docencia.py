@@ -226,8 +226,10 @@ def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):
         rol=RolUsuario.DOCENTE,
         activo=True,
     )
-    anterior = PeriodoEscolar(clave="ENE-ABR 2026", activo=True, es_actual=False)
-    actual = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    # Simula una bandera administrativa rezagada durante el cambio de cuatrimestre:
+    # la fecha ya corresponde a MAY-AGO, aunque ENE-ABR siga marcado en la base.
+    anterior = PeriodoEscolar(clave="ENE-ABR 2026", activo=True, es_actual=True)
+    actual = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=False)
     db.add_all([docente, anterior, actual])
     db.flush()
     carga_anterior = CargaDocente(
@@ -290,6 +292,38 @@ def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):
         headers=headers,
     )
     assert duplicada.status_code == 409
+
+
+def test_servicios_escolares_confirma_periodo_vigente(client, db):
+    escolares = Usuario(
+        nombre="Servicios Escolares Periodos",
+        email="periodos.escolares@test.mx",
+        password_hash=hashear_password("Escolares123!"),
+        rol=RolUsuario.SERVICIOS_ESCOLARES,
+        activo=True,
+    )
+    anterior = PeriodoEscolar(clave="ENE-ABR 2026", activo=True, es_actual=True)
+    vigente = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=False)
+    db.add_all([escolares, anterior, vigente])
+    db.commit()
+    headers = auth_headers(get_token(client, escolares.email, "Escolares123!"))
+
+    listado = client.get("/servicios-escolares/periodos", headers=headers)
+    assert listado.status_code == 200, listado.text
+    periodos = {periodo["clave"]: periodo for periodo in listado.json()}
+    assert periodos["MAY-AGO 2026"]["es_actual"] is True
+    assert periodos["MAY-AGO 2026"]["es_actual_configurado"] is False
+    assert periodos["MAY-AGO 2026"]["coincide_con_fecha"] is True
+
+    activado = client.patch(
+        f"/servicios-escolares/periodos/{vigente.id}/establecer-actual",
+        headers=headers,
+    )
+    assert activado.status_code == 200, activado.text
+    db.refresh(anterior)
+    db.refresh(vigente)
+    assert vigente.es_actual is True
+    assert anterior.es_actual is False
 
 
 def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):

@@ -69,6 +69,24 @@ def _norm_text(v: str | None) -> str:
     return " ".join((v or "").strip().split())
 
 
+def _normalizar_periodo(valor: str | None) -> str:
+    return "".join(ch for ch in (valor or "").upper() if ch.isalnum())
+
+
+def _clave_periodo_por_fecha(fecha: datetime.date | None = None) -> str:
+    fecha = fecha or datetime.date.today()
+    bloque = "ENE-ABR" if fecha.month <= 4 else "MAY-AGO" if fecha.month <= 8 else "SEP-DIC"
+    return f"{bloque} {fecha.year}"
+
+
+def _periodo_vigente(periodos: list[PeriodoEscolar]):
+    esperado = _normalizar_periodo(_clave_periodo_por_fecha())
+    return next(
+        (periodo for periodo in periodos if periodo.activo and _normalizar_periodo(periodo.clave) == esperado),
+        None,
+    ) or next((periodo for periodo in periodos if periodo.activo and periodo.es_actual), None)
+
+
 def _ensure_organizacion_desde_catalogo(db: Session):
     """Convierte registros heredados en periodos, grupos e inscripciones."""
     with _organizacion_lock:
@@ -991,8 +1009,49 @@ def listar_periodos_escolares(
 ):
     _require_se(db, current_user)
     _ensure_organizacion_desde_catalogo(db)
-    return [{"id": p.id, "clave": p.clave, "activo": p.activo, "es_actual": p.es_actual}
-            for p in db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()]
+    periodos = db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()
+    vigente = _periodo_vigente(periodos)
+    return [{
+        "id": p.id,
+        "clave": p.clave,
+        "activo": p.activo,
+        "es_actual": bool(vigente and p.id == vigente.id),
+        "es_actual_configurado": p.es_actual,
+        "coincide_con_fecha": _normalizar_periodo(p.clave) == _normalizar_periodo(_clave_periodo_por_fecha()),
+    } for p in periodos]
+
+
+@router.patch("/periodos/{periodo_id}/establecer-actual", summary="Establecer periodo escolar actual")
+def establecer_periodo_escolar_actual(
+    periodo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    periodo = db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.id == periodo_id,
+        PeriodoEscolar.activo == True,
+    ).first()
+    if not periodo:
+        raise HTTPException(404, "Periodo escolar no encontrado")
+    esperado = _clave_periodo_por_fecha()
+    if _normalizar_periodo(periodo.clave) != _normalizar_periodo(esperado):
+        raise HTTPException(
+            409,
+            f"El periodo correspondiente a la fecha actual es {esperado}. No se puede abrir otro periodo todavía.",
+        )
+    db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.id != periodo.id,
+        PeriodoEscolar.es_actual == True,
+    ).update({"es_actual": False}, synchronize_session=False)
+    periodo.es_actual = True
+    db.commit()
+    return {
+        "id": periodo.id,
+        "clave": periodo.clave,
+        "es_actual": True,
+        "mensaje": f"{periodo.clave} quedó establecido como periodo actual.",
+    }
 
 
 @router.get("/grupos", summary="Listar grupos académicos")
