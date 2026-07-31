@@ -20,7 +20,7 @@ from models.docencia import (
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
     SeguimientoAlumnoDocente,
 )
-from models.tutoria import AsignacionTutoria, GrupoTutorado, ReporteTutor
+from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
 from routers.notificaciones import crear_notificacion
 
 
@@ -145,6 +145,29 @@ class EstadoSeguimientoInput(BaseModel):
             raise ValueError("Estado de seguimiento no válido")
         if self.estado in {"ATENDIDO", "CERRADO"} and not (self.resultado_atencion or "").strip():
             raise ValueError("El resultado de la atención es obligatorio")
+        return self
+
+
+class AlertaTempranaInput(BaseModel):
+    senal: str
+    nivel: str = "ATENCION"
+    comentario: Optional[str] = Field(None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validar(self):
+        self.senal = self.senal.upper()
+        self.nivel = self.nivel.upper()
+        senales = {
+            "INASISTENCIA", "BAJO_DESEMPENO", "CAMBIO_CONDUCTA",
+            "FALTA_PARTICIPACION", "SITUACION_PERSONAL", "OTRO",
+        }
+        if self.senal not in senales:
+            raise ValueError("Señal de alerta no válida")
+        if self.nivel not in {"OBSERVACION", "ATENCION", "URGENTE"}:
+            raise ValueError("Nivel de alerta no válido")
+        self.comentario = self.comentario.strip() if self.comentario else None
+        if (self.senal == "OTRO" or self.nivel == "URGENTE") and not self.comentario:
+            raise ValueError("Describe brevemente la situación")
         return self
 
 
@@ -997,6 +1020,204 @@ def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_
     if not inscripcion:
         raise HTTPException(404, "Alumno no encontrado en este grupo")
     return carga, inscripcion.alumno
+
+
+def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoAlumno, docente_id: int):
+    cargas_grupo = db.query(CargaDocente).filter(
+        CargaDocente.grupo_academico_id == carga.grupo_academico_id,
+        CargaDocente.periodo_id == carga.periodo_id,
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+    ).all()
+    carga_ids = [item.id for item in cargas_grupo]
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id.in_(carga_ids),
+    ).all() if carga_ids else []
+    clase_ids = [clase.id for clase in clases]
+    asistencias = db.query(AsistenciaDocente).filter(
+        AsistenciaDocente.alumno_id == alumno.id,
+        AsistenciaDocente.clase_docente_id.in_(clase_ids),
+    ).all() if clase_ids else []
+    asistio = sum(1 for item in asistencias if item.estado in {"PRESENTE", "RETARDO", "JUSTIFICADA"})
+    porcentaje_global = (asistio / len(asistencias) * 100) if asistencias else 100
+    calificacion_baja = db.query(SeguimientoAlumnoDocente.id).filter(
+        SeguimientoAlumnoDocente.alumno_id == alumno.id,
+        SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
+        SeguimientoAlumnoDocente.tipo == "CALIFICACION",
+        SeguimientoAlumnoDocente.calificacion < 7,
+    ).first() if carga_ids else None
+    riesgo_global = bool(
+        (len(asistencias) >= 4 and porcentaje_global < 80)
+        or calificacion_baja
+    )
+    canalizacion_activa = db.query(Canalizacion.id).filter(
+        Canalizacion.alumno_id == alumno.id,
+        Canalizacion.estado.in_(["PENDIENTE", "EN_SEGUIMIENTO"]),
+    ).first() is not None
+    reporte_activo = db.query(ReporteTutor.id).filter(
+        ReporteTutor.alumno_id == alumno.id,
+        ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "CANALIZADO", "SIN_TUTOR"]),
+    ).first() is not None
+    desde = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+    alerta_reciente = db.query(ReporteTutor).filter(
+        ReporteTutor.alumno_id == alumno.id,
+        ReporteTutor.reportado_por_id == docente_id,
+        ReporteTutor.carga_docente_id == carga.id,
+        ReporteTutor.creado_en >= desde,
+        ReporteTutor.estado.notin_(["CERRADO", "ATENDIDO", "CANCELADO"]),
+    ).order_by(ReporteTutor.creado_en.desc()).first()
+    asignacion = db.query(AsignacionTutoria).filter(
+        AsignacionTutoria.alumno_id == alumno.id,
+        AsignacionTutoria.activo == True,
+    ).order_by(AsignacionTutoria.asignado_en.desc()).first()
+    grupo_tutorado = db.query(GrupoTutorado).filter(
+        GrupoTutorado.id == asignacion.grupo_tutorado_id,
+        GrupoTutorado.activo == True,
+    ).first() if asignacion else None
+    tutor = db.query(Usuario).filter(
+        Usuario.id == grupo_tutorado.tutor_id,
+        Usuario.activo == True,
+    ).first() if grupo_tutorado else None
+    return {
+        "alumno_id": alumno.id,
+        "riesgo_global": riesgo_global,
+        "canalizacion_activa": canalizacion_activa,
+        "seguimiento_activo": reporte_activo,
+        "tutor_asignado": tutor.nombre if tutor else None,
+        "alerta_reciente": ({
+            "id": alerta_reciente.id,
+            "estado": alerta_reciente.estado,
+            "categoria": alerta_reciente.categoria,
+            "creado_en": alerta_reciente.creado_en.isoformat(),
+        } if alerta_reciente else None),
+    }
+
+
+@router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}/contexto")
+def contexto_alumno_docente(
+    carga_id: int,
+    alumno_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    return _contexto_alumno_docente(db, carga, alumno, current_user.id)
+
+
+@router.get("/clases/{clase_id}/contexto-alumnos")
+def contexto_alumnos_clase(
+    clase_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    return {
+        str(asistencia.alumno_id): _contexto_alumno_docente(
+            db, clase.carga, asistencia.alumno, current_user.id,
+        )
+        for asistencia in clase.asistencias
+    }
+
+
+@router.post("/seguimiento/{carga_id}/alumnos/{alumno_id}/alerta-temprana")
+def crear_alerta_temprana(
+    carga_id: int,
+    alumno_id: int,
+    data: AlertaTempranaInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    _validar_carga_actual(db, carga)
+    categorias = {
+        "INASISTENCIA": ("ASISTENCIA", "Alerta por inasistencia"),
+        "BAJO_DESEMPENO": ("ACADEMICO", "Alerta por bajo desempeño"),
+        "CAMBIO_CONDUCTA": ("CONDUCTA", "Alerta por cambio de conducta"),
+        "FALTA_PARTICIPACION": ("ACADEMICO", "Alerta por falta de participación"),
+        "SITUACION_PERSONAL": ("PERSONAL", "Posible situación personal"),
+        "OTRO": ("OTRO", "Señal de atención observada"),
+    }
+    categoria, titulo = categorias[data.senal]
+    desde = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+    duplicado = db.query(ReporteTutor).filter(
+        ReporteTutor.alumno_id == alumno.id,
+        ReporteTutor.reportado_por_id == current_user.id,
+        ReporteTutor.carga_docente_id == carga.id,
+        ReporteTutor.categoria == categoria,
+        ReporteTutor.creado_en >= desde,
+        ReporteTutor.estado.notin_(["CERRADO", "ATENDIDO", "CANCELADO"]),
+    ).first()
+    if duplicado:
+        raise HTTPException(409, "Ya enviaste una alerta similar durante los últimos 7 días. Puedes revisar su estado en la ficha del alumno.")
+    asignacion = db.query(AsignacionTutoria).join(
+        GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id,
+    ).filter(
+        AsignacionTutoria.alumno_id == alumno.id,
+        AsignacionTutoria.activo == True,
+        GrupoTutorado.activo == True,
+    ).order_by(AsignacionTutoria.asignado_en.desc()).first()
+    grupo_tutorado = db.query(GrupoTutorado).filter(
+        GrupoTutorado.id == asignacion.grupo_tutorado_id,
+    ).first() if asignacion else None
+    tutor = db.query(Usuario).filter(
+        Usuario.id == grupo_tutorado.tutor_id,
+        Usuario.activo == True,
+    ).first() if grupo_tutorado else None
+    prioridad = {"OBSERVACION": "BAJA", "ATENCION": "MEDIA", "URGENTE": "ALTA"}[data.nivel]
+    detalle = data.comentario or f"Señal registrada desde {carga.actividad_nombre}."
+    registro = SeguimientoAlumnoDocente(
+        docente_id=current_user.id,
+        carga_docente_id=carga.id,
+        alumno_id=alumno.id,
+        tipo="TUTORIA",
+        titulo=titulo,
+        detalle=detalle,
+        estado="PENDIENTE",
+        fecha_revision=(_ahora_mx() + datetime.timedelta(days=7)).date(),
+    )
+    db.add(registro)
+    db.flush()
+    reporte = ReporteTutor(
+        alumno_id=alumno.id,
+        reportado_por_id=current_user.id,
+        tutor_destinatario_id=tutor.id if tutor else None,
+        grupo_tutorado_id=grupo_tutorado.id if grupo_tutorado else None,
+        carga_docente_id=carga.id,
+        seguimiento_docente_id=registro.id,
+        categoria=categoria,
+        prioridad=prioridad,
+        titulo=titulo,
+        detalle=detalle,
+        confidencial=data.senal in {"SITUACION_PERSONAL", "OTRO"},
+        estado="ENVIADO" if tutor else "SIN_TUTOR",
+    )
+    db.add(reporte)
+    db.flush()
+    alumno_nombre = f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+    destinatarios = [tutor] if tutor else db.query(Usuario).filter(
+        Usuario.rol.in_([RolUsuario.TUTORIA_ADMIN, RolUsuario.SUPER_ADMIN]),
+        Usuario.activo == True,
+    ).all()
+    for destinatario in destinatarios:
+        crear_notificacion(
+            db, destinatario.id, "tutoria_alerta_temprana",
+            "Nueva alerta temprana",
+            f"{current_user.nombre} registró una señal de atención para {alumno_nombre}.",
+            "/docente/mis-tutorados?tab=reportes" if tutor else "/admin/tutoria?tab=reportes-tutor",
+            enviar_email=False,
+        )
+    db.commit()
+    return {
+        "id": reporte.id,
+        "estado": reporte.estado,
+        "destinatario": tutor.nombre if tutor else "Responsable de Tutoría",
+        "mensaje": f"Alerta enviada a {tutor.nombre}" if tutor else "Alerta enviada al Responsable de Tutoría",
+    }
 
 
 @router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}/faltas")

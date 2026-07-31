@@ -129,3 +129,54 @@ def test_tutor_convierte_reporte_en_canalizacion(client, db):
     reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).one()
     assert reporte.estado == "CANALIZADO"
     assert reporte.canalizacion_id == canalizacion.id
+
+
+def test_vista_contextual_oculta_detalles_y_alerta_temprana_llega_al_tutor(client, db):
+    reportante, tutor, alumno, carga, grupo_tutorado = _escenario(db)
+    canalizacion = Canalizacion(
+        tutor_id=tutor.id,
+        alumno_id=alumno.id,
+        grupo_tutorado_id=grupo_tutorado.id,
+        tipo_psicologico=True,
+        motivo="Detalle clínico que el docente no debe conocer",
+        estado="EN_SEGUIMIENTO",
+    )
+    db.add(canalizacion)
+    db.commit()
+    headers = auth_headers(get_token(client, reportante.email, "Materia123!"))
+
+    contexto = client.get(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/contexto",
+        headers=headers,
+    )
+    assert contexto.status_code == 200, contexto.text
+    datos = contexto.json()
+    assert datos["canalizacion_activa"] is True
+    assert datos["tutor_asignado"] == tutor.nombre
+    assert "motivo" not in datos
+    assert "tipo_psicologico" not in datos
+
+    alerta = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/alerta-temprana",
+        headers=headers,
+        json={
+            "senal": "CAMBIO_CONDUCTA",
+            "nivel": "ATENCION",
+            "comentario": "Se mostró apática y dejó de participar durante esta semana.",
+        },
+    )
+    assert alerta.status_code == 200, alerta.text
+    assert alerta.json()["destinatario"] == tutor.nombre
+    reporte = db.query(ReporteTutor).filter(
+        ReporteTutor.id == alerta.json()["id"],
+    ).one()
+    assert reporte.categoria == "CONDUCTA"
+    assert reporte.tutor_destinatario_id == tutor.id
+    assert reporte.prioridad == "MEDIA"
+
+    repetida = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/alerta-temprana",
+        headers=headers,
+        json={"senal": "CAMBIO_CONDUCTA", "nivel": "ATENCION"},
+    )
+    assert repetida.status_code == 409

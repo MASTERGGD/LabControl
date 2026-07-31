@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
 
 const FORM_INICIAL = {
@@ -30,6 +31,7 @@ export default function FichaAlumnoDocente() {
   const { cargaId, alumnoId } = useParams();
   const navigate = useNavigate();
   const [datos, setDatos] = useState(null);
+  const [contexto, setContexto] = useState(null);
   const [form, setForm] = useState(FORM_INICIAL);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -44,8 +46,12 @@ export default function FichaAlumnoDocente() {
 
   const cargar = useCallback(async () => {
     try {
-      const { data } = await api.get(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}`);
-      setDatos(data);
+      const [fichaRes, contextoRes] = await Promise.all([
+        api.get(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}`),
+        api.get(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}/contexto`),
+      ]);
+      setDatos(fichaRes.data);
+      setContexto(contextoRes.data);
       setError('');
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo cargar la ficha del alumno.');
@@ -209,6 +215,23 @@ export default function FichaAlumnoDocente() {
                 ['Pendientes', pendientes.length],
               ].map(([label, value]) => <div key={label} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{value}</p><p className="text-xs text-slate-400">{label}</p></div>)}
             </div>
+
+            <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="font-semibold text-white">Vista contextual institucional</h2>
+                  <p className="mt-1 text-xs text-slate-400">Solo muestra señales necesarias para colaborar; no incluye diagnósticos, notas privadas ni información de otras materias.</p>
+                </div>
+                <ContextoAlumnoDocente
+                  cargaId={cargaId}
+                  alumnoId={alumnoId}
+                  nombre={datos.alumno.nombre}
+                  contexto={contexto}
+                  onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
+                />
+              </div>
+              {contexto?.tutor_asignado && <p className="mt-3 text-xs text-slate-500">Tutor asignado: {contexto.tutor_asignado}</p>}
+            </section>
 
             {datos.alertas?.length > 0 && (
               <section className={`rounded-2xl border p-4 ${datos.alertas.some((a) => a.nivel === 'ALTO') ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>

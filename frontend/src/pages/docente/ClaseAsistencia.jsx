@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
 
 const ESTADOS = [
@@ -14,6 +15,8 @@ export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
   const [clase, setClase] = useState(null);
+  const [contextos, setContextos] = useState({});
+  const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cerrando, setCerrando] = useState(false);
   const [modal, setModal] = useState(null);
@@ -25,8 +28,12 @@ export default function ClaseAsistencia() {
 
   const cargar = useCallback(async () => {
     try {
-      const { data } = await api.get(`/docencia/clases/${claseId}`);
-      setClase(data);
+      const [claseRes, contextoRes] = await Promise.all([
+        api.get(`/docencia/clases/${claseId}`),
+        api.get(`/docencia/clases/${claseId}/contexto-alumnos`),
+      ]);
+      setClase(claseRes.data);
+      setContextos(contextoRes.data);
     } catch {
       setError('No se pudo cargar la clase.');
     }
@@ -128,6 +135,7 @@ export default function ClaseAsistencia() {
         </div>
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+        {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
             <h2 className="font-semibold text-white">Lista del grupo</h2>
@@ -147,6 +155,14 @@ export default function ClaseAsistencia() {
                 <div className="min-w-0">
                   <p className="truncate font-medium text-white">{alumno.nombre}</p>
                   <p className="text-xs text-slate-500">{alumno.matricula}</p>
+                  <ContextoAlumnoDocente
+                    compacto
+                    cargaId={clase.carga.id}
+                    alumnoId={alumno.alumno_id}
+                    nombre={alumno.nombre}
+                    contexto={contextos[String(alumno.alumno_id)]}
+                    onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
+                  />
                 </div>
                 <div className="col-span-2 grid grid-cols-2 gap-2 pl-[52px] sm:grid-cols-4 sm:pl-0 lg:col-span-1 lg:grid-cols-4">
                   {ESTADOS.map(([valor, etiqueta, color]) => (
