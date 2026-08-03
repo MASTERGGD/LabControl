@@ -712,13 +712,13 @@ async def importar_materias(
             continue
 
         existente = db.query(CatalogoMateria).filter(
-            CatalogoMateria.nombre  == nombre,
-            CatalogoMateria.periodo == periodo,
+            CatalogoMateria.nombre                  == nombre,
+            CatalogoMateria.carrera                 == carrera,
+            CatalogoMateria.cuatrimestre_oficial    == cuat,
+            CatalogoMateria.periodo                 == periodo,
         ).first()
 
         if existente:
-            existente.carrera              = carrera
-            existente.cuatrimestre_oficial = cuat
             existente.activo               = True
             actualizados += 1
         else:
