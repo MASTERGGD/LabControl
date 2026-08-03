@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
+import { useTheme } from '../../context/ThemeContext';
 
 // ─── Utilidad: período escolar actual ────────────────────────────────────────
 
@@ -56,6 +57,8 @@ const LABEL_CAMPO = {
 // ─── Componente: Reporte de importación ───────────────────────────────────────
 
 function ModalReporte({ reporte, titulo, onClose }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const {
     creados          = 0,
     actualizados     = 0,
@@ -68,10 +71,10 @@ function ModalReporte({ reporte, titulo, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between shrink-0">
-          <h3 className="font-semibold text-white">{titulo}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+      <div className={`w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl max-h-[90vh] flex flex-col ${isDay ? 'border-slate-200 bg-white' : 'border-white/10 bg-slate-900'}`}>
+        <div className={`px-6 py-4 border-b flex items-center justify-between shrink-0 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
+          <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{titulo}</h3>
+          <button onClick={onClose} className={`${isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}`} aria-label="Cerrar resultado de importación">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -81,35 +84,35 @@ function ModalReporte({ reporte, titulo, onClose }) {
         <div className="p-6 overflow-y-auto space-y-4">
           {/* Resumen en 4 tarjetas */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div className="bg-green-900/40 border border-green-700/50 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-green-400">{creados}</p>
-              <p className="text-xs text-green-300 mt-1">Nuevos</p>
+            <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-900/40 border-emerald-700/50'}`}>
+              <p className={`text-2xl font-bold ${isDay ? 'text-emerald-700' : 'text-emerald-400'}`}>{creados}</p>
+              <p className={`text-xs mt-1 ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>Nuevos</p>
             </div>
-            <div className="bg-blue-900/40 border border-blue-700/50 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-blue-400">{actualizados}</p>
-              <p className="text-xs text-blue-300 mt-1">Actualizados</p>
+            <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-blue-50 border-blue-200' : 'bg-blue-900/40 border-blue-700/50'}`}>
+              <p className={`text-2xl font-bold ${isDay ? 'text-blue-700' : 'text-blue-400'}`}>{actualizados}</p>
+              <p className={`text-xs mt-1 ${isDay ? 'text-blue-800' : 'text-blue-300'}`}>Actualizados</p>
             </div>
-            <div className="bg-white/4 border border-gray-600/50 rounded-xl p-3 text-center">
-              <p className="text-2xl font-bold text-slate-300">{sin_cambios}</p>
-              <p className="text-xs text-slate-400 mt-1">Sin cambios</p>
+            <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-slate-600/50'}`}>
+              <p className={`text-2xl font-bold ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>{sin_cambios}</p>
+              <p className={`text-xs mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Sin cambios</p>
             </div>
             <div className={`rounded-xl p-3 text-center border ${
               total_errores > 0
-                ? 'bg-red-900/40 border-red-700/50'
-                : 'bg-white/4 border-gray-600/50'}`}>
-              <p className={`text-2xl font-bold ${total_errores > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                ? (isDay ? 'bg-red-50 border-red-200' : 'bg-red-900/40 border-red-700/50')
+                : (isDay ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-slate-600/50')}`}>
+              <p className={`text-2xl font-bold ${total_errores > 0 ? (isDay ? 'text-red-700' : 'text-red-400') : (isDay ? 'text-slate-700' : 'text-slate-400')}`}>
                 {total_errores}
               </p>
-              <p className={`text-xs mt-1 ${total_errores > 0 ? 'text-red-300' : 'text-slate-400'}`}>
+              <p className={`text-xs mt-1 ${total_errores > 0 ? (isDay ? 'text-red-800' : 'text-red-300') : (isDay ? 'text-slate-600' : 'text-slate-400')}`}>
                 Con error
               </p>
             </div>
           </div>
 
           {total_errores === 0 && cambios_sensibles.length === 0 && (
-            <div className="flex items-center gap-3 bg-green-900/20 border border-green-700/40 rounded-xl px-4 py-3">
+            <div className={`flex items-center gap-3 border rounded-xl px-4 py-3 ${isDay ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-900/20 border-emerald-700/40'}`}>
               <span className="text-xl">✅</span>
-              <p className="text-green-300 text-sm">
+              <p className={`text-sm ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>
                 Importación completada sin errores. {total} registros procesados.
               </p>
             </div>
@@ -166,9 +169,10 @@ function ModalReporte({ reporte, titulo, onClose }) {
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-white/5 shrink-0">
+        <div className={`px-6 py-4 border-t shrink-0 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
           <button onClick={onClose}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
+            className="w-full bg-emerald-600 hover:bg-emerald-500 rounded-lg py-2.5 text-sm font-semibold transition-colors"
+            style={{ color: '#ffffff' }}>
             Entendido
           </button>
         </div>
