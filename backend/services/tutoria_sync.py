@@ -11,6 +11,15 @@ def _norm(value) -> str:
     return "".join(ch for ch in str(value or "").upper() if ch.isalnum())
 
 
+def _orden_periodo(clave):
+    limpio = _norm(clave)
+    for prefijo, bloque in (("ENEABR", 1), ("MAYAGO", 2), ("SEPDIC", 3)):
+        resto = limpio.removeprefix(prefijo)
+        if limpio.startswith(prefijo) and resto.isdigit():
+            return int(resto), bloque
+    return None
+
+
 def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
     """Crea la ficha tutorial de cada grupo académico y refleja sus inscripciones."""
     academicos = (
@@ -19,6 +28,9 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
         .filter(GrupoAcademico.activo == True, PeriodoEscolar.activo == True)
         .all()
     )
+    actual = next((periodo for _, periodo in academicos if periodo.es_actual), None)
+    orden_actual = _orden_periodo(actual.clave) if actual else None
+    ids_academicos = {academico.id for academico, _ in academicos}
     for academico, periodo in academicos:
         grupo = db.query(GrupoTutorado).filter(
             GrupoTutorado.grupo_academico_id == academico.id
@@ -49,6 +61,15 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
             db.add(grupo)
             db.flush()
 
+        orden = _orden_periodo(periodo.clave)
+        if periodo.es_actual:
+            grupo.estado, grupo.activo = "ACTIVO", True
+        elif orden and orden_actual and orden < orden_actual:
+            grupo.estado, grupo.activo = "CERRADO", False
+            grupo.cerrado_en = grupo.cerrado_en or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        else:
+            grupo.estado, grupo.activo = "PREPARACION", True
+
         inscripciones = db.query(InscripcionAlumno).filter(
             InscripcionAlumno.grupo_academico_id == academico.id,
             InscripcionAlumno.estado == "ACTIVO",
@@ -69,6 +90,10 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
         for asignacion in asignaciones:
             if asignacion.alumno_id not in alumnos_activos:
                 asignacion.activo = False
+    for grupo in db.query(GrupoTutorado).filter(
+        GrupoTutorado.grupo_academico_id.is_(None), GrupoTutorado.activo == True,
+    ).all():
+        grupo.estado = "NO_VINCULADO"
     db.flush()
     return db.query(GrupoTutorado).all()
 

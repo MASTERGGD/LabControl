@@ -4,7 +4,7 @@ from dependencies import hashear_password
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.docencia import CargaDocente, SeguimientoAlumnoDocente
 from models.notificacion import Notificacion
-from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
+from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, HistorialTutorGrupo, ReporteTutor
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
 
@@ -147,6 +147,24 @@ def test_grupo_academico_se_vincula_y_reasigna_reporte_sin_tutor(client, db):
     db.refresh(reporte)
     assert reporte.estado == "ENVIADO"
     assert reporte.tutor_destinatario_id == tutor.id
+    assert db.query(HistorialTutorGrupo).filter(
+        HistorialTutorGrupo.grupo_tutorado_id == grupo.id,
+        HistorialTutorGrupo.tutor_id == tutor.id,
+    ).count() == 1
+
+    heredado = GrupoTutorado(
+        tutor_id=None, carrera="Programa anterior", cuatrimestre=3,
+        grupo="A", periodo="MAY-AGO 2026", activo=True, estado="NO_VINCULADO",
+    )
+    db.add(heredado)
+    db.commit()
+    archivado = client.post(
+        f"/tutoria/grupos/{heredado.id}/archivar", headers=responsable_headers,
+    )
+    assert archivado.status_code == 200, archivado.text
+    db.refresh(heredado)
+    assert heredado.estado == "ARCHIVADO"
+    assert heredado.activo is False
 
 
 def test_tutor_convierte_reporte_en_canalizacion(client, db):

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
 from models.tutoria import (
-    GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico,
+    GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico, HistorialTutorGrupo,
     SesionTutoria, RegistroSesionAlumno, Canalizacion,
     ReporteTutor,
     InformeBimestral, DetalleInformeBimestral,
@@ -17,7 +17,7 @@ from models.tutoria import (
     HistorialEstadoTutoria, CierreTutoria,
 )
 from models.notificacion import Notificacion
-from models.catalogo import CatalogoAlumno
+from models.catalogo import CatalogoAlumno, GrupoAcademico
 from models.docencia import CargaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
@@ -96,6 +96,7 @@ class GrupoUpdate(BaseModel):
     grupo:        Optional[str] = None
     periodo:      Optional[str] = None
     activo:       Optional[bool] = None
+    motivo_cambio: Optional[str] = None
 
 class CanalizacionCreate(BaseModel):
     alumno_id:         int
@@ -246,6 +247,18 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
     sesiones_cuatrimestre = db.query(SesionTutoria).filter(
         SesionTutoria.grupo_tutorado_id == g.id
     ).count()
+    historial_tutores = []
+    for asignacion in db.query(HistorialTutorGrupo).filter(
+        HistorialTutorGrupo.grupo_tutorado_id == g.id
+    ).order_by(HistorialTutorGrupo.asignado_desde.desc()).all():
+        usuario_tutor = db.query(Usuario).filter(Usuario.id == asignacion.tutor_id).first()
+        historial_tutores.append({
+            "tutor_id": asignacion.tutor_id,
+            "tutor_nombre": usuario_tutor.nombre if usuario_tutor else "Tutor no disponible",
+            "desde": asignacion.asignado_desde.isoformat(),
+            "hasta": asignacion.asignado_hasta.isoformat() if asignacion.asignado_hasta else None,
+            "motivo": asignacion.motivo,
+        })
     return {
         "id":           g.id,
         "grupo_academico_id": g.grupo_academico_id,
@@ -256,9 +269,12 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
         "grupo":        g.grupo,
         "periodo":      g.periodo,
         "activo":       g.activo,
+        "estado":       g.estado,
+        "cerrado_en":   g.cerrado_en.isoformat() if g.cerrado_en else None,
         "total_alumnos": total,
         "sesiones_realizadas": sesiones_cuatrimestre,
         "estado_tutoria": "ASIGNADO" if tutor else "SIN_TUTOR",
+        "historial_tutores": historial_tutores,
     }
 
 def _ser_canalizacion(c: Canalizacion, db: Session) -> dict:
@@ -680,6 +696,18 @@ def editar_grupo(
         ).first()
         if not tutor_nuevo:
             raise HTTPException(404, "Tutor no encontrado")
+        if g.tutor_id != data.tutor_id:
+            vigente = db.query(HistorialTutorGrupo).filter(
+                HistorialTutorGrupo.grupo_tutorado_id == g.id,
+                HistorialTutorGrupo.asignado_hasta.is_(None),
+            ).first()
+            if vigente:
+                vigente.asignado_hasta = _now()
+            db.add(HistorialTutorGrupo(
+                grupo_tutorado_id=g.id, tutor_id=data.tutor_id,
+                asignado_desde=_now(), motivo=data.motivo_cambio,
+                asignado_por=current_user.id,
+            ))
         g.tutor_id = data.tutor_id
         alumnos_grupo = db.query(AsignacionTutoria.alumno_id).filter(
             AsignacionTutoria.grupo_tutorado_id == g.id,
@@ -716,6 +744,33 @@ def editar_grupo(
     db.commit()
     db.refresh(g)
     return _ser_grupo(g, db)
+
+
+@router.post("/grupos/{grupo_id}/archivar", summary="Archivar grupo tutorial sin eliminar su historial")
+def archivar_grupo(
+    grupo_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_resp_roles),
+):
+    grupo = db.query(GrupoTutorado).filter(GrupoTutorado.id == grupo_id).first()
+    if not grupo:
+        raise HTTPException(404, "Grupo tutorial no encontrado")
+    if grupo.grupo_academico_id and db.query(GrupoAcademico).filter(
+        GrupoAcademico.id == grupo.grupo_academico_id,
+        GrupoAcademico.activo == True,
+    ).first():
+        raise HTTPException(409, "El grupo sigue activo en Servicios Escolares y no puede archivarse")
+    grupo.estado = "ARCHIVADO"
+    grupo.activo = False
+    grupo.cerrado_en = grupo.cerrado_en or _now()
+    vigente = db.query(HistorialTutorGrupo).filter(
+        HistorialTutorGrupo.grupo_tutorado_id == grupo.id,
+        HistorialTutorGrupo.asignado_hasta.is_(None),
+    ).first()
+    if vigente:
+        vigente.asignado_hasta = _now()
+    db.commit()
+    return {"ok": True, "estado": grupo.estado}
 
 
 @router.post("/grupos/{grupo_id}/alumnos", summary="Asignar alumnos a un grupo tutorado")

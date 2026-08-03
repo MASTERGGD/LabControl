@@ -29,8 +29,22 @@ class GrupoTutorado(Base):
     grupo        = Column(String(10), nullable=False) # A, B, C…
     periodo      = Column(String(20), nullable=False) # MAY-AGO 2026
     activo       = Column(Boolean, default=True)
+    estado       = Column(String(20), nullable=False, default="ACTIVO")
+    cerrado_en   = Column(DateTime, nullable=True)
     creado_en    = Column(DateTime, default=_now)
     creado_por   = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+
+
+class HistorialTutorGrupo(Base):
+    __tablename__ = "historial_tutores_grupo"
+
+    id = Column(Integer, primary_key=True, index=True)
+    grupo_tutorado_id = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=False, index=True)
+    tutor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    asignado_desde = Column(DateTime, nullable=False, default=_now)
+    asignado_hasta = Column(DateTime, nullable=True)
+    motivo = Column(Text, nullable=True)
+    asignado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
 
 # ─── 2. Asignación Tutoría ────────────────────────────────────────────────────

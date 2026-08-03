@@ -22,7 +22,7 @@ from .comunicado import (
     ComunicadoRespuestaMensaje,
 )
 from .tutoria import (
-    GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico,
+    GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico, HistorialTutorGrupo,
     SesionTutoria, RegistroSesionAlumno, Canalizacion,
     InformeBimestral, DocumentoControladoTutoria, ProgramacionSesionTutoria,
     HistorialEstadoTutoria, DetalleInformeBimestral, CierreTutoria,

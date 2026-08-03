@@ -315,6 +315,7 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
   const [tutorId,  setTutorId]  = useState(String(grupo.tutor_id || ""));
   const [activo,   setActivo]   = useState(grupo.activo);
+  const [motivoCambio, setMotivoCambio] = useState("");
   const [loading,  setLoading]  = useState(false);
 
   const guardar = async () => {
@@ -327,6 +328,7 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
       await api.put(`/tutoria/grupos/${grupo.id}`, {
         tutor_id: Number(tutorId),
         activo,
+        motivo_cambio: motivoCambio.trim() || null,
       });
       showToast("Grupo actualizado", "success");
       onGuardado();
@@ -358,6 +360,25 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
               Grupo activo
             </label>
           </div>
+          {grupo.tutor_id && String(grupo.tutor_id) !== tutorId && (
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Motivo del cambio</label>
+              <input value={motivoCambio} onChange={e => setMotivoCambio(e.target.value)}
+                placeholder="Ej. Reasignación del periodo"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm" />
+            </div>
+          )}
+          {grupo.historial_tutores?.length > 0 && (
+            <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-3">
+              <p className="text-xs font-semibold text-slate-300 mb-2">Historial de tutores</p>
+              {grupo.historial_tutores.map((h, index) => (
+                <p key={`${h.tutor_id}-${h.desde}-${index}`} className="text-xs text-slate-400">
+                  {h.tutor_nombre} · {new Date(h.desde).toLocaleDateString("es-MX")}
+                  {h.hasta ? ` – ${new Date(h.hasta).toLocaleDateString("es-MX")}` : " – vigente"}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 mt-5">
@@ -1234,6 +1255,7 @@ export default function TutoriaAdmin() {
   const [filtroCarrera, setFiltroCarrera] = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroTutor, setFiltroTutor] = useState("");
+  const [vistaHistorica, setVistaHistorica] = useState(false);
   const [alumnosRiesgo, setAlumnosRiesgo] = useState([]);
   const [filtroSemaforo, setFiltroSemaforo] = useState("");
   const [alertas, setAlertas] = useState([]);
@@ -1290,12 +1312,24 @@ export default function TutoriaAdmin() {
 
   const cargarGrupos = useCallback(async () => {
     try {
-      const { data } = await api.get("/tutoria/grupos");
+      const { data } = await api.get(`/tutoria/grupos?activo=${vistaHistorica ? "false" : "true"}`);
       setGrupos(data);
     } catch {
       showToast("Error al cargar grupos tutorados", "error");
     }
-  }, [showToast]);
+  }, [showToast, vistaHistorica]);
+
+  const archivarGrupo = async (grupo) => {
+    if (!window.confirm(`¿Archivar ${grupo.carrera} · Grupo ${grupo.grupo}? El historial se conservará.`)) return;
+    try {
+      await api.post(`/tutoria/grupos/${grupo.id}/archivar`);
+      showToast("Grupo archivado; permanece disponible en el historial", "success");
+      cargarGrupos();
+      cargarDash();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo archivar el grupo", "error");
+    }
+  };
 
   const cargarCanalizaciones = useCallback(async () => {
     try {
@@ -1911,6 +1945,10 @@ export default function TutoriaAdmin() {
               <h2 className="text-lg font-semibold">Cobertura tutorial por grupo</h2>
               <p className="text-sm text-slate-400">Grupos e inscripciones sincronizados automáticamente desde Servicios Escolares.</p>
             </div>
+            <button type="button" onClick={() => setVistaHistorica(v => !v)}
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-white/5">
+              {vistaHistorica ? "Ver grupos actuales" : "Ver historial"}
+            </button>
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -1961,7 +1999,7 @@ export default function TutoriaAdmin() {
                     <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre · {g.periodo}</p>
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full ${g.tutor_id ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
-                    {g.tutor_id ? "Tutor asignado" : "Sin tutor"}
+                    {g.estado === "NO_VINCULADO" ? "No vinculado" : g.estado === "ARCHIVADO" ? "Archivado" : g.estado === "CERRADO" ? "Cerrado" : g.tutor_id ? "Tutor asignado" : "Sin tutor"}
                   </span>
                 </div>
                 <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between items-center text-xs text-slate-400">
@@ -1976,11 +2014,19 @@ export default function TutoriaAdmin() {
                     className="flex-1 py-1.5 rounded-lg border border-slate-600 text-slate-300 text-xs font-medium hover:bg-slate-700 transition-all">
                     Ver alumnos
                   </button>
-                  <button
-                    onClick={() => setModal({ type: "editar", grupo: g })}
-                    className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs hover:bg-slate-700 transition-all">
-                    {g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}
-                  </button>
+                  {!vistaHistorica && g.estado !== "NO_VINCULADO" && (
+                    <button
+                      onClick={() => setModal({ type: "editar", grupo: g })}
+                      className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs hover:bg-slate-700 transition-all">
+                      {g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}
+                    </button>
+                  )}
+                  {g.estado === "NO_VINCULADO" && (
+                    <button onClick={() => archivarGrupo(g)}
+                      className="px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 text-xs hover:bg-amber-500/10">
+                      Archivar
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
