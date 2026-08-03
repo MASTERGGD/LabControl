@@ -509,6 +509,41 @@ def listar_materias(
             query.order_by(CatalogoMateria.nombre).all()]
 
 
+@router.get("/grupos/disponibles", summary="Grupos disponibles para una reservación")
+def grupos_disponibles(
+    carrera: str,
+    cuatrimestre: int,
+    periodo: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Devuelve únicamente grupos reales compatibles con materia y periodo."""
+    periodo_query = db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True)
+    if periodo and periodo.strip():
+        periodo_query = periodo_query.filter(PeriodoEscolar.clave == periodo.strip().upper())
+    else:
+        periodo_query = periodo_query.filter(PeriodoEscolar.es_actual == True)
+    periodo_escolar = periodo_query.order_by(PeriodoEscolar.id.desc()).first()
+    if not periodo_escolar:
+        return []
+
+    grupos = db.query(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo_escolar.id,
+        GrupoAcademico.carrera == carrera.strip(),
+        GrupoAcademico.cuatrimestre == cuatrimestre,
+        GrupoAcademico.activo == True,
+    ).order_by(GrupoAcademico.grupo).all()
+    return [{
+        "id": grupo.id,
+        "grupo": grupo.grupo,
+        "carrera": grupo.carrera,
+        "cuatrimestre": grupo.cuatrimestre,
+        "periodo": periodo_escolar.clave,
+        "turno": grupo.turno,
+        "total_alumnos": sum(1 for i in grupo.inscripciones if i.estado == "ACTIVO"),
+    } for grupo in grupos]
+
+
 @router.get("/materias/buscar", summary="Autocomplete de materias para Reservaciones")
 def buscar_materias(
     q:  str = "",

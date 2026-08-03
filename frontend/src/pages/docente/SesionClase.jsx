@@ -298,6 +298,8 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   });
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
+  const [gruposDisponibles, setGruposDisponibles] = useState([]);
+  const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
@@ -312,8 +314,34 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
       materia:              m.nombre || '',
       carrera:              m.carrera || '',
       cuatrimestre_materia: m.cuatrimestre_oficial ? String(m.cuatrimestre_oficial) : '',
+      grupo:                '',
     }));
   };
+
+  useEffect(() => {
+    let vigente = true;
+    if (!form.carrera || !form.cuatrimestre_materia) {
+      setGruposDisponibles([]);
+      return undefined;
+    }
+    setCargandoGrupos(true);
+    api.get('/catalogo/grupos/disponibles', {
+      params: {
+        carrera: form.carrera,
+        cuatrimestre: form.cuatrimestre_materia,
+        periodo: form.cuatrimestre,
+      },
+    }).then(({ data }) => {
+      if (!vigente) return;
+      setGruposDisponibles(data);
+      if (data.length === 1) setForm(f => ({ ...f, grupo: data[0].grupo }));
+    }).catch(() => {
+      if (vigente) setGruposDisponibles([]);
+    }).finally(() => {
+      if (vigente) setCargandoGrupos(false);
+    });
+    return () => { vigente = false; };
+  }, [form.carrera, form.cuatrimestre_materia, form.cuatrimestre]);
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
   const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
@@ -386,7 +414,8 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                 onChange={(txt) => {
                   setMateriaQuery(txt);
                   setMateriaInfo(null);
-                  setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '' }));
+                  setGruposDisponibles([]);
+                  setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '', grupo: '' }));
                 }}
                 onSelect={seleccionarMateria}
                 renderItem={(m) => (
@@ -439,9 +468,23 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           {/* Grupo */}
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Grupo *</label>
-            <input required type="text" placeholder="Ej. A, B, C…"
-              value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
-              className="w-full input-dark px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"/>
+            <select
+              required
+              value={form.grupo}
+              disabled={!materiaInfo || cargandoGrupos || !gruposDisponibles.length}
+              onChange={e => setForm({ ...form, grupo: e.target.value })}
+              className="w-full input-dark px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">{!materiaInfo ? 'Selecciona primero una materia' : cargandoGrupos ? 'Consultando grupos…' : !gruposDisponibles.length ? 'No hay grupos compatibles' : 'Selecciona un grupo'}</option>
+              {gruposDisponibles.map(grupo => (
+                <option key={grupo.id} value={grupo.grupo}>
+                  {grupo.cuatrimestre}° {grupo.grupo} — {grupo.total_alumnos} alumno{grupo.total_alumnos === 1 ? '' : 's'}{grupo.turno ? ` · ${grupo.turno}` : ''}
+                </option>
+              ))}
+            </select>
+            {materiaInfo && !cargandoGrupos && !gruposDisponibles.length && (
+              <p className="mt-1 text-xs text-amber-500">No existe un grupo activo para esta carrera, cuatrimestre y periodo.</p>
+            )}
           </div>
 
           {/* ── Requerimientos ── */}

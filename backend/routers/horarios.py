@@ -6,6 +6,7 @@ from database import get_db
 from models.horario import HorarioDisponible, Reservacion, SolicitudConflicto, BloqueoSlot, RequerimientoClase
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
+from models.catalogo import GrupoAcademico, PeriodoEscolar
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
@@ -816,6 +817,30 @@ def crear_reservacion(
             )
         )
 
+    try:
+        cuatrimestre_materia = int(str(data.cuatrimestre_materia).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="El cuatrimestre de la materia no es válido.")
+
+    periodo_academico = db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.clave == data.cuatrimestre.strip().upper(),
+        PeriodoEscolar.activo == True,
+    ).first()
+    grupo_academico = None
+    if periodo_academico:
+        grupo_academico = db.query(GrupoAcademico).filter(
+            GrupoAcademico.periodo_id == periodo_academico.id,
+            GrupoAcademico.activo == True,
+            GrupoAcademico.carrera == data.carrera.strip(),
+            GrupoAcademico.cuatrimestre == cuatrimestre_materia,
+            GrupoAcademico.grupo == data.grupo.strip().upper(),
+        ).first()
+        if not grupo_academico:
+            raise HTTPException(
+                status_code=422,
+                detail="El grupo seleccionado no corresponde a la carrera, cuatrimestre y periodo de la materia.",
+            )
+
     horario = db.query(HorarioDisponible).filter(
         HorarioDisponible.id == data.horario_id,
         HorarioDisponible.activo == True
@@ -838,7 +863,7 @@ def crear_reservacion(
         carrera=data.carrera,
         cuatrimestre=data.cuatrimestre,
         cuatrimestre_materia=data.cuatrimestre_materia,
-        grupo=data.grupo,
+        grupo=grupo_academico.grupo if grupo_academico else data.grupo.strip().upper(),
         observaciones=data.observaciones,
         estado="PROGRAMADA",
         creado_por=current_user.id,
