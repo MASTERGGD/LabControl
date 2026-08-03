@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
+import { formatDateInMexico, formatDateTimeInMexico } from '../../utils/timezone';
 
 const TABS = [
   ['resumen', 'Resumen'],
@@ -32,7 +33,13 @@ const fmt = value => value
   ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value)
     .toLocaleDateString('es-MX', { dateStyle: 'medium' })
   : '—';
-const fmtFechaHora = value => value ? new Date(value).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+const fmtFechaHora = value => {
+  if (!value) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return formatDateInMexico(value, { dateStyle: 'medium' });
+  }
+  return formatDateTimeInMexico(value, { dateStyle: 'medium', timeStyle: 'short' });
+};
 const labelEstado = value => String(value || '—').replaceAll('_', ' ');
 
 function Panel({ children, className = '' }) {

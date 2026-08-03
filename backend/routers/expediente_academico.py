@@ -3,6 +3,7 @@ import datetime
 from collections import defaultdict
 import math
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
@@ -27,6 +28,27 @@ from services.user_permissions import (
 router = APIRouter(prefix="/expediente-academico", tags=["Expediente Académico"])
 ESTADOS_ASISTENCIA = ("PRESENTE", "FALTA", "RETARDO", "JUSTIFICADA")
 ESTADOS_ABIERTOS = {"PENDIENTE", "ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "SIN_TUTOR"}
+MX_TIMEZONE = ZoneInfo("America/Mexico_City")
+
+
+def _iso_utc(fecha: datetime.datetime | None) -> str | None:
+    """Los DateTime persistidos son UTC sin tzinfo; la API debe declararlos como UTC."""
+    if fecha is None:
+        return None
+    if fecha.tzinfo is None:
+        fecha = fecha.replace(tzinfo=datetime.timezone.utc)
+    return fecha.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _fecha_hora_clase_mx(fecha: datetime.date, hora: str | None) -> str:
+    """Combina la fecha académica con la hora oficial y conserva la zona de México."""
+    if not hora:
+        return fecha.isoformat()
+    try:
+        hora_local = datetime.time.fromisoformat(hora)
+    except ValueError:
+        return fecha.isoformat()
+    return datetime.datetime.combine(fecha, hora_local, tzinfo=MX_TIMEZONE).isoformat()
 
 
 def _nombre_alumno(alumno: CatalogoAlumno) -> str:
@@ -743,7 +765,8 @@ def expediente_alumno(
     nivel, razones, asistencia_global = _semaforo(materias, acuerdos, reportes)
     timeline = []
     carga_materia = {
-        carga.id: carga.actividad_nombre for carga in cargas
+        carga.id: {"nombre": carga.actividad_nombre, "hora_inicio": carga.hora_inicio}
+        for carga in cargas
     }
     carga_ids = list(carga_materia)
     clases_patron = []
@@ -769,9 +792,13 @@ def expediente_alumno(
         ]
         for asistencia, clase in excepciones:
             timeline.append({
-                "tipo": "ASISTENCIA", "fecha": clase.fecha.isoformat(),
+                "tipo": "ASISTENCIA",
+                "fecha": _fecha_hora_clase_mx(
+                    clase.fecha,
+                    carga_materia.get(clase.carga_docente_id, {}).get("hora_inicio"),
+                ),
                 "titulo": asistencia.estado.title(),
-                "descripcion": carga_materia.get(clase.carga_docente_id),
+                "descripcion": carga_materia.get(clase.carga_docente_id, {}).get("nombre"),
                 "estado": asistencia.estado,
             })
     for materia in materias:
@@ -784,13 +811,13 @@ def expediente_alumno(
             })
     for acuerdo in acuerdos:
         timeline.append({
-            "tipo": "ACUERDO", "fecha": acuerdo.creado_en.isoformat(),
+            "tipo": "ACUERDO", "fecha": _iso_utc(acuerdo.creado_en),
             "titulo": acuerdo.titulo, "descripcion": acuerdo.detalle,
             "estado": acuerdo.estado,
         })
     for reporte in reportes:
         timeline.append({
-            "tipo": "REPORTE", "fecha": reporte.creado_en.isoformat(),
+            "tipo": "REPORTE", "fecha": _iso_utc(reporte.creado_en),
             "titulo": reporte.titulo, "descripcion": reporte.detalle,
             "estado": reporte.estado,
         })

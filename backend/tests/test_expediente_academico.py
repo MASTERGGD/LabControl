@@ -102,7 +102,11 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert [registro["estado"] for registro in patron["ausencias_parciales"][0]["registros"]] == [
         "FALTA", "PRESENTE",
     ]
-    assert any(evento["tipo"] == "ASISTENCIA" for evento in data["timeline"])
+    evento_asistencia = next(evento for evento in data["timeline"] if evento["tipo"] == "ASISTENCIA")
+    assert evento_asistencia["fecha"].startswith("2026-07-21T")
+    assert evento_asistencia["fecha"].endswith("-06:00")
+    evento_acuerdo = next(evento for evento in data["timeline"] if evento["tipo"] == "ACUERDO")
+    assert evento_acuerdo["fecha"].endswith("Z")
     assert any(evento["tipo"] == "EVALUACION" for evento in data["timeline"])
 
 
