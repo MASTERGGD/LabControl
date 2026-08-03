@@ -184,7 +184,7 @@ function ModalReporte({ reporte, titulo, onClose }) {
 
 // ─── Componente: Modal importar archivo (flujo 2 pasos: preview → confirmar) ──
 
-function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, onClose, onImportado }) {
+function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, extraParams = {}, onClose, onImportado }) {
   const [archivo, setArchivo]     = useState(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
@@ -198,9 +198,9 @@ function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, onClose
     const form = new FormData();
     form.append('file', archivo);
     try {
-      const url = supportsPreview
-        ? `${endpoint}?preview=${modoPreview ? 'true' : 'false'}`
-        : endpoint;
+      const query = new URLSearchParams(extraParams);
+      if (supportsPreview) query.set('preview', modoPreview ? 'true' : 'false');
+      const url = query.toString() ? `${endpoint}?${query}` : endpoint;
       const { data } = await api.post(url, form, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -547,13 +547,13 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
 
 // ─── Modal: Materia (crear / editar) ─────────────────────────────────────────
 
-function ModalMateria({ materia, periodos, carreras, onClose, onGuardado }) {
+function ModalMateria({ materia, periodos, periodoInicial, carreras, onClose, onGuardado }) {
   const esEdicion = !!materia;
   const [form, setForm] = useState({
     nombre:               materia?.nombre               ?? '',
     carrera:              materia?.carrera              ?? '',
     cuatrimestre_oficial: materia?.cuatrimestre_oficial ?? '',
-    periodo:              materia?.periodo              ?? '',
+    periodo:              materia?.periodo              ?? periodoInicial ?? '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -663,6 +663,7 @@ export default function Catalogo({ modo = 'completo' }) {
   const [alumnos, setAlumnos]   = useState([]);
   const [materias, setMaterias] = useState([]);
   const [periodos, setPeriodos] = useState(PERIODOS_DEFAULT);
+  const [periodosMaterias, setPeriodosMaterias] = useState([]);
   const [carreras, setCarreras] = useState(CARRERAS_DEFAULT);
   const [loading, setLoading]   = useState(false);
 
@@ -696,7 +697,20 @@ export default function Catalogo({ modo = 'completo' }) {
     api.get('/catalogo/carreras').then(({ data }) => {
       if (data.length > 0) setCarreras([...new Set([...data, ...CARRERAS_DEFAULT])]);
     }).catch(() => {});
+    api.get('/catalogo/periodos/gestion-materias').then(({ data }) => {
+      setPeriodosMaterias(data);
+      const elegido = data.find(p => p.es_actual) || data.find(p => p.editable) || data[0];
+      if (elegido) setFiltMPeriodo(elegido.clave);
+    }).catch(() => {});
   }, []);
+
+  const periodoMateria = periodosMaterias.find(p => p.clave === filtMPeriodo);
+  const puedeEditarMaterias = periodoMateria?.editable ?? true;
+  const periodoInstitucionalActual = periodosMaterias.find(p => p.es_actual)?.clave || periodoActual();
+  const opcionesPeriodosMateria = periodosMaterias.map(p => ({
+    value: p.clave,
+    label: `${p.estado === 'ACTUAL' ? 'Actual' : p.estado === 'PREPARACION' ? 'Preparación' : 'Histórico'} · ${p.clave} · ${p.materias} materias`,
+  }));
 
   // ── Cargar alumnos ──────────────────────────────────────────────────────────
   const cargarAlumnos = useCallback(async () => {
@@ -771,13 +785,15 @@ export default function Catalogo({ modo = 'completo' }) {
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
-            Período actual: <strong>{periodoActual()}</strong>
+            Período actual: <strong>{periodoInstitucionalActual}</strong>
           </span>
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => setModalImportar(tab)}
-            className="flex items-center gap-2 bg-green-700 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+            disabled={tab === 'materias' && !puedeEditarMaterias}
+            title={tab === 'materias' && !puedeEditarMaterias ? 'Los periodos históricos son de solo consulta' : ''}
+            className="flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
             </svg>
@@ -785,7 +801,9 @@ export default function Catalogo({ modo = 'completo' }) {
           </button>
           <button
             onClick={() => tab === 'alumnos' ? setModalAlumno('nuevo') : setModalMateria('nuevo')}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+            disabled={tab === 'materias' && !puedeEditarMaterias}
+            title={tab === 'materias' && !puedeEditarMaterias ? 'Los periodos históricos son de solo consulta' : ''}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
@@ -949,9 +967,9 @@ export default function Catalogo({ modo = 'completo' }) {
             <SelectDark
               value={filtMPeriodo}
               onChange={setFiltMPeriodo}
-              className="w-40"
-              placeholder="Todos los periodos"
-              options={[{ value: '', label: 'Todos los periodos' }, ...periodos.map(p => ({ value: p, label: p }))]}
+              className="min-w-[20rem]"
+              placeholder="Selecciona un periodo institucional"
+              options={opcionesPeriodosMateria}
             />
             <SelectDark
               value={filtMActivo}
@@ -963,6 +981,17 @@ export default function Catalogo({ modo = 'completo' }) {
                 { value: '',      label: 'Todas' },
               ]}
             />
+            {periodoMateria && (
+              <span className={`inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold ${
+                periodoMateria.estado === 'ACTUAL' ? 'border-green-700/60 bg-green-900/30 text-green-300' :
+                periodoMateria.estado === 'PREPARACION' ? 'border-violet-700/60 bg-violet-900/30 text-violet-300' :
+                'border-slate-600 bg-slate-800 text-slate-300'
+              }`}>
+                {periodoMateria.estado === 'ACTUAL' ? 'Periodo actual · editable' :
+                 periodoMateria.estado === 'PREPARACION' ? 'Periodo en preparación · editable' :
+                 'Periodo histórico · solo consulta'}
+              </span>
+            )}
           </div>
 
           {loading ? (
@@ -1010,6 +1039,7 @@ export default function Catalogo({ modo = 'completo' }) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 justify-end">
+                          {puedeEditarMaterias ? <>
                           <button onClick={() => setModalMateria(m)}
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                             Editar
@@ -1025,6 +1055,7 @@ export default function Catalogo({ modo = 'completo' }) {
                               Activar
                             </button>
                           )}
+                          </> : <span className="text-xs text-slate-500">Solo consulta</span>}
                         </div>
                       </td>
                     </tr>
@@ -1076,7 +1107,8 @@ export default function Catalogo({ modo = 'completo' }) {
       {(modalMateria === 'nuevo' || (modalMateria && typeof modalMateria === 'object')) && (
         <ModalMateria
           materia={modalMateria === 'nuevo' ? null : modalMateria}
-          periodos={periodos}
+          periodos={periodosMaterias.filter(p => p.editable).map(p => p.clave)}
+          periodoInicial={filtMPeriodo}
           carreras={carreras}
           onClose={() => setModalMateria(null)}
           onGuardado={() => { setModalMateria(null); cargarMaterias(); }}
@@ -1091,6 +1123,7 @@ export default function Catalogo({ modo = 'completo' }) {
             : 'Usa el archivo de materias UTECAN (hoja «concentrado»)'}
           endpoint={modalImportar === 'alumnos' ? '/catalogo/alumnos/importar' : '/catalogo/materias/importar'}
           supportsPreview={modalImportar === 'alumnos'}
+          extraParams={modalImportar === 'materias' ? { periodo_objetivo: filtMPeriodo } : {}}
           onClose={() => setModalImportar(null)}
           onImportado={(data) => handleReporte(data,
             modalImportar === 'alumnos' ? 'Resultado — Importar alumnos' : 'Resultado — Importar materias'

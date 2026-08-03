@@ -60,6 +60,29 @@ def _norm_periodo(val) -> str:
     """Iguala MAY-AGO 2026, MAY-AGO-2026 y variantes de separación."""
     return "".join(ch for ch in _norm(val).upper() if ch.isalnum())
 
+def _orden_periodo(val):
+    clave = _norm_periodo(val)
+    bloques = {"ENEABR": 1, "MAYAGO": 2, "SEPDIC": 3}
+    for nombre, bloque in bloques.items():
+        if clave.startswith(nombre) and clave[len(nombre):].isdigit():
+            return (int(clave[len(nombre):]), bloque)
+    return None
+
+def _validar_periodo_materias_editable(db: Session, clave: str):
+    """Impide alterar periodos históricos cuando Servicios Escolares ya fijó el actual."""
+    actual = db.query(PeriodoEscolar).filter(
+        PeriodoEscolar.activo == True, PeriodoEscolar.es_actual == True
+    ).order_by(PeriodoEscolar.id.desc()).first()
+    if not actual:  # Compatibilidad con instalaciones aún sin gestión institucional.
+        return
+    periodo = next((p for p in db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).all()
+                    if _norm_periodo(p.clave) == _norm_periodo(clave)), None)
+    if not periodo:
+        raise HTTPException(422, "El periodo no existe o no está activo. Servicios Escolares debe crearlo primero.")
+    orden, orden_actual = _orden_periodo(periodo.clave), _orden_periodo(actual.clave)
+    if orden and orden_actual and orden < orden_actual:
+        raise HTTPException(409, "El periodo es histórico y está disponible únicamente para consulta.")
+
 def _sincronizar_inscripcion(db, alumno):
     clave = _norm(alumno.periodo).upper()
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
@@ -613,6 +636,8 @@ def crear_materia(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
+    if data.periodo:
+        _validar_periodo_materias_editable(db, data.periodo)
     m = CatalogoMateria(
         nombre               = _norm(data.nombre),
         carrera              = _norm(data.carrera) if data.carrera else None,
@@ -635,6 +660,7 @@ def actualizar_materia(
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
         raise HTTPException(404, "Materia no encontrada")
+    _validar_periodo_materias_editable(db, data.periodo or m.periodo)
     for field, val in data.dict(exclude_none=True).items():
         setattr(m, field, val)
     db.commit()
@@ -651,6 +677,7 @@ def eliminar_materia(
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
         raise HTTPException(404, "Materia no encontrada")
+    _validar_periodo_materias_editable(db, m.periodo)
     m.activo = False
     db.commit()
     return {"mensaje": "Materia desactivada"}
@@ -659,6 +686,7 @@ def eliminar_materia(
 @router.post("/materias/importar", summary="Importar materias desde Excel (hoja concentrado)")
 async def importar_materias(
     file: UploadFile = File(...),
+    periodo_objetivo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
@@ -699,16 +727,30 @@ async def importar_materias(
         col_cuat    = 2
         col_periodo = 3
 
+    filas = []
+    periodos_archivo = set()
+    for row_idx, row in enumerate(ws.iter_rows(min_row=min_row, values_only=True), start=min_row):
+        if all(v is None for v in row):
+            break
+        if str(row[0] or "").strip() == "→":
+            continue
+        filas.append((row_idx, row))
+        if col_periodo < len(row) and row[col_periodo] is not None:
+            periodos_archivo.add(_norm_periodo(row[col_periodo]))
+    if periodo_objetivo:
+        _validar_periodo_materias_editable(db, periodo_objetivo)
+        distintos = {p for p in periodos_archivo if p != _norm_periodo(periodo_objetivo)}
+        if distintos:
+            raise HTTPException(422, f"El Excel contiene materias de otro periodo. Seleccionaste {periodo_objetivo}; corrige el archivo antes de importarlo.")
+    for clave in periodos_archivo:
+        muestra = next((_norm(r[col_periodo]) for _, r in filas if col_periodo < len(r) and _norm_periodo(r[col_periodo]) == clave), clave)
+        _validar_periodo_materias_editable(db, muestra)
+
     creados     = 0
     actualizados = 0
     errores     = []
 
-    for row_idx, row in enumerate(ws.iter_rows(min_row=min_row, values_only=True), start=min_row):
-        if all(v is None for v in row):
-            break
-        # Saltar fila de ejemplo (marcada con "→" en primera celda)
-        if str(row[0] or "").strip() == "→":
-            continue
+    for row_idx, row in filas:
         nombre  = _norm(row[col_nombre])  if col_nombre < len(row) and row[col_nombre]  is not None else ""
         carrera = _norm(row[col_carrera]) if col_carrera < len(row) and row[col_carrera] is not None else None
         periodo = _norm(row[col_periodo]) if col_periodo < len(row) and row[col_periodo] is not None else None
@@ -750,6 +792,32 @@ async def importar_materias(
 
 
 # ─── Periodos disponibles (helper para selects en frontend) ────────────────────
+
+@router.get("/periodos/gestion-materias", summary="Periodos institucionales para administrar materias")
+def periodos_gestion_materias(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_gestor_materias),
+):
+    periodos = db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).all()
+    actual = next((p for p in periodos if p.es_actual), None)
+    orden_actual = _orden_periodo(actual.clave) if actual else None
+    resultado = []
+    for p in periodos:
+        orden = _orden_periodo(p.clave)
+        if p.es_actual:
+            estado = "ACTUAL"
+        elif orden and orden_actual and orden < orden_actual:
+            estado = "HISTORICO"
+        else:
+            estado = "PREPARACION"
+        materias = db.query(CatalogoMateria).filter(CatalogoMateria.periodo == p.clave).all()
+        resultado.append({
+            "id": p.id, "clave": p.clave, "estado": estado, "es_actual": p.es_actual,
+            "materias": len(materias), "activas": sum(1 for m in materias if m.activo),
+            "editable": estado != "HISTORICO",
+        })
+    prioridad = {"ACTUAL": 0, "PREPARACION": 1, "HISTORICO": 2}
+    return sorted(resultado, key=lambda x: (prioridad[x["estado"]], -((_orden_periodo(x["clave"]) or (0, 0))[0] * 10 + (_orden_periodo(x["clave"]) or (0, 0))[1])))
 
 @router.get("/periodos", summary="Periodos únicos en el catálogo")
 def listar_periodos(
