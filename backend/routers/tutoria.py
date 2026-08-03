@@ -17,7 +17,7 @@ from models.tutoria import (
     HistorialEstadoTutoria, CierreTutoria,
 )
 from models.notificacion import Notificacion
-from models.catalogo import CatalogoAlumno, GrupoAcademico
+from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
 from models.docencia import CargaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
@@ -755,11 +755,11 @@ def archivar_grupo(
     grupo = db.query(GrupoTutorado).filter(GrupoTutorado.id == grupo_id).first()
     if not grupo:
         raise HTTPException(404, "Grupo tutorial no encontrado")
-    if grupo.grupo_academico_id and db.query(GrupoAcademico).filter(
-        GrupoAcademico.id == grupo.grupo_academico_id,
-        GrupoAcademico.activo == True,
+    if grupo.grupo_academico_id and db.query(InscripcionAlumno.id).filter(
+        InscripcionAlumno.grupo_academico_id == grupo.grupo_academico_id,
+        InscripcionAlumno.estado == "ACTIVO",
     ).first():
-        raise HTTPException(409, "El grupo sigue activo en Servicios Escolares y no puede archivarse")
+        raise HTTPException(409, "El grupo tiene alumnos activos y no puede archivarse")
     grupo.estado = "ARCHIVADO"
     grupo.activo = False
     grupo.cerrado_en = grupo.cerrado_en or _now()

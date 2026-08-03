@@ -166,6 +166,30 @@ def test_grupo_academico_se_vincula_y_reasigna_reporte_sin_tutor(client, db):
     assert heredado.estado == "ARCHIVADO"
     assert heredado.activo is False
 
+    grupo_vacio = GrupoAcademico(
+        periodo_id=carga.periodo_id, carrera="Programa sin alumnos",
+        cuatrimestre=3, grupo="B", activo=True,
+    )
+    db.add(grupo_vacio)
+    db.commit()
+    grupos = client.get("/tutoria/grupos", headers=responsable_headers)
+    assert grupos.status_code == 200, grupos.text
+    ficha_vacia = next(g for g in grupos.json() if g["grupo_academico_id"] == grupo_vacio.id)
+    assert ficha_vacia["estado"] == "NO_VINCULADO"
+    archivado_vacio = client.post(
+        f"/tutoria/grupos/{ficha_vacia['id']}/archivar", headers=responsable_headers,
+    )
+    assert archivado_vacio.status_code == 200, archivado_vacio.text
+
+    # La sincronizacion no reactiva el grupo oficial mientras siga sin alumnos.
+    client.get("/tutoria/grupos", headers=responsable_headers)
+    ficha_db = db.query(GrupoTutorado).filter(
+        GrupoTutorado.grupo_academico_id == grupo_vacio.id
+    ).one()
+    db.refresh(ficha_db)
+    assert ficha_db.estado == "ARCHIVADO"
+    assert ficha_db.activo is False
+
 
 def test_tutor_convierte_reporte_en_canalizacion(client, db):
     reportante, tutor, alumno, carga, grupo_tutorado = _escenario(db)

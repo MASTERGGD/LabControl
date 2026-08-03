@@ -1999,11 +1999,11 @@ export default function TutoriaAdmin() {
                     <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre · {g.periodo}</p>
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full ${g.tutor_id ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
-                    {g.estado === "NO_VINCULADO" ? "No vinculado" : g.estado === "ARCHIVADO" ? "Archivado" : g.estado === "CERRADO" ? "Cerrado" : g.tutor_id ? "Tutor asignado" : "Sin tutor"}
+                    {g.estado === "NO_VINCULADO" ? "Grupo vacío" : g.estado === "ARCHIVADO" ? "Archivado" : g.estado === "CERRADO" ? "Cerrado" : g.tutor_id ? "Tutor asignado" : "Sin tutor"}
                   </span>
                 </div>
                 <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between items-center text-xs text-slate-400">
-                  <span className={g.tutor_id ? "" : "text-amber-300"}>{g.tutor_nombre || "Pendiente de asignación"}</span>
+                  <span className={g.tutor_id ? "" : "text-amber-300"}>{g.estado === "NO_VINCULADO" ? "Sin inscripciones activas" : (g.tutor_nombre || "Pendiente de asignación")}</span>
                   <span className={Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : ""}>
                     {g.total_alumnos} alumnos · {g.sesiones_realizadas} sesiones
                   </span>

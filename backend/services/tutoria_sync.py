@@ -30,7 +30,6 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
     )
     actual = next((periodo for _, periodo in academicos if periodo.es_actual), None)
     orden_actual = _orden_periodo(actual.clave) if actual else None
-    ids_academicos = {academico.id for academico, _ in academicos}
     for academico, periodo in academicos:
         grupo = db.query(GrupoTutorado).filter(
             GrupoTutorado.grupo_academico_id == academico.id
@@ -44,13 +43,13 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
                 _norm(g.periodo) == _norm(periodo.clave)
                 and _norm(g.carrera) == _norm(academico.carrera)
                 and _norm(g.grupo) == _norm(academico.grupo)), None)
+        estaba_archivado = bool(grupo and grupo.estado == "ARCHIVADO")
         if grupo:
             grupo.grupo_academico_id = academico.id
             grupo.carrera = academico.carrera
             grupo.cuatrimestre = academico.cuatrimestre
             grupo.grupo = academico.grupo
             grupo.periodo = periodo.clave
-            grupo.activo = True
         else:
             grupo = GrupoTutorado(
                 grupo_academico_id=academico.id, tutor_id=None,
@@ -61,20 +60,27 @@ def sincronizar_grupos_tutoria(db: Session) -> list[GrupoTutorado]:
             db.add(grupo)
             db.flush()
 
-        orden = _orden_periodo(periodo.clave)
-        if periodo.es_actual:
-            grupo.estado, grupo.activo = "ACTIVO", True
-        elif orden and orden_actual and orden < orden_actual:
-            grupo.estado, grupo.activo = "CERRADO", False
-            grupo.cerrado_en = grupo.cerrado_en or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-        else:
-            grupo.estado, grupo.activo = "PREPARACION", True
-
         inscripciones = db.query(InscripcionAlumno).filter(
             InscripcionAlumno.grupo_academico_id == academico.id,
             InscripcionAlumno.estado == "ACTIVO",
         ).all()
         alumnos_activos = {i.alumno_id for i in inscripciones}
+        orden = _orden_periodo(periodo.clave)
+        if not alumnos_activos:
+            # Un grupo oficial vacio sigue visible para que Tutoria pueda
+            # archivarlo. Si ya fue archivado, no debe reaparecer en cada sync.
+            grupo.estado = "ARCHIVADO" if estaba_archivado else "NO_VINCULADO"
+            grupo.activo = not estaba_archivado
+        elif periodo.es_actual:
+            grupo.estado, grupo.activo = "ACTIVO", True
+            grupo.cerrado_en = None
+        elif orden and orden_actual and orden < orden_actual:
+            grupo.estado, grupo.activo = "CERRADO", False
+            grupo.cerrado_en = grupo.cerrado_en or datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+        else:
+            grupo.estado, grupo.activo = "PREPARACION", True
+            grupo.cerrado_en = None
+
         asignaciones = db.query(AsignacionTutoria).filter(
             AsignacionTutoria.grupo_tutorado_id == grupo.id
         ).all()
