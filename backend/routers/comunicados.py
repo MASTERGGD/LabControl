@@ -805,6 +805,39 @@ def get_categorias_permitidas(
     return _categorias_permitidas(db, usuario, departamento_id)
 
 
+@router.get("/destinatarios", summary="Usuarios activos disponibles como destinatarios")
+def listar_destinatarios_comunicado(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(require_roles(*ROLES_ADMIN)),
+):
+    """Expone sólo la ficha mínima necesaria para dirigir un comunicado.
+
+    Evita ampliar el acceso al módulo administrativo de usuarios. Tutoría conserva
+    su restricción institucional y sólo puede seleccionar docentes.
+    """
+    _asegurar_puede_gestionar_comunicados(db, usuario, usuario.departamento_id)
+    query = db.query(Usuario).filter(Usuario.activo == True)
+    if usuario.rol == RolUsuario.TUTORIA_ADMIN:
+        query = query.filter(Usuario.rol == RolUsuario.DOCENTE)
+
+    resultado = []
+    for destinatario in query.order_by(Usuario.nombre).all():
+        departamento = None
+        if destinatario.departamento_id:
+            departamento = db.query(Departamento).filter(
+                Departamento.id == destinatario.departamento_id
+            ).first()
+        resultado.append({
+            "id": destinatario.id,
+            "nombre": destinatario.nombre,
+            "email": destinatario.email,
+            "numero_empleado": destinatario.numero_empleado,
+            "rol": destinatario.rol.value,
+            "departamento_nombre": departamento.nombre if departamento else None,
+        })
+    return resultado
+
+
 @router.get("/respaldos")
 def listar_respaldos(
     db: Session = Depends(get_db),

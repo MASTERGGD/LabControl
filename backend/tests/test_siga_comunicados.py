@@ -55,6 +55,23 @@ def _crear_comunicado(client, token, titulo="Comunicado Test",
 
 class TestCrudComunicados:
 
+    def test_buscar_destinatarios_incluye_docentes_y_administrativos_activos(self, client, db):
+        _admin(db)
+        docente = _usuario(db, "Pablo Docente", "pablo@test.mx", RolUsuario.DOCENTE)
+        administrativo = _usuario(db, "Ana Administrativa", "ana@test.mx", RolUsuario.ADMINISTRATIVO)
+        inactivo = _usuario(db, "Usuario Inactivo", "inactivo@test.mx", RolUsuario.DOCENTE)
+        inactivo.activo = False
+        db.commit()
+
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        r = client.get("/comunicados/destinatarios", headers=auth_headers(tok))
+
+        assert r.status_code == 200
+        ids = {item["id"] for item in r.json()}
+        assert docente.id in ids
+        assert administrativo.id in ids
+        assert inactivo.id not in ids
+
     def test_crear_comunicado(self, client, db):
         _admin(db)
         tok = get_token(client, "admin@test.mx", "Test1234!")

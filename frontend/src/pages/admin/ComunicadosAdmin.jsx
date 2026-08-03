@@ -141,6 +141,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [categoriasPermitidas, setCategoriasPermitidas] = useState(CATEGORIAS_SELECCIONABLES);
   const [busquedaUsuario, setBusquedaUsuario] = useState('');
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
+  const [errorUsuarios, setErrorUsuarios] = useState('');
   const [adjuntosNuevos, setAdjuntosNuevos] = useState([]);
 
   const esTutorAdmin = usuarioActual?.rol === 'TUTORIA_ADMIN';
@@ -148,9 +149,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 
   useEffect(() => {
     setCargandoUsuarios(true);
-    api.get(esTutorAdmin ? '/usuarios?rol=DOCENTE&activo=true' : '/usuarios?activo=true')
+    setErrorUsuarios('');
+    api.get('/comunicados/destinatarios')
       .then(res => setUsuarios(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setUsuarios([]))
+      .catch(err => {
+        setUsuarios([]);
+        setErrorUsuarios(err.response?.data?.detail || 'No fue posible cargar los destinatarios. Intenta nuevamente.');
+      })
       .finally(() => setCargandoUsuarios(false));
     api.get('/departamentos?activo=true')
       .then(res => setDepartamentos(Array.isArray(res.data) ? res.data : []))
@@ -350,7 +355,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     .filter(u => {
       const q = busquedaUsuario.trim().toLowerCase();
       if (!q) return true;
-      return [u.nombre, u.email, u.rol, u.numero_empleado]
+      return [u.nombre, u.email, u.rol, u.numero_empleado, u.departamento_nombre]
         .filter(Boolean)
         .some(v => String(v).toLowerCase().includes(q));
     })
@@ -668,6 +673,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                   >
                     {cargandoUsuarios ? (
                       <p className="px-3 py-3 text-sm text-slate-500">Cargando usuarios...</p>
+                    ) : errorUsuarios ? (
+                      <p className="px-3 py-3 text-sm text-red-500">{errorUsuarios}</p>
                     ) : usuariosFiltrados.length === 0 ? (
                       <p className="px-3 py-3 text-sm text-slate-500">
                         {busquedaUsuario.trim() ? 'No hay usuarios con esa búsqueda.' : 'No hay usuarios disponibles.'}
@@ -683,7 +690,9 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-sm font-medium truncate" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>{u.nombre}</p>
-                              <p className="text-xs truncate" style={{ color: isDay ? '#475569' : '#94a3b8' }}>{u.email}</p>
+                              <p className="text-xs truncate" style={{ color: isDay ? '#475569' : '#94a3b8' }}>
+                                {[u.email, u.departamento_nombre].filter(Boolean).join(' · ')}
+                              </p>
                             </div>
                             <span
                               className="text-[10px] font-semibold px-2 py-1 rounded-full shrink-0"
