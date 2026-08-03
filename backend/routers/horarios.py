@@ -18,6 +18,10 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
+def _normalizar_periodo(valor: str | None) -> str:
+    return "".join(ch for ch in str(valor or "").strip().upper() if ch.isalnum())
+
+
 router = APIRouter(prefix="/horarios", tags=["Horarios y Reservaciones"])
 
 # Días de la semana
@@ -822,10 +826,10 @@ def crear_reservacion(
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="El cuatrimestre de la materia no es válido.")
 
-    periodo_academico = db.query(PeriodoEscolar).filter(
-        PeriodoEscolar.clave == data.cuatrimestre.strip().upper(),
+    periodo_buscado = _normalizar_periodo(data.cuatrimestre)
+    periodo_academico = next((periodo for periodo in db.query(PeriodoEscolar).filter(
         PeriodoEscolar.activo == True,
-    ).first()
+    ).order_by(PeriodoEscolar.id.desc()).all() if _normalizar_periodo(periodo.clave) == periodo_buscado), None)
     grupo_academico = None
     if periodo_academico:
         grupo_academico = db.query(GrupoAcademico).filter(

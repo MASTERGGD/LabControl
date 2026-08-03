@@ -14,6 +14,7 @@ from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
+from models.catalogo import GrupoAcademico, PeriodoEscolar
 
 
 # ─────────────────────────── helpers ────────────────────────────────────────
@@ -239,6 +240,44 @@ class TestReservaciones:
         assert r.status_code == 201
         data = r.json()
         assert data["materia"] == "Programación I"
+
+    def test_grupo_compatible_con_periodo_separado_por_guiones(self, client, db):
+        tok, lab, docente, h_id = self._setup(client, db)
+        periodo = PeriodoEscolar(clave="ENE-ABR 2026", activo=True, es_actual=True)
+        db.add(periodo)
+        db.flush()
+        db.add(GrupoAcademico(
+            periodo_id=periodo.id,
+            carrera="TSU en Inteligencia Artificial",
+            cuatrimestre=3,
+            grupo="A",
+            activo=True,
+        ))
+        db.commit()
+
+        grupos = client.get(
+            "/catalogo/grupos/disponibles",
+            params={
+                "carrera": "TSU en Inteligencia Artificial",
+                "cuatrimestre": 3,
+                "periodo": "ENE-ABR-2026",
+            },
+            headers=auth_headers(tok),
+        )
+        assert grupos.status_code == 200
+        assert [grupo["grupo"] for grupo in grupos.json()] == ["A"]
+
+        reservacion = client.post("/horarios/reservaciones", json={
+            "horario_id": h_id,
+            "laboratorio_id": lab.id,
+            "docente_id": docente.id,
+            "materia": "Cálculo Integral",
+            "carrera": "TSU en Inteligencia Artificial",
+            "cuatrimestre_materia": "3",
+            "grupo": "A",
+            "cuatrimestre": "ENE-ABR-2026",
+        }, headers=auth_headers(tok))
+        assert reservacion.status_code == 201, reservacion.text
 
     def test_listar_reservaciones(self, client, db):
         tok, lab, docente, h_id = self._setup(client, db)

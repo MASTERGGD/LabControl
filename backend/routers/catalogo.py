@@ -56,6 +56,10 @@ class MateriaUpdate(BaseModel):
 def _norm(val) -> str:
     return str(val).strip() if val is not None else ""
 
+def _norm_periodo(val) -> str:
+    """Iguala MAY-AGO 2026, MAY-AGO-2026 y variantes de separación."""
+    return "".join(ch for ch in _norm(val).upper() if ch.isalnum())
+
 def _sincronizar_inscripcion(db, alumno):
     clave = _norm(alumno.periodo).upper()
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
@@ -520,10 +524,16 @@ def grupos_disponibles(
     """Devuelve únicamente grupos reales compatibles con materia y periodo."""
     periodo_query = db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True)
     if periodo and periodo.strip():
-        periodo_query = periodo_query.filter(PeriodoEscolar.clave == periodo.strip().upper())
+        periodo_normalizado = _norm_periodo(periodo)
+        periodo_escolar = next(
+            (item for item in periodo_query.order_by(PeriodoEscolar.id.desc()).all()
+             if _norm_periodo(item.clave) == periodo_normalizado),
+            None,
+        )
     else:
-        periodo_query = periodo_query.filter(PeriodoEscolar.es_actual == True)
-    periodo_escolar = periodo_query.order_by(PeriodoEscolar.id.desc()).first()
+        periodo_escolar = periodo_query.filter(
+            PeriodoEscolar.es_actual == True,
+        ).order_by(PeriodoEscolar.id.desc()).first()
     if not periodo_escolar:
         return []
 
