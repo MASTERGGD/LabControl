@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -527,6 +527,11 @@ export default function ExpedienteAcademico() {
   const [alumnos, setAlumnos] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [grupoId, setGrupoId] = useState(Number(searchParams.get('grupo')) || null);
+  const [busquedaGrupo, setBusquedaGrupo] = useState('');
+  const [filtroCuatrimestre, setFiltroCuatrimestre] = useState('TODOS');
+  const [filtroConfiguracion, setFiltroConfiguracion] = useState('TODOS');
+  const [ordenGrupos, setOrdenGrupos] = useState('GRUPO');
+  const [vistaGrupos, setVistaGrupos] = useState('LISTA');
   const [alumnoId, setAlumnoId] = useState(Number(searchParams.get('alumno')) || null);
   const [data, setData] = useState(null);
   const [tab, setTab] = useState('resumen');
@@ -583,6 +588,29 @@ export default function ExpedienteAcademico() {
     setSearchParams({ grupo: String(id) });
   };
 
+  const cuatrimestres = useMemo(() => [...new Set(grupos.map(grupo => grupo.cuatrimestre))].sort((a, b) => a - b), [grupos]);
+  const resumenGrupos = useMemo(() => ({
+    alumnos: grupos.reduce((total, grupo) => total + Number(grupo.total_alumnos || 0), 0),
+    configurados: grupos.filter(grupo => Number(grupo.materias || 0) > 0).length,
+    sinMaterias: grupos.filter(grupo => Number(grupo.materias || 0) === 0).length,
+    carreras: new Set(grupos.map(grupo => grupo.carrera).filter(Boolean)).size,
+  }), [grupos]);
+  const gruposFiltrados = useMemo(() => {
+    const termino = busquedaGrupo.trim().toLocaleLowerCase('es-MX');
+    return grupos
+      .filter(grupo => !termino || `${grupo.cuatrimestre} ${grupo.grupo} ${grupo.carrera} ${grupo.periodo}`.toLocaleLowerCase('es-MX').includes(termino))
+      .filter(grupo => filtroCuatrimestre === 'TODOS' || String(grupo.cuatrimestre) === filtroCuatrimestre)
+      .filter(grupo => filtroConfiguracion === 'TODOS'
+        || (filtroConfiguracion === 'CONFIGURADOS' ? Number(grupo.materias || 0) > 0 : Number(grupo.materias || 0) === 0))
+      .sort((a, b) => {
+        if (ordenGrupos === 'ALUMNOS') return Number(b.total_alumnos || 0) - Number(a.total_alumnos || 0);
+        if (ordenGrupos === 'CARRERA') return String(a.carrera).localeCompare(String(b.carrera), 'es-MX');
+        return Number(a.cuatrimestre) - Number(b.cuatrimestre)
+          || String(a.grupo).localeCompare(String(b.grupo), 'es-MX')
+          || String(a.carrera).localeCompare(String(b.carrera), 'es-MX');
+      });
+  }, [grupos, busquedaGrupo, filtroCuatrimestre, filtroConfiguracion, ordenGrupos]);
+
   return (
     <AdminLayout>
       <div className={`mx-auto max-w-[1800px] space-y-5 ${isDay ? 'text-slate-950' : 'text-white'}`}>
@@ -611,14 +639,52 @@ export default function ExpedienteAcademico() {
 
         {!alumnoId && (
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {grupos.map(grupo => (
-                <button key={grupo.id} onClick={() => seleccionarGrupo(grupo.id)} className={`rounded-2xl border p-4 text-left transition ${grupo.id === grupoId ? 'border-blue-500 bg-blue-500/10 shadow-sm' : isDay ? 'border-slate-200 bg-white hover:border-blue-300' : 'border-white/10 bg-slate-900/55 hover:border-blue-500/40'}`}>
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-bold">{grupo.cuatrimestre}° {grupo.grupo} · {grupo.carrera}</p><p className="mt-1 text-xs text-slate-500">{grupo.periodo}{grupo.turno ? ` · ${grupo.turno}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-bold text-blue-400">{grupo.total_alumnos}</span></div>
-                  <p className="mt-3 text-xs text-slate-500">{grupo.materias} materia(s) configurada(s)</p>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Kpi label="Grupos activos" value={grupos.length} hint={`${resumenGrupos.carreras} carrera(s)`} tone="text-blue-400" />
+              <Kpi label="Alumnos inscritos" value={resumenGrupos.alumnos} hint="En los grupos accesibles" tone="text-emerald-500" />
+              <Kpi label="Grupos configurados" value={resumenGrupos.configurados} hint="Con al menos una materia" tone="text-violet-400" />
+              <Kpi label="Sin materias" value={resumenGrupos.sinMaterias} hint="Requieren configuración" tone={resumenGrupos.sinMaterias ? 'text-amber-500' : 'text-emerald-500'} />
             </div>
+
+            <Panel className="p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_210px_180px]">
+                  <label className="text-xs font-semibold text-slate-500">Buscar grupo o carrera<input value={busquedaGrupo} onChange={e => setBusquedaGrupo(e.target.value)} className="input-dark mt-1" placeholder="Ej. Contaduría, 9° A…" /></label>
+                  <label className="text-xs font-semibold text-slate-500">Cuatrimestre<select value={filtroCuatrimestre} onChange={e => setFiltroCuatrimestre(e.target.value)} className="input-dark mt-1"><option value="TODOS">Todos</option>{cuatrimestres.map(valor => <option key={valor} value={valor}>{valor}° cuatrimestre</option>)}</select></label>
+                  <label className="text-xs font-semibold text-slate-500">Configuración<select value={filtroConfiguracion} onChange={e => setFiltroConfiguracion(e.target.value)} className="input-dark mt-1"><option value="TODOS">Todos los grupos</option><option value="CONFIGURADOS">Con materias</option><option value="SIN_MATERIAS">Sin materias</option></select></label>
+                  <label className="text-xs font-semibold text-slate-500">Ordenar por<select value={ordenGrupos} onChange={e => setOrdenGrupos(e.target.value)} className="input-dark mt-1"><option value="GRUPO">Grado y grupo</option><option value="CARRERA">Carrera</option><option value="ALUMNOS">Más alumnos</option></select></label>
+                </div>
+                <div className={`flex shrink-0 rounded-xl border p-1 ${isDay ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-white/[0.035]'}`} aria-label="Tipo de vista">
+                  <button type="button" onClick={() => setVistaGrupos('LISTA')} className={`rounded-lg px-3 py-2 text-xs font-semibold ${vistaGrupos === 'LISTA' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>☷ Lista</button>
+                  <button type="button" onClick={() => setVistaGrupos('TARJETAS')} className={`rounded-lg px-3 py-2 text-xs font-semibold ${vistaGrupos === 'TARJETAS' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>▦ Tarjetas</button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{gruposFiltrados.length} de {grupos.length} grupos visibles</span>{(busquedaGrupo || filtroCuatrimestre !== 'TODOS' || filtroConfiguracion !== 'TODOS') && <button type="button" onClick={() => { setBusquedaGrupo(''); setFiltroCuatrimestre('TODOS'); setFiltroConfiguracion('TODOS'); }} className="font-semibold text-blue-400 hover:text-blue-300">Limpiar filtros</button>}</div>
+            </Panel>
+
+            {vistaGrupos === 'LISTA' ? (
+              <Panel className="overflow-hidden">
+                <div className="max-h-[430px] overflow-auto">
+                  <table className="w-full min-w-[850px] text-left text-sm">
+                    <thead className={`sticky top-0 z-10 text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-slate-900 text-slate-400'}`}><tr><th className="px-5 py-3">Grupo</th><th className="px-4 py-3">Carrera</th><th className="px-4 py-3">Periodo</th><th className="px-4 py-3 text-center">Alumnos</th><th className="px-4 py-3 text-center">Materias</th><th className="px-5 py-3 text-right">Estado</th></tr></thead>
+                    <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
+                      {gruposFiltrados.map(grupo => (
+                        <tr key={grupo.id} onClick={() => seleccionarGrupo(grupo.id)} className={`cursor-pointer transition ${grupo.id === grupoId ? isDay ? 'bg-blue-50' : 'bg-blue-500/10' : isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.035]'}`}>
+                          <td className={`border-l-4 px-5 py-3 font-bold ${grupo.id === grupoId ? 'border-blue-500 text-blue-500' : 'border-transparent'}`}>{grupo.cuatrimestre}° {grupo.grupo}</td><td className="px-4 py-3 font-medium">{grupo.carrera}</td><td className="px-4 py-3 text-xs text-slate-500">{grupo.periodo}{grupo.turno ? ` · ${grupo.turno}` : ''}</td><td className="px-4 py-3 text-center font-bold">{grupo.total_alumnos}</td><td className="px-4 py-3 text-center">{grupo.materias}</td><td className="px-5 py-3 text-right"><Badge className={Number(grupo.materias || 0) > 0 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-500' : 'border-amber-500/30 bg-amber-500/10 text-amber-500'}>{Number(grupo.materias || 0) > 0 ? 'CONFIGURADO' : 'SIN MATERIAS'}</Badge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {gruposFiltrados.map(grupo => (
+                  <button key={grupo.id} onClick={() => seleccionarGrupo(grupo.id)} className={`rounded-2xl border p-4 text-left transition ${grupo.id === grupoId ? 'border-blue-500 bg-blue-500/10 shadow-sm' : isDay ? 'border-slate-200 bg-white hover:border-blue-300' : 'border-white/10 bg-slate-900/55 hover:border-blue-500/40'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-bold">{grupo.cuatrimestre}° {grupo.grupo} · {grupo.carrera}</p><p className="mt-1 text-xs text-slate-500">{grupo.periodo}{grupo.turno ? ` · ${grupo.turno}` : ''}</p></div><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-bold text-blue-400">{grupo.total_alumnos}</span></div><div className="mt-3 flex items-center justify-between gap-2"><p className="text-xs text-slate-500">{grupo.materias} materia(s)</p><Badge className={Number(grupo.materias || 0) > 0 ? 'border-emerald-500/30 text-emerald-500' : 'border-amber-500/30 text-amber-500'}>{Number(grupo.materias || 0) > 0 ? 'CONFIGURADO' : 'PENDIENTE'}</Badge></div></button>
+                ))}
+              </div>
+            )}
+            {!gruposFiltrados.length && grupos.length > 0 && <Panel className="p-10 text-center text-sm text-slate-500">No hay grupos que coincidan con los filtros seleccionados.</Panel>}
             {!grupos.length && <Panel className="p-10 text-center text-sm text-slate-500">No hay grupos académicos accesibles.</Panel>}
             <PanoramaGrupo grupoId={grupoId} seleccionarAlumno={seleccionar} />
           </div>
