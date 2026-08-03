@@ -22,6 +22,7 @@ export default function SEGrupos() {
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
   const [activandoPeriodo, setActivandoPeriodo] = useState(false);
+  const [confirmandoPeriodo, setConfirmandoPeriodo] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -90,10 +91,6 @@ export default function SEGrupos() {
 
   const establecerActual = async () => {
     if (!periodoSeleccionado || activandoPeriodo) return;
-    const confirmado = window.confirm(
-      `¿Establecer ${periodoSeleccionado.clave} como periodo actual? Esto cerrará la operación docente de los demás periodos.`,
-    );
-    if (!confirmado) return;
     setActivandoPeriodo(true);
     setError('');
     setMensaje('');
@@ -105,6 +102,7 @@ export default function SEGrupos() {
         es_actual_configurado: item.id === periodoSeleccionado.id,
       })));
       setMensaje(data.mensaje);
+      setConfirmandoPeriodo(false);
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo establecer el periodo actual.');
     } finally {
@@ -159,7 +157,7 @@ export default function SEGrupos() {
                 <button
                   type="button"
                   disabled={activandoPeriodo}
-                  onClick={establecerActual}
+                  onClick={() => setConfirmandoPeriodo(true)}
                   className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {activandoPeriodo ? 'Estableciendo…' : 'Establecer como actual'}
@@ -227,6 +225,84 @@ export default function SEGrupos() {
             </table>
           </div>
         </div>
+
+        {confirmandoPeriodo && periodoSeleccionado && (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
+            onMouseDown={() => !activandoPeriodo && setConfirmandoPeriodo(false)}
+          >
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="titulo-confirmar-periodo"
+              aria-describedby="descripcion-confirmar-periodo"
+              onMouseDown={(evento) => evento.stopPropagation()}
+              className="w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl"
+              style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}
+            >
+              <header className="flex items-start gap-4 border-b px-5 py-5" style={{ borderColor: 'var(--surface-border)' }}>
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.9} d="M12 9v4m0 4h.01M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-500">Cambio de periodo académico</p>
+                  <h2 id="titulo-confirmar-periodo" className="mt-1 text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Establecer {periodoSeleccionado.clave} como periodo actual
+                  </h2>
+                  <p id="descripcion-confirmar-periodo" className="mt-1 text-sm leading-6" style={{ color: 'var(--text-secondary)' }}>
+                    Confirma el cambio únicamente cuando Servicios Escolares haya concluido la preparación del nuevo cuatrimestre.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={activandoPeriodo}
+                  onClick={() => setConfirmandoPeriodo(false)}
+                  className="rounded-lg p-1.5 transition hover:bg-white/5 disabled:opacity-40"
+                  style={{ color: 'var(--text-muted)' }}
+                  aria-label="Cerrar confirmación"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+              </header>
+
+              <div className="space-y-4 px-5 py-5">
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-500">¿Qué sucederá?</p>
+                  <ul className="mt-2 space-y-1.5 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    <li className="flex gap-2"><span className="text-amber-500">•</span><span>La operación docente quedará habilitada para <b>{periodoSeleccionado.clave}</b>.</span></li>
+                    <li className="flex gap-2"><span className="text-amber-500">•</span><span>Los demás periodos pasarán a consulta histórica y ya no permitirán correcciones ordinarias.</span></li>
+                    <li className="flex gap-2"><span className="text-emerald-500">✓</span><span>No se eliminarán alumnos, clases, asistencias ni historiales anteriores.</span></li>
+                  </ul>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Esta acción quedará registrada en la bitácora institucional.
+                </p>
+              </div>
+
+              <footer className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end" style={{ borderColor: 'var(--surface-border)' }}>
+                <button
+                  type="button"
+                  disabled={activandoPeriodo}
+                  onClick={() => setConfirmandoPeriodo(false)}
+                  className="rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:bg-white/5 disabled:opacity-50"
+                  style={{ borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}
+                >
+                  Conservar configuración actual
+                </button>
+                <button
+                  type="button"
+                  disabled={activandoPeriodo}
+                  onClick={establecerActual}
+                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {activandoPeriodo ? 'Estableciendo periodo…' : `Sí, establecer ${periodoSeleccionado.clave}`}
+                </button>
+              </footer>
+            </section>
+          </div>
+        )}
 
         {detalle && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDetalle(null)}>
