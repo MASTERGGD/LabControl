@@ -3,6 +3,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 import { useTheme } from '../../context/ThemeContext';
+import { ModalCarreras } from '../servicios_escolares/SEAlumnos';
 
 // ─── Utilidad: período escolar actual ────────────────────────────────────────
 
@@ -683,6 +684,7 @@ export default function Catalogo({ modo = 'completo' }) {
   const [modalAlumno, setModalAlumno]       = useState(null);  // null | 'nuevo' | alumno
   const [modalMateria, setModalMateria]     = useState(null);
   const [modalImportar, setModalImportar]   = useState(null);  // null | 'alumnos' | 'materias'
+  const [modalCarreras, setModalCarreras]   = useState(false);
   const [reporte, setReporte]               = useState(null);
   const [reporteTitulo, setReporteTitulo]   = useState('');
 
@@ -789,6 +791,12 @@ export default function Catalogo({ modo = 'completo' }) {
           </span>
         </div>
         <div className="flex gap-2">
+          {tab === 'alumnos' && (
+            <button onClick={() => setModalCarreras(true)}
+              className="flex items-center gap-2 border border-emerald-600 bg-white/5 hover:bg-emerald-600/10 text-emerald-500 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+              <span aria-hidden="true">🎓</span> Carreras
+            </button>
+          )}
           <button
             onClick={() => setModalImportar(tab)}
             disabled={tab === 'materias' && !puedeEditarMaterias}
@@ -1129,6 +1137,15 @@ export default function Catalogo({ modo = 'completo' }) {
             modalImportar === 'alumnos' ? 'Resultado — Importar alumnos' : 'Resultado — Importar materias'
           )}
         />
+      )}
+
+      {modalCarreras && (
+        <ModalCarreras onClose={() => {
+          setModalCarreras(false);
+          api.get('/catalogo/carreras').then(({ data }) => {
+            if (data.length > 0) setCarreras(data);
+          }).catch(() => {});
+        }} />
       )}
 
       {reporte && (

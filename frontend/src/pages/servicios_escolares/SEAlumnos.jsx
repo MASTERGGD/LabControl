@@ -190,7 +190,7 @@ function ModalActivarFicha({ alumno, onClose, onOk }) {
   );
 }
 
-function ModalCarreras({ onClose }) {
+export function ModalCarreras({ onClose }) {
   const [carreras, setCarreras] = useState([]);
   const [form, setForm] = useState({ clave: '', nombre: '', nivel: '', division: '', plan_estudios: '', aliases: '', activo: true });
   const [editando, setEditando] = useState(null);
