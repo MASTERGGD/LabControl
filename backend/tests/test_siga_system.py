@@ -72,6 +72,16 @@ class TestBackups:
         assert "items" in data
         assert isinstance(data["items"], list)
 
+    def test_consultar_politica_respaldos(self, client, db):
+        _admin(db)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        r = client.get("/system/backups/policy", headers=auth_headers(tok))
+        assert r.status_code == 200
+        data = r.json()
+        assert "enabled" in data
+        assert data["retention"]["DAILY"] >= 1
+        assert data["term_retention"] == "INDEFINITE"
+
     def test_generar_backup(self, client, db):
         _admin(db)
         tok = get_token(client, "admin@test.mx", "Test1234!")

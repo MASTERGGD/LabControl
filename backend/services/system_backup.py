@@ -13,6 +13,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -24,6 +25,10 @@ DATA_DIR = Path(os.getenv("SYSTEM_DATA_DIR", "data")).resolve()
 BACKUP_DIR = Path(os.getenv("SYSTEM_BACKUP_DIR", "data/system_backups")).resolve()
 MIN_FREE_MB = int(os.getenv("SYSTEM_BACKUP_MIN_FREE_MB", "500"))
 _BACKUP_LOCK = threading.Lock()
+_SCHEDULER_STOP = threading.Event()
+_SCHEDULER_THREAD: threading.Thread | None = None
+BACKUP_TYPES = {"MANUAL", "DAILY", "WEEKLY", "MONTHLY", "TERM"}
+BACKUP_TIMEZONE = ZoneInfo(os.getenv("SYSTEM_BACKUP_TIMEZONE", "America/Mexico_City"))
 
 
 class BackupError(RuntimeError):
@@ -54,6 +59,8 @@ def _human_metadata(path: Path, manifest: dict[str, Any], archive_sha256: str) -
         "file_count": manifest.get("file_count", 0),
         "payload_bytes": manifest.get("payload_bytes", 0),
         "integrity": "verified",
+        "backup_type": manifest.get("backup_type", "MANUAL"),
+        "source": manifest.get("source", "MANUAL"),
     }
 
 
@@ -182,7 +189,11 @@ def _collect_data_files() -> list[tuple[Path, str]]:
     return sorted(files, key=lambda item: item[1])
 
 
-def create_backup() -> dict[str, Any]:
+def create_backup(backup_type: str = "MANUAL", source: str = "MANUAL") -> dict[str, Any]:
+    backup_type = backup_type.upper()
+    source = source.upper()
+    if backup_type not in BACKUP_TYPES:
+        raise BackupError("Tipo de respaldo no valido.")
     if not _BACKUP_LOCK.acquire(blocking=False):
         raise BackupBusyError("Ya hay un respaldo en proceso.")
 
@@ -196,7 +207,7 @@ def create_backup() -> dict[str, Any]:
 
         created_at = datetime.now(timezone.utc)
         suffix = uuid.uuid4().hex[:6].upper()
-        filename = f"SIGA_backup_{created_at:%Y%m%d_%H%M%S}_{suffix}.zip"
+        filename = f"SIGA_backup_{backup_type}_{created_at:%Y%m%d_%H%M%S}_{suffix}.zip"
         final_path = BACKUP_DIR / filename
 
         with tempfile.TemporaryDirectory(prefix="siga_backup_") as temp_name:
@@ -212,17 +223,19 @@ def create_backup() -> dict[str, Any]:
             })
 
             data_files = _collect_data_files()
-            for source, archive_name in data_files:
+            for file_source, archive_name in data_files:
                 payload.append({
                     "path": archive_name,
-                    "size_bytes": source.stat().st_size,
-                    "sha256": _sha256(source),
+                    "size_bytes": file_source.stat().st_size,
+                    "sha256": _sha256(file_source),
                 })
 
             manifest = {
                 "format_version": 1,
                 "system": "SIGA UTECAN",
                 "created_at": created_at.isoformat(),
+                "backup_type": backup_type,
+                "source": source,
                 "database": database,
                 "file_count": len(payload),
                 "payload_bytes": sum(item["size_bytes"] for item in payload),
@@ -247,8 +260,8 @@ def create_backup() -> dict[str, Any]:
                 compresslevel=6,
             ) as archive:
                 archive.write(db_file, database["file"])
-                for source, archive_name in data_files:
-                    archive.write(source, archive_name)
+                for file_source, archive_name in data_files:
+                    archive.write(file_source, archive_name)
                 archive.write(manifest_path, "manifest.json")
 
             bad_file = None
@@ -303,6 +316,135 @@ def list_backups() -> list[dict[str, Any]]:
                 "integrity": "invalid",
             })
     return sorted(items, key=lambda item: item.get("created_at") or "", reverse=True)
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, "true" if default else "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _retention_limits() -> dict[str, int]:
+    return {
+        "DAILY": int(os.getenv("SYSTEM_BACKUP_KEEP_DAILY", "30")),
+        "WEEKLY": int(os.getenv("SYSTEM_BACKUP_KEEP_WEEKLY", "12")),
+        "MONTHLY": int(os.getenv("SYSTEM_BACKUP_KEEP_MONTHLY", "24")),
+    }
+
+
+def apply_retention_policy() -> list[str]:
+    """Elimina únicamente copias automáticas que exceden la política.
+
+    Las copias MANUAL y TERM nunca se eliminan automáticamente.
+    """
+    removed: list[str] = []
+    limits = _retention_limits()
+    items = list_backups()
+    for backup_type, keep in limits.items():
+        candidates = [item for item in items if item.get("backup_type") == backup_type]
+        for item in candidates[max(0, keep):]:
+            try:
+                delete_backup(item["filename"])
+                removed.append(item["filename"])
+            except FileNotFoundError:
+                continue
+    return removed
+
+
+def _automatic_type(now: datetime) -> str:
+    if now.day == 1:
+        return "MONTHLY"
+    if now.weekday() == 6:
+        return "WEEKLY"
+    return "DAILY"
+
+
+def _last_automatic_backup() -> dict[str, Any] | None:
+    return next(
+        (item for item in list_backups() if item.get("source") == "SCHEDULED"),
+        None,
+    )
+
+
+def get_backup_policy_status() -> dict[str, Any]:
+    now = datetime.now(BACKUP_TIMEZONE)
+    hour = int(os.getenv("SYSTEM_BACKUP_HOUR", "2"))
+    minute = int(os.getenv("SYSTEM_BACKUP_MINUTE", "0"))
+    last = _last_automatic_backup()
+    last_local = None
+    if last and last.get("created_at"):
+        last_local = datetime.fromisoformat(last["created_at"]).astimezone(BACKUP_TIMEZONE)
+    scheduled_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    overdue = bool(
+        _env_bool("SYSTEM_BACKUP_AUTO_ENABLED", True)
+        and now >= scheduled_today
+        and (not last_local or last_local.date() < now.date())
+    )
+    return {
+        "enabled": _env_bool("SYSTEM_BACKUP_AUTO_ENABLED", True),
+        "timezone": str(BACKUP_TIMEZONE),
+        "schedule": f"{hour:02d}:{minute:02d}",
+        "next_type": _automatic_type(now),
+        "last_automatic": last,
+        "overdue": overdue,
+        "retention": _retention_limits(),
+        "term_retention": "INDEFINITE",
+        "persistent_storage": _env_bool("SYSTEM_BACKUP_STORAGE_PERSISTENT", False),
+        "offsite_copy": _env_bool("SYSTEM_BACKUP_OFFSITE_CONFIGURED", False),
+        "rpo_target_minutes": int(os.getenv("SYSTEM_BACKUP_RPO_MINUTES", "1440")),
+    }
+
+
+def run_scheduled_backup_if_due(force: bool = False) -> dict[str, Any] | None:
+    policy = get_backup_policy_status()
+    if not policy["enabled"] and not force:
+        return None
+    now = datetime.now(BACKUP_TIMEZONE)
+    hour, minute = (int(part) for part in policy["schedule"].split(":"))
+    scheduled_today = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    last = policy["last_automatic"]
+    if not force:
+        if now < scheduled_today:
+            return None
+        if last and datetime.fromisoformat(last["created_at"]).astimezone(BACKUP_TIMEZONE).date() >= now.date():
+            return None
+    result = create_backup(_automatic_type(now), source="SCHEDULED")
+    result["retention_removed"] = apply_retention_policy()
+    return result
+
+
+def _scheduler_loop() -> None:
+    initial_delay = int(os.getenv("SYSTEM_BACKUP_STARTUP_DELAY_SECONDS", "60"))
+    if _SCHEDULER_STOP.wait(max(0, initial_delay)):
+        return
+    interval = max(300, int(os.getenv("SYSTEM_BACKUP_CHECK_INTERVAL_SECONDS", "3600")))
+    while not _SCHEDULER_STOP.is_set():
+        try:
+            run_scheduled_backup_if_due()
+        except Exception as exc:
+            print(f"Respaldos automaticos: {exc}")
+        _SCHEDULER_STOP.wait(interval)
+
+
+def start_backup_scheduler() -> None:
+    global _SCHEDULER_THREAD
+    if not _env_bool("SYSTEM_BACKUP_AUTO_ENABLED", True):
+        print("Respaldos automaticos: desactivados.")
+        return
+    if _SCHEDULER_THREAD and _SCHEDULER_THREAD.is_alive():
+        return
+    _SCHEDULER_STOP.clear()
+    _SCHEDULER_THREAD = threading.Thread(
+        target=_scheduler_loop, name="siga-backup-scheduler", daemon=True,
+    )
+    _SCHEDULER_THREAD.start()
+    print("Respaldos automaticos: programador iniciado.")
+
+
+def stop_backup_scheduler() -> None:
+    _SCHEDULER_STOP.set()
+    if _SCHEDULER_THREAD and _SCHEDULER_THREAD.is_alive():
+        _SCHEDULER_THREAD.join(timeout=2)
 
 
 def verify_backup(filename: str) -> dict[str, Any]:

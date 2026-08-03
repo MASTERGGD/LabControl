@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -15,6 +16,8 @@ from services.system_backup import (
     delete_backup,
     get_backup_path,
     list_backups,
+    get_backup_policy_status,
+    run_scheduled_backup_if_due,
     verify_backup,
 )
 from services.system_health import get_system_health
@@ -22,6 +25,10 @@ from services.system_health import get_system_health
 
 router = APIRouter(prefix="/system", tags=["Sistema"])
 _super_admin = require_roles(RolUsuario.SUPER_ADMIN)
+
+
+class BackupRequest(BaseModel):
+    backup_type: str = "MANUAL"
 
 
 @router.get("/health")
@@ -34,14 +41,20 @@ def backups(_: Usuario = Depends(_super_admin)):
     return {"items": list_backups()}
 
 
+@router.get("/backups/policy")
+def backup_policy(_: Usuario = Depends(_super_admin)):
+    return get_backup_policy_status()
+
+
 @router.post("/backups", status_code=201)
 def generate_backup(
     request: Request,
+    data: BackupRequest | None = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_super_admin),
 ):
     try:
-        result = create_backup()
+        result = create_backup((data.backup_type if data else "MANUAL"), source="MANUAL")
     except BackupBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BackupError as exc:
@@ -57,6 +70,27 @@ def generate_backup(
             "tamano_bytes": result["size_bytes"],
             "sha256": result["archive_sha256"],
         },
+        request=request,
+    )
+    return result
+
+
+@router.post("/backups/run-scheduled", status_code=201)
+def run_scheduled_backup(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_super_admin),
+):
+    try:
+        result = run_scheduled_backup_if_due(force=True)
+    except BackupBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BackupError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    registrar(
+        db, Accion.GENERAR_RESPALDO, Recurso.SISTEMA,
+        usuario=current_user,
+        detalle={"archivo": result["filename"], "tipo": result["backup_type"], "origen": "POLITICA_MANUAL"},
         request=request,
     )
     return result

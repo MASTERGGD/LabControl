@@ -17,6 +17,7 @@ from middleware.security import SecurityHeadersMiddleware
 from middleware.error_handling import ErrorHandlingMiddleware
 from services.rate_limit import RateLimitMiddleware
 from services.system_health import get_system_health
+from services.system_backup import start_backup_scheduler, stop_backup_scheduler
 
 # Routers
 from routers import auth as auth_router
@@ -135,7 +136,11 @@ async def lifespan(app: FastAPI):
         run_seed(db)
     finally:
         db.close()
-    yield
+    start_backup_scheduler()
+    try:
+        yield
+    finally:
+        stop_backup_scheduler()
 
 
 # --- App ---------------------------------------------------------------------

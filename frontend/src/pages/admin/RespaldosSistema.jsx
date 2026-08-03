@@ -29,6 +29,10 @@ const errorMessage = (error, fallback) => {
   return typeof detail === 'string' ? detail : fallback;
 };
 
+const BACKUP_TYPE_LABELS = {
+  MANUAL: 'Manual', DAILY: 'Diario', WEEKLY: 'Semanal', MONTHLY: 'Mensual', TERM: 'Cierre de cuatrimestre',
+};
+
 function StatusBadge({ status }) {
   const styles = {
     ok: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
@@ -182,6 +186,7 @@ export default function RespaldosSistema() {
   const isDay = themeKey === 'day';
   const [health, setHealth] = useState(null);
   const [backups, setBackups] = useState([]);
+  const [policy, setPolicy] = useState(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [workingFile, setWorkingFile] = useState('');
@@ -190,12 +195,14 @@ export default function RespaldosSistema() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [healthResponse, backupResponse] = await Promise.all([
+      const [healthResponse, backupResponse, policyResponse] = await Promise.all([
         api.get('/system/health'),
         api.get('/system/backups'),
+        api.get('/system/backups/policy'),
       ]);
       setHealth(healthResponse.data);
       setBackups(backupResponse.data.items || []);
+      setPolicy(policyResponse.data);
     } catch (error) {
       toast(errorMessage(error, 'No se pudo consultar el estado del sistema.'), 'error');
     } finally {
@@ -205,11 +212,11 @@ export default function RespaldosSistema() {
 
   useEffect(() => { load(); }, [load]);
 
-  const generate = async () => {
+  const generate = async (backupType = 'MANUAL') => {
     setGenerating(true);
     try {
-      await api.post('/system/backups');
-      toast('Respaldo completo generado y verificado.', 'success');
+      await api.post('/system/backups', { backup_type: backupType });
+      toast(backupType === 'TERM' ? 'Cierre de cuatrimestre respaldado y verificado.' : 'Respaldo completo generado y verificado.', 'success');
       await load();
     } catch (error) {
       toast(errorMessage(error, 'No se pudo generar el respaldo.'), 'error');
@@ -285,8 +292,13 @@ export default function RespaldosSistema() {
               Estado operativo y copias completas del sistema
             </p>
           </div>
-          <button
-            onClick={generate}
+          <div className="flex flex-wrap gap-2"><button
+            onClick={() => generate('TERM')}
+            disabled={generating}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-semibold disabled:opacity-50"
+            style={{ borderColor: 'var(--border)', color: 'var(--text)', background: 'var(--surface)' }}
+          >Cerrar cuatrimestre</button><button
+            onClick={() => generate('MANUAL')}
             disabled={generating}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: 'var(--accent-primary)', color: '#fff' }}
@@ -297,8 +309,26 @@ export default function RespaldosSistema() {
                 : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/>}
             </svg>
             {generating ? 'Generando...' : 'Generar respaldo'}
-          </button>
+          </button></div>
         </div>
+
+        {policy && (
+          <section className="rounded-xl border p-4" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold" style={{ color: 'var(--text)' }}>Política automática de respaldo</h2><StatusBadge status={policy.enabled && !policy.overdue ? 'healthy' : policy.overdue ? 'warning' : 'not_verified'} /></div>
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>Ejecución diaria a las {policy.schedule} ({policy.timezone}). Domingos: semanal · Día 1: mensual.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                <div className="rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}><b className="block" style={{ color: 'var(--text)' }}>{policy.retention?.DAILY || 0}</b><span style={{ color: 'var(--text-muted)' }}>Diarios</span></div>
+                <div className="rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}><b className="block" style={{ color: 'var(--text)' }}>{policy.retention?.WEEKLY || 0}</b><span style={{ color: 'var(--text-muted)' }}>Semanales</span></div>
+                <div className="rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}><b className="block" style={{ color: 'var(--text)' }}>{policy.retention?.MONTHLY || 0}</b><span style={{ color: 'var(--text-muted)' }}>Mensuales</span></div>
+                <div className="rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}><b className="block text-emerald-500">Permanente</b><span style={{ color: 'var(--text-muted)' }}>Cuatrimestre</span></div>
+              </div>
+            </div>
+            {(!policy.persistent_storage || !policy.offsite_copy) && <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-300"><b>Protección incompleta:</b> {!policy.persistent_storage ? 'configura un volumen persistente para el directorio de respaldos. ' : ''}{!policy.offsite_copy ? 'Falta automatizar una copia cifrada fuera de Railway.' : ''}</div>}
+          </section>
+        )}
 
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -327,17 +357,17 @@ export default function RespaldosSistema() {
             <table className="w-full text-sm">
               <thead style={{ background: 'var(--surface-2)' }}>
                 <tr>
-                  {['Fecha', 'Base de datos', 'Contenido', 'Tamano', 'Integridad', 'Acciones'].map(label => (
+                  {['Fecha', 'Tipo', 'Base de datos', 'Contenido', 'Tamano', 'Integridad', 'Acciones'].map(label => (
                     <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {!loading && backups.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-14 text-center" style={{ color: 'var(--text-muted)' }}>No hay respaldos generados.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-14 text-center" style={{ color: 'var(--text-muted)' }}>No hay respaldos generados.</td></tr>
                 )}
                 {loading && backups.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-14 text-center" style={{ color: 'var(--text-muted)' }}>Consultando respaldos...</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-14 text-center" style={{ color: 'var(--text-muted)' }}>Consultando respaldos...</td></tr>
                 )}
                 {backups.map(item => {
                   const busy = workingFile === item.filename;
@@ -347,6 +377,7 @@ export default function RespaldosSistema() {
                         <p className="font-medium">{formatDate(item.created_at)}</p>
                         <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>{item.filename}</p>
                       </td>
+                      <td className="px-4 py-3 whitespace-nowrap"><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-500">{BACKUP_TYPE_LABELS[item.backup_type] || item.backup_type || 'Manual'}</span></td>
                       <td className="px-4 py-3 uppercase" style={{ color: 'var(--text-muted)' }}>{item.database_engine || '-'}</td>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{item.file_count || 0} archivos</td>
                       <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{formatBytes(item.size_bytes)}</td>
