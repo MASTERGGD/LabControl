@@ -313,11 +313,15 @@ function ModalCrearGrupo({ docentes, onClose, onCreado }) {
 // â”€â”€â”€ Modal Editar Grupo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
-  const [tutorId,  setTutorId]  = useState(String(grupo.tutor_id));
+  const [tutorId,  setTutorId]  = useState(String(grupo.tutor_id || ""));
   const [activo,   setActivo]   = useState(grupo.activo);
   const [loading,  setLoading]  = useState(false);
 
   const guardar = async () => {
+    if (!tutorId) {
+      showToast("Selecciona el tutor que atenderá el grupo", "error");
+      return;
+    }
     setLoading(true);
     try {
       await api.put(`/tutoria/grupos/${grupo.id}`, {
@@ -342,6 +346,7 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
             <label className="text-xs text-slate-400 mb-1 block">Tutor asignado</label>
             <select className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm"
               value={tutorId} onChange={e => setTutorId(e.target.value)}>
+              <option value="">Seleccionar docente</option>
               {docentes.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
             </select>
           </div>
@@ -1453,9 +1458,8 @@ export default function TutoriaAdmin() {
   };
 
   useEffect(() => {
-    cargarDash();
     cargarDocentes();
-    cargarGrupos();
+    cargarGrupos().then(cargarDash);
     cargarAlertas();
     cargarReportesTutor();
   }, []);
@@ -1484,8 +1488,20 @@ export default function TutoriaAdmin() {
   const gruposFiltrados = useMemo(() => grupos.filter(g =>
     (!filtroCarrera || g.carrera === filtroCarrera)
     && (!filtroPeriodo || g.periodo === filtroPeriodo)
-    && (!filtroTutor || String(g.tutor_id) === String(filtroTutor))
+    && (!filtroTutor || (filtroTutor === "SIN_TUTOR" ? !g.tutor_id : String(g.tutor_id) === String(filtroTutor)))
   ), [grupos, filtroCarrera, filtroPeriodo, filtroTutor]);
+
+  const coberturaTutoria = useMemo(() => {
+    const activos = grupos.filter(g => g.activo);
+    const asignados = activos.filter(g => g.tutor_id).length;
+    return {
+      total: activos.length,
+      asignados,
+      sinTutor: activos.length - asignados,
+      porcentaje: activos.length ? Math.round(asignados * 100 / activos.length) : 0,
+      alumnos: activos.reduce((total, g) => total + Number(g.total_alumnos || 0), 0),
+    };
+  }, [grupos]);
 
   const gruposSinAlumnos = useMemo(
     () => grupos.filter(g => Number(g.total_alumnos || 0) === 0),
@@ -1892,13 +1908,24 @@ export default function TutoriaAdmin() {
         <div className="space-y-4">
           <div className="flex justify-between items-start gap-3 flex-wrap">
             <div>
-              <h2 className="text-lg font-semibold">Grupos tutorados</h2>
-              <p className="text-sm text-slate-400">Asignación de tutores, alumnos y seguimiento de sesiones.</p>
+              <h2 className="text-lg font-semibold">Cobertura tutorial por grupo</h2>
+              <p className="text-sm text-slate-400">Grupos e inscripciones sincronizados automáticamente desde Servicios Escolares.</p>
             </div>
-            <button onClick={() => setModal("grupo")}
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-medium">
-              Nuevo grupo
-            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            {[
+              ["Grupos activos", coberturaTutoria.total, "text-blue-400"],
+              ["Con tutor", coberturaTutoria.asignados, "text-emerald-400"],
+              ["Sin tutor", coberturaTutoria.sinTutor, "text-amber-400"],
+              ["Cobertura", `${coberturaTutoria.porcentaje}%`, "text-cyan-400"],
+              ["Alumnos vinculados", coberturaTutoria.alumnos, "text-violet-400"],
+            ].map(([label, value, tone]) => (
+              <div key={label} className="rounded-xl border border-white/10 bg-slate-900/35 p-3">
+                <p className={`text-xl font-bold ${tone}`}>{value}</p>
+                <p className="text-xs text-slate-400">{label}</p>
+              </div>
+            ))}
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -1915,6 +1942,7 @@ export default function TutoriaAdmin() {
             <select value={filtroTutor} onChange={e => setFiltroTutor(e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
               <option value="">Todos los tutores</option>
+              <option value="SIN_TUTOR">Sin tutor asignado</option>
               {tutoresDisponibles.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
             <button type="button"
@@ -1932,12 +1960,12 @@ export default function TutoriaAdmin() {
                     <p className="font-semibold text-white">{g.carrera}</p>
                     <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre · {g.periodo}</p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${g.activo ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700 text-slate-400"}`}>
-                    {g.activo ? "Activo" : "Inactivo"}
+                  <span className={`text-xs px-2 py-1 rounded-full ${g.tutor_id ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
+                    {g.tutor_id ? "Tutor asignado" : "Sin tutor"}
                   </span>
                 </div>
                 <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between items-center text-xs text-slate-400">
-                  <span>{g.tutor_nombre}</span>
+                  <span className={g.tutor_id ? "" : "text-amber-300"}>{g.tutor_nombre || "Pendiente de asignación"}</span>
                   <span className={Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : ""}>
                     {g.total_alumnos} alumnos · {g.sesiones_realizadas} sesiones
                   </span>
@@ -1951,14 +1979,14 @@ export default function TutoriaAdmin() {
                   <button
                     onClick={() => setModal({ type: "editar", grupo: g })}
                     className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs hover:bg-slate-700 transition-all">
-                    Editar
+                    {g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}
                   </button>
                 </div>
               </div>
             ))}
             {gruposFiltrados.length === 0 && (
               <p className="text-slate-500 text-sm col-span-3 text-center py-8">
-                No hay grupos tutorados con estos filtros.
+                No hay grupos académicos con estos filtros.
               </p>
             )}
           </div>

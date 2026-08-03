@@ -23,6 +23,7 @@ from models.usuario import RolUsuario, Usuario
 from services.user_permissions import (
     puede_gestionar_materias, puede_gestionar_servicios_escolares,
 )
+from services.tutoria_sync import sincronizar_grupos_tutoria
 
 
 router = APIRouter(prefix="/expediente-academico", tags=["Expediente Académico"])
@@ -718,6 +719,8 @@ def expediente_alumno(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    sincronizar_grupos_tutoria(db)
+    db.commit()
     alumno = _obtener_alumno_autorizado(db, alumno_id, current_user)
     grupo, cargas = _grupo_y_cargas(db, alumno)
     materias = _agrupar_materias(db, alumno, cargas)

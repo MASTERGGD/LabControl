@@ -22,6 +22,7 @@ from models.docencia import (
 )
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
 from routers.notificaciones import crear_notificacion
+from services.tutoria_sync import grupo_tutoria_para_academico
 
 
 router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
@@ -1318,16 +1319,7 @@ def crear_alerta_temprana(
     ).first()
     if duplicado:
         raise HTTPException(409, "Ya enviaste una alerta similar durante los últimos 7 días. Puedes revisar su estado en la ficha del alumno.")
-    asignacion = db.query(AsignacionTutoria).join(
-        GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id,
-    ).filter(
-        AsignacionTutoria.alumno_id == alumno.id,
-        AsignacionTutoria.activo == True,
-        GrupoTutorado.activo == True,
-    ).order_by(AsignacionTutoria.asignado_en.desc()).first()
-    grupo_tutorado = db.query(GrupoTutorado).filter(
-        GrupoTutorado.id == asignacion.grupo_tutorado_id,
-    ).first() if asignacion else None
+    grupo_tutorado = grupo_tutoria_para_academico(db, carga.grupo_academico_id)
     tutor = db.query(Usuario).filter(
         Usuario.id == grupo_tutorado.tutor_id,
         Usuario.activo == True,
@@ -1582,21 +1574,7 @@ def registrar_seguimiento_alumno(
     reporte = None
     tutor = None
     if data.tipo == "TUTORIA":
-        asignacion = (
-            db.query(AsignacionTutoria)
-            .join(GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id)
-            .filter(
-                AsignacionTutoria.alumno_id == alumno.id,
-                AsignacionTutoria.activo == True,
-                GrupoTutorado.activo == True,
-            )
-            .order_by(AsignacionTutoria.asignado_en.desc())
-            .first()
-        )
-        grupo_tutorado = (
-            db.query(GrupoTutorado).filter(GrupoTutorado.id == asignacion.grupo_tutorado_id).first()
-            if asignacion else None
-        )
+        grupo_tutorado = grupo_tutoria_para_academico(db, carga.grupo_academico_id)
         tutor = (
             db.query(Usuario).filter(Usuario.id == grupo_tutorado.tutor_id, Usuario.activo == True).first()
             if grupo_tutorado else None
@@ -1643,7 +1621,7 @@ def registrar_seguimiento_alumno(
     return {
         "id": registro.id,
         "reporte_tutor_id": reporte.id if reporte else None,
-        "destinatario": tutor.nombre if tutor else None,
+        "destinatario": tutor.nombre if tutor else ("Responsable de Tutoría" if reporte else None),
         "estado_envio": reporte.estado if reporte else None,
         "mensaje": (
             f"Reporte enviado a {tutor.nombre}" if reporte and tutor

@@ -22,7 +22,8 @@ class GrupoTutorado(Base):
     __tablename__ = "grupos_tutorados"
 
     id           = Column(Integer, primary_key=True, index=True)
-    tutor_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    tutor_id     = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
+    grupo_academico_id = Column(Integer, ForeignKey("grupos_academicos.id"), nullable=True, unique=True, index=True)
     carrera      = Column(String(120), nullable=False)
     cuatrimestre = Column(Integer, nullable=False)   # 1–12
     grupo        = Column(String(10), nullable=False) # A, B, C…

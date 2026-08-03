@@ -99,6 +99,56 @@ def test_docente_envia_reporte_y_tutor_lo_cierra(client, db):
     assert "seguimiento semanal" in seguimiento.resultado_atencion
 
 
+def test_grupo_academico_se_vincula_y_reasigna_reporte_sin_tutor(client, db):
+    reportante, tutor, alumno, carga, grupo_legacy = _escenario(db)
+    db.query(AsignacionTutoria).filter(
+        AsignacionTutoria.grupo_tutorado_id == grupo_legacy.id
+    ).delete()
+    db.delete(grupo_legacy)
+    responsable = Usuario(
+        nombre="Responsable Tutoría", email="responsable@utecan.edu.mx",
+        password_hash=hashear_password("Responsable123!"),
+        rol=RolUsuario.TUTORIA_ADMIN, activo=True,
+    )
+    db.add(responsable)
+    db.commit()
+
+    creado = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/registros",
+        headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
+        json={"tipo": "TUTORIA", "titulo": "Caso sin tutor", "estado": "PENDIENTE"},
+    )
+    assert creado.status_code == 200, creado.text
+    assert creado.json()["destinatario"] == "Responsable de Tutoría"
+    reporte = db.query(ReporteTutor).one()
+    assert reporte.estado == "SIN_TUTOR"
+    assert reporte.grupo_tutorado_id is not None
+    grupo = db.query(GrupoTutorado).filter(GrupoTutorado.id == reporte.grupo_tutorado_id).one()
+    assert grupo.grupo_academico_id == carga.grupo_academico_id
+    assert grupo.tutor_id is None
+    assert db.query(AsignacionTutoria).filter(
+        AsignacionTutoria.grupo_tutorado_id == grupo.id,
+        AsignacionTutoria.alumno_id == alumno.id,
+        AsignacionTutoria.activo == True,
+    ).count() == 1
+
+    responsable_headers = auth_headers(get_token(client, responsable.email, "Responsable123!"))
+    dashboard = client.get("/tutoria/dashboard", headers=responsable_headers)
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["total_grupos"] == 1
+    assert dashboard.json()["total_tutores"] == 0
+
+    actualizado = client.put(
+        f"/tutoria/grupos/{grupo.id}",
+        headers=responsable_headers,
+        json={"tutor_id": tutor.id},
+    )
+    assert actualizado.status_code == 200, actualizado.text
+    db.refresh(reporte)
+    assert reporte.estado == "ENVIADO"
+    assert reporte.tutor_destinatario_id == tutor.id
+
+
 def test_tutor_convierte_reporte_en_canalizacion(client, db):
     reportante, tutor, alumno, carga, grupo_tutorado = _escenario(db)
     reportante_headers = auth_headers(get_token(client, reportante.email, "Materia123!"))

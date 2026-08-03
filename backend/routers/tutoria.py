@@ -4,7 +4,7 @@ Procedimiento P-DC-02 v08 · ISO 9001:2015
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
@@ -24,6 +24,7 @@ from dependencies import get_current_user, require_roles
 import datetime, io, json, openpyxl
 from pathlib import Path
 from routers.notificaciones import crear_notificacion
+from services.tutoria_sync import sincronizar_grupos_tutoria
 
 # PDF generation
 from fastapi.responses import StreamingResponse
@@ -237,7 +238,7 @@ def _semaforo(perfil: dict | None) -> str:
     return "BAJO"
 
 def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
-    tutor = db.query(Usuario).filter(Usuario.id == g.tutor_id).first()
+    tutor = db.query(Usuario).filter(Usuario.id == g.tutor_id).first() if g.tutor_id else None
     total = db.query(AsignacionTutoria).filter(
         AsignacionTutoria.grupo_tutorado_id == g.id,
         AsignacionTutoria.activo == True
@@ -247,6 +248,7 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
     ).count()
     return {
         "id":           g.id,
+        "grupo_academico_id": g.grupo_academico_id,
         "tutor_id":     g.tutor_id,
         "tutor_nombre": tutor.nombre if tutor else None,
         "carrera":      g.carrera,
@@ -256,6 +258,7 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
         "activo":       g.activo,
         "total_alumnos": total,
         "sesiones_realizadas": sesiones_cuatrimestre,
+        "estado_tutoria": "ASIGNADO" if tutor else "SIN_TUTOR",
     }
 
 def _ser_canalizacion(c: Canalizacion, db: Session) -> dict:
@@ -356,7 +359,7 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
         q_grupos = q_grupos.filter(GrupoTutorado.periodo == periodo)
     grupos = q_grupos.all()
     grupo_ids = [g.id for g in grupos]
-    tutor_ids = sorted({g.tutor_id for g in grupos})
+    tutor_ids = sorted({g.tutor_id for g in grupos if g.tutor_id})
 
     if not grupo_ids:
         return {
@@ -577,7 +580,7 @@ def dashboard_tutoria(
     # Tutores sin sesión esta semana
     tutores_activos = [
         r[0] for r in db.query(GrupoTutorado.tutor_id)
-        .filter(GrupoTutorado.activo == True).distinct().all()
+        .filter(GrupoTutorado.activo == True, GrupoTutorado.tutor_id.isnot(None)).distinct().all()
     ]
     tutores_con_sesion = [
         r[0] for r in db.query(SesionTutoria.tutor_id)
@@ -622,6 +625,9 @@ def listar_grupos(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    if current_user.rol != RolUsuario.DOCENTE:
+        sincronizar_grupos_tutoria(db)
+        db.commit()
     q = db.query(GrupoTutorado)
     if activo is not None:
         q = q.filter(GrupoTutorado.activo == activo)
@@ -669,9 +675,34 @@ def editar_grupo(
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
     if data.tutor_id is not None:
-        if not db.query(Usuario).filter(Usuario.id == data.tutor_id).first():
+        tutor_nuevo = db.query(Usuario).filter(
+            Usuario.id == data.tutor_id, Usuario.activo == True,
+        ).first()
+        if not tutor_nuevo:
             raise HTTPException(404, "Tutor no encontrado")
         g.tutor_id = data.tutor_id
+        alumnos_grupo = db.query(AsignacionTutoria.alumno_id).filter(
+            AsignacionTutoria.grupo_tutorado_id == g.id,
+            AsignacionTutoria.activo == True,
+        )
+        pendientes = db.query(ReporteTutor).filter(
+            or_(
+                ReporteTutor.grupo_tutorado_id == g.id,
+                (ReporteTutor.grupo_tutorado_id.is_(None) & ReporteTutor.alumno_id.in_(alumnos_grupo)),
+            ),
+            ReporteTutor.estado == "SIN_TUTOR",
+        ).all()
+        for reporte in pendientes:
+            reporte.grupo_tutorado_id = g.id
+            reporte.tutor_destinatario_id = data.tutor_id
+            reporte.estado = "ENVIADO"
+        if pendientes:
+            _notificar_usuario(
+                db, data.tutor_id, "tutoria_reportes_asignados",
+                "Reportes pendientes asignados",
+                f"Se te asignaron {len(pendientes)} reporte(s) del grupo {g.grupo}.",
+                "/docente/mis-tutorados?tab=reportes",
+            )
     if data.carrera is not None:
         g.carrera = data.carrera
     if data.cuatrimestre is not None:
@@ -805,7 +836,7 @@ def actualizar_estado_seguimiento(
             "ATENDIDO":       "✅ Atención registrada",
             "CERRADO":        "✔ Caso cerrado",
         }
-        if data.estado in etiquetas:
+        if data.estado in etiquetas and grupo.tutor_id:
             _notificar_usuario(
                 db, grupo.tutor_id, "TUTORIA_ESTADO",
                 etiquetas[data.estado],
@@ -1606,6 +1637,8 @@ def crear_programacion(
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == data.grupo_tutorado_id).first()
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
+    if not g.tutor_id:
+        raise HTTPException(409, "Asigna un tutor al grupo antes de programar sesiones")
     try:
         fecha = datetime.date.fromisoformat(data.fecha_programada)
     except ValueError:
@@ -1975,6 +2008,8 @@ def registrar_sesion(
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == data.grupo_tutorado_id).first()
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
+    if not g.tutor_id:
+        raise HTTPException(409, "El grupo todavía no tiene tutor asignado")
     if current_user.rol == RolUsuario.DOCENTE and g.tutor_id != current_user.id:
         raise HTTPException(403, "No puedes registrar sesiones de otro tutor")
 
@@ -2212,6 +2247,8 @@ def asignar_reporte_tutor(
         raise HTTPException(404, "Reporte no encontrado")
     if not grupo:
         raise HTTPException(404, "Grupo tutorado activo no encontrado")
+    if not grupo.tutor_id:
+        raise HTTPException(409, "Asigna un tutor al grupo antes de enviarle el reporte")
     asignacion = db.query(AsignacionTutoria).filter(
         AsignacionTutoria.grupo_tutorado_id == grupo.id,
         AsignacionTutoria.alumno_id == reporte.alumno_id,
