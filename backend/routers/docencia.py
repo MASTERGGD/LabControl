@@ -339,6 +339,35 @@ def _advertencias(db: Session, carga: CargaDocente, excluir_id=None):
     return list(dict.fromkeys(avisos))
 
 
+def _normalizar_identidad(valor):
+    return " ".join(str(valor or "").strip().upper().split())
+
+
+def _validar_identidad_academica(db: Session, data: CargaInput):
+    if data.tipo_actividad != "CLASE":
+        return
+    grupo = db.query(GrupoAcademico).filter(
+        GrupoAcademico.id == data.grupo_academico_id,
+        GrupoAcademico.periodo_id == data.periodo_id,
+        GrupoAcademico.activo == True,
+    ).first()
+    materia = db.query(CatalogoMateria).filter(
+        CatalogoMateria.id == data.materia_id,
+        CatalogoMateria.activo == True,
+    ).first()
+    if not grupo:
+        raise HTTPException(422, "El grupo no pertenece al periodo seleccionado o ya no está activo")
+    if not materia:
+        raise HTTPException(422, "Selecciona una materia activa del catálogo académico")
+    if materia.carrera and _normalizar_identidad(materia.carrera) != _normalizar_identidad(grupo.carrera):
+        raise HTTPException(422, "La materia y el grupo pertenecen a carreras diferentes")
+    if materia.cuatrimestre_oficial is not None and materia.cuatrimestre_oficial != grupo.cuatrimestre:
+        raise HTTPException(422, "La materia y el grupo pertenecen a cuatrimestres diferentes")
+    periodo = db.get(PeriodoEscolar, data.periodo_id)
+    if materia.periodo and periodo and _normalizar_periodo(materia.periodo) != _normalizar_periodo(periodo.clave):
+        raise HTTPException(422, "La materia no corresponde al periodo académico seleccionado")
+
+
 def _serializar_carga(c: CargaDocente, db: Session):
     grupo = c.grupo_academico
     lab = c.laboratorio
@@ -497,8 +526,12 @@ def catalogos_docente(
         "grupos": [{
             "id": g.id, "carrera": g.carrera, "cuatrimestre": g.cuatrimestre,
             "grupo": g.grupo, "label": f"{g.cuatrimestre}° {g.grupo} · {g.carrera}",
+            "total_alumnos": sum(1 for i in g.inscripciones if i.estado == "ACTIVO"),
         } for g in grupos],
-        "materias": [{"id": m.id, "nombre": m.nombre, "carrera": m.carrera} for m in materias_q.all()],
+        "materias": [{
+            "id": m.id, "nombre": m.nombre, "carrera": m.carrera,
+            "cuatrimestre_oficial": m.cuatrimestre_oficial,
+        } for m in materias_q.all()],
         "laboratorios": [{"id": l.id, "nombre": l.nombre} for l in db.query(Laboratorio).filter(Laboratorio.activo == True).all()],
         "espacios": [{"id": e.id, "nombre": e.nombre} for e in db.query(EspacioInstitucional).filter(EspacioInstitucional.activo == True).all()],
     }
@@ -536,6 +569,7 @@ def crear_carga(
 ):
     _solo_docente(current_user)
     _validar_periodo_actual(db, data.periodo_id)
+    _validar_identidad_academica(db, data)
     carga = CargaDocente(docente_id=current_user.id, estado="BORRADOR", **data.model_dump())
     db.add(carga)
     db.flush()
@@ -559,6 +593,7 @@ def actualizar_carga(
         raise HTTPException(404, "Actividad no encontrada")
     _validar_carga_actual(db, carga)
     _validar_periodo_actual(db, data.periodo_id)
+    _validar_identidad_academica(db, data)
     cambia_laboratorio = any(
         getattr(carga, campo) != getattr(data, campo)
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
