@@ -98,9 +98,25 @@ class CatalogoCarrera(Base):
     id              = Column(Integer, primary_key=True, index=True)
     clave           = Column(String(30), nullable=False, unique=True, index=True)
     nombre          = Column(String(180), nullable=False, unique=True, index=True)
+    nivel           = Column(String(30), nullable=True)
+    division        = Column(String(120), nullable=True)
+    plan_estudios   = Column(String(80), nullable=True)
     activo          = Column(Boolean, default=True, nullable=False)
     creado_en       = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     actualizado_en  = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+
+    aliases         = relationship("CatalogoCarreraAlias", back_populates="carrera", cascade="all, delete-orphan")
+
+
+class CatalogoCarreraAlias(Base):
+    __tablename__ = "catalogo_carreras_aliases"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    carrera_id  = Column(Integer, ForeignKey("catalogo_carreras.id", ondelete="CASCADE"), nullable=False, index=True)
+    nombre      = Column(String(180), nullable=False, unique=True, index=True)
+    creado_en   = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    carrera     = relationship("CatalogoCarrera", back_populates="aliases")
 
 
 class CatalogoInventarioItem(Base):

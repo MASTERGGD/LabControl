@@ -1,8 +1,10 @@
 from pathlib import Path
+import io
+import openpyxl
 
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
+from models.catalogo import CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from tests.conftest import auth_headers, get_token
 
 
@@ -66,3 +68,48 @@ def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):
     assert len(activas) == 1
     assert activas[0].grupo_academico.cuatrimestre == 3
     assert activas[0].grupo_academico.grupo == "A"
+
+
+def test_renombrar_carrera_actualiza_catalogos_y_alias_resuelve_excel(client, db):
+    admin = Usuario(nombre="Admin Escolar", email="carreras@test.mx",
+                    password_hash=hashear_password("Test1234!"),
+                    rol=RolUsuario.SUPER_ADMIN, activo=True)
+    db.add(admin); db.commit()
+    headers = auth_headers(get_token(client, admin.email, "Test1234!"))
+    creada = client.post("/servicios-escolares/carreras", headers=headers, json={
+        "clave": "TI", "nombre": "TSU en Tecnologias de la Informacion",
+        "nivel": "TSU", "division": "Tecnologias", "plan_estudios": "2024",
+        "aliases": ["TSU TI"], "activo": True,
+    })
+    assert creada.status_code == 200, creada.text
+    carrera_id = creada.json()["id"]
+
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    alumno = CatalogoAlumno(matricula="UTC-CAR-1", apellido_paterno="LOPEZ", apellido_materno="",
+        nombres="ANA", carrera="TSU en Tecnologias de la Informacion", cuatrimestre=3,
+        grupo="A", periodo="MAY-AGO 2026", activo=True)
+    db.add_all([periodo, alumno]); db.flush()
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera=alumno.carrera, cuatrimestre=3, grupo="A", activo=True)
+    materia = CatalogoMateria(nombre="Programacion", carrera=alumno.carrera, cuatrimestre_oficial=3, activo=True)
+    db.add_all([grupo, materia]); db.commit()
+
+    actualizado = client.put(f"/servicios-escolares/carreras/{carrera_id}", headers=headers, json={
+        "clave": "DGS", "nombre": "TSU en Desarrollo y Gestion de Software",
+        "nivel": "TSU", "division": "Tecnologias", "plan_estudios": "2024",
+        "aliases": ["TSU TI"], "activo": True,
+    })
+    assert actualizado.status_code == 200, actualizado.text
+    assert "TSU en Tecnologias de la Informacion" in actualizado.json()["aliases"]
+    db.refresh(alumno); db.refresh(grupo); db.refresh(materia)
+    assert alumno.carrera == "TSU en Desarrollo y Gestion de Software"
+    assert grupo.carrera == alumno.carrera
+    assert materia.carrera == alumno.carrera
+
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Alumnos"
+    ws.append(["titulo"]); ws.append(["leyenda"]); ws.append(["headers"]); ws.append(["ejemplo"])
+    ws.append(["UTC-CAR-2", "PEREZ", "", "LUIS", "TSU TI", 3, "A", "MAY-AGO 2026"])
+    contenido = io.BytesIO(); wb.save(contenido); contenido.seek(0)
+    preview = client.post("/catalogo/alumnos/importar?preview=true", headers=headers,
+        files={"file": ("alumnos.xlsx", contenido.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["total_errores"] == 0

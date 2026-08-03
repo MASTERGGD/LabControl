@@ -192,7 +192,7 @@ function ModalActivarFicha({ alumno, onClose, onOk }) {
 
 function ModalCarreras({ onClose }) {
   const [carreras, setCarreras] = useState([]);
-  const [form, setForm] = useState({ clave: '', nombre: '', activo: true });
+  const [form, setForm] = useState({ clave: '', nombre: '', nivel: '', division: '', plan_estudios: '', aliases: '', activo: true });
   const [editando, setEditando] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -212,7 +212,7 @@ function ModalCarreras({ onClose }) {
   useEffect(() => { cargar(); }, [cargar]);
 
   const limpiar = () => {
-    setForm({ clave: '', nombre: '', activo: true });
+    setForm({ clave: '', nombre: '', nivel: '', division: '', plan_estudios: '', aliases: '', activo: true });
     setEditando(null);
     setError('');
   };
@@ -222,6 +222,10 @@ function ModalCarreras({ onClose }) {
     const payload = {
       clave: form.clave.trim().toUpperCase(),
       nombre: form.nombre.trim(),
+      nivel: form.nivel.trim() || null,
+      division: form.division.trim() || null,
+      plan_estudios: form.plan_estudios.trim() || null,
+      aliases: form.aliases.split(',').map(a => a.trim()).filter(Boolean),
       activo: !!form.activo,
     };
     if (!payload.clave || !payload.nombre) {
@@ -243,7 +247,7 @@ function ModalCarreras({ onClose }) {
 
   const editar = carrera => {
     setEditando(carrera);
-    setForm({ clave: carrera.clave || '', nombre: carrera.nombre || '', activo: carrera.activo !== false });
+    setForm({ clave: carrera.clave || '', nombre: carrera.nombre || '', nivel: carrera.nivel || '', division: carrera.division || '', plan_estudios: carrera.plan_estudios || '', aliases: (carrera.aliases || []).join(', '), activo: carrera.activo !== false });
     setError('');
   };
 
@@ -264,10 +268,25 @@ function ModalCarreras({ onClose }) {
         <div className="flex items-start justify-between gap-4 mb-5">
           <div>
             <h3 className="text-lg font-bold text-white">Catalogo de carreras</h3>
-            <p className="text-slate-400 text-sm">Estas carreras alimentan el desplegable del estudio socioeconomico.</p>
+            <p className="text-slate-400 text-sm">Nombre institucional único para alumnos, grupos, materias y Tutoría.</p>
           </div>
           <button onClick={onClose} className="btn-ghost px-3">Cerrar</button>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <select value={form.nivel} onChange={e => setForm(f => ({ ...f, nivel: e.target.value }))} className="input-dark">
+            <option value="">Nivel educativo</option><option value="TSU">TSU</option><option value="LICENCIATURA">Licenciatura</option><option value="INGENIERIA">Ingeniería</option>
+          </select>
+          <input value={form.division} onChange={e => setForm(f => ({ ...f, division: e.target.value }))} placeholder="División académica" className="input-dark" />
+          <input value={form.plan_estudios} onChange={e => setForm(f => ({ ...f, plan_estudios: e.target.value }))} placeholder="Plan de estudios, ej. 2024" className="input-dark" />
+        </div>
+        <input value={form.aliases} onChange={e => setForm(f => ({ ...f, aliases: e.target.value }))} placeholder="Alias aceptados en Excel, separados por coma" className="input-dark w-full mb-3" />
+        {editando && form.nombre.trim() && form.nombre.trim() !== editando.nombre && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">El nuevo nombre se aplicará institucionalmente.</p>
+            <p className="mt-1">Se actualizarán {editando.impacto?.alumnos || 0} alumnos, {editando.impacto?.grupos || 0} grupos, {editando.impacto?.materias || 0} materias y {editando.impacto?.tutoria || 0} grupos de Tutoría. El nombre anterior quedará como alias para futuras importaciones.</p>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <input value={form.clave} onChange={e => setForm(f => ({ ...f, clave: e.target.value }))}
@@ -314,6 +333,8 @@ function ModalCarreras({ onClose }) {
                     <td className="px-4 py-3 text-slate-300 font-mono text-xs">{c.clave}</td>
                     <td className="px-4 py-3 text-white">
                       {c.nombre ? c.nombre.toLowerCase().replace(/(?:^|\s)\S/g, x => x.toUpperCase()) : '—'}
+                      <p className="mt-1 text-xs text-slate-500">{[c.nivel, c.division, c.plan_estudios && `Plan ${c.plan_estudios}`].filter(Boolean).join(' · ') || 'Sin clasificación'}</p>
+                      {!!c.aliases?.length && <p className="mt-1 text-[11px] text-slate-500">Alias: {c.aliases.join(', ')}</p>}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-xs font-semibold ${c.activo ? 'text-emerald-400' : 'text-slate-500'}`}>

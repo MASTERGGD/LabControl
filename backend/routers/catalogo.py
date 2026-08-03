@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
-from models.catalogo import CatalogoAlumno, CatalogoMateria, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
+from models.catalogo import CatalogoAlumno, CatalogoMateria, CatalogoCarrera, CatalogoCarreraAlias, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 from services.user_permissions import puede_gestionar_materias
@@ -55,6 +56,26 @@ class MateriaUpdate(BaseModel):
 
 def _norm(val) -> str:
     return str(val).strip() if val is not None else ""
+
+def _resolver_carrera_catalogo(db: Session, valor: str) -> str | None:
+    """Resuelve nombre oficial, clave o alias al nombre institucional vigente."""
+    valor = _norm(valor)
+    if not valor:
+        return None
+    if db.query(CatalogoCarrera).filter(CatalogoCarrera.activo == True).count() == 0:
+        return valor
+    carrera = db.query(CatalogoCarrera).filter(
+        CatalogoCarrera.activo == True,
+        (func.lower(CatalogoCarrera.nombre) == valor.lower()) |
+        (func.lower(CatalogoCarrera.clave) == valor.lower()),
+    ).first()
+    if not carrera:
+        alias = db.query(CatalogoCarreraAlias).join(CatalogoCarrera).filter(
+            CatalogoCarrera.activo == True,
+            func.lower(CatalogoCarreraAlias.nombre) == valor.lower(),
+        ).first()
+        carrera = alias.carrera if alias else None
+    return carrera.nombre if carrera else None
 
 def _norm_periodo(val) -> str:
     """Iguala MAY-AGO 2026, MAY-AGO-2026 y variantes de separación."""
@@ -299,6 +320,9 @@ def crear_alumno(
 ):
     matricula = _norm(data.matricula)
     periodo   = _norm(data.periodo)
+    carrera   = _resolver_carrera_catalogo(db, data.carrera)
+    if not carrera:
+        raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
 
     existe = db.query(CatalogoAlumno).filter(
         CatalogoAlumno.matricula == matricula,
@@ -312,7 +336,7 @@ def crear_alumno(
         apellido_paterno = _norm(data.apellido_paterno),
         apellido_materno = _norm(data.apellido_materno),
         nombres          = _norm(data.nombres),
-        carrera          = _norm(data.carrera),
+        carrera          = carrera,
         cuatrimestre     = data.cuatrimestre,
         grupo            = _norm(data.grupo).upper(),
         periodo          = periodo,
@@ -335,7 +359,13 @@ def actualizar_alumno(
     a = db.query(CatalogoAlumno).filter(CatalogoAlumno.id == alumno_id).first()
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
-    for field, val in data.dict(exclude_none=True).items():
+    cambios = data.dict(exclude_none=True)
+    if "carrera" in cambios:
+        carrera = _resolver_carrera_catalogo(db, cambios["carrera"])
+        if not carrera:
+            raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
+        cambios["carrera"] = carrera
+    for field, val in cambios.items():
         if field == "grupo" and val:
             val = val.upper()
         setattr(a, field, val)
@@ -402,7 +432,8 @@ async def importar_alumnos(
         apellido_paterno = _norm(row[1]) if row[1] is not None else ""
         apellido_materno = _norm(row[2]) if row[2] is not None else ""
         nombres          = _norm(row[3]) if row[3] is not None else ""
-        carrera          = _norm(row[4]) if row[4] is not None else ""
+        carrera_excel    = _norm(row[4]) if row[4] is not None else ""
+        carrera          = _resolver_carrera_catalogo(db, carrera_excel)
         cuat_raw         = row[5]
         grupo            = _norm(row[6]).upper() if row[6] is not None else ""
         periodo          = _norm(row[7]) if row[7] is not None else ""
@@ -412,7 +443,8 @@ async def importar_alumnos(
         if not matricula:        fila_errores.append("matrícula vacía")
         if not apellido_paterno: fila_errores.append("apellido paterno vacío")
         if not nombres:          fila_errores.append("nombre(s) vacío")
-        if not carrera:          fila_errores.append("carrera vacía")
+        if not carrera_excel:    fila_errores.append("carrera vacía")
+        elif not carrera:        fila_errores.append(f"carrera '{carrera_excel}' no existe en el catálogo institucional")
         if not grupo:            fila_errores.append("grupo vacío")
         if not periodo:          fila_errores.append("periodo vacío")
 

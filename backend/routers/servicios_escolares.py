@@ -27,7 +27,9 @@ from typing import Optional
 from database import get_db
 from dependencies import get_current_user, hashear_password
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno, CatalogoCarrera, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
+from models.catalogo import CatalogoAlumno, CatalogoCarrera, CatalogoCarreraAlias, CatalogoMateria, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
+from models.tutoria import GrupoTutorado
+from models.ficha_socioeconomica import FichaSocioeconomica
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from services.auditoria import registrar, Accion, Recurso
 from services.user_permissions import puede_gestionar_servicios_escolares
@@ -148,12 +150,26 @@ def _clave_desde_nombre(nombre: str) -> str:
     return "".join(t[0] for t in tokens)[:10]
 
 
-def _serializar_carrera(c: CatalogoCarrera) -> dict:
+def _impacto_carrera(db: Session, nombre: str) -> dict:
+    return {
+        "alumnos": db.query(CatalogoAlumno).filter(func.lower(CatalogoAlumno.carrera) == nombre.lower()).count(),
+        "grupos": db.query(GrupoAcademico).filter(func.lower(GrupoAcademico.carrera) == nombre.lower()).count(),
+        "materias": db.query(CatalogoMateria).filter(func.lower(CatalogoMateria.carrera) == nombre.lower()).count(),
+        "tutoria": db.query(GrupoTutorado).filter(func.lower(GrupoTutorado.carrera) == nombre.lower()).count(),
+    }
+
+
+def _serializar_carrera(c: CatalogoCarrera, db: Session | None = None) -> dict:
     return {
         "id": c.id,
         "clave": c.clave,
         "nombre": c.nombre,
+        "nivel": c.nivel,
+        "division": c.division,
+        "plan_estudios": c.plan_estudios,
+        "aliases": sorted(a.nombre for a in c.aliases),
         "activo": c.activo,
+        "impacto": _impacto_carrera(db, c.nombre) if db else None,
     }
 
 
@@ -300,6 +316,10 @@ def _serializar_ficha_completa(f: FichaSocioeconomica) -> dict:
 class CarreraBody(BaseModel):
     clave: str = Field(..., min_length=1, max_length=30)
     nombre: str = Field(..., min_length=2, max_length=180)
+    nivel: Optional[str] = Field(None, max_length=30)
+    division: Optional[str] = Field(None, max_length=120)
+    plan_estudios: Optional[str] = Field(None, max_length=80)
+    aliases: list[str] = Field(default_factory=list)
     activo: bool = True
     model_config = ConfigDict(extra="ignore")
 
@@ -315,7 +335,7 @@ def listar_carreras(
     q = db.query(CatalogoCarrera)
     if not incluir_inactivas:
         q = q.filter(CatalogoCarrera.activo == True)
-    return [_serializar_carrera(c) for c in q.order_by(CatalogoCarrera.nombre).all()]
+    return [_serializar_carrera(c, db) for c in q.order_by(CatalogoCarrera.nombre).all()]
 
 
 @router.post("/carreras", summary="Registrar carrera")
@@ -337,11 +357,20 @@ def crear_carrera(
     )
     if existe:
         raise HTTPException(409, "Ya existe una carrera con esa clave o nombre")
-    carrera = CatalogoCarrera(clave=clave, nombre=nombre, activo=body.activo)
+    carrera = CatalogoCarrera(
+        clave=clave, nombre=nombre, activo=body.activo,
+        nivel=_norm_text(body.nivel) or None,
+        division=_norm_text(body.division) or None,
+        plan_estudios=_norm_text(body.plan_estudios) or None,
+    )
     db.add(carrera)
+    db.flush()
+    for alias in {_norm_text(a) for a in body.aliases if _norm_text(a)}:
+        if alias.lower() != nombre.lower():
+            db.add(CatalogoCarreraAlias(carrera_id=carrera.id, nombre=alias))
     db.commit()
     db.refresh(carrera)
-    return _serializar_carrera(carrera)
+    return _serializar_carrera(carrera, db)
 
 
 @router.put("/carreras/{carrera_id}", summary="Actualizar carrera")
@@ -366,13 +395,40 @@ def actualizar_carrera(
     )
     if existe:
         raise HTTPException(409, "Ya existe otra carrera con esa clave o nombre")
+    nombre_anterior = carrera.nombre
     carrera.clave = clave
     carrera.nombre = nombre
+    carrera.nivel = _norm_text(body.nivel) or None
+    carrera.division = _norm_text(body.division) or None
+    carrera.plan_estudios = _norm_text(body.plan_estudios) or None
     carrera.activo = body.activo
     carrera.actualizado_en = datetime.datetime.utcnow()
+
+    if nombre_anterior.lower() != nombre.lower():
+        db.query(CatalogoAlumno).filter(func.lower(CatalogoAlumno.carrera) == nombre_anterior.lower()).update({"carrera": nombre}, synchronize_session=False)
+        db.query(GrupoAcademico).filter(func.lower(GrupoAcademico.carrera) == nombre_anterior.lower()).update({"carrera": nombre}, synchronize_session=False)
+        db.query(CatalogoMateria).filter(func.lower(CatalogoMateria.carrera) == nombre_anterior.lower()).update({"carrera": nombre}, synchronize_session=False)
+        db.query(GrupoTutorado).filter(func.lower(GrupoTutorado.carrera) == nombre_anterior.lower()).update({"carrera": nombre}, synchronize_session=False)
+        db.query(FichaSocioeconomica).filter(func.lower(FichaSocioeconomica.carrera) == nombre_anterior.lower()).update({"carrera": nombre}, synchronize_session=False)
+
+    aliases = {_norm_text(a) for a in body.aliases if _norm_text(a)}
+    if nombre_anterior.lower() != nombre.lower():
+        aliases.add(nombre_anterior)
+    aliases = {a for a in aliases if a.lower() != nombre.lower()}
+    db.query(CatalogoCarreraAlias).filter(CatalogoCarreraAlias.carrera_id == carrera.id).delete(synchronize_session=False)
+    for alias in aliases:
+        ocupado = db.query(CatalogoCarreraAlias).filter(
+            func.lower(CatalogoCarreraAlias.nombre) == alias.lower(),
+            CatalogoCarreraAlias.carrera_id != carrera.id,
+        ).first()
+        if ocupado:
+            raise HTTPException(409, f"El alias '{alias}' ya pertenece a otra carrera")
+        db.add(CatalogoCarreraAlias(carrera_id=carrera.id, nombre=alias))
+    registrar(db, accion="ACTUALIZAR_CARRERA", recurso="CARRERA", usuario=current_user,
+              recurso_id=carrera.id, detalle={"nombre_anterior": nombre_anterior, "nombre_nuevo": nombre})
     db.commit()
     db.refresh(carrera)
-    return _serializar_carrera(carrera)
+    return _serializar_carrera(carrera, db)
 
 
 @router.delete("/carreras/{carrera_id}", summary="Desactivar carrera")
