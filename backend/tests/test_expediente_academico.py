@@ -93,6 +93,10 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert data["resumen"]["materias_riesgo"] == 1
     assert data["resumen"]["acuerdos_pendientes"] == 1
     assert data["resumen"]["semaforo"] == "ROJO"
+    assert data["acuerdos"][0]["materia"] == carga.actividad_nombre
+    assert data["acuerdos"][0]["docente"] == reportante.nombre
+    assert data["acuerdos"][0]["tipo_contexto"] == "MATERIA"
+    assert data["acuerdos"][0]["grupo"] == "3° A"
     assert data["materias"][0]["promedio_evidencias"] == 6.5
     assert data["materias"][0]["falta"] == 1
     patron = data["patrones_asistencia"]["excluyendo_justificadas"]

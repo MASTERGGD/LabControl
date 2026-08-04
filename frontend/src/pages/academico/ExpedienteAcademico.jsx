@@ -333,12 +333,36 @@ function Evaluaciones({ data }) {
 }
 
 function Acuerdos({ acuerdos }) {
+  const [materia, setMateria] = useState('TODAS');
+  const [estado, setEstado] = useState('TODOS');
+  const [tipo, setTipo] = useState('TODOS');
+  const [responsable, setResponsable] = useState('TODOS');
+  const materias = useMemo(() => [...new Set(acuerdos.map(a => a.materia).filter(Boolean))].sort(), [acuerdos]);
+  const responsables = useMemo(() => [...new Set(acuerdos.map(a => a.docente).filter(Boolean))].sort(), [acuerdos]);
+  const visibles = acuerdos.filter(a => (
+    (materia === 'TODAS' || a.materia === materia)
+    && (estado === 'TODOS' || a.estado === estado)
+    && (tipo === 'TODOS' || a.tipo_contexto === tipo)
+    && (responsable === 'TODOS' || a.docente === responsable)
+  ));
   return (
     <div className="space-y-3">
-      {acuerdos.map(a => (
+      {!!acuerdos.length && <Panel className="p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="text-xs font-semibold text-slate-500">Materia<select className="input-dark mt-1 w-full" value={materia} onChange={e => setMateria(e.target.value)}><option value="TODAS">Todas las materias</option>{materias.map(item => <option key={item}>{item}</option>)}</select></label>
+          <label className="text-xs font-semibold text-slate-500">Estado<select className="input-dark mt-1 w-full" value={estado} onChange={e => setEstado(e.target.value)}><option value="TODOS">Todos los estados</option>{[...new Set(acuerdos.map(a => a.estado))].map(item => <option key={item} value={item}>{labelEstado(item)}</option>)}</select></label>
+          <label className="text-xs font-semibold text-slate-500">Tipo<select className="input-dark mt-1 w-full" value={tipo} onChange={e => setTipo(e.target.value)}><option value="TODOS">Todos los tipos</option><option value="MATERIA">Acuerdo de materia</option><option value="GENERAL">Acuerdo general</option></select></label>
+          <label className="text-xs font-semibold text-slate-500">Registrado por<select className="input-dark mt-1 w-full" value={responsable} onChange={e => setResponsable(e.target.value)}><option value="TODOS">Todos los responsables</option>{responsables.map(item => <option key={item}>{item}</option>)}</select></label>
+        </div>
+      </Panel>}
+      {visibles.map(a => (
         <Panel key={a.id} className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><p className="font-semibold">{a.titulo}</p><p className="text-xs text-slate-500">{a.materia || 'Sin materia relacionada'} · Registrado {fmt(a.creado_en)}</p></div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{a.titulo}</p><Badge className="border-blue-500/30 bg-blue-500/10 text-blue-400">{a.tipo_contexto === 'MATERIA' ? 'ACUERDO DE MATERIA' : 'ACUERDO GENERAL'}</Badge></div>
+              <p className="mt-1 text-xs text-slate-500">{a.materia || 'Sin materia relacionada'}{a.grupo ? ` · ${a.grupo}` : ''}{a.periodo ? ` · ${a.periodo}` : ''}</p>
+              <p className="mt-1 text-xs text-slate-500">Registrado por: <span className="font-semibold text-slate-400">{a.docente || 'Responsable no disponible'}</span> · {fmtFechaHora(a.creado_en)}</p>
+            </div>
             <Badge className={a.estado === 'PENDIENTE' ? 'border-amber-500/30 bg-amber-500/15 text-amber-400' : 'border-emerald-500/30 bg-emerald-500/15 text-emerald-400'}>{a.estado}</Badge>
           </div>
           {a.detalle && <p className="mt-3 text-sm text-slate-400">{a.detalle}</p>}
@@ -346,6 +370,7 @@ function Acuerdos({ acuerdos }) {
           {a.resultado && <p className="mt-2 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-300"><b>Resultado:</b> {a.resultado}</p>}
         </Panel>
       ))}
+      {!!acuerdos.length && !visibles.length && <Panel className="p-8 text-center text-sm text-slate-500">No hay acuerdos que coincidan con los filtros.</Panel>}
       {!acuerdos.length && <Panel className="p-8 text-center text-sm text-slate-500">No hay acuerdos académicos registrados.</Panel>}
     </div>
   );

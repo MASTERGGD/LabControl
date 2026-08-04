@@ -890,8 +890,19 @@ def expediente_alumno(
             "estado": a.estado,
             "fecha_revision": a.fecha_revision.isoformat() if a.fecha_revision else None,
             "resultado": a.resultado_atencion,
-            "materia": carga_materia.get(a.carga_docente_id),
+            # La carga del propio acuerdo conserva su contexto aunque el horario
+            # pertenezca a otro periodo o ya se encuentre archivado.
+            "tipo_contexto": "MATERIA" if a.carga and a.carga.tipo_actividad == "CLASE" else "GENERAL",
+            "materia": a.carga.actividad_nombre if a.carga and a.carga.tipo_actividad == "CLASE" else None,
+            "grupo": (
+                f"{a.carga.grupo_academico.cuatrimestre}° {a.carga.grupo_academico.grupo}"
+                if a.carga and a.carga.grupo_academico else None
+            ),
+            "periodo": a.carga.periodo.clave if a.carga and a.carga.periodo else None,
+            "docente_id": a.docente_id,
+            "docente": a.docente.nombre if a.docente else None,
             "creado_en": a.creado_en.isoformat(),
+            "atendido_en": a.atendido_en.isoformat() if a.atendido_en else None,
         } for a in acuerdos],
         "timeline": timeline[:100],
         "nota_calificaciones": (
