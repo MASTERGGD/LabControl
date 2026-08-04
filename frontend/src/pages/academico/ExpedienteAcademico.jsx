@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatDateInMexico, formatDateTimeInMexico } from '../../utils/timezone';
 
 const TABS = [
@@ -332,7 +333,7 @@ function Evaluaciones({ data }) {
   );
 }
 
-function Acuerdos({ acuerdos }) {
+function Acuerdos({ acuerdos, onDeleted, puedeDepurar = false }) {
   const [materia, setMateria] = useState('TODAS');
   const [estado, setEstado] = useState('TODOS');
   const [tipo, setTipo] = useState('TODOS');
@@ -345,6 +346,21 @@ function Acuerdos({ acuerdos }) {
     && (tipo === 'TODOS' || a.tipo_contexto === tipo)
     && (responsable === 'TODOS' || a.docente === responsable)
   ));
+  const eliminarPrueba = async acuerdo => {
+    const motivo = window.prompt('Motivo de la eliminación. Esta acción quedará registrada en auditoría:');
+    if (!motivo) return;
+    if (motivo.trim().length < 8) {
+      window.alert('El motivo debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (!window.confirm(`¿Eliminar definitivamente el acuerdo de prueba “${acuerdo.titulo}”?`)) return;
+    try {
+      await api.delete(`/expediente-academico/acuerdos/${acuerdo.id}`, { data: { motivo: motivo.trim() } });
+      onDeleted?.(acuerdo.id);
+    } catch (error) {
+      window.alert(error.response?.data?.detail || 'No se pudo eliminar el acuerdo.');
+    }
+  };
   return (
     <div className="space-y-3">
       {!!acuerdos.length && <Panel className="p-4">
@@ -368,6 +384,7 @@ function Acuerdos({ acuerdos }) {
           {a.detalle && <p className="mt-3 text-sm text-slate-400">{a.detalle}</p>}
           <p className="mt-2 text-xs text-blue-400">Fecha de revisión: {fmt(a.fecha_revision)}</p>
           {a.resultado && <p className="mt-2 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-300"><b>Resultado:</b> {a.resultado}</p>}
+          {puedeDepurar && <div className="mt-3 border-t border-red-500/10 pt-3"><button type="button" onClick={() => eliminarPrueba(a)} className="text-xs font-semibold text-red-400 hover:text-red-300">Eliminar registro de prueba</button></div>}
         </Panel>
       ))}
       {!!acuerdos.length && !visibles.length && <Panel className="p-8 text-center text-sm text-slate-500">No hay acuerdos que coincidan con los filtros.</Panel>}
@@ -552,6 +569,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
 }
 
 export default function ExpedienteAcademico() {
+  const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -744,7 +762,7 @@ export default function ExpedienteAcademico() {
                 {tab === 'materias' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Materias del cuatrimestre</h2><p className="text-xs text-slate-500">Resultados calculados a partir de registros disponibles en SIGA.</p></div><MateriasTable materias={data.materias} /></Panel>}
                 {tab === 'asistencia' && <Asistencia data={data} />}
                 {tab === 'evaluaciones' && <Evaluaciones data={data} />}
-                {tab === 'acuerdos' && <Acuerdos acuerdos={data.acuerdos} />}
+                {tab === 'acuerdos' && <Acuerdos acuerdos={data.acuerdos} puedeDepurar={['SUPER_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES'].includes(usuario?.rol)} onDeleted={id => setData(actual => ({ ...actual, acuerdos: actual.acuerdos.filter(a => a.id !== id), resumen: { ...actual.resumen, acuerdos_pendientes: Math.max(0, actual.resumen.acuerdos_pendientes - (actual.acuerdos.find(a => a.id === id)?.estado === 'PENDIENTE' ? 1 : 0)) } }))} />}
                 {tab === 'tutoria' && <Tutoria tutoria={data.tutoria} />}
                 {tab === 'timeline' && <Timeline items={data.timeline} />}
               </div>

@@ -4,6 +4,7 @@ from dependencies import hashear_password
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
 )
+from models.auditoria import AuditLog
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
 from tests.test_reportes_tutor import _escenario
@@ -112,6 +113,22 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     evento_acuerdo = next(evento for evento in data["timeline"] if evento["tipo"] == "ACUERDO")
     assert evento_acuerdo["fecha"].endswith("Z")
     assert any(evento["tipo"] == "EVALUACION" for evento in data["timeline"])
+
+    acuerdo_id = data["acuerdos"][0]["id"]
+    eliminacion = client.request(
+        "DELETE", f"/expediente-academico/acuerdos/{acuerdo_id}",
+        json={"motivo": "Captura realizada durante pruebas"}, headers=admin_headers,
+    )
+    assert eliminacion.status_code == 200, eliminacion.text
+    assert db.query(SeguimientoAlumnoDocente).filter(
+        SeguimientoAlumnoDocente.id == acuerdo_id,
+    ).first() is None
+    auditoria = db.query(AuditLog).filter(
+        AuditLog.accion == "ELIMINAR_ACUERDO_PRUEBA",
+        AuditLog.recurso_id == acuerdo_id,
+    ).first()
+    assert auditoria is not None
+    assert auditoria.detalle["alumno_id"] == alumno.id
 
 
 def test_solo_tutor_asignado_consulta_expediente(client, db):

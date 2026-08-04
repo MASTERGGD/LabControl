@@ -113,6 +113,7 @@ class Accion:
     DESCARGAR_RESPALDO = "DESCARGAR_RESPALDO"
     ELIMINAR_RESPALDO  = "ELIMINAR_RESPALDO"
     ARCHIVAR_AUDITORIA = "ARCHIVAR_AUDITORIA"
+    ELIMINAR_ACUERDO_PRUEBA = "ELIMINAR_ACUERDO_PRUEBA"
 
 
 class Recurso:
@@ -133,6 +134,7 @@ class Recurso:
     DEPARTAMENTO  = "DEPARTAMENTO"
     TUTORIA       = "TUTORIA"
     REPORTE       = "REPORTE"
+    ACUERDO       = "ACUERDO"
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,8 @@ import math
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -24,12 +25,17 @@ from services.user_permissions import (
     puede_gestionar_materias, puede_gestionar_servicios_escolares,
 )
 from services.tutoria_sync import sincronizar_grupos_tutoria
+from services.auditoria import Accion, Recurso, registrar
 
 
 router = APIRouter(prefix="/expediente-academico", tags=["Expediente Académico"])
 ESTADOS_ASISTENCIA = ("PRESENTE", "FALTA", "RETARDO", "JUSTIFICADA")
 ESTADOS_ABIERTOS = {"PENDIENTE", "ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "SIN_TUTOR"}
 MX_TIMEZONE = ZoneInfo("America/Mexico_City")
+
+
+class EliminarAcuerdoPruebaInput(BaseModel):
+    motivo: str = Field(..., min_length=8, max_length=300)
 
 
 def _iso_utc(fecha: datetime.datetime | None) -> str | None:
@@ -94,6 +100,46 @@ def _obtener_alumno_autorizado(db: Session, alumno_id: int, usuario: Usuario) ->
     if ids is not None and alumno.id not in ids:
         raise HTTPException(403, "No tienes acceso al expediente de este alumno")
     return alumno
+
+
+@router.delete("/acuerdos/{acuerdo_id}", summary="Eliminar un acuerdo capturado durante pruebas")
+def eliminar_acuerdo_prueba(
+    acuerdo_id: int,
+    data: EliminarAcuerdoPruebaInput,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Depuración excepcional y auditada; no es una operación cotidiana del expediente."""
+    if not _acceso_institucional(db, current_user):
+        raise HTTPException(403, "Solo un responsable institucional puede depurar acuerdos de prueba")
+    acuerdo = db.query(SeguimientoAlumnoDocente).filter(
+        SeguimientoAlumnoDocente.id == acuerdo_id,
+        SeguimientoAlumnoDocente.tipo == "ACUERDO",
+    ).first()
+    if not acuerdo:
+        raise HTTPException(404, "Acuerdo no encontrado")
+    if db.query(ReporteTutor).filter(ReporteTutor.seguimiento_docente_id == acuerdo.id).first():
+        raise HTTPException(409, "El acuerdo está vinculado a un reporte de Tutoría y no puede eliminarse")
+
+    detalle_auditoria = {
+        "motivo": data.motivo.strip(),
+        "alumno_id": acuerdo.alumno_id,
+        "docente_id": acuerdo.docente_id,
+        "carga_docente_id": acuerdo.carga_docente_id,
+        "titulo": acuerdo.titulo,
+        "detalle": acuerdo.detalle,
+        "estado": acuerdo.estado,
+        "creado_en": acuerdo.creado_en.isoformat(),
+    }
+    db.delete(acuerdo)
+    db.commit()
+    registrar(
+        db, accion=Accion.ELIMINAR_ACUERDO_PRUEBA, recurso=Recurso.ACUERDO,
+        usuario=current_user, recurso_id=acuerdo_id, detalle=detalle_auditoria,
+        request=request,
+    )
+    return {"ok": True, "mensaje": "Acuerdo de prueba eliminado; la acción quedó en auditoría"}
 
 
 def _grupo_y_cargas(db: Session, alumno: CatalogoAlumno):
