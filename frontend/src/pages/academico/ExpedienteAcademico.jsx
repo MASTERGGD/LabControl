@@ -338,6 +338,10 @@ function Acuerdos({ acuerdos, onDeleted, puedeDepurar = false }) {
   const [estado, setEstado] = useState('TODOS');
   const [tipo, setTipo] = useState('TODOS');
   const [responsable, setResponsable] = useState('TODOS');
+  const [confirmandoId, setConfirmandoId] = useState(null);
+  const [motivoEliminacion, setMotivoEliminacion] = useState('');
+  const [eliminando, setEliminando] = useState(false);
+  const [errorEliminacion, setErrorEliminacion] = useState('');
   const materias = useMemo(() => [...new Set(acuerdos.map(a => a.materia).filter(Boolean))].sort(), [acuerdos]);
   const responsables = useMemo(() => [...new Set(acuerdos.map(a => a.docente).filter(Boolean))].sort(), [acuerdos]);
   const visibles = acuerdos.filter(a => (
@@ -347,18 +351,21 @@ function Acuerdos({ acuerdos, onDeleted, puedeDepurar = false }) {
     && (responsable === 'TODOS' || a.docente === responsable)
   ));
   const eliminarPrueba = async acuerdo => {
-    const motivo = window.prompt('Motivo de la eliminación. Esta acción quedará registrada en auditoría:');
-    if (!motivo) return;
-    if (motivo.trim().length < 8) {
-      window.alert('El motivo debe tener al menos 8 caracteres.');
+    if (motivoEliminacion.trim().length < 8) {
+      setErrorEliminacion('El motivo debe tener al menos 8 caracteres.');
       return;
     }
-    if (!window.confirm(`¿Eliminar definitivamente el acuerdo de prueba “${acuerdo.titulo}”?`)) return;
+    setEliminando(true);
+    setErrorEliminacion('');
     try {
-      await api.delete(`/expediente-academico/acuerdos/${acuerdo.id}`, { data: { motivo: motivo.trim() } });
+      await api.delete(`/expediente-academico/acuerdos/${acuerdo.id}`, { data: { motivo: motivoEliminacion.trim() } });
       onDeleted?.(acuerdo.id);
+      setConfirmandoId(null);
+      setMotivoEliminacion('');
     } catch (error) {
-      window.alert(error.response?.data?.detail || 'No se pudo eliminar el acuerdo.');
+      setErrorEliminacion(error.response?.data?.detail || 'No se pudo eliminar el acuerdo.');
+    } finally {
+      setEliminando(false);
     }
   };
   return (
@@ -384,7 +391,15 @@ function Acuerdos({ acuerdos, onDeleted, puedeDepurar = false }) {
           {a.detalle && <p className="mt-3 text-sm text-slate-400">{a.detalle}</p>}
           <p className="mt-2 text-xs text-blue-400">Fecha de revisión: {fmt(a.fecha_revision)}</p>
           {a.resultado && <p className="mt-2 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-300"><b>Resultado:</b> {a.resultado}</p>}
-          {puedeDepurar && <div className="mt-3 border-t border-red-500/10 pt-3"><button type="button" onClick={() => eliminarPrueba(a)} className="text-xs font-semibold text-red-400 hover:text-red-300">Eliminar registro de prueba</button></div>}
+          {puedeDepurar && <div className="mt-3 border-t border-red-500/10 pt-3">
+            {confirmandoId !== a.id ? <button type="button" onClick={() => { setConfirmandoId(a.id); setMotivoEliminacion(''); setErrorEliminacion(''); }} className="text-xs font-semibold text-red-400 hover:text-red-300">Eliminar registro de prueba</button> : <div className="rounded-xl border border-red-500/25 bg-red-500/5 p-3">
+              <p className="text-sm font-semibold text-red-400">Confirmar eliminación definitiva</p>
+              <p className="mt-1 text-xs text-slate-500">El acuerdo desaparecerá del expediente, pero se conservará una copia de sus datos y el motivo en auditoría.</p>
+              <textarea autoFocus rows={2} value={motivoEliminacion} onChange={e => setMotivoEliminacion(e.target.value)} className="input-dark mt-3 w-full" placeholder="Escribe el motivo obligatorio…" />
+              {errorEliminacion && <p className="mt-2 text-xs text-red-400">{errorEliminacion}</p>}
+              <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={eliminando} onClick={() => eliminarPrueba(a)} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{eliminando ? 'Eliminando…' : 'Sí, eliminar definitivamente'}</button><button type="button" disabled={eliminando} onClick={() => { setConfirmandoId(null); setMotivoEliminacion(''); setErrorEliminacion(''); }} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-400">Cancelar</button></div>
+            </div>}
+          </div>}
         </Panel>
       ))}
       {!!acuerdos.length && !visibles.length && <Panel className="p-8 text-center text-sm text-slate-500">No hay acuerdos que coincidan con los filtros.</Panel>}
