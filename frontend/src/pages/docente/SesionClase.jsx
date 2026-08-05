@@ -804,11 +804,13 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
 
 // ─── Modal: Solicitar slot ocupado ────────────────────────────────────────────
 
-function ModalSolicitar({ slot, onClose, onSolicitado }) {
+function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
   const r = slot.reservacion;
   const [form, setForm]               = useState({ materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', motivo: '' });
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
+  const [gruposDisponibles, setGruposDisponibles] = useState([]);
+  const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
@@ -820,12 +822,43 @@ function ModalSolicitar({ slot, onClose, onSolicitado }) {
       materia:              m.nombre || '',
       carrera:              m.carrera || '',
       cuatrimestre_materia: m.cuatrimestre_oficial ? String(m.cuatrimestre_oficial) : '',
+      grupo:                '',
     }));
   };
+
+  useEffect(() => {
+    let vigente = true;
+    if (!form.carrera || !form.cuatrimestre_materia) {
+      setGruposDisponibles([]);
+      return undefined;
+    }
+    setCargandoGrupos(true);
+    api.get('/catalogo/grupos/disponibles', {
+      params: {
+        carrera: form.carrera,
+        cuatrimestre: form.cuatrimestre_materia,
+        periodo: cuatrimestre,
+      },
+    }).then(({ data }) => {
+      if (!vigente) return;
+      setGruposDisponibles(data);
+      setForm(f => ({ ...f, grupo: data.length === 1 ? data[0].grupo : '' }));
+    }).catch(() => {
+      if (vigente) {
+        setGruposDisponibles([]);
+        setForm(f => ({ ...f, grupo: '' }));
+      }
+    }).finally(() => {
+      if (vigente) setCargandoGrupos(false);
+    });
+    return () => { vigente = false; };
+  }, [form.carrera, form.cuatrimestre_materia, cuatrimestre]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.materia.trim()) { setError('Escribe o selecciona una materia.'); return; }
+    if (!materiaInfo) { setError('Selecciona una materia del catálogo académico.'); return; }
+    if (!form.grupo) { setError('Selecciona un grupo compatible.'); return; }
     setSaving(true); setError('');
     try {
       await api.post(`/horarios/reservaciones/${r.id}/solicitar`, form);
@@ -868,7 +901,8 @@ function ModalSolicitar({ slot, onClose, onSolicitado }) {
                   onChange={(txt) => {
                     setMateriaQuery(txt);
                     setMateriaInfo(null);
-                    setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '' }));
+                    setGruposDisponibles([]);
+                    setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '', grupo: '' }));
                   }}
                   onSelect={seleccionarMateria}
                   renderItem={(m) => (
@@ -901,9 +935,26 @@ function ModalSolicitar({ slot, onClose, onSolicitado }) {
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Tu grupo *</label>
-              <input required type="text" placeholder="Ej. TIeID-5to. A"
-                value={form.grupo} onChange={e => setForm({...form, grupo: e.target.value})}
-                className="w-full input-dark text-white  px-3 py-2 text-sm  focus:outline-none focus:ring-2 focus:ring-orange-500"/>
+              <select
+                required
+                value={form.grupo}
+                disabled={!materiaInfo || cargandoGrupos || !gruposDisponibles.length}
+                onChange={e => setForm({ ...form, grupo: e.target.value })}
+                className="w-full input-dark text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">{!materiaInfo ? 'Selecciona primero una materia' : cargandoGrupos ? 'Consultando grupos…' : !gruposDisponibles.length ? 'No hay grupos compatibles' : 'Selecciona un grupo'}</option>
+                {gruposDisponibles.map(grupo => (
+                  <option key={grupo.id} value={grupo.grupo}>
+                    {grupo.cuatrimestre}° {grupo.grupo} — {grupo.total_alumnos} alumno{grupo.total_alumnos === 1 ? '' : 's'}{grupo.turno ? ` · ${grupo.turno}` : ''}
+                  </option>
+                ))}
+              </select>
+              {materiaInfo && !cargandoGrupos && gruposDisponibles.length === 1 && form.grupo && (
+                <p className="mt-1 text-xs text-emerald-400">✓ Grupo asignado automáticamente: {form.cuatrimestre_materia}° {form.grupo}</p>
+              )}
+              {materiaInfo && !cargandoGrupos && !gruposDisponibles.length && (
+                <p className="mt-1 text-xs text-amber-400">No existe un grupo activo para esta carrera, cuatrimestre y periodo.</p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Motivo (opcional)</label>
@@ -2192,7 +2243,7 @@ export default function SesionClase() {
           onClose={cerrar} onCancelada={recargar} onSesionIniciada={recargar} />
       )}
       {modalSlot?.tipo === 'solicitar' && (
-        <ModalSolicitar slot={modalSlot.slot}
+        <ModalSolicitar slot={modalSlot.slot} cuatrimestre={cuatrimestre}
           onClose={cerrar} onSolicitado={recargar} />
       )}
       {modalSlot?.tipo === 'yo_solicite' && (
