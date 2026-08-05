@@ -35,11 +35,19 @@ export default function SeguimientoGrupos() {
     setDatos(null);
     api.get('/docencia/horario', { params: { periodo_id: periodoId } }).then(({ data }) => {
       const clases = data.filter((c) => c.tipo_actividad === 'CLASE' && c.grupo_academico_id);
-      setCargas(clases);
-      const existe = clases.some((c) => String(c.id) === seleccion);
+      const unicas = Array.from(clases.reduce((mapa, carga) => {
+        const materia = carga.materia_id ? `materia:${carga.materia_id}` : `nombre:${carga.actividad_nombre.trim().toLocaleUpperCase('es-MX')}`;
+        const clave = `${carga.periodo_id}|${carga.grupo_academico_id}|${materia}`;
+        const existente = mapa.get(clave);
+        if (existente) existente.bloques_semanales += 1;
+        else mapa.set(clave, { ...carga, bloques_semanales: 1 });
+        return mapa;
+      }, new Map()).values());
+      setCargas(unicas);
+      const existe = unicas.some((c) => String(c.id) === seleccion);
       setParams({
         periodo: periodoId,
-        ...(existe ? { carga: seleccion } : clases.length ? { carga: String(clases[0].id) } : {}),
+        ...(existe ? { carga: seleccion } : unicas.length ? { carga: String(unicas[0].id) } : {}),
       }, { replace: true });
     }).catch(() => setError('No se pudieron cargar tus grupos.'));
   }, [periodoId]);
@@ -153,7 +161,7 @@ export default function SeguimientoGrupos() {
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Materia y grupo</label>
           <select value={seleccion} onChange={(e) => setParams({ periodo: periodoId, carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
             {!cargas.length && <option value="">Sin clases configuradas</option>}
-            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}</option>)}
+            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}{c.bloques_semanales > 1 ? ` · ${c.bloques_semanales} bloques semanales` : ''}</option>)}
           </select>
         </div>
         {!esPeriodoActual && periodoSeleccionado && (

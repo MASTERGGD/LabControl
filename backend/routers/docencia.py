@@ -1079,15 +1079,17 @@ def seguimiento_grupo(
     ).first()
     if not carga or not carga.grupo_academico_id:
         raise HTTPException(404, "Carga docente con grupo no encontrada")
+    cargas_equivalentes = _cargas_equivalentes(db, carga)
+    carga_ids = [item.id for item in cargas_equivalentes]
     clases = db.query(ClaseDocente).filter(
-        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.carga_docente_id.in_(carga_ids),
     ).order_by(ClaseDocente.fecha.desc()).all()
     inscripciones = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
         InscripcionAlumno.estado == "ACTIVO",
     ).all()
     registros = db.query(SeguimientoAlumnoDocente).filter(
-        SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+        SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
         SeguimientoAlumnoDocente.docente_id == current_user.id,
     ).order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
     registros_por_alumno = {}
@@ -1155,6 +1157,7 @@ def seguimiento_grupo(
     ) if filas else 0
     return {
         "carga": _serializar_carga(carga, db),
+        "bloques_semanales": len(cargas_equivalentes),
         "total_clases": total_clases,
         "total_alumnos": len(filas),
         "promedio_asistencia": promedio,
@@ -1185,6 +1188,24 @@ def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_
     if not inscripcion:
         raise HTTPException(404, "Alumno no encontrado en este grupo")
     return carga, inscripcion.alumno
+
+
+def _cargas_equivalentes(db: Session, carga: CargaDocente):
+    """Agrupa los bloques semanales de una misma materia, grupo y periodo."""
+    candidatas = db.query(CargaDocente).filter(
+        CargaDocente.docente_id == carga.docente_id,
+        CargaDocente.periodo_id == carga.periodo_id,
+        CargaDocente.grupo_academico_id == carga.grupo_academico_id,
+        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.activo == True,
+    ).all()
+    if carga.materia_id:
+        return [item for item in candidatas if item.materia_id == carga.materia_id]
+    nombre = (carga.actividad_nombre or "").strip().casefold()
+    return [
+        item for item in candidatas
+        if not item.materia_id and (item.actividad_nombre or "").strip().casefold() == nombre
+    ]
 
 
 def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoAlumno, docente_id: int):
@@ -1389,13 +1410,16 @@ def faltas_justificables(
         db, carga_id, alumno_id, current_user.id,
     )
     _validar_carga_actual(db, carga)
+    cargas_equivalentes = _cargas_equivalentes(db, carga)
+    carga_ids = [item.id for item in cargas_equivalentes]
+    horarios = {item.id: f"{item.hora_inicio}–{item.hora_fin}" for item in cargas_equivalentes}
     if fecha_fin < fecha_inicio:
         raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
     faltas = (
         db.query(AsistenciaDocente, ClaseDocente)
         .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
         .filter(
-            ClaseDocente.carga_docente_id == carga.id,
+            ClaseDocente.carga_docente_id.in_(carga_ids),
             ClaseDocente.fecha.between(fecha_inicio, fecha_fin),
             AsistenciaDocente.alumno_id == alumno.id,
             AsistenciaDocente.estado == "FALTA",
@@ -1417,7 +1441,7 @@ def faltas_justificables(
                 "asistencia_id": asistencia.id,
                 "clase_id": clase.id,
                 "fecha": clase.fecha.isoformat(),
-                "horario": f"{carga.hora_inicio}–{carga.hora_fin}",
+                "horario": horarios.get(clase.carga_docente_id, ""),
                 "estado": asistencia.estado,
             }
             for asistencia, clase in faltas
@@ -1437,13 +1461,14 @@ def justificar_faltas_multiples(
         db, carga_id, alumno_id, current_user.id,
     )
     _validar_carga_actual(db, carga)
+    carga_ids = [item.id for item in _cargas_equivalentes(db, carga)]
     registros = (
         db.query(AsistenciaDocente, ClaseDocente)
         .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
         .filter(
             AsistenciaDocente.id.in_(data.asistencia_ids),
             AsistenciaDocente.alumno_id == alumno.id,
-            ClaseDocente.carga_docente_id == carga.id,
+            ClaseDocente.carga_docente_id.in_(carga_ids),
             ClaseDocente.fecha.between(data.fecha_inicio, data.fecha_fin),
         )
         .all()
@@ -1506,8 +1531,9 @@ def ficha_alumno_docente(
     current_user: Usuario = Depends(get_current_user),
 ):
     carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    carga_ids = [item.id for item in _cargas_equivalentes(db, carga)]
     clases = db.query(ClaseDocente).filter(
-        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.carga_docente_id.in_(carga_ids),
     ).order_by(ClaseDocente.fecha.desc()).all()
     asistencias = []
     conteos = {estado.lower(): 0 for estado in ESTADOS_ASISTENCIA}
@@ -1521,7 +1547,7 @@ def ficha_alumno_docente(
                 "observacion": asistencia.observacion,
             })
     registros = db.query(SeguimientoAlumnoDocente).filter(
-        SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+        SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
         SeguimientoAlumnoDocente.alumno_id == alumno.id,
         SeguimientoAlumnoDocente.docente_id == current_user.id,
     ).order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
