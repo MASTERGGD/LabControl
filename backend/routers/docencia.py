@@ -1763,15 +1763,30 @@ def dashboard_docente(
             "resumen": _serializar_clase(clase)["resumen"] if clase else None,
         })
 
-    grupos = []
-    alumnos_prioritarios = []
-    acuerdos_pendientes = 0
+    # Una materia puede tener varios bloques semanales. El dashboard debe
+    # analizarla una sola vez, porque seguimiento_grupo ya consolida sus bloques.
+    cargas_seguimiento = []
+    claves_seguimiento = set()
     for carga in cargas:
         if not carga.grupo_academico_id:
             continue
+        identidad_materia = (
+            f"materia:{carga.materia_id}" if carga.materia_id
+            else f"nombre:{(carga.actividad_nombre or '').strip().casefold()}"
+        )
+        clave = (carga.grupo_academico_id, identidad_materia)
+        if clave not in claves_seguimiento:
+            claves_seguimiento.add(clave)
+            cargas_seguimiento.append(carga)
+
+    grupos = []
+    alumnos_prioritarios_por_id = {}
+    acuerdos_pendientes = 0
+    for carga in cargas_seguimiento:
         seguimiento = seguimiento_grupo(carga.id, db, current_user)
+        cargas_equivalentes_ids = [item.id for item in _cargas_equivalentes(db, carga)]
         pendientes_carga = db.query(SeguimientoAlumnoDocente.id).filter(
-            SeguimientoAlumnoDocente.carga_docente_id == carga.id,
+            SeguimientoAlumnoDocente.carga_docente_id.in_(cargas_equivalentes_ids),
             SeguimientoAlumnoDocente.docente_id == current_user.id,
             SeguimientoAlumnoDocente.tipo == "ACUERDO",
             SeguimientoAlumnoDocente.estado == "PENDIENTE",
@@ -1788,14 +1803,14 @@ def dashboard_docente(
             "alumnos_alerta": seguimiento["alumnos_en_alerta"],
             "acuerdos_pendientes": pendientes_carga,
             "ultima_clase": max(
-                (clase.fecha for clase in clases if clase.carga_docente_id == carga.id),
+                (clase.fecha for clase in clases if clase.carga_docente_id in cargas_equivalentes_ids),
                 default=None,
             ),
         })
         for alumno in seguimiento["alumnos"]:
             if not alumno["alertas"]:
                 continue
-            alumnos_prioritarios.append({
+            candidato = {
                 "alumno_id": alumno["alumno_id"],
                 "carga_id": carga.id,
                 "nombre": alumno["nombre"],
@@ -1810,7 +1825,21 @@ def dashboard_docente(
                     "ALTA" if any(alerta["nivel"] == "ALTO" for alerta in alumno["alertas"])
                     else "MEDIA"
                 ),
-            })
+            }
+            existente = alumnos_prioritarios_por_id.get(alumno["alumno_id"])
+            if not existente:
+                candidato["materias"] = [carga.actividad_nombre]
+                alumnos_prioritarios_por_id[alumno["alumno_id"]] = candidato
+            else:
+                if carga.actividad_nombre not in existente["materias"]:
+                    existente["materias"].append(carga.actividad_nombre)
+                existente["motivos"] = list(dict.fromkeys(existente["motivos"] + candidato["motivos"]))
+                existente["faltas"] += candidato["faltas"]
+                existente["faltas_consecutivas"] = max(existente["faltas_consecutivas"], candidato["faltas_consecutivas"])
+                existente["asistencia"] = min(existente["asistencia"], candidato["asistencia"])
+                if candidato["prioridad"] == "ALTA":
+                    existente["prioridad"] = "ALTA"
+    alumnos_prioritarios = list(alumnos_prioritarios_por_id.values())
     alumnos_prioritarios.sort(key=lambda item: (
         0 if item["prioridad"] == "ALTA" else 1,
         item["asistencia"],
@@ -1827,7 +1856,7 @@ def dashboard_docente(
             "clases_hoy": len(jornada),
             "clases_cerradas": sum(1 for item in jornada if item["estado"] == "CERRADA"),
             "asistencias_pendientes": pendientes_asistencia,
-            "grupos_activos": len(grupos),
+            "grupos_activos": len({carga.grupo_academico_id for carga in cargas_seguimiento}),
             "alumnos_atencion": len(alumnos_prioritarios),
             "acuerdos_pendientes": acuerdos_pendientes,
         },
