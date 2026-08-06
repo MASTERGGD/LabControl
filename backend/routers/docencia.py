@@ -1542,7 +1542,10 @@ def ficha_alumno_docente(
         if asistencia:
             conteos[asistencia.estado.lower()] += 1
             asistencias.append({
+                "clase_id": clase.id,
                 "fecha": clase.fecha.isoformat(),
+                "hora_inicio": clase.carga.hora_inicio,
+                "hora_fin": clase.carga.hora_fin,
                 "estado": asistencia.estado,
                 "observacion": asistencia.observacion,
             })

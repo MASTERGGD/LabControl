@@ -43,6 +43,8 @@ export default function FichaAlumnoDocente() {
   const [periodoFecha, setPeriodoFecha] = useState('TODOS');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [estadoAsistencia, setEstadoAsistencia] = useState('TODOS');
+  const [paginaAsistencia, setPaginaAsistencia] = useState(1);
 
   const cargar = useCallback(async () => {
     try {
@@ -114,6 +116,34 @@ export default function FichaAlumnoDocente() {
       return true;
     });
   }, [datos, periodoFecha, fechaDesde, fechaHasta]);
+
+  const asistenciasFiltradas = useMemo(() => {
+    if (!datos) return [];
+    const ahora = new Date();
+    const limite30 = new Date(ahora);
+    limite30.setDate(limite30.getDate() - 30);
+    return datos.asistencias.filter((asistencia) => {
+      const fecha = new Date(`${asistencia.fecha}T12:00:00`);
+      if (periodoFecha === '30_DIAS' && fecha < limite30) return false;
+      if (fechaDesde && asistencia.fecha < fechaDesde) return false;
+      if (fechaHasta && asistencia.fecha > fechaHasta) return false;
+      if (estadoAsistencia !== 'TODOS' && asistencia.estado !== estadoAsistencia) return false;
+      return true;
+    });
+  }, [datos, periodoFecha, fechaDesde, fechaHasta, estadoAsistencia]);
+
+  useEffect(() => { setPaginaAsistencia(1); }, [periodoFecha, fechaDesde, fechaHasta, estadoAsistencia, alumnoId, cargaId]);
+
+  const asistenciasPorPagina = 10;
+  const totalPaginasAsistencia = Math.max(1, Math.ceil(asistenciasFiltradas.length / asistenciasPorPagina));
+  const asistenciasVisibles = asistenciasFiltradas.slice(
+    (paginaAsistencia - 1) * asistenciasPorPagina,
+    paginaAsistencia * asistenciasPorPagina,
+  );
+  const resumenAsistenciaFiltrada = ['PRESENTE', 'FALTA', 'RETARDO', 'JUSTIFICADA'].reduce((resumen, estado) => ({
+    ...resumen,
+    [estado]: asistenciasFiltradas.filter((asistencia) => asistencia.estado === estado).length,
+  }), {});
 
   const calificaciones = datos?.registros.filter((r) => r.tipo === 'CALIFICACION' && r.calificacion != null) || [];
   const promedio = calificaciones.length
@@ -275,7 +305,16 @@ export default function FichaAlumnoDocente() {
                 <label className="text-xs font-semibold text-slate-400">Hasta
                   <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="input-dark mt-1" />
                 </label>
-                {(fechaDesde || fechaHasta || periodoFecha !== 'TODOS') && <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setPeriodoFecha('TODOS'); }} className="pb-2 text-xs font-semibold text-emerald-400">Limpiar filtros</button>}
+                {pestana === 'ASISTENCIA' && <label className="text-xs font-semibold text-slate-400">Estado
+                  <select value={estadoAsistencia} onChange={(e) => setEstadoAsistencia(e.target.value)} className="input-dark mt-1">
+                    <option value="TODOS">Todos los estados</option>
+                    <option value="PRESENTE">Presentes</option>
+                    <option value="FALTA">Faltas</option>
+                    <option value="RETARDO">Retardos</option>
+                    <option value="JUSTIFICADA">Justificadas</option>
+                  </select>
+                </label>}
+                {(fechaDesde || fechaHasta || periodoFecha !== 'TODOS' || estadoAsistencia !== 'TODOS') && <button onClick={() => { setFechaDesde(''); setFechaHasta(''); setPeriodoFecha('TODOS'); setEstadoAsistencia('TODOS'); }} className="pb-2 text-xs font-semibold text-emerald-400">Limpiar filtros</button>}
               </div>
 
               <div className="p-4 sm:p-5">
@@ -323,10 +362,54 @@ export default function FichaAlumnoDocente() {
                   </div>
                 )}
                 {pestana === 'ASISTENCIA' && (
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {datos.asistencias
-                      .filter((a) => (!fechaDesde || a.fecha >= fechaDesde) && (!fechaHasta || a.fecha <= fechaHasta))
-                      .map((a) => <div key={a.fecha} className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><div className="flex justify-between gap-3"><span className="text-sm text-slate-300">{fechaTexto(`${a.fecha}T12:00:00`, false)}</span><span className="text-xs font-semibold text-slate-400">{a.estado}</span></div>{a.observacion && <p className="mt-1 text-xs text-slate-500">{a.observacion}</p>}</div>)}
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-400">{resumenAsistenciaFiltrada.PRESENTE || 0} presentes</span>
+                      <span className="rounded-full bg-red-500/10 px-3 py-1.5 font-semibold text-red-400">{resumenAsistenciaFiltrada.FALTA || 0} faltas</span>
+                      <span className="rounded-full bg-amber-500/10 px-3 py-1.5 font-semibold text-amber-400">{resumenAsistenciaFiltrada.RETARDO || 0} retardos</span>
+                      <span className="rounded-full bg-blue-500/10 px-3 py-1.5 font-semibold text-blue-400">{resumenAsistenciaFiltrada.JUSTIFICADA || 0} justificadas</span>
+                      <span className="rounded-full bg-white/5 px-3 py-1.5 text-slate-400">{asistenciasFiltradas.length} sesiones</span>
+                    </div>
+
+                    <div className="hidden overflow-hidden rounded-xl border border-white/10 md:block">
+                      <div className="grid grid-cols-[150px_130px_140px_minmax(0,1fr)] bg-white/[0.035] px-4 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        <span>Fecha</span><span>Horario</span><span>Estado</span><span>Detalle</span>
+                      </div>
+                      <div className="divide-y divide-white/10">
+                        {asistenciasVisibles.map((asistencia) => (
+                          <div key={asistencia.clase_id || `${asistencia.fecha}-${asistencia.hora_inicio}`} className="grid grid-cols-[150px_130px_140px_minmax(0,1fr)] items-center px-4 py-3 text-sm hover:bg-white/[0.025]">
+                            <span className="font-medium text-slate-300">{fechaTexto(`${asistencia.fecha}T12:00:00`, false)}</span>
+                            <span className="text-slate-400">{asistencia.hora_inicio && asistencia.hora_fin ? `${asistencia.hora_inicio}–${asistencia.hora_fin}` : '—'}</span>
+                            <span><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${asistencia.estado === 'PRESENTE' ? 'bg-emerald-500/10 text-emerald-400' : asistencia.estado === 'FALTA' ? 'bg-red-500/10 text-red-400' : asistencia.estado === 'RETARDO' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}>{asistencia.estado}</span></span>
+                            <span className="truncate text-slate-500" title={asistencia.observacion || ''}>{asistencia.observacion || '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 md:hidden">
+                      {asistenciasVisibles.map((asistencia) => (
+                        <article key={asistencia.clase_id || `${asistencia.fecha}-${asistencia.hora_inicio}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div><p className="text-sm font-medium text-slate-300">{fechaTexto(`${asistencia.fecha}T12:00:00`, false)}</p><p className="mt-0.5 text-xs text-slate-500">{asistencia.hora_inicio && asistencia.hora_fin ? `${asistencia.hora_inicio}–${asistencia.hora_fin}` : 'Horario no disponible'}</p></div>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${asistencia.estado === 'PRESENTE' ? 'bg-emerald-500/10 text-emerald-400' : asistencia.estado === 'FALTA' ? 'bg-red-500/10 text-red-400' : asistencia.estado === 'RETARDO' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}`}>{asistencia.estado}</span>
+                          </div>
+                          {asistencia.observacion && <p className="mt-2 border-t border-white/10 pt-2 text-xs text-slate-400">{asistencia.observacion}</p>}
+                        </article>
+                      ))}
+                    </div>
+
+                    {!asistenciasFiltradas.length && <div className="rounded-xl border border-dashed border-white/10 py-10 text-center text-sm text-slate-400">No hay sesiones con los filtros seleccionados.</div>}
+                    {asistenciasFiltradas.length > asistenciasPorPagina && (
+                      <div className="flex flex-col gap-2 border-t border-white/10 pt-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                        <span>Mostrando {(paginaAsistencia - 1) * asistenciasPorPagina + 1}–{Math.min(paginaAsistencia * asistenciasPorPagina, asistenciasFiltradas.length)} de {asistenciasFiltradas.length}</span>
+                        <div className="flex items-center gap-2">
+                          <button disabled={paginaAsistencia === 1} onClick={() => setPaginaAsistencia((pagina) => Math.max(1, pagina - 1))} className="rounded-lg border border-white/10 px-3 py-2 font-semibold text-slate-300 disabled:opacity-40">Anterior</button>
+                          <span className="px-2">Página {paginaAsistencia} de {totalPaginasAsistencia}</span>
+                          <button disabled={paginaAsistencia === totalPaginasAsistencia} onClick={() => setPaginaAsistencia((pagina) => Math.min(totalPaginasAsistencia, pagina + 1))} className="rounded-lg border border-white/10 px-3 py-2 font-semibold text-slate-300 disabled:opacity-40">Siguiente</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {!['RESUMEN', 'ASISTENCIA'].includes(pestana) && (
