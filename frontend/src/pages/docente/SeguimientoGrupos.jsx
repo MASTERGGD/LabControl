@@ -8,6 +8,10 @@ const fechaLocal = (fecha) => [
   String(fecha.getMonth() + 1).padStart(2, '0'),
   String(fecha.getDate()).padStart(2, '0'),
 ].join('-');
+const DIAS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const fechaCorta = (fecha) => new Intl.DateTimeFormat('es-MX', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${fecha}T12:00:00Z`));
 
 export default function SeguimientoGrupos() {
   const navigate = useNavigate();
@@ -39,8 +43,9 @@ export default function SeguimientoGrupos() {
         const materia = carga.materia_id ? `materia:${carga.materia_id}` : `nombre:${carga.actividad_nombre.trim().toLocaleUpperCase('es-MX')}`;
         const clave = `${carga.periodo_id}|${carga.grupo_academico_id}|${materia}`;
         const existente = mapa.get(clave);
-        if (existente) existente.bloques_semanales += 1;
-        else mapa.set(clave, { ...carga, bloques_semanales: 1 });
+        const horario = { dia: carga.dia_semana, inicio: carga.hora_inicio, fin: carga.hora_fin };
+        if (existente) existente.horarios.push(horario);
+        else mapa.set(clave, { ...carga, horarios: [horario] });
         return mapa;
       }, new Map()).values());
       setCargas(unicas);
@@ -158,11 +163,22 @@ export default function SeguimientoGrupos() {
           <select value={periodoId} onChange={(e) => setParams({ periodo: e.target.value })} className="mb-4 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
             {periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}{p.es_actual ? ' · Actual' : ' · Histórico'}</option>)}
           </select>
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Materia y grupo</label>
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Selecciona la materia y el grupo</label>
           <select value={seleccion} onChange={(e) => setParams({ periodo: periodoId, carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white">
             {!cargas.length && <option value="">Sin clases configuradas</option>}
-            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}{c.bloques_semanales > 1 ? ` · ${c.bloques_semanales} bloques semanales` : ''}</option>)}
+            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}</option>)}
           </select>
+          {cargaActual?.horarios?.length > 0 && (
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3">
+              <p className="text-xs font-semibold text-slate-400">Horario semanal</p>
+              <p className="mt-1 text-sm text-slate-300">
+                {[...cargaActual.horarios]
+                  .sort((a, b) => a.dia - b.dia || a.inicio.localeCompare(b.inicio))
+                  .map((horario) => `${DIAS[horario.dia] || 'Día'} ${horario.inicio}–${horario.fin}`)
+                  .join(' · ')}
+              </p>
+            </div>
+          )}
         </div>
         {!esPeriodoActual && periodoSeleccionado && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
@@ -173,17 +189,17 @@ export default function SeguimientoGrupos() {
         {datos && (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {[['Clases registradas', datos.total_clases], ['Alumnos', datos.total_alumnos], ['Promedio del grupo', `${datos.promedio_asistencia}%`], ['Alumnos en alerta', datos.alumnos_en_alerta]].map(([label, value]) => (
+              {[['Sesiones registradas', datos.total_clases], ['Alumnos', datos.total_alumnos], ['Promedio del grupo', `${datos.promedio_asistencia}%`], ['Alumnos en alerta', datos.alumnos_en_alerta]].map(([label, value]) => (
                 <div key={label} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{value}</p><p className="text-xs text-slate-400">{label}</p></div>
               ))}
             </div>
             {datos.clases_sin_cerrar?.length > 0 && (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                <p className="font-semibold text-amber-300">Tienes {datos.clases_sin_cerrar.length} asistencia(s) sin cerrar</p>
+                <p className="font-semibold text-amber-300">{datos.clases_sin_cerrar.length === 1 ? 'Tienes una asistencia sin cerrar' : `Tienes ${datos.clases_sin_cerrar.length} asistencias sin cerrar`}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {datos.clases_sin_cerrar.map((clase) => (
                     <button key={clase.id} onClick={() => navigate(`/docente/clase/${clase.id}`)} className="rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-200">
-                      {clase.fecha} · Continuar cierre
+                      {fechaCorta(clase.fecha)} · Continuar cierre
                     </button>
                   ))}
                 </div>
