@@ -27,7 +27,7 @@ const esDepartamentoServiciosEscolares = departamento => {
 const esDepartamentoDivisionCarrera = departamento => {
   const clave = normalizarCatalogo(departamento?.clave).replace(/\s/g, '');
   const nombre = normalizarCatalogo(departamento?.nombre);
-  return ['DC', 'DDC', 'DV', 'DIVISIONCARRERA', 'DIRECCIONDIVISION'].includes(clave)
+  return ['DC', 'DDC', 'DIVISIONCARRERA', 'DIRECCIONDIVISION'].includes(clave)
     || (nombre.includes('DIVISION') && nombre.includes('CARRERA'))
     || nombre.includes('DIRECCION DE DIVISION');
 };
