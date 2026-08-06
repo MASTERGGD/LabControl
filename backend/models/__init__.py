@@ -32,4 +32,5 @@ from .ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from .docencia import (
     CargaDocente, ClaseDocente, AsistenciaDocente,
     JustificacionAsistenciaDocente, DetalleJustificacionAsistencia,
+    CorreccionAsistenciaDocente,
 )

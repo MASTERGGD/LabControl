@@ -177,6 +177,27 @@ export default function ClaseAsistencia() {
             <p className="mt-1 text-xs text-amber-200">Motivo registrado: {clase.motivo_extemporaneo}</p>
           </div>
         )}
+        {!!clase.correcciones_asistencia?.length && (
+          <details className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.05]">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+              <div>
+                <p className="font-semibold text-blue-300">Historial de correcciones</p>
+                <p className="mt-0.5 text-xs text-slate-400">{clase.correcciones_asistencia.length} movimiento{clase.correcciones_asistencia.length === 1 ? '' : 's'} registrado{clase.correcciones_asistencia.length === 1 ? '' : 's'}; separado de las observaciones de clase.</p>
+              </div>
+              <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-300">Ver bitácora</span>
+            </summary>
+            <div className="divide-y divide-white/10 border-t border-blue-500/15">
+              {clase.correcciones_asistencia.map((correccion) => (
+                <div key={correccion.id} className="grid gap-1 px-5 py-3 text-xs sm:grid-cols-[145px_minmax(160px,1fr)_150px_minmax(180px,1.2fr)] sm:gap-3">
+                  <span className="text-slate-500">{correccion.creado_en ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(`${correccion.creado_en}Z`)) : 'Registro anterior'}</span>
+                  <span className="font-medium text-slate-300">{correccion.alumno || (correccion.tipo === 'APERTURA' ? 'Apertura de corrección' : 'Cambio general')}</span>
+                  <span className="text-slate-400">{correccion.estado_anterior && correccion.estado_nuevo ? `${correccion.estado_anterior} → ${correccion.estado_nuevo}` : correccion.tipo}</span>
+                  <span className="text-slate-400"><span className="text-slate-500">Motivo:</span> {correccion.motivo}{correccion.docente ? ` · ${correccion.docente}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
             <h2 className="font-semibold text-white">Lista del grupo</h2>

@@ -67,6 +67,10 @@ class ClaseDocente(Base):
 
     carga = relationship("CargaDocente", back_populates="clases")
     asistencias = relationship("AsistenciaDocente", back_populates="clase", cascade="all, delete-orphan")
+    correcciones_asistencia = relationship(
+        "CorreccionAsistenciaDocente", back_populates="clase",
+        cascade="all, delete-orphan",
+    )
 
 
 class AsistenciaDocente(Base):
@@ -133,6 +137,32 @@ class DetalleJustificacionAsistencia(Base):
         "JustificacionAsistenciaDocente", back_populates="detalles",
     )
     asistencia = relationship("AsistenciaDocente")
+
+
+class CorreccionAsistenciaDocente(Base):
+    __tablename__ = "correcciones_asistencia_docente"
+
+    id = Column(Integer, primary_key=True)
+    clase_docente_id = Column(
+        Integer, ForeignKey("clases_docentes.id"), nullable=False, index=True,
+    )
+    asistencia_id = Column(
+        Integer, ForeignKey("asistencias_docentes.id"), nullable=True, index=True,
+    )
+    alumno_id = Column(
+        Integer, ForeignKey("catalogo_alumnos.id"), nullable=True, index=True,
+    )
+    docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    tipo = Column(String(20), nullable=False, default="CAMBIO")
+    estado_anterior = Column(String(20), nullable=True)
+    estado_nuevo = Column(String(20), nullable=True)
+    motivo = Column(Text, nullable=False)
+    creado_en = Column(DateTime, nullable=False, default=_utcnow)
+
+    clase = relationship("ClaseDocente", back_populates="correcciones_asistencia")
+    asistencia = relationship("AsistenciaDocente")
+    alumno = relationship("CatalogoAlumno")
+    docente = relationship("Usuario")
 
 
 class SeguimientoAlumnoDocente(Base):

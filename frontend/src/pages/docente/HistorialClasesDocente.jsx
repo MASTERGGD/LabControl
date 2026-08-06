@@ -12,6 +12,9 @@ const ESTADOS = {
 const fechaLarga = (fecha) => new Date(`${fecha}T12:00:00`).toLocaleDateString('es-MX', {
   weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
 });
+const fechaHora = (fecha) => fecha ? new Intl.DateTimeFormat('es-MX', {
+  dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City',
+}).format(new Date(`${fecha}Z`)) : 'Registro anterior';
 const asistenciaClase = (clase) => {
   const r = clase.resumen || {};
   const asistieron = (r.presente || 0) + (r.retardo || 0) + (r.justificada || 0);
@@ -42,6 +45,7 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
   const r = clase.resumen || {};
   const porcentaje = asistenciaClase(clase);
   const tieneIncidencia = Boolean(clase.bitacora?.incidencias || clase.observacion_general);
+  const correcciones = clase.correcciones_asistencia || [];
   return (
     <article className={`border-b border-white/10 transition last:border-b-0 ${abierta ? 'bg-white/[0.035]' : 'hover:bg-white/[0.025]'}`}>
       <button type="button" onClick={onToggle} aria-expanded={abierta} className="grid w-full gap-3 px-4 py-3 text-left md:grid-cols-[130px_minmax(210px,1.25fr)_minmax(180px,1fr)_120px_125px_28px] md:items-center">
@@ -49,7 +53,7 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
         <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{clase.carga.actividad_nombre}</p><p className="truncate text-xs text-slate-500">{clase.carga.grupo || 'Sin grupo'} · {clase.carga.espacio_nombre || 'Sin espacio'}</p></div>
         <p className="truncate text-sm text-slate-300"><span className="md:hidden text-slate-500">Tema: </span>{clase.bitacora?.tema_impartido || 'Sin tema registrado'}</p>
         <div><b className={`text-sm ${porcentaje != null && porcentaje < 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{porcentaje == null ? '—' : `${porcentaje}%`}</b><p className="text-[10px] text-slate-500">{r.total || 0} alumnos</p></div>
-        <div className="flex flex-wrap gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${est.clase}`}>{est.texto}</span>{tieneIncidencia && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-400">Incidencia</span>}</div>
+        <div className="flex flex-wrap gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${est.clase}`}>{est.texto}</span>{tieneIncidencia && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-400">Incidencia</span>}{!!correcciones.length && <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-bold text-blue-400">{correcciones.length} corrección{correcciones.length === 1 ? '' : 'es'}</span>}</div>
         <svg className={`h-4 w-4 text-slate-500 transition ${abierta ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg>
       </button>
       {abierta && (
@@ -59,6 +63,24 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
             <div className="grid grid-cols-4 gap-2 text-center">{[['Presentes', r.presente || 0, 'text-emerald-400'], ['Faltas', r.falta || 0, 'text-red-400'], ['Retardos', r.retardo || 0, 'text-amber-400'], ['Justif.', r.justificada || 0, 'text-cyan-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/[0.04] px-2 py-2"><b className={`block ${tone}`}>{value}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>
             <button onClick={onDetalle} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Ver registro completo</button>
           </div>
+          {!!correcciones.length && (
+            <div className="mt-4 overflow-hidden rounded-xl border border-blue-500/20 bg-blue-500/[0.04]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-500/15 px-4 py-3">
+                <div><p className="text-sm font-semibold text-blue-300">Historial de correcciones</p><p className="text-[11px] text-slate-500">Bitácora independiente de las observaciones académicas de la clase.</p></div>
+                <span className="text-xs text-slate-400">Última modificación: {fechaHora(correcciones[0]?.creado_en)}</span>
+              </div>
+              <div className="divide-y divide-white/10">
+                {correcciones.map((correccion) => (
+                  <div key={correccion.id} className="grid gap-1 px-4 py-3 text-xs sm:grid-cols-[145px_minmax(160px,1fr)_150px_minmax(180px,1.2fr)] sm:gap-3">
+                    <span className="text-slate-500">{fechaHora(correccion.creado_en)}</span>
+                    <span className="font-medium text-slate-300">{correccion.alumno || (correccion.tipo === 'APERTURA' ? 'Apertura de corrección' : 'Cambio general')}</span>
+                    <span className="text-slate-400">{correccion.estado_anterior && correccion.estado_nuevo ? `${correccion.estado_anterior} → ${correccion.estado_nuevo}` : correccion.tipo}</span>
+                    <span className="text-slate-400"><span className="text-slate-500">Motivo:</span> {correccion.motivo}{correccion.docente ? ` · ${correccion.docente}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </article>

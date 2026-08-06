@@ -17,6 +17,7 @@ from models.espacio import EspacioInstitucional
 from models.horario import BloqueoSlot, HorarioDisponible, Reservacion, SolicitudConflicto
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente,
+    CorreccionAsistenciaDocente,
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
     SeguimientoAlumnoDocente,
 )
@@ -414,13 +415,41 @@ def _serializar_clase(clase: ClaseDocente):
     conteos = {estado: 0 for estado in ESTADOS_ASISTENCIA}
     for asistencia in asistencias:
         conteos[asistencia.estado] = conteos.get(asistencia.estado, 0) + 1
+    observaciones = (clase.observacion_general or "").splitlines()
+    correcciones_legacy = [linea for linea in observaciones if linea.startswith("[Correcci")]
+    observacion_limpia = "\n".join(
+        linea for linea in observaciones if not linea.startswith("[Correcci")
+    ).strip() or None
+    correcciones = [{
+        "id": correccion.id,
+        "tipo": correccion.tipo,
+        "alumno_id": correccion.alumno_id,
+        "alumno": (
+            f"{correccion.alumno.apellido_paterno} {correccion.alumno.apellido_materno} "
+            f"{correccion.alumno.nombres}"
+        ).strip() if correccion.alumno else None,
+        "estado_anterior": correccion.estado_anterior,
+        "estado_nuevo": correccion.estado_nuevo,
+        "motivo": correccion.motivo,
+        "docente": correccion.docente.nombre if correccion.docente else None,
+        "creado_en": correccion.creado_en.isoformat(),
+    } for correccion in sorted(
+        clase.correcciones_asistencia, key=lambda item: item.creado_en, reverse=True,
+    )]
+    correcciones.extend({
+        "id": f"legacy-{indice}", "tipo": "APERTURA", "alumno_id": None,
+        "alumno": None, "estado_anterior": None, "estado_nuevo": None,
+        "motivo": linea, "docente": clase.carga.docente.nombre if clase.carga.docente else None,
+        "creado_en": None,
+    } for indice, linea in enumerate(correcciones_legacy))
     return {
         "id": clase.id,
         "fecha": clase.fecha.isoformat(),
         "estado": clase.estado,
         "inicio": clase.inicio.isoformat() if clase.inicio else None,
         "fin": clase.fin.isoformat() if clase.fin else None,
-        "observacion_general": clase.observacion_general,
+        "observacion_general": observacion_limpia,
+        "correcciones_asistencia": correcciones,
         "es_extemporanea": clase.es_extemporanea,
         "motivo_extemporaneo": clase.motivo_extemporaneo,
         "capturada_extemporanea_en": (
@@ -1002,8 +1031,32 @@ def cambiar_asistencia(
     _validar_carga_actual(db, asistencia.clase.carga)
     if asistencia.clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia de esta clase ya está cerrada")
+    estado_anterior = asistencia.estado
+    observacion_anterior = asistencia.observacion
+    es_correccion = asistencia.clase.estado == "CORRECCION"
     asistencia.estado = estado
     asistencia.observacion = data.observacion
+    if (
+        (es_correccion or estado == "JUSTIFICADA" or estado_anterior == "JUSTIFICADA")
+        and (estado_anterior != estado or observacion_anterior != data.observacion)
+    ):
+        motivo_apertura = None
+        if es_correccion:
+            apertura = db.query(CorreccionAsistenciaDocente).filter(
+                CorreccionAsistenciaDocente.clase_docente_id == clase_id,
+                CorreccionAsistenciaDocente.tipo == "APERTURA",
+            ).order_by(CorreccionAsistenciaDocente.creado_en.desc()).first()
+            motivo_apertura = apertura.motivo if apertura else None
+        db.add(CorreccionAsistenciaDocente(
+            clase_docente_id=clase_id,
+            asistencia_id=asistencia.id,
+            alumno_id=asistencia.alumno_id,
+            docente_id=current_user.id,
+            tipo="CAMBIO",
+            estado_anterior=estado_anterior,
+            estado_nuevo=estado,
+            motivo=data.observacion or motivo_apertura or "Ajuste de asistencia",
+        ))
     db.commit()
     return {"id": asistencia.id, "estado": asistencia.estado, "observacion": asistencia.observacion}
 
@@ -1055,11 +1108,12 @@ def habilitar_correccion(
     _validar_carga_actual(db, clase.carga)
     if clase.estado != "CERRADA":
         raise HTTPException(409, "Solo se puede corregir una asistencia cerrada")
-    marca = _ahora_mx().strftime("%d/%m/%Y %H:%M")
-    registro = f"[Corrección {marca}] {data.motivo.strip()}"
-    clase.observacion_general = "\n".join(
-        parte for parte in [clase.observacion_general, registro] if parte
-    )
+    db.add(CorreccionAsistenciaDocente(
+        clase_docente_id=clase.id,
+        docente_id=current_user.id,
+        tipo="APERTURA",
+        motivo=data.motivo.strip(),
+    ))
     clase.estado = "CORRECCION"
     db.commit()
     return _serializar_clase(clase)
@@ -1506,6 +1560,16 @@ def justificar_faltas_multiples(
             asistencia_id=asistencia.id,
             estado_anterior=asistencia.estado,
             estado_nuevo="JUSTIFICADA",
+        ))
+        db.add(CorreccionAsistenciaDocente(
+            clase_docente_id=asistencia.clase_docente_id,
+            asistencia_id=asistencia.id,
+            alumno_id=alumno.id,
+            docente_id=current_user.id,
+            tipo="JUSTIFICACION",
+            estado_anterior=asistencia.estado,
+            estado_nuevo="JUSTIFICADA",
+            motivo=f"{data.motivo}{referencia}",
         ))
         asistencia.estado = "JUSTIFICADA"
         asistencia.observacion = "\n".join(
