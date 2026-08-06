@@ -14,6 +14,8 @@ PERM_INVENTARIO_WRITE = "inventario:write"
 PERM_INVENTARIO_VALIDATE = "inventario:validar"
 PERM_SERVICIOS_ESCOLARES_MANAGE = "servicios_escolares:manage"
 PERM_DIVISION_CARRERA_MANAGE = "division_carrera:manage"
+PERM_EXPEDIENTE_ACADEMICO_READ = "expediente_academico:read"
+PERM_MATERIAS_MANAGE = "materias:manage"
 
 
 def _normalizar_catalogo(value: str | None) -> str:
@@ -184,7 +186,27 @@ def puede_gestionar_materias(db: Session, usuario: Usuario) -> bool:
     return (
         es_responsable_departamento(db, usuario, departamento.id)
         or tiene_permiso_departamento(db, usuario, PERM_DIVISION_CARRERA_MANAGE, departamento.id)
+        or tiene_permiso_departamento(db, usuario, PERM_MATERIAS_MANAGE, departamento.id)
     )
+
+
+def puede_consultar_expediente(db: Session, usuario: Usuario) -> bool:
+    """Acceso institucional al expediente; nunca se concede por ser ADMINISTRATIVO."""
+    if not usuario:
+        return False
+    if usuario.rol in {
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.TUTORIA_ADMIN,
+        RolUsuario.SERVICIOS_ESCOLARES,
+    }:
+        return True
+    if puede_gestionar_servicios_escolares(db, usuario):
+        return True
+    if tiene_permiso_en_alguna_area(db, usuario, PERM_EXPEDIENTE_ACADEMICO_READ):
+        return True
+    # El responsable o personal autorizado de la verdadera Dirección de División
+    # conserva acceso, pero ningún responsable de otra área lo hereda.
+    return puede_gestionar_materias(db, usuario)
 
 
 def tiene_permiso_en_alguna_area(db: Session, usuario: Usuario, permiso: str) -> bool:
@@ -244,5 +266,8 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
     if puede_gestionar_servicios_escolares(db, usuario):
         permisos.add(PERM_SERVICIOS_ESCOLARES_MANAGE)
     if puede_gestionar_materias(db, usuario):
-        permisos.add(PERM_DIVISION_CARRERA_MANAGE)
+        permisos.add(PERM_MATERIAS_MANAGE)
+        permisos.add(PERM_EXPEDIENTE_ACADEMICO_READ)
+    elif puede_consultar_expediente(db, usuario):
+        permisos.add(PERM_EXPEDIENTE_ACADEMICO_READ)
     return sorted(permisos)

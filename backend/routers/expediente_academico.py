@@ -22,7 +22,7 @@ from models.tutoria import (
 )
 from models.usuario import RolUsuario, Usuario
 from services.user_permissions import (
-    puede_gestionar_materias, puede_gestionar_servicios_escolares,
+    puede_consultar_expediente,
 )
 from services.tutoria_sync import sincronizar_grupos_tutoria
 from services.auditoria import Accion, Recurso, registrar
@@ -65,11 +65,7 @@ def _nombre_alumno(alumno: CatalogoAlumno) -> str:
 
 
 def _acceso_institucional(db: Session, usuario: Usuario) -> bool:
-    return (
-        usuario.rol in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN}
-        or puede_gestionar_servicios_escolares(db, usuario)
-        or puede_gestionar_materias(db, usuario)
-    )
+    return puede_consultar_expediente(db, usuario)
 
 
 def _ids_alumnos_accesibles(db: Session, usuario: Usuario):
@@ -89,7 +85,7 @@ def _ids_alumnos_accesibles(db: Session, usuario: Usuario):
             )
         }
         return tutorados
-    return set()
+    raise HTTPException(403, "No tienes autorización para consultar el expediente académico")
 
 
 def _obtener_alumno_autorizado(db: Session, alumno_id: int, usuario: Usuario) -> CatalogoAlumno:

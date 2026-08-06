@@ -389,18 +389,18 @@ const NAV_ITEMS = [
   },
 
   // Grupo: Dirección de División de Carrera
-  { divider: true, label: 'Seguimiento académico', roles: ['SUPER_ADMIN','TUTORIA_ADMIN','SERVICIOS_ESCOLARES'], permiso: 'division_carrera:manage' },
+  { divider: true, label: 'Seguimiento académico', roles: ['SUPER_ADMIN','TUTORIA_ADMIN','SERVICIOS_ESCOLARES'], permiso: 'expediente_academico:read' },
   {
     label: 'Expediente académico', path: '/expediente-academico',
     roles: ['SUPER_ADMIN','TUTORIA_ADMIN','SERVICIOS_ESCOLARES'],
-    permiso: 'division_carrera:manage', inGroup: true,
+    permiso: 'expediente_academico:read', inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422A12.083 12.083 0 0118 13.5C18 16.538 15.314 19 12 19s-6-2.462-6-5.5c0-1.025.304-1.985.84-2.922L12 14z"/></svg>,
   },
 
   // Grupo: Dirección de División de Carrera
-  { divider: true, label: 'Dirección de División de Carrera', roles: [], permiso: 'division_carrera:manage', ocultarSuperAdmin: true },
+  { divider: true, label: 'Dirección de División de Carrera', roles: [], permiso: 'materias:manage', ocultarSuperAdmin: true },
   {
-    label: 'Materias', path: '/division-carrera/materias', roles: [], permiso: 'division_carrera:manage', inGroup: true, ocultarSuperAdmin: true,
+    label: 'Materias', path: '/division-carrera/materias', roles: [], permiso: 'materias:manage', inGroup: true, ocultarSuperAdmin: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253"/></svg>,
   },
 

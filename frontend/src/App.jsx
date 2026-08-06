@@ -62,6 +62,8 @@ import ExpedienteAcademico from './pages/academico/ExpedienteAcademico';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
+const PERM_EXPEDIENTE_ACADEMICO_READ = 'expediente_academico:read';
+const PERM_MATERIAS_MANAGE = 'materias:manage';
 
 // ─── Ruta protegida por rol ────────────────────────────────────────────────────
 // Usa ROUTE_PERMISSIONS de src/config/permissions.js como fuente de verdad.
@@ -263,14 +265,14 @@ function AppRoutes() {
       }/>
       <Route path="/admin/catalogo" element={<Navigate to="/division-carrera/materias" replace />}/>
       <Route path="/division-carrera/materias" element={
-        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE]}>
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={PERM_MATERIAS_MANAGE}>
           <Catalogo modo="materias" />
         </RutaProtegida>
       }/>
       <Route path="/expediente-academico" element={
         <RutaProtegida
           rolesPermitidos={['SUPER_ADMIN','DOCENTE','TUTORIA_ADMIN','SERVICIOS_ESCOLARES']}
-          permisosPermitidos={PERM_DIVISION_CARRERA_MANAGE}
+          permisosPermitidos={PERM_EXPEDIENTE_ACADEMICO_READ}
         >
           <ExpedienteAcademico />
         </RutaProtegida>
