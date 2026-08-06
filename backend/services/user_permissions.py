@@ -40,7 +40,7 @@ def es_departamento_division_carrera(departamento: Departamento | None) -> bool:
     clave = _normalizar_catalogo(getattr(departamento, "clave", "")).replace(" ", "")
     nombre = _normalizar_catalogo(getattr(departamento, "nombre", ""))
     return (
-        clave in {"DC", "DDC", "DV", "DIVISIONCARRERA", "DIRECCIONDIVISION"}
+        clave in {"DC", "DDC", "DIVISIONCARRERA", "DIRECCIONDIVISION"}
         or ("DIVISION" in nombre and "CARRERA" in nombre)
         or "DIRECCION DE DIVISION" in nombre
     )
