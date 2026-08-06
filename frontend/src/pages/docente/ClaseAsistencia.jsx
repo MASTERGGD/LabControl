@@ -8,7 +8,7 @@ const ESTADOS = [
   ['PRESENTE', 'Presente', 'bg-emerald-600'],
   ['FALTA', 'Falta', 'bg-red-600'],
   ['RETARDO', 'Retardo', 'bg-amber-600'],
-  ['JUSTIFICADA', 'Justificada', 'bg-blue-600'],
+  ['JUSTIFICADA', 'Justificada hoy', 'bg-blue-600'],
 ];
 
 export default function ClaseAsistencia() {
@@ -21,6 +21,7 @@ export default function ClaseAsistencia() {
   const [cerrando, setCerrando] = useState(false);
   const [modal, setModal] = useState(null);
   const [texto, setTexto] = useState('');
+  const [justificacionActual, setJustificacionActual] = useState(null);
   const [bitacora, setBitacora] = useState({
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
     tarea_asignada: '', incidencias: '', tema_pendiente: '',
@@ -40,18 +41,49 @@ export default function ClaseAsistencia() {
   }, [claseId]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const cambiar = async (asistenciaId, estado) => {
+  const cambiar = async (asistenciaId, estado, observacion = null) => {
     if (!['ABIERTA', 'CORRECCION'].includes(clase.estado)) return;
     setClase((actual) => ({
       ...actual,
-      alumnos: actual.alumnos.map((a) => a.asistencia_id === asistenciaId ? { ...a, estado } : a),
+      alumnos: actual.alumnos.map((a) => a.asistencia_id === asistenciaId ? { ...a, estado, observacion } : a),
     }));
     try {
-      await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado });
+      await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado, observacion });
       cargar();
+      return true;
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo guardar la asistencia.');
       cargar();
+      return false;
+    }
+  };
+
+  const seleccionarEstado = (alumno, estado) => {
+    if (estado !== 'JUSTIFICADA') {
+      cambiar(alumno.asistencia_id, estado);
+      return;
+    }
+    setTexto(alumno.estado === 'JUSTIFICADA' ? alumno.observacion || '' : '');
+    setJustificacionActual(alumno);
+    setModal('justificar');
+  };
+
+  const guardarJustificacionActual = async () => {
+    if (texto.trim().length < 5) {
+      setError('Escribe el motivo de la justificación (mínimo 5 caracteres).');
+      return;
+    }
+    setCerrando(true);
+    setError('');
+    try {
+      const guardada = await cambiar(justificacionActual.asistencia_id, 'JUSTIFICADA', texto.trim());
+      if (!guardada) return;
+      setModal(null);
+      setJustificacionActual(null);
+      setTexto('');
+      setMensaje('La asistencia de esta sesión quedó registrada como justificada.');
+    } finally {
+      setCerrando(false);
     }
   };
 
@@ -108,6 +140,9 @@ export default function ClaseAsistencia() {
 
   if (!clase) return <AdminLayout><div className="p-8 text-center text-slate-400">{error || 'Cargando lista de alumnos...'}</div></AdminLayout>;
   const r = clase.resumen;
+  const fechaSesion = new Intl.DateTimeFormat('es-MX', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(`${clase.fecha}T12:00:00Z`));
 
   return (
     <AdminLayout>
@@ -145,7 +180,7 @@ export default function ClaseAsistencia() {
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
             <h2 className="font-semibold text-white">Lista del grupo</h2>
-            <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente las excepciones.</p>
+            <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente las excepciones. “Justificada hoy” aplica solo a esta sesión: {fechaSesion}.</p>
           </div>
           <div>
             {clase.alumnos.map((alumno, indice) => (
@@ -175,7 +210,7 @@ export default function ClaseAsistencia() {
                     <button
                       key={valor}
                       disabled={!['ABIERTA', 'CORRECCION'].includes(clase.estado)}
-                      onClick={() => cambiar(alumno.asistencia_id, valor)}
+                      onClick={() => seleccionarEstado(alumno, valor)}
                       className={`rounded-lg px-2 py-2 text-xs font-semibold transition ${alumno.estado === valor ? `${color} text-white shadow-sm` : 'bg-white/5 text-slate-400 hover:bg-white/10'} disabled:cursor-not-allowed`}
                     >
                       {etiqueta}
@@ -195,16 +230,29 @@ export default function ClaseAsistencia() {
             <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white">{modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</h2>
+                  <h2 className="text-lg font-bold text-white">{modal === 'justificar' ? 'Justificar asistencia de hoy' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    {modal === 'corregir'
+                    {modal === 'justificar'
+                      ? 'Esta acción modifica únicamente la sesión que estás consultando.'
+                      : modal === 'corregir'
                       ? 'Indica por qué necesitas modificarla. El motivo quedará registrado.'
                       : 'Confirma el cierre. Después podrás corregirla únicamente dejando un motivo.'}
                   </p>
                 </div>
                 <button onClick={() => setModal(null)} className="text-2xl text-slate-400 hover:text-white">×</button>
               </div>
-              {modal === 'corregir' ? (
+              {modal === 'justificar' ? (
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+                    <p className="font-semibold text-white">{justificacionActual?.nombre}</p>
+                    <p className="mt-1 text-sm text-slate-300">{clase.carga.actividad_nombre} · {clase.carga.grupo}</p>
+                    <p className="mt-1 text-sm font-medium capitalize text-blue-300">Sesión del {fechaSesion} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</p>
+                  </div>
+                  <label className="block text-sm font-medium text-slate-300">Motivo de la justificación *</label>
+                  <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-blue-500" placeholder="Ej. Presentó justificante emitido por División de Carrera." />
+                  <p className="text-xs text-slate-400">Para aplicar un justificante a faltas de fechas anteriores, utiliza “Justificar faltas” en Seguimiento de grupos.</p>
+                </div>
+              ) : modal === 'corregir' ? (
                 <>
                   <label className="mt-5 block text-sm font-medium text-slate-300">Motivo de la corrección *</label>
                   <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-emerald-500" placeholder="Ej. El alumno presentó su justificante después del cierre." />
@@ -239,8 +287,8 @@ export default function ClaseAsistencia() {
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setModal(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
-                <button disabled={cerrando || (modal !== 'corregir' && !bitacora.tema_impartido.trim())} onClick={modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'corregir' ? 'bg-amber-600' : 'bg-red-600'}`}>
-                  {cerrando ? 'Guardando...' : modal === 'corregir' ? 'Habilitar corrección' : 'Confirmar cierre'}
+                <button disabled={cerrando || (modal === 'justificar' ? texto.trim().length < 5 : modal !== 'corregir' && !bitacora.tema_impartido.trim())} onClick={modal === 'justificar' ? guardarJustificacionActual : modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'justificar' ? 'bg-blue-600' : modal === 'corregir' ? 'bg-amber-600' : 'bg-red-600'}`}>
+                  {cerrando ? 'Guardando...' : modal === 'justificar' ? 'Justificar esta sesión' : modal === 'corregir' ? 'Habilitar corrección' : 'Confirmar cierre'}
                 </button>
               </div>
             </div>
