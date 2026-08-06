@@ -248,16 +248,18 @@ export default function ClaseAsistencia() {
             className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
             style={{ backgroundColor: 'rgba(2, 6, 23, 0.72)' }}
           >
-            <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+            <div className={`max-h-[94vh] w-full overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl ${modal === 'cerrar' ? 'max-w-4xl' : 'max-w-lg'}`}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white">{modal === 'justificar' ? 'Justificar asistencia de hoy' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</h2>
+                  <h2 className="text-lg font-bold text-white">{modal === 'justificar' ? 'Justificar asistencia de hoy' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar clase'}</h2>
                   <p className="mt-1 text-sm text-slate-400">
                     {modal === 'justificar'
                       ? 'Esta acción modifica únicamente la sesión que estás consultando.'
                       : modal === 'corregir'
                       ? 'Indica por qué necesitas modificarla. El motivo quedará registrado.'
-                      : 'Confirma el cierre. Después podrás corregirla únicamente dejando un motivo.'}
+                      : clase.estado === 'CORRECCION'
+                        ? 'Actualiza la información necesaria. La modificación quedará registrada en la bitácora.'
+                        : 'Registra lo trabajado durante la sesión. Después podrás realizar correcciones dejando un motivo.'}
                   </p>
                 </div>
                 <button onClick={() => setModal(null)} className="text-2xl text-slate-400 hover:text-white">×</button>
@@ -279,37 +281,43 @@ export default function ClaseAsistencia() {
                   <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-emerald-500" placeholder="Ej. El alumno presentó su justificante después del cierre." />
                 </>
               ) : (
-                <div className="mt-5 grid max-h-[55vh] gap-4 overflow-y-auto pr-1 sm:grid-cols-2">
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <label className="text-sm font-medium text-slate-300 sm:col-span-2">Tema impartido *
                     <input required value={bitacora.tema_impartido} onChange={(e) => setBitacora({ ...bitacora, tema_impartido: e.target.value })} className="input-dark mt-1" placeholder="Ej. Evaluación primaria del paciente" />
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Avance respecto a la planeación
-                    <div className="mt-2 flex items-center gap-3">
+                  <label className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm font-medium text-slate-300 sm:col-span-2">Avance respecto a la planeación <span className="font-normal text-slate-500">(Opcional)</span>
+                    <div className="mt-3 flex items-center gap-4">
                       <input type="range" min="0" max="100" step="5" value={bitacora.avance_planeacion} onChange={(e) => setBitacora({ ...bitacora, avance_planeacion: e.target.value })} className="flex-1" />
-                      <span className="w-12 text-right text-emerald-400">{bitacora.avance_planeacion}%</span>
+                      <span className="w-14 rounded-lg bg-emerald-500/10 px-2 py-1.5 text-center font-semibold text-emerald-400">{bitacora.avance_planeacion}%</span>
                     </div>
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Actividades realizadas
-                    <textarea value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={2} className="input-dark mt-1" placeholder="Práctica, ejercicio o dinámica" />
+                  <label className="text-sm font-medium text-slate-300">Actividades realizadas <span className="font-normal text-slate-500">(Opcional)</span>
+                    <textarea value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Práctica, ejercicio o dinámica" />
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Tarea asignada
-                    <textarea value={bitacora.tarea_asignada} onChange={(e) => setBitacora({ ...bitacora, tarea_asignada: e.target.value })} rows={2} className="input-dark mt-1" placeholder="Actividad y fecha de entrega" />
+                  <label className="text-sm font-medium text-slate-300">Tarea asignada <span className="font-normal text-slate-500">(Opcional)</span>
+                    <textarea value={bitacora.tarea_asignada} onChange={(e) => setBitacora({ ...bitacora, tarea_asignada: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Actividad y fecha de entrega" />
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Tema pendiente
-                    <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={2} className="input-dark mt-1" placeholder="Punto para retomar en la siguiente clase" />
-                  </label>
-                  <label className="text-sm font-medium text-slate-300 sm:col-span-2">Incidencias académicas o de disciplina
-                    <textarea value={bitacora.incidencias} onChange={(e) => setBitacora({ ...bitacora, incidencias: e.target.value })} rows={2} className="input-dark mt-1" placeholder="Déjalo vacío si no hubo incidencias" />
-                  </label>
-                  <label className="text-sm font-medium text-slate-300 sm:col-span-2">Observación general
-                    <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} className="input-dark mt-1" placeholder="Notas adicionales de la sesión" />
-                  </label>
+                  <details defaultOpen={Boolean(bitacora.tema_pendiente || bitacora.incidencias || texto)} className="rounded-xl border border-white/10 bg-white/[0.02] sm:col-span-2">
+                    <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-300">+ Agregar información adicional <span className="ml-1 font-normal text-slate-500">(Opcional)</span></summary>
+                    <div className="grid gap-4 border-t border-white/10 p-4 sm:grid-cols-2">
+                      <label className="text-sm font-medium text-slate-300">Tema pendiente
+                        <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Punto para retomar en la siguiente clase" />
+                      </label>
+                      <label className="text-sm font-medium text-slate-300">Incidencias académicas o de disciplina
+                        <textarea value={bitacora.incidencias} onChange={(e) => setBitacora({ ...bitacora, incidencias: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Déjalo vacío si no hubo incidencias" />
+                      </label>
+                      <label className="text-sm font-medium text-slate-300 sm:col-span-2">Observación general
+                        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Notas adicionales de la sesión" />
+                      </label>
+                    </div>
+                  </details>
+                  <p className="text-xs text-slate-500 sm:col-span-2">* Campo obligatorio. Los demás campos pueden dejarse vacíos.</p>
                 </div>
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setModal(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
-                <button disabled={cerrando || (modal === 'justificar' ? texto.trim().length < 5 : modal !== 'corregir' && !bitacora.tema_impartido.trim())} onClick={modal === 'justificar' ? guardarJustificacionActual : modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'justificar' ? 'bg-blue-600' : modal === 'corregir' ? 'bg-amber-600' : 'bg-red-600'}`}>
-                  {cerrando ? 'Guardando...' : modal === 'justificar' ? 'Justificar esta sesión' : modal === 'corregir' ? 'Habilitar corrección' : 'Confirmar cierre'}
+                <button disabled={cerrando || (modal === 'justificar' ? texto.trim().length < 5 : modal !== 'corregir' && !bitacora.tema_impartido.trim())} onClick={modal === 'justificar' ? guardarJustificacionActual : modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'justificar' ? 'bg-blue-600' : modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                  {cerrando ? 'Guardando...' : modal === 'justificar' ? 'Justificar esta sesión' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar y guardar'}
                 </button>
               </div>
             </div>
