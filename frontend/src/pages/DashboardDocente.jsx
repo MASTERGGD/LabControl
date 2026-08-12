@@ -442,7 +442,7 @@ export default function DashboardDocente() {
                       <td className="text-slate-400">{item.grupo}</td>
                       <td className="text-slate-400">{item.espacio}</td>
                       <td><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${estado[1]}`}>{estado[0]}</span></td>
-                      <td className="pr-5 text-right"><button onClick={() => navigate(item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.clase_id ? 'Abrir clase' : 'Ir al horario'} →</button></td>
+                      <td className="pr-5 text-right"><button onClick={() => navigate(item.estado === 'NO_LECTIVA' ? '/calendario-academico' : item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.estado === 'NO_LECTIVA' ? 'Ver calendario' : item.clase_id ? 'Abrir clase' : 'Ir al horario'} →</button></td>
                     </tr>
                   );
                 })}

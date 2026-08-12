@@ -40,6 +40,7 @@ const minutosDeHora = (hora = '00:00') => {
 };
 
 const estadoActividad = (item, minutoActual) => {
+  if (item.calendario && !item.calendario.requiere_asistencia) return 'NO_LECTIVA';
   if (item.clase_estado === 'CERRADA') return 'FINALIZADA';
   if (['ABIERTA', 'CORRECCION'].includes(item.clase_estado)) return 'EN_CURSO';
   if (minutoActual < minutosDeHora(item.hora_inicio)) return 'PROXIMA';
@@ -483,6 +484,8 @@ export default function MiHorarioDocente() {
   const estadoPrincipal = actividadPrincipal?.estadoDia;
   const tituloPrincipal = estadoPrincipal === 'EN_CURSO'
     ? 'Clase en curso'
+    : estadoPrincipal === 'NO_LECTIVA'
+      ? 'Actividad no exigible hoy'
     : estadoPrincipal === 'ACTUAL'
       ? 'Tu actividad actual'
       : estadoPrincipal === 'PROXIMA'
@@ -498,6 +501,7 @@ export default function MiHorarioDocente() {
   const abrirClase = (item) => (
     item.clase_id ? navigate(`/docente/clase/${item.clase_id}`) : iniciar(item.id)
   );
+  const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
 
   return (
     <AdminLayout>
@@ -545,25 +549,35 @@ export default function MiHorarioDocente() {
           <section className="glass overflow-hidden rounded-2xl">
             <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:p-5">
               <div className="flex min-w-0 items-start gap-4">
-                <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-300 sm:flex">
+                <div className={`hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl sm:flex ${esNoLectiva(actividadPrincipal) ? 'bg-slate-500/15 text-slate-400' : 'bg-emerald-500/15 text-emerald-300'}`}>
                   <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                   </svg>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{tituloPrincipal}</p>
+                  <p className={`text-xs font-bold uppercase tracking-wider ${esNoLectiva(actividadPrincipal) ? 'text-slate-400' : 'text-emerald-400'}`}>{tituloPrincipal}</p>
                   <h2 className="mt-1 text-lg font-bold text-white sm:truncate sm:text-xl">{actividadPrincipal.actividad_nombre}</h2>
                   <p className="mt-1 text-xs text-slate-400 sm:text-sm">
                     {actividadPrincipal.hora_inicio}–{actividadPrincipal.hora_fin}
                     {' · '}{actividadPrincipal.grupo || actividadPrincipal.tipo_actividad}
                     {' · '}{actividadPrincipal.espacio_nombre || 'Espacio sin especificar'}
                   </p>
+                  {esNoLectiva(actividadPrincipal) && (
+                    <p className="mt-2 text-sm font-semibold text-slate-300">
+                      {actividadPrincipal.calendario?.motivo} · No se requiere registrar clase ni asistencia.
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {actividadPrincipal.tipo_actividad === 'CLASE' && (
+                {actividadPrincipal.tipo_actividad === 'CLASE' && !esNoLectiva(actividadPrincipal) && (
                   <button onClick={() => abrirClase(actividadPrincipal)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">
                     {textoAccionClase(actividadPrincipal)}
+                  </button>
+                )}
+                {esNoLectiva(actividadPrincipal) && (
+                  <button onClick={() => navigate('/calendario-academico')} className="rounded-xl border border-slate-500/30 bg-slate-500/10 px-4 py-2.5 text-sm font-semibold text-slate-300">
+                    Ver calendario oficial
                   </button>
                 )}
                 <button onClick={() => setAgendaAbierta(true)} className="flex-1 rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5 sm:flex-none">
@@ -726,9 +740,10 @@ export default function MiHorarioDocente() {
                     ACTUAL: 'Ahora',
                     PROXIMA: 'Próxima',
                     PENDIENTE: 'Pendiente',
+                    NO_LECTIVA: item.calendario?.motivo || 'No lectiva',
                   }[item.estadoDia];
                   return (
-                    <li key={item.id} className={`rounded-xl border p-4 ${destacada ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
+                    <li key={item.id} className={`rounded-xl border p-4 ${esNoLectiva(item) ? 'border-slate-500/30 bg-slate-500/[0.07]' : destacada ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/[0.03]'}`}>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 gap-3">
                           <div className="w-24 shrink-0">
@@ -738,15 +753,21 @@ export default function MiHorarioDocente() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-semibold text-white">{item.actividad_nombre}</p>
-                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${destacada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>{etiqueta}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${esNoLectiva(item) ? 'bg-slate-500/20 text-slate-300' : destacada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>{etiqueta}</span>
                             </div>
                             <p className="mt-0.5 text-xs text-slate-400">{item.grupo || item.tipo_actividad} · {item.espacio_nombre || 'Sin espacio'}</p>
+                            {esNoLectiva(item) && <p className="mt-1 text-xs font-medium text-slate-400">No requiere clase ni asistencia.</p>}
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-                          {item.tipo_actividad === 'CLASE' && (
+                          {item.tipo_actividad === 'CLASE' && !esNoLectiva(item) && (
                             <button onClick={() => abrirClase(item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
                               {textoAccionClase(item)}
+                            </button>
+                          )}
+                          {esNoLectiva(item) && (
+                            <button onClick={() => navigate('/calendario-academico')} className="rounded-lg border border-slate-500/30 px-3 py-2 text-xs font-semibold text-slate-300">
+                              Ver calendario
                             </button>
                           )}
                           <button onClick={() => { setAgendaAbierta(false); setModal({ tipo: 'editar', actividad: item }); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">
