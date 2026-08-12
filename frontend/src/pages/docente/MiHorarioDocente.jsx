@@ -349,6 +349,9 @@ export default function MiHorarioDocente() {
   const [horario, setHorario] = useState([]);
   const [hoy, setHoy] = useState([]);
   const [cierre, setCierre] = useState(null);
+  const [cargaAConfirmar, setCargaAConfirmar] = useState(null);
+  const [observacionesCierre, setObservacionesCierre] = useState('');
+  const [confirmandoCarga, setConfirmandoCarga] = useState(false);
   const [modal, setModal] = useState(null);
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
@@ -404,13 +407,24 @@ export default function MiHorarioDocente() {
   const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
   const periodoAnterior = catalogos.periodos.find((p) => !p.es_actual);
-  const confirmarCarga = async (carga) => {
-    const observaciones = window.prompt('Observaciones finales de la materia (opcional):') || null;
+  const abrirConfirmacionCarga = (carga) => {
+    setCargaAConfirmar(carga);
+    setObservacionesCierre('');
+  };
+  const confirmarCarga = async (e) => {
+    e.preventDefault();
+    if (!cargaAConfirmar || confirmandoCarga) return;
+    setConfirmandoCarga(true);
     try {
-      await api.post(`/cierre-academico/cargas/${carga.carga_id}/confirmar`, { observaciones });
-      setMensaje(`${carga.materia} quedó confirmada para el cierre del cuatrimestre.`);
+      await api.post(`/cierre-academico/cargas/${cargaAConfirmar.carga_id}/confirmar`, {
+        observaciones: observacionesCierre.trim() || null,
+      });
+      setMensaje(`${cargaAConfirmar.materia} quedó confirmada para el cierre del cuatrimestre.`);
+      setCargaAConfirmar(null);
+      setObservacionesCierre('');
       await cargar(periodoId);
     } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo confirmar la materia.'); }
+    finally { setConfirmandoCarga(false); }
   };
 
   const copiarHorarioAnterior = async () => {
@@ -542,7 +556,7 @@ export default function MiHorarioDocente() {
         {cierre && cierre.estado !== 'ACTIVO' && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana vigente: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
-            <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div><span className="text-[10px] font-bold text-amber-300">{c.estado.replaceAll('_',' ')}</span></div>{(cierre.estado === 'CONFIRMACION' || c.estado === 'REABIERTA') && c.estado !== 'CONFIRMADA_DOCENTE' && <button disabled={!c.resumen.puede_confirmar} onClick={() => confirmarCarga(c)} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{c.resumen.puede_confirmar ? 'Confirmar información' : `${c.resumen.clases_abiertas} clase(s) por cerrar`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div><span className="text-[10px] font-bold text-amber-300">{c.estado.replaceAll('_',' ')}</span></div>{(cierre.estado === 'CONFIRMACION' || c.estado === 'REABIERTA') && c.estado !== 'CONFIRMADA_DOCENTE' && <button disabled={!c.resumen.puede_confirmar} onClick={() => abrirConfirmacionCarga(c)} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{c.resumen.puede_confirmar ? 'Confirmar información' : `${c.resumen.clases_abiertas} clase(s) por cerrar`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
           </section>
         )}
         {!esPeriodoActual && periodoSeleccionado && (
@@ -798,6 +812,50 @@ export default function MiHorarioDocente() {
               </ol>
             </div>
           </section>
+        </div>
+      )}
+      {cargaAConfirmar && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+          onMouseDown={() => !confirmandoCarga && setCargaAConfirmar(null)}
+        >
+          <form
+            onSubmit={confirmarCarga}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="glass w-full max-w-md overflow-hidden rounded-2xl border border-emerald-500/20 shadow-2xl"
+          >
+            <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Cierre del cuatrimestre</p>
+                <h2 className="mt-1 text-lg font-bold text-white">Confirmar información</h2>
+                <p className="mt-1 text-sm text-slate-400">Verifica que la información de la materia sea definitiva.</p>
+              </div>
+              <button type="button" disabled={confirmandoCarga} onClick={() => setCargaAConfirmar(null)} className="text-2xl leading-none text-slate-400 hover:text-white">×</button>
+            </header>
+            <div className="space-y-4 p-5">
+              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="font-semibold text-white">{cargaAConfirmar.materia}</p>
+                <p className="mt-1 text-sm text-slate-400">{cargaAConfirmar.grupo} · {cargaAConfirmar.resumen.clases_cerradas} clases cerradas</p>
+                {cargaAConfirmar.estado === 'REABIERTA' && <p className="mt-2 text-xs font-medium text-blue-300">Confirmarás nuevamente la información corregida.</p>}
+              </div>
+              <label className="block text-sm text-slate-300">Observaciones finales <span className="text-slate-500">(opcional)</span>
+                <textarea
+                  rows={3}
+                  maxLength={1000}
+                  autoFocus
+                  value={observacionesCierre}
+                  onChange={(e) => setObservacionesCierre(e.target.value)}
+                  className="input-dark mt-1.5 resize-none"
+                  placeholder="Agrega una nota final si es necesario"
+                />
+              </label>
+              <p className="text-xs leading-5 text-slate-500">Al confirmar, la materia quedará lista para el cierre académico.</p>
+            </div>
+            <footer className="flex flex-col-reverse gap-2 border-t border-white/10 px-5 py-4 sm:flex-row sm:justify-end">
+              <button type="button" disabled={confirmandoCarga} onClick={() => setCargaAConfirmar(null)} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5 disabled:opacity-50">Cancelar</button>
+              <button disabled={confirmandoCarga} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60">{confirmandoCarga ? 'Confirmando…' : 'Confirmar materia'}</button>
+            </footer>
+          </form>
         </div>
       )}
       {modalExtemporanea && (
