@@ -16,6 +16,7 @@ import DashboardSuperAdmin from './pages/DashboardSuperAdmin';
 import DashboardDocente from './pages/DashboardDocente';
 import DashboardAdministrativo from './pages/DashboardAdministrativo';
 import DashboardServiciosEscolares from './pages/DashboardServiciosEscolares';
+import SEPromociones from './pages/servicios_escolares/SEPromociones';
 import Laboratorios from './pages/admin/Laboratorios';
 import LaboratorioDetalle from './pages/admin/LaboratorioDetalle';
 import Usuarios from './pages/admin/Usuarios';
@@ -190,6 +191,11 @@ function AppRoutes() {
       <Route path="/servicios-escolares/grupos" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
           <SEGrupos />
+        </RutaProtegida>
+      }/>
+      <Route path="/servicios-escolares/promociones" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','SERVICIOS_ESCOLARES']} permisosPermitidos={PERM_SERVICIOS_ESCOLARES_MANAGE}>
+          <SEPromociones />
         </RutaProtegida>
       }/>
       <Route path="/servicios-escolares/estudios-socioeconomicos" element={

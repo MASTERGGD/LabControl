@@ -21,6 +21,7 @@ from models.tutoria import (
     ReporteTutor, SesionTutoria,
 )
 from models.usuario import RolUsuario, Usuario
+from models.promocion_academica import PromocionAcademicaAlumno
 from services.user_permissions import (
     puede_consultar_expediente,
 )
@@ -877,6 +878,26 @@ def expediente_alumno(
 
     total_evaluaciones = sum(m["evaluaciones_registradas"] for m in materias)
     promedios = [m["promedio_evidencias"] for m in materias if m["promedio_evidencias"] is not None]
+    inscripciones_historial = (db.query(InscripcionAlumno).join(GrupoAcademico).filter(
+        InscripcionAlumno.alumno_id == alumno.id,
+    ).order_by(GrupoAcademico.periodo_id, GrupoAcademico.cuatrimestre).all())
+    promociones_historial = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
+        PromocionAcademicaAlumno.alumno_id == alumno.id,
+    ).all()}
+    trayectoria = []
+    for inscripcion_h in inscripciones_historial:
+        grupo_h = inscripcion_h.grupo_academico
+        promo_h = promociones_historial.get(inscripcion_h.id)
+        trayectoria.append({
+            "inscripcion_id": inscripcion_h.id, "periodo_id": grupo_h.periodo_id,
+            "periodo": grupo_h.periodo.clave, "carrera": grupo_h.carrera,
+            "cuatrimestre": grupo_h.cuatrimestre, "grupo": grupo_h.grupo,
+            "estado_inscripcion": inscripcion_h.estado,
+            "resolucion": promo_h.resolucion if promo_h else None,
+            "estado_promocion": promo_h.estado if promo_h else None,
+            "periodo_destino": promo_h.periodo_destino.clave if promo_h else None,
+            "observaciones": promo_h.observaciones if promo_h else None,
+        })
     return {
         "alumno": {
             "id": alumno.id, "matricula": alumno.matricula,
@@ -947,6 +968,7 @@ def expediente_alumno(
             "atendido_en": a.atendido_en.isoformat() if a.atendido_en else None,
         } for a in acuerdos],
         "timeline": timeline[:100],
+        "trayectoria_academica": trayectoria,
         "nota_calificaciones": (
             "Las calificaciones mostradas son evidencias registradas por docentes. "
             "Todavía no representan calificaciones oficiales bimestrales."

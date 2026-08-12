@@ -31,6 +31,8 @@ from models.catalogo import CatalogoAlumno, CatalogoCarrera, CatalogoCarreraAlia
 from models.tutoria import GrupoTutorado
 from models.ficha_socioeconomica import FichaSocioeconomica
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
+from models.cierre_academico import CierreAcademicoPeriodo
+from models.promocion_academica import PromocionAcademicaAlumno
 from services.auditoria import registrar, Accion, Recurso
 from services.user_permissions import puede_gestionar_servicios_escolares
 
@@ -53,6 +55,17 @@ def _require_se(db: Session, user: Usuario):
 def _require_alumno(user: Usuario):
     if user.rol != RolUsuario.ALUMNO:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Acceso solo para alumnos")
+
+
+RESOLUCIONES_PROMOCION = {"PROMOVIDO", "REPITE", "ESTADIA", "EGRESO", "BAJA_TEMPORAL", "BAJA_DEFINITIVA", "PENDIENTE"}
+
+
+class ResolucionPromocionIn(BaseModel):
+    periodo_destino_id: int
+    resolucion: str
+    cuatrimestre_destino: Optional[int] = Field(None, ge=1, le=12)
+    grupo_destino: Optional[str] = Field(None, max_length=10)
+    observaciones: Optional[str] = Field(None, max_length=1000)
 
 
 def _require_carreras_reader(db: Session, user: Usuario):
@@ -1141,3 +1154,103 @@ def alumnos_de_grupo(
     if not grupo:
         raise HTTPException(404, "Grupo no encontrado")
     return [_serializar_alumno(i.alumno) for i in grupo.inscripciones if i.estado == "ACTIVO"]
+
+
+def _fila_promocion(inscripcion, promocion=None):
+    alumno, grupo = inscripcion.alumno, inscripcion.grupo_academico
+    resolucion = promocion.resolucion if promocion else "PENDIENTE"
+    return {
+        "inscripcion_id": inscripcion.id, "promocion_id": promocion.id if promocion else None,
+        "alumno_id": alumno.id, "matricula": alumno.matricula,
+        "alumno": f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip(),
+        "carrera": grupo.carrera, "origen": f"{grupo.cuatrimestre}° {grupo.grupo}",
+        "resolucion": resolucion,
+        "cuatrimestre_destino": promocion.cuatrimestre_destino if promocion else min(grupo.cuatrimestre + 1, 12),
+        "grupo_destino": promocion.grupo_destino if promocion else grupo.grupo,
+        "observaciones": promocion.observaciones if promocion else None,
+        "estado": promocion.estado if promocion else "SIN_REVISAR",
+    }
+
+
+@router.get("/promociones", summary="Bandeja de promoción del cuatrimestre")
+def listar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    origen = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_origen_id).first()
+    destino = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_destino_id).first()
+    if not origen or not destino or origen.id == destino.id:
+        raise HTTPException(422, "Selecciona periodos de origen y destino diferentes")
+    cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == origen.id).first()
+    inscripciones = (db.query(InscripcionAlumno).join(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == origen.id, InscripcionAlumno.estado.in_(["ACTIVO", "CONCLUIDA"]),
+    ).order_by(GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all())
+    ids = [i.id for i in inscripciones]
+    promociones = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
+        PromocionAcademicaAlumno.inscripcion_origen_id.in_(ids), PromocionAcademicaAlumno.periodo_destino_id == destino.id,
+    ).all()} if ids else {}
+    filas = [_fila_promocion(i, promociones.get(i.id)) for i in inscripciones]
+    return {
+        "periodo_origen": origen.clave, "periodo_destino": destino.clave,
+        "cierre_academico": cierre.estado if cierre else "SIN_CONFIGURAR",
+        "puede_aplicar": bool(cierre and cierre.estado == "CERRADO"),
+        "total": len(filas), "revisados": sum(f["resolucion"] != "PENDIENTE" for f in filas),
+        "aplicados": sum(f["estado"] == "APLICADA" for f in filas), "alumnos": filas,
+    }
+
+
+@router.put("/promociones/{inscripcion_id}", summary="Resolver promoción de un alumno")
+def resolver_promocion(inscripcion_id: int, data: ResolucionPromocionIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    inscripcion = db.query(InscripcionAlumno).filter(InscripcionAlumno.id == inscripcion_id).first()
+    destino = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_destino_id).first()
+    resolucion = data.resolucion.upper()
+    if not inscripcion or not destino: raise HTTPException(404, "Inscripción o periodo no encontrado")
+    if resolucion not in RESOLUCIONES_PROMOCION: raise HTTPException(422, "Resolución no válida")
+    requiere_grupo = resolucion in {"PROMOVIDO", "REPITE"}
+    if requiere_grupo and (not data.cuatrimestre_destino or not data.grupo_destino):
+        raise HTTPException(422, "Indica cuatrimestre y grupo de destino")
+    promo = db.query(PromocionAcademicaAlumno).filter(PromocionAcademicaAlumno.inscripcion_origen_id == inscripcion.id).first()
+    if promo and promo.estado == "APLICADA": raise HTTPException(409, "La promoción ya fue aplicada")
+    if not promo:
+        promo = PromocionAcademicaAlumno(alumno_id=inscripcion.alumno_id, inscripcion_origen_id=inscripcion.id, periodo_destino_id=destino.id)
+        db.add(promo)
+    promo.periodo_destino_id = destino.id; promo.resolucion = resolucion
+    promo.cuatrimestre_destino = data.cuatrimestre_destino if requiere_grupo else None
+    promo.grupo_destino = data.grupo_destino.strip().upper() if requiere_grupo else None
+    promo.observaciones = data.observaciones; promo.estado = "RESUELTA" if resolucion != "PENDIENTE" else "PROPUESTA"
+    promo.resuelto_por_id = current_user.id; promo.resuelto_en = _now()
+    db.commit(); db.refresh(promo)
+    return _fila_promocion(inscripcion, promo)
+
+
+@router.post("/promociones/aplicar", summary="Aplicar promociones resueltas")
+def aplicar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == periodo_origen_id).first()
+    if not cierre or cierre.estado != "CERRADO": raise HTTPException(409, "El cierre académico del periodo de origen aún no está concluido")
+    promociones = (db.query(PromocionAcademicaAlumno).join(InscripcionAlumno).join(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo_origen_id, PromocionAcademicaAlumno.periodo_destino_id == periodo_destino_id,
+        PromocionAcademicaAlumno.estado == "RESUELTA", PromocionAcademicaAlumno.resolucion != "PENDIENTE",
+    ).all())
+    aplicadas = 0
+    for promo in promociones:
+        inscripcion, alumno = promo.inscripcion_origen, promo.alumno
+        if promo.resolucion in {"PROMOVIDO", "REPITE", "ESTADIA"}:
+            cuatrimestre_destino = promo.cuatrimestre_destino or inscripcion.grupo_academico.cuatrimestre
+            grupo_destino = promo.grupo_destino or "ESTADIA"
+            grupo = db.query(GrupoAcademico).filter(
+                GrupoAcademico.periodo_id == periodo_destino_id, GrupoAcademico.carrera == inscripcion.grupo_academico.carrera,
+                GrupoAcademico.cuatrimestre == cuatrimestre_destino, GrupoAcademico.grupo == grupo_destino,
+            ).first()
+            if not grupo:
+                grupo = GrupoAcademico(periodo_id=periodo_destino_id, carrera=inscripcion.grupo_academico.carrera, cuatrimestre=cuatrimestre_destino, grupo=grupo_destino, activo=True)
+                db.add(grupo); db.flush()
+            nueva = db.query(InscripcionAlumno).filter(InscripcionAlumno.alumno_id == alumno.id, InscripcionAlumno.grupo_academico_id == grupo.id).first()
+            if not nueva: db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
+            else: nueva.estado = "ACTIVO"
+            alumno.cuatrimestre = cuatrimestre_destino; alumno.grupo = grupo_destino
+            alumno.periodo = promo.periodo_destino.clave; alumno.carrera = grupo.carrera; alumno.activo = True
+        elif promo.resolucion in {"EGRESO", "BAJA_TEMPORAL", "BAJA_DEFINITIVA"}:
+            alumno.activo = False
+        inscripcion.estado = "CONCLUIDA"; promo.estado = "APLICADA"; promo.aplicado_en = _now(); aplicadas += 1
+    db.commit()
+    return {"aplicadas": aplicadas, "mensaje": f"Se aplicaron {aplicadas} resoluciones sin modificar el historial anterior."}

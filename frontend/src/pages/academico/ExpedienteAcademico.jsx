@@ -8,6 +8,7 @@ import { formatDateInMexico, formatDateTimeInMexico } from '../../utils/timezone
 
 const TABS = [
   ['resumen', 'Resumen'],
+  ['trayectoria', 'Trayectoria'],
   ['materias', 'Materias'],
   ['asistencia', 'Asistencia'],
   ['evaluaciones', 'Evaluaciones'],
@@ -774,6 +775,7 @@ export default function ExpedienteAcademico() {
                 </div>
 
                 {tab === 'resumen' && <Resumen data={data} setTab={setTab} />}
+                {tab === 'trayectoria' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Trayectoria por cuatrimestre</h2><p className="text-xs text-slate-500">Cada inscripción conserva el periodo, grupo y resolución emitida por Servicios Escolares.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-y border-white/10 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Periodo</th><th>Cuatrimestre</th><th>Grupo</th><th>Inscripción</th><th>Resolución</th></tr></thead><tbody className="divide-y divide-white/5">{(data.trayectoria_academica || []).map(t => <tr key={t.inscripcion_id}><td className="px-5 py-3 font-semibold">{t.periodo}</td><td>{t.cuatrimestre}°</td><td>{t.grupo}</td><td>{t.estado_inscripcion}</td><td><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400">{t.resolucion?.replaceAll('_',' ') || 'EN CURSO'}</span>{t.periodo_destino && <span className="ml-2 text-xs text-slate-500">→ {t.periodo_destino}</span>}</td></tr>)}</tbody></table>{!data.trayectoria_academica?.length && <p className="p-8 text-center text-sm text-slate-500">Sin trayectoria registrada.</p>}</div></Panel>}
                 {tab === 'materias' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Materias del cuatrimestre</h2><p className="text-xs text-slate-500">Resultados calculados a partir de registros disponibles en SIGA.</p></div><MateriasTable materias={data.materias} /></Panel>}
                 {tab === 'asistencia' && <Asistencia data={data} />}
                 {tab === 'evaluaciones' && <Evaluaciones data={data} />}
