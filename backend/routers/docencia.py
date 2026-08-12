@@ -22,6 +22,7 @@ from models.docencia import (
     SeguimientoAlumnoDocente,
 )
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
+from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from routers.notificaciones import crear_notificacion
 from services.tutoria_sync import grupo_tutoria_para_academico
 from services.calendario_academico import estado_fecha_academica
@@ -229,7 +230,26 @@ def _validar_periodo_actual(db: Session, periodo_id: int):
 
 
 def _validar_carga_actual(db: Session, carga: CargaDocente):
-    return _validar_periodo_actual(db, carga.periodo_id)
+    periodo = _validar_periodo_actual(db, carga.periodo_id)
+    cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == carga.periodo_id).first()
+    if cierre:
+        confirmacion = db.query(ConfirmacionCargaDocente).filter(
+            ConfirmacionCargaDocente.cierre_id == cierre.id,
+            ConfirmacionCargaDocente.carga_docente_id == carga.id,
+        ).first()
+        reapertura_vigente = bool(
+            confirmacion
+            and confirmacion.estado == "REABIERTA"
+            and confirmacion.reabierta_hasta
+            and confirmacion.reabierta_hasta >= datetime.datetime.utcnow()
+        )
+        if cierre.estado == "CERRADO" and not reapertura_vigente:
+            raise HTTPException(409, "El cuatrimestre está cerrado; solicita una reapertura a División de Carrera")
+        if confirmacion and confirmacion.estado == "CONFIRMADA_DOCENTE":
+            raise HTTPException(409, "Esta materia ya fue confirmada para el cierre")
+        if confirmacion and confirmacion.estado == "REABIERTA" and confirmacion.reabierta_hasta and confirmacion.reabierta_hasta < datetime.datetime.utcnow():
+            raise HTTPException(409, "La reapertura de esta materia ya venció")
+    return periodo
 
 
 def _normalizar_periodo(clave: str | None) -> str:

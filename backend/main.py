@@ -39,6 +39,7 @@ from routers import comunicados as comunicados_router
 from routers import departamentos as departamentos_router
 from routers import tutoria as tutoria_router
 from routers import calendario_academico as calendario_academico_router
+from routers import cierre_academico as cierre_academico_router
 from routers import consultorio as consultorio_router
 from routers import servicios_escolares as servicios_escolares_router
 from routers import system as system_router
@@ -208,6 +209,7 @@ app.include_router(system_router.router)
 app.include_router(docencia_router.router)
 app.include_router(expediente_academico_router.router)
 app.include_router(calendario_academico_router.router)
+app.include_router(cierre_academico_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

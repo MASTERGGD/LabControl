@@ -67,6 +67,7 @@ export default function CalendarioAcademico() {
   const [periodos, setPeriodos] = useState([]);
   const [periodoId, setPeriodoId] = useState('');
   const [calendario, setCalendario] = useState(null);
+  const [cierre, setCierre] = useState(null);
   const [cursor, setCursor] = useState(new Date());
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(VACIO);
@@ -79,8 +80,11 @@ export default function CalendarioAcademico() {
   const cargar = useCallback(async id => {
     if (!id) return;
     try {
-      const { data } = await api.get('/calendario-academico', { params: { periodo_id: id } });
-      setCalendario(data);
+      const [calRes, cierreRes] = await Promise.all([
+        api.get('/calendario-academico', { params: { periodo_id: id } }),
+        api.get('/cierre-academico', { params: { periodo_id: id } }),
+      ]);
+      setCalendario(calRes.data); setCierre(cierreRes.data);
     } catch (e) { setError(e.response?.data?.detail || 'No se pudo cargar el calendario.'); }
   }, []);
 
@@ -148,6 +152,25 @@ export default function CalendarioAcademico() {
     try { const { data } = await api.get(`/calendario-academico/${calendario.id}/historial`); setHistorial(data); setVerHistorial(true); }
     catch (e) { setError(e.response?.data?.detail || 'No se pudo consultar el historial.'); }
   };
+  const configurarCierre = async estado => {
+    let inicio = cierre?.confirmacion_inicio || '';
+    let fin = cierre?.confirmacion_fin || '';
+    if (estado === 'CONFIRMACION') {
+      inicio = window.prompt('Fecha inicial de confirmación (AAAA-MM-DD):', inicio || new Date().toISOString().slice(0, 10));
+      if (!inicio) return;
+      fin = window.prompt('Fecha final de confirmación (AAAA-MM-DD):', fin || inicio);
+      if (!fin) return;
+    }
+    try {
+      const { data } = await api.put('/cierre-academico', { periodo_id: Number(periodoId), estado, confirmacion_inicio: inicio || null, confirmacion_fin: fin || null, observaciones: cierre?.observaciones || null });
+      setCierre(data); setMensaje(`Cierre académico actualizado a ${estado.toLowerCase()}.`);
+    } catch (e) { setError(e.response?.data?.detail || 'No se pudo actualizar el cierre académico.'); }
+  };
+  const reabrirCarga = async carga => {
+    const motivo = window.prompt(`Motivo para reabrir ${carga.materia}:`); if (!motivo) return;
+    try { await api.post(`/cierre-academico/cargas/${carga.carga_id}/reabrir`, { motivo, horas: 24 }); await cargar(periodoId); setMensaje('Carga reabierta por 24 horas.'); }
+    catch (e) { setError(e.response?.data?.detail || 'No se pudo reabrir la carga.'); }
+  };
 
   return (
     <AdminLayout>
@@ -160,6 +183,9 @@ export default function CalendarioAcademico() {
         </div>
         {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
+        {puedeAdministrar && (
+          <section className="glass rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre académico del cuatrimestre</p><h2 className="mt-1 font-semibold text-white">{cierre?.estado || 'Sin configurar'}</h2><p className="mt-1 text-xs text-slate-400">{cierre ? `${cierre.confirmadas}/${cierre.total_cargas} cargas confirmadas · ${cierre.con_pendientes} con clases abiertas` : 'Activa el pre-cierre cuando terminen las actividades académicas.'}</p></div><div className="flex flex-wrap gap-2"><button onClick={() => configurarCierre('PRECIERRE')} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white">Iniciar pre-cierre</button><button onClick={() => configurarCierre('CONFIRMACION')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Abrir confirmación</button>{cierre && <button onClick={() => configurarCierre('CERRADO')} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white">Cerrar cuatrimestre</button>}</div></div>{cierre?.cargas?.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-slate-500"><tr><th className="py-2">Docente / materia</th><th>Grupo</th><th>Clases</th><th>Estado</th><th></th></tr></thead><tbody className="divide-y divide-white/10">{cierre.cargas.map(c => <tr key={c.carga_id}><td className="py-2.5"><b className="text-white">{c.materia}</b><br/><span className="text-slate-500">{c.docente}</span></td><td>{c.grupo}</td><td>{c.resumen.clases_cerradas}/{c.resumen.clases_registradas}</td><td>{c.estado.replaceAll('_',' ')}</td><td className="text-right">{c.estado === 'CONFIRMADA_DOCENTE' && <button onClick={() => reabrirCarga(c)} className="rounded border border-blue-500/30 px-2 py-1 text-blue-300">Reabrir 24 h</button>}</td></tr>)}</tbody></table></div>}</section>
+        )}
         {!calendario ? (
           <div className="glass rounded-2xl p-8 text-center"><h2 className="text-lg font-semibold text-white">{periodo?.clave} todavía no tiene calendario publicado</h2><p className="mt-2 text-sm text-slate-400">Mientras no exista un calendario publicado, Docencia conserva su operación habitual.</p>{puedeAdministrar && <button onClick={crearCalendario} disabled={guardando} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white">Crear calendario en borrador</button>}</div>
         ) : <>

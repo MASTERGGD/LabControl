@@ -96,6 +96,7 @@ from routers import (
     docencia as docencia_router,
     expediente_academico as expediente_academico_router,
     calendario_academico as calendario_academico_router,
+    cierre_academico as cierre_academico_router,
 )
 
 test_app = FastAPI(title="LabControl-Test", docs_url=None)
@@ -123,6 +124,7 @@ test_app.include_router(system_router.router)
 test_app.include_router(docencia_router.router)
 test_app.include_router(expediente_academico_router.router)
 test_app.include_router(calendario_academico_router.router)
+test_app.include_router(cierre_academico_router.router)
 
 test_app.dependency_overrides[get_db] = override_get_db
 

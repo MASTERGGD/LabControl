@@ -348,6 +348,7 @@ export default function MiHorarioDocente() {
   const [periodoId, setPeriodoId] = useState('');
   const [horario, setHorario] = useState([]);
   const [hoy, setHoy] = useState([]);
+  const [cierre, setCierre] = useState(null);
   const [modal, setModal] = useState(null);
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
@@ -372,15 +373,17 @@ export default function MiHorarioDocente() {
       const elegido = idPeriodo || cats.periodo_sugerido_id;
       setCatalogos(cats);
       setPeriodoId(String(elegido || ''));
-      const [horarioRes, hoyRes, extemporaneasRes] = await Promise.all([
+      const [horarioRes, hoyRes, extemporaneasRes, cierreRes] = await Promise.all([
         api.get('/docencia/horario', { params: elegido ? { periodo_id: elegido } : {} }),
         api.get('/docencia/hoy'),
         api.get('/docencia/capturas-extemporaneas/disponibles'),
+        api.get('/cierre-academico', { params: { periodo_id: elegido } }),
       ]);
       setHorario(horarioRes.data);
       const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
       setHoy(periodoElegido?.es_actual ? hoyRes.data : []);
       setExtemporaneas(periodoElegido?.es_actual ? extemporaneasRes.data : []);
+      setCierre(cierreRes.data);
     } catch {
       setMensaje('No se pudo cargar el módulo docente.');
     } finally {
@@ -401,6 +404,14 @@ export default function MiHorarioDocente() {
   const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
   const periodoAnterior = catalogos.periodos.find((p) => !p.es_actual);
+  const confirmarCarga = async (carga) => {
+    const observaciones = window.prompt('Observaciones finales de la materia (opcional):') || null;
+    try {
+      await api.post(`/cierre-academico/cargas/${carga.carga_id}/confirmar`, { observaciones });
+      setMensaje(`${carga.materia} quedó confirmada para el cierre del cuatrimestre.`);
+      await cargar(periodoId);
+    } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo confirmar la materia.'); }
+  };
 
   const copiarHorarioAnterior = async () => {
     if (!periodoAnterior || copiando) return;
@@ -528,6 +539,12 @@ export default function MiHorarioDocente() {
         </div>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
+        {cierre && cierre.estado !== 'ACTIVO' && (
+          <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana vigente: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
+            <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div><span className="text-[10px] font-bold text-amber-300">{c.estado.replaceAll('_',' ')}</span></div>{(cierre.estado === 'CONFIRMACION' || c.estado === 'REABIERTA') && c.estado !== 'CONFIRMADA_DOCENTE' && <button disabled={!c.resumen.puede_confirmar} onClick={() => confirmarCarga(c)} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{c.resumen.puede_confirmar ? 'Confirmar información' : `${c.resumen.clases_abiertas} clase(s) por cerrar`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
+          </section>
+        )}
         {!esPeriodoActual && periodoSeleccionado && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
             Estás consultando {periodoSeleccionado.clave}. Este horario es histórico: puedes revisarlo, pero no editarlo ni iniciar clases.

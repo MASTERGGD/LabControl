@@ -37,3 +37,4 @@ from .docencia import (
 from .calendario_academico import (
     CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico,
 )
+from .cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
