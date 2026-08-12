@@ -65,9 +65,14 @@ def test_calendario_publicado_suprime_pendientes_y_bloquea_inicio(client, db, mo
 
     dashboard = client.get("/docencia/dashboard", headers=docente_headers)
     assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["resumen"]["clases_hoy"] == 0
     assert dashboard.json()["resumen"]["asistencias_pendientes"] == 0
+    assert dashboard.json()["resumen"]["actividades_suspendidas_hoy"] == 1
+    assert dashboard.json()["resumen"]["clases_semana_lectivas"] == 0
     assert dashboard.json()["jornada"][0]["estado"] == "NO_LECTIVA"
     assert dashboard.json()["jornada"][0]["calendario"]["motivo"] == "Receso de clases"
+    assert dashboard.json()["calendario_hoy"]["motivo"] == "Receso de clases"
+    assert dashboard.json()["proxima_clase"]["fecha"] == "2026-09-01"
     iniciar = client.post(f"/docencia/horario/{carga.id}/iniciar", headers=docente_headers)
     assert iniciar.status_code == 409
     assert "Receso de clases" in iniciar.json()["detail"]

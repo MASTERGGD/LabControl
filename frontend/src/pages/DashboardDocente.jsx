@@ -14,24 +14,6 @@ function saludar(nombre) {
   return { prefijo, nombre: primer };
 }
 
-// diaSemana: 0=Lun … 5=Sáb  (Python weekday, devuelto por el backend)
-// horaInicio: "HH:MM"
-function proximaOcurrencia(diaSemana, horaInicio) {
-  const ahora       = new Date();
-  const diaJsHoy    = ahora.getDay();                  // 0=Dom, 1=Lun…
-  const diaPythonHoy = (diaJsHoy + 6) % 7;             // 0=Lun…
-  let diasHasta     = (diaSemana - diaPythonHoy + 7) % 7;
-
-  const [hh, mm]   = (horaInicio || '00:00').split(':').map(Number);
-  const fecha       = new Date(ahora);
-  fecha.setHours(hh, mm, 0, 0);
-  fecha.setDate(fecha.getDate() + diasHasta);
-
-  // Si es hoy pero ya pasó → siguiente semana
-  if (diasHasta === 0 && fecha <= ahora) fecha.setDate(fecha.getDate() + 7);
-  return fecha;
-}
-
 function fmtCountdown(ms) {
   if (ms <= 0) return 'En curso';
   const totalMin = Math.floor(ms / 60_000);
@@ -177,6 +159,23 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
   );
 }
 
+function BannerCalendarioOficial({ estado, proximaClase, onCalendario }) {
+  if (!estado) return null;
+  return (
+    <div className="rounded-2xl border border-slate-400/25 bg-gradient-to-br from-slate-500/10 to-slate-500/[0.03] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Calendario académico oficial</p>
+          <h2 className="mt-1 text-lg font-bold text-white">{estado.motivo || 'Día no lectivo'}</h2>
+          <p className="mt-1 text-sm text-slate-400">Hoy no se requiere registrar clases ni asistencias.</p>
+          {proximaClase && <p className="mt-2 text-xs font-semibold text-slate-300">Próxima clase lectiva: {fmtFechaClase(proximaClase._proxFecha)} · {proximaClase.hora_inicio} · {proximaClase.materia}</p>}
+        </div>
+        <button onClick={onCalendario} className="rounded-xl border border-slate-400/25 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/[0.06]">Ver calendario oficial</button>
+      </div>
+    </div>
+  );
+}
+
 // Acceso rápido compacto (row de chips)
 const ACCESOS = [
   { label: 'Mi horario docente',    path: '/docente/horario',       icon: '📅' },
@@ -237,13 +236,6 @@ export default function DashboardDocente() {
         const semana = new Set([0,1,2,3,4,5,6].map(i => (diaPythonHoy + i) % 7));
         setClasesSemana(activas.filter(r => semana.has(r.dia_semana)).length);
 
-        // Próxima clase
-        const conFecha = activas.map(r => ({
-          ...r,
-          _proxFecha: proximaOcurrencia(r.dia_semana, r.hora_inicio),
-        }));
-        conFecha.sort((a, b) => a._proxFecha - b._proxFecha);
-        setProximaClase(conFecha[0] || null);
       }
 
       // Solicitudes de espacio
@@ -255,7 +247,13 @@ export default function DashboardDocente() {
         });
       }
       if (resOperacion.status === 'fulfilled') {
-        setOperacion(resOperacion.value.data);
+        const datosOperacion = resOperacion.value.data;
+        setOperacion(datosOperacion);
+        setClasesSemana(datosOperacion?.resumen?.clases_semana_lectivas ?? 0);
+        setProximaClase(datosOperacion?.proxima_clase ? {
+          ...datosOperacion.proxima_clase,
+          _proxFecha: new Date(datosOperacion.proxima_clase.inicio),
+        } : null);
       }
     } finally {
       setLoading(false);
@@ -329,7 +327,14 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Próxima clase ──────────────────────────────────────────── */}
-        {!loading && proximaClase && (
+        {!loading && operacion?.calendario_hoy && (
+          <BannerCalendarioOficial
+            estado={operacion.calendario_hoy}
+            proximaClase={proximaClase}
+            onCalendario={() => navigate('/calendario-academico')}
+          />
+        )}
+        {!loading && proximaClase && !operacion?.calendario_hoy && (
           <BloqueProximaClase
             reservacion={proximaClase}
             countdown={countdown}
@@ -343,7 +348,9 @@ export default function DashboardDocente() {
             icon="🗓"
             label="Clases hoy"
             value={operacion?.resumen.clases_hoy ?? '…'}
-            sub={`${operacion?.resumen.clases_cerradas ?? 0} cerrada(s)`}
+            sub={operacion?.resumen.actividades_suspendidas_hoy > 0
+              ? `${operacion.resumen.actividades_suspendidas_hoy} suspendida(s) por calendario`
+              : `${operacion?.resumen.clases_cerradas ?? 0} cerrada(s)`}
             onClick={() => navigate('/docente/horario')}
           />
           <StatCard

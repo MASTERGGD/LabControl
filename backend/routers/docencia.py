@@ -2017,18 +2017,77 @@ def dashboard_docente(
         1 for item in jornada
         if item["estado"] in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}
     )
+    actividades_suspendidas_hoy = sum(1 for item in jornada if item["estado"] == "NO_LECTIVA")
+    clases_exigibles_hoy = sum(1 for item in jornada if item["estado"] != "NO_LECTIVA")
+
+    # Próxima clase realmente lectiva. El horario semanal propone candidatos,
+    # pero el calendario oficial decide si esa fecha exige asistencia.
+    proxima_clase = None
+    for desplazamiento in range(0, 184):
+        fecha_candidata = hoy + datetime.timedelta(days=desplazamiento)
+        candidatas = []
+        for carga in cargas:
+            if carga.dia_semana != fecha_candidata.weekday():
+                continue
+            estado_candidata = estado_fecha_academica(db, carga.periodo_id, fecha_candidata)
+            if not estado_candidata["requiere_asistencia"] or not estado_candidata["permite_iniciar_clase"]:
+                continue
+            inicio_candidata = datetime.datetime.combine(
+                fecha_candidata, datetime.time.fromisoformat(carga.hora_inicio), tzinfo=MX,
+            )
+            if inicio_candidata <= ahora:
+                continue
+            candidatas.append((inicio_candidata, carga))
+        if candidatas:
+            inicio_candidata, carga_candidata = min(candidatas, key=lambda item: item[0])
+            proxima_clase = {
+                "carga_id": carga_candidata.id,
+                "fecha": inicio_candidata.date().isoformat(),
+                "inicio": inicio_candidata.isoformat(),
+                "materia": carga_candidata.actividad_nombre,
+                "grupo": (
+                    f"{carga_candidata.grupo_academico.cuatrimestre}° {carga_candidata.grupo_academico.grupo}"
+                    if carga_candidata.grupo_academico else "Sin grupo"
+                ),
+                "laboratorio_nombre": (
+                    carga_candidata.laboratorio.nombre if carga_candidata.laboratorio
+                    else carga_candidata.espacio_nombre or "Sin espacio"
+                ),
+                "hora_inicio": carga_candidata.hora_inicio,
+                "hora_fin": carga_candidata.hora_fin,
+            }
+            break
+
+    inicio_semana = hoy - datetime.timedelta(days=hoy.weekday())
+    clases_semana_lectivas = 0
+    for desplazamiento in range(7):
+        fecha_semana = inicio_semana + datetime.timedelta(days=desplazamiento)
+        for carga in cargas:
+            if carga.dia_semana != fecha_semana.weekday():
+                continue
+            estado_semana = estado_fecha_academica(db, carga.periodo_id, fecha_semana)
+            if estado_semana["requiere_asistencia"]:
+                clases_semana_lectivas += 1
+
+    calendario_hoy = next(
+        (item["calendario"] for item in jornada if item["estado"] == "NO_LECTIVA"), None,
+    )
     return {
         "fecha": hoy.isoformat(),
         "periodo": {"id": actual.id, "clave": actual.clave},
         "resumen": {
-            "clases_hoy": len(jornada),
+            "clases_hoy": clases_exigibles_hoy,
             "clases_cerradas": sum(1 for item in jornada if item["estado"] == "CERRADA"),
             "asistencias_pendientes": pendientes_asistencia,
+            "actividades_suspendidas_hoy": actividades_suspendidas_hoy,
+            "clases_semana_lectivas": clases_semana_lectivas,
             "grupos_activos": len({carga.grupo_academico_id for carga in cargas_seguimiento}),
             "alumnos_atencion": len(alumnos_prioritarios),
             "acuerdos_pendientes": acuerdos_pendientes,
         },
         "jornada": jornada,
+        "calendario_hoy": calendario_hoy,
+        "proxima_clase": proxima_clase,
         "grupos": grupos,
         "alumnos_prioritarios": alumnos_prioritarios[:8],
     }
