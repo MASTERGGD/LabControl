@@ -66,6 +66,7 @@ def test_cierre_reapertura_y_reconfirmacion(client, db):
         "confirmacion_fin": (hoy + datetime.timedelta(days=2)).isoformat(),
     }
     assert client.put("/cierre-academico", headers=admin_h, json=ventana).status_code == 200
+    db.add(ClaseDocente(carga_docente_id=carga.id, fecha=hoy, estado="CERRADA")); db.commit()
     assert client.post(f"/cierre-academico/cargas/{carga.id}/confirmar", headers=docente_h, json={}).status_code == 200
     cerrado = client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "CERRADO"})
     assert cerrado.status_code == 200, cerrado.text
@@ -76,6 +77,27 @@ def test_cierre_reapertura_y_reconfirmacion(client, db):
     assert reconfirmado.status_code == 200, reconfirmado.text
     assert db.query(ConfirmacionCargaDocente).count() == 1
     assert db.query(ConfirmacionCargaDocente).one().estado == "CONFIRMADA_DOCENTE"
+
+
+def test_confirmacion_bloquea_carga_sin_clases_registradas(client, db):
+    admin, docente, periodo, carga = _escenario(db)
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    hoy = datetime.date.today()
+    assert client.put("/cierre-academico", headers=admin_h, json={
+        "periodo_id": periodo.id, "estado": "CONFIRMACION",
+        "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
+        "confirmacion_fin": (hoy + datetime.timedelta(days=2)).isoformat(),
+    }).status_code == 200
+
+    cierre = client.get(f"/cierre-academico?periodo_id={periodo.id}", headers=docente_h)
+    assert cierre.status_code == 200
+    resumen = cierre.json()["cargas"][0]["resumen"]
+    assert resumen["puede_confirmar"] is False
+    assert resumen["motivo_bloqueo"] == "SIN_CLASES_REGISTRADAS"
+    respuesta = client.post(f"/cierre-academico/cargas/{carga.id}/confirmar", headers=docente_h, json={})
+    assert respuesta.status_code == 409
+    assert "Registra al menos una clase" in respuesta.json()["detail"]
 
 
 def test_docente_no_puede_configurar_cierre(client, db):

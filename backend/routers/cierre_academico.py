@@ -50,16 +50,34 @@ def _ahora():
 
 
 def _resumen_carga(db, carga):
-    clases = db.query(ClaseDocente).filter(ClaseDocente.carga_docente_id == carga.id).all()
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+    ).order_by(ClaseDocente.fecha.desc()).all()
     reportes = db.query(ReporteTutor).filter(ReporteTutor.carga_docente_id == carga.id).all()
     abiertas = sum(1 for c in clases if c.estado in {"ABIERTA", "CORRECCION"})
+    incidencias = sum(1 for c in clases if c.incidencia_requiere_seguimiento)
+    reportes_pendientes = sum(1 for r in reportes if r.estado not in {"ATENDIDO", "CERRADO", "CANCELADO"})
     return {
         "clases_registradas": len(clases),
         "clases_cerradas": sum(1 for c in clases if c.estado == "CERRADA"),
         "clases_abiertas": abiertas,
-        "incidencias_seguimiento": sum(1 for c in clases if c.incidencia_requiere_seguimiento),
-        "reportes_tutoria_pendientes": sum(1 for r in reportes if r.estado not in {"ATENDIDO", "CERRADO", "CANCELADO"}),
-        "puede_confirmar": abiertas == 0,
+        "incidencias_seguimiento": incidencias,
+        "reportes_tutoria_pendientes": reportes_pendientes,
+        "puede_confirmar": len(clases) > 0 and abiertas == 0,
+        "motivo_bloqueo": (
+            "SIN_CLASES_REGISTRADAS" if not clases
+            else "CLASES_ABIERTAS" if abiertas
+            else None
+        ),
+        "sesiones": [{
+            "id": clase.id,
+            "fecha": clase.fecha.isoformat(),
+            "estado": clase.estado,
+            "tema_impartido": clase.tema_impartido,
+            "incidencia_requiere_seguimiento": clase.incidencia_requiere_seguimiento,
+            "incidencia_tipo": clase.incidencia_tipo,
+            "es_extemporanea": clase.es_extemporanea,
+        } for clase in clases],
     }
 
 
@@ -149,7 +167,9 @@ def confirmar(carga_id: int, data: ConfirmacionIn, db: Session = Depends(get_db)
     ):
         raise HTTPException(409, "La ventana de confirmación no está vigente")
     resumen = _resumen_carga(db, carga)
-    if not resumen["puede_confirmar"]: raise HTTPException(409, "Cierra las clases abiertas antes de confirmar")
+    if not resumen["puede_confirmar"]:
+        detalle = "Registra al menos una clase antes de confirmar" if not resumen["clases_registradas"] else "Cierra las clases abiertas antes de confirmar"
+        raise HTTPException(409, detalle)
     if not conf:
         conf = ConfirmacionCargaDocente(cierre_id=cierre.id, carga_docente_id=carga.id, docente_id=current_user.id)
         db.add(conf)
