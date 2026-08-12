@@ -24,6 +24,7 @@ from models.docencia import (
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
 from routers.notificaciones import crear_notificacion
 from services.tutoria_sync import grupo_tutoria_para_academico
+from services.calendario_academico import estado_fecha_academica
 
 
 router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
@@ -88,7 +89,23 @@ class CierreInput(BaseModel):
     actividades_realizadas: Optional[str] = Field(None, max_length=2000)
     tarea_asignada: Optional[str] = Field(None, max_length=1500)
     incidencias: Optional[str] = Field(None, max_length=1500)
+    incidencia_tipo: Optional[str] = Field(None, max_length=30)
+    incidencia_requiere_seguimiento: bool = False
     tema_pendiente: Optional[str] = Field(None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validar_incidencia(self):
+        if self.incidencias:
+            self.incidencia_tipo = (self.incidencia_tipo or "OTRA").upper()
+            if self.incidencia_tipo not in {
+                "ACADEMICA", "DISCIPLINA", "INFRAESTRUCTURA",
+                "SUSPENSION_INSTITUCIONAL", "OTRA",
+            }:
+                raise ValueError("Tipo de incidencia no válido")
+        else:
+            self.incidencia_tipo = None
+            self.incidencia_requiere_seguimiento = False
+        return self
 
 
 class CorreccionInput(BaseModel):
@@ -462,6 +479,8 @@ def _serializar_clase(clase: ClaseDocente):
             "actividades_realizadas": clase.actividades_realizadas,
             "tarea_asignada": clase.tarea_asignada,
             "incidencias": clase.incidencias,
+            "incidencia_tipo": clase.incidencia_tipo,
+            "incidencia_requiere_seguimiento": clase.incidencia_requiere_seguimiento,
             "tema_pendiente": clase.tema_pendiente,
         },
         "carga": {
@@ -501,11 +520,14 @@ def _fecha_programada_carga(carga: CargaDocente, fecha: datetime.date):
     return datetime.datetime.combine(fecha, hora, tzinfo=MX)
 
 
-def _validar_ventana_extemporanea(carga: CargaDocente, fecha: datetime.date):
+def _validar_ventana_extemporanea(db: Session, carga: CargaDocente, fecha: datetime.date):
     ahora = _ahora_mx()
     programada = _fecha_programada_carga(carga, fecha)
     if carga.dia_semana != fecha.weekday():
         raise HTTPException(422, "La fecha no corresponde al día programado de esta clase")
+    estado_fecha = estado_fecha_academica(db, carga.periodo_id, fecha)
+    if not estado_fecha["requiere_asistencia"]:
+        raise HTTPException(409, f"No se requiere asistencia: {estado_fecha['motivo']}")
     if programada > ahora:
         raise HTTPException(409, "La clase todavía no ha ocurrido")
     if ahora - programada > datetime.timedelta(hours=48):
@@ -846,6 +868,9 @@ def capturas_extemporaneas_disponibles(
         for carga in cargas:
             if carga.dia_semana != fecha.weekday():
                 continue
+            estado_fecha = estado_fecha_academica(db, carga.periodo_id, fecha)
+            if not estado_fecha["requiere_asistencia"] or not estado_fecha["genera_alertas"]:
+                continue
             programada = _fecha_programada_carga(carga, fecha)
             if programada > ahora or ahora - programada > datetime.timedelta(hours=48):
                 continue
@@ -889,7 +914,7 @@ def crear_captura_extemporanea(
     if not carga or not carga.grupo_academico_id:
         raise HTTPException(404, "Clase programada no encontrada")
     _validar_carga_actual(db, carga)
-    _validar_ventana_extemporanea(carga, data.fecha)
+    _validar_ventana_extemporanea(db, carga, data.fecha)
     existente = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id == carga.id,
         ClaseDocente.fecha == data.fecha,
@@ -947,6 +972,7 @@ def clases_de_hoy(
         item = _serializar_carga(carga, db)
         item["clase_id"] = clase.id if clase else None
         item["clase_estado"] = clase.estado if clase else None
+        item["calendario"] = estado_fecha_academica(db, carga.periodo_id, hoy.date())
         resultado.append(item)
     return resultado
 
@@ -972,6 +998,9 @@ def iniciar_clase(
         raise HTTPException(409, "Activa primero este bloque del horario")
     if carga.dia_semana != hoy.weekday():
         raise HTTPException(409, "Esta clase no corresponde al día de hoy")
+    estado_fecha = estado_fecha_academica(db, carga.periodo_id, hoy.date())
+    if not estado_fecha["permite_iniciar_clase"] or not estado_fecha["requiere_asistencia"]:
+        raise HTTPException(409, f"No se puede iniciar la clase: {estado_fecha['motivo']}")
     existente = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id == carga.id, ClaseDocente.fecha == hoy.date()
     ).first()
@@ -1083,13 +1112,81 @@ def cerrar_clase(
         clase.observacion_general = data.observacion_general
     for campo in (
         "tema_impartido", "avance_planeacion", "actividades_realizadas",
-        "tarea_asignada", "incidencias", "tema_pendiente",
+        "tarea_asignada", "incidencias", "incidencia_tipo",
+        "incidencia_requiere_seguimiento", "tema_pendiente",
     ):
         valor = getattr(data, campo)
         if valor is not None:
             setattr(clase, campo, valor)
+    canalizacion = None
+    if clase.incidencia_requiere_seguimiento and clase.incidencias:
+        grupo_tutorado = grupo_tutoria_para_academico(db, clase.carga.grupo_academico_id)
+        tutor = db.query(Usuario).filter(
+            Usuario.id == grupo_tutorado.tutor_id,
+            Usuario.activo == True,
+        ).first() if grupo_tutorado and grupo_tutorado.tutor_id else None
+        reporte = db.query(ReporteTutor).filter(
+            ReporteTutor.clase_docente_id == clase.id,
+        ).first()
+        es_nuevo = reporte is None
+        tutor_anterior_id = reporte.tutor_destinatario_id if reporte else None
+        if es_nuevo:
+            reporte = ReporteTutor(
+                alumno_id=None,
+                reportado_por_id=current_user.id,
+                clase_docente_id=clase.id,
+                carga_docente_id=clase.carga_docente_id,
+            )
+            db.add(reporte)
+        reporte.tutor_destinatario_id = tutor.id if tutor else None
+        reporte.grupo_tutorado_id = grupo_tutorado.id if grupo_tutorado else None
+        reporte.categoria = {
+            "ACADEMICA": "ACADEMICO", "DISCIPLINA": "CONDUCTA",
+        }.get(clase.incidencia_tipo, "OTRO")
+        reporte.prioridad = "MEDIA"
+        reporte.titulo = f"Incidencia de clase · {clase.carga.actividad_nombre}"
+        grupo_nombre = (
+            f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
+            if clase.carga.grupo_academico else "grupo sin identificar"
+        )
+        reporte.detalle = (
+            f"Grupo: {grupo_nombre}\nFecha: {clase.fecha.isoformat()}\n"
+            f"Tipo: {(clase.incidencia_tipo or 'OTRA').replace('_', ' ').title()}\n\n"
+            f"{clase.incidencias.strip()}"
+        )
+        reporte.confidencial = False
+        if es_nuevo or reporte.estado == "SIN_TUTOR":
+            reporte.estado = "ENVIADO" if tutor else "SIN_TUTOR"
+        db.flush()
+
+        if es_nuevo or (tutor and tutor.id != tutor_anterior_id):
+            destinatarios = [tutor] if tutor else db.query(Usuario).filter(
+                Usuario.rol.in_([RolUsuario.TUTORIA_ADMIN, RolUsuario.SUPER_ADMIN]),
+                Usuario.activo == True,
+            ).all()
+            for destinatario in destinatarios:
+                crear_notificacion(
+                    db, destinatario.id, "tutoria_incidencia_clase",
+                    "Incidencia de clase que requiere seguimiento",
+                    f"{current_user.nombre} canalizó una incidencia de {clase.carga.actividad_nombre}, grupo {grupo_nombre}.",
+                    "/docente/mis-tutorados?tab=reportes" if tutor else "/admin/tutoria?tab=reportes-tutor",
+                    enviar_email=False,
+                )
+        canalizacion = {
+            "reporte_tutor_id": reporte.id,
+            "estado": reporte.estado,
+            "tutor_id": tutor.id if tutor else None,
+            "tutor_nombre": tutor.nombre if tutor else None,
+            "mensaje": (
+                f"Incidencia canalizada a {tutor.nombre}."
+                if tutor else
+                "Incidencia registrada; el grupo no tiene tutor asignado y Tutoría fue notificada."
+            ),
+        }
     db.commit()
-    return _serializar_clase(clase)
+    respuesta = _serializar_clase(clase)
+    respuesta["canalizacion_tutoria"] = canalizacion
+    return respuesta
 
 
 @router.post("/clases/{clase_id}/habilitar-correccion")
@@ -1796,6 +1893,7 @@ def dashboard_docente(
     for carga in cargas:
         if carga.dia_semana != hoy.weekday():
             continue
+        estado_fecha = estado_fecha_academica(db, carga.periodo_id, hoy)
         clase = clase_por_carga_fecha.get((carga.id, hoy))
         hora_fin = datetime.datetime.combine(
             hoy, datetime.time.fromisoformat(carga.hora_fin),
@@ -1807,6 +1905,8 @@ def dashboard_docente(
                 "CORRECCION": "CORRECCION",
                 "CERRADA": "CERRADA",
             }.get(clase.estado, clase.estado)
+        elif not estado_fecha["requiere_asistencia"]:
+            estado = "NO_LECTIVA"
         elif ahora > hora_fin:
             estado = "SIN_REGISTRO"
         else:
@@ -1827,6 +1927,7 @@ def dashboard_docente(
             "hora_inicio": carga.hora_inicio,
             "hora_fin": carga.hora_fin,
             "estado": estado,
+            "calendario": estado_fecha,
             "resumen": _serializar_clase(clase)["resumen"] if clase else None,
         })
 

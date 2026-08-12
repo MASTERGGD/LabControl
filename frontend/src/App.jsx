@@ -59,6 +59,7 @@ import AutoAsignacion from './pages/AutoAsignacion';
 import ValidarConsulta from './pages/ValidarConsulta';
 import ValidarActivo from './pages/ValidarActivo';
 import ExpedienteAcademico from './pages/academico/ExpedienteAcademico';
+import CalendarioAcademico from './pages/academico/CalendarioAcademico';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
@@ -267,6 +268,11 @@ function AppRoutes() {
       <Route path="/division-carrera/materias" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={PERM_MATERIAS_MANAGE}>
           <Catalogo modo="materias" />
+        </RutaProtegida>
+      }/>
+      <Route path="/calendario-academico" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','DOCENTE']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE, PERM_MATERIAS_MANAGE]}>
+          <CalendarioAcademico />
         </RutaProtegida>
       }/>
       <Route path="/expediente-academico" element={

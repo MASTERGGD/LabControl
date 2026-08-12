@@ -2,7 +2,7 @@ import datetime
 
 from dependencies import hashear_password
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
-from models.docencia import CargaDocente, SeguimientoAlumnoDocente
+from models.docencia import CargaDocente, ClaseDocente, SeguimientoAlumnoDocente
 from models.notificacion import Notificacion
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, HistorialTutorGrupo, ReporteTutor
 from models.usuario import RolUsuario, Usuario
@@ -97,6 +97,60 @@ def test_docente_envia_reporte_y_tutor_lo_cierra(client, db):
     db.refresh(seguimiento)
     assert seguimiento.estado == "ATENDIDO"
     assert "seguimiento semanal" in seguimiento.resultado_atencion
+
+
+def test_cierre_con_incidencia_canaliza_al_tutor_sin_duplicar(client, db):
+    reportante, tutor, _, carga, grupo_tutorado = _escenario(db)
+    clase = ClaseDocente(
+        carga_docente_id=carga.id,
+        fecha=datetime.date(2026, 8, 11),
+        estado="ABIERTA",
+        tema_impartido="Estructuras de control",
+    )
+    db.add(clase)
+    db.commit()
+    headers = auth_headers(get_token(client, reportante.email, "Materia123!"))
+    payload = {
+        "tema_impartido": "Estructuras de control",
+        "incidencias": "El grupo requiere apoyo para recuperar contenidos previos.",
+        "incidencia_tipo": "ACADEMICA",
+        "incidencia_requiere_seguimiento": True,
+    }
+
+    cerrada = client.post(
+        f"/docencia/clases/{clase.id}/cerrar", headers=headers, json=payload,
+    )
+    assert cerrada.status_code == 200, cerrada.text
+    canalizacion = cerrada.json()["canalizacion_tutoria"]
+    assert canalizacion["tutor_nombre"] == tutor.nombre
+    assert tutor.nombre in canalizacion["mensaje"]
+    reporte = db.query(ReporteTutor).one()
+    assert reporte.alumno_id is None
+    assert reporte.clase_docente_id == clase.id
+    assert reporte.grupo_tutorado_id == grupo_tutorado.id
+    assert reporte.tutor_destinatario_id == tutor.id
+    assert db.query(Notificacion).filter(
+        Notificacion.usuario_id == tutor.id,
+        Notificacion.tipo == "tutoria_incidencia_clase",
+    ).count() == 1
+
+    clase.estado = "CORRECCION"
+    db.commit()
+    editada = client.post(
+        f"/docencia/clases/{clase.id}/cerrar",
+        headers=headers,
+        json={**payload, "incidencias": "Contenido actualizado después de revisar el cierre."},
+    )
+    assert editada.status_code == 200, editada.text
+    assert db.query(ReporteTutor).filter(
+        ReporteTutor.clase_docente_id == clase.id,
+    ).count() == 1
+    db.refresh(reporte)
+    assert "Contenido actualizado" in reporte.detalle
+    assert db.query(Notificacion).filter(
+        Notificacion.usuario_id == tutor.id,
+        Notificacion.tipo == "tutoria_incidencia_clase",
+    ).count() == 1
 
 
 def test_grupo_academico_se_vincula_y_reasigna_reporte_sin_tutor(client, db):

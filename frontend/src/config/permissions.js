@@ -134,6 +134,7 @@ export const ROUTE_PERMISSIONS = {
   '/admin/mantenimiento':         [SA, LA],
   '/admin/catalogo':              [SA],
   '/division-carrera/materias':   [SA, AD],
+  '/calendario-academico':        [SA, AD, DO],
   '/admin/reportes':                      [SA, LA],
   '/admin/historial-alumno':              [SA],
   '/admin/respaldos':                      [SA],

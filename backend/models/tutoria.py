@@ -181,13 +181,16 @@ class ReporteTutor(Base):
     __tablename__ = "reportes_tutor"
 
     id                    = Column(Integer, primary_key=True, index=True)
-    alumno_id             = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=False, index=True)
+    alumno_id             = Column(Integer, ForeignKey("catalogo_alumnos.id"), nullable=True, index=True)
     reportado_por_id      = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     tutor_destinatario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True, index=True)
     grupo_tutorado_id     = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=True, index=True)
     carga_docente_id      = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=True, index=True)
     seguimiento_docente_id = Column(
         Integer, ForeignKey("seguimientos_alumnos_docente.id"), nullable=True, unique=True, index=True
+    )
+    clase_docente_id      = Column(
+        Integer, ForeignKey("clases_docentes.id"), nullable=True, unique=True, index=True
     )
 
     categoria       = Column(String(30), nullable=False, default="ACADEMICO")

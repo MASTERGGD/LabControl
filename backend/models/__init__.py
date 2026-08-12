@@ -34,3 +34,6 @@ from .docencia import (
     JustificacionAsistenciaDocente, DetalleJustificacionAsistencia,
     CorreccionAsistenciaDocente,
 )
+from .calendario_academico import (
+    CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico,
+)

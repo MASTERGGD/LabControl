@@ -2182,7 +2182,7 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "alumno_id": reporte.alumno_id,
         "alumno_nombre": (
             f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
-            if alumno else "Alumno"
+            if alumno else "Incidencia del grupo"
         ),
         "matricula": alumno.matricula if alumno else None,
         "reportado_por_id": reporte.reportado_por_id,
@@ -2194,6 +2194,8 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "carrera": grupo.carrera if grupo else (alumno.carrera if alumno else None),
         "periodo": grupo.periodo if grupo else None,
         "materia": carga.actividad_nombre if carga else None,
+        "es_reporte_grupal": reporte.alumno_id is None,
+        "clase_docente_id": reporte.clase_docente_id,
         "categoria": reporte.categoria,
         "prioridad": reporte.prioridad,
         "titulo": reporte.titulo,
@@ -2341,6 +2343,8 @@ def canalizar_reporte_tutor(
         raise HTTPException(403, "Solo el tutor destinatario puede canalizar el reporte")
     if reporte.canalizacion_id:
         raise HTTPException(409, "Este reporte ya fue canalizado")
+    if not reporte.alumno_id:
+        raise HTTPException(409, "Una incidencia grupal debe atenderse como reporte; la canalización F-DC-08 requiere un alumno específico")
     if not reporte.tutor_destinatario_id or not reporte.grupo_tutorado_id:
         raise HTTPException(409, "Primero asigna el reporte a un tutor")
     if not (data.tipo_psicologico or data.tipo_pedagogico or data.tipo_personal):

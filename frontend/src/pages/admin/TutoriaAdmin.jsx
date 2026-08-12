@@ -2056,7 +2056,7 @@ export default function TutoriaAdmin() {
                     {r.confidencial && <span className="text-purple-400">Confidencial</span>}
                   </div>
                   <h3 className="mt-1 font-semibold">{r.titulo}</h3>
-                  <p className="text-sm text-slate-400">{r.alumno_nombre} · {r.matricula} · {r.materia || "Sin materia"}</p>
+                  <p className="text-sm text-slate-400">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || "sin identificar"}` : `${r.alumno_nombre} · ${r.matricula}`} · {r.materia || "Sin materia"}</p>
                   <p className="text-xs text-slate-500">Reportó: {r.reportado_por} · Tutor: {r.tutor_destinatario || "Sin asignar"}</p>
                   {r.detalle && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}
                 </div>

@@ -60,6 +60,10 @@ class ClaseDocente(Base):
     actividades_realizadas = Column(Text, nullable=True)
     tarea_asignada = Column(Text, nullable=True)
     incidencias = Column(Text, nullable=True)
+    incidencia_tipo = Column(String(30), nullable=True)
+    incidencia_requiere_seguimiento = Column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
     tema_pendiente = Column(Text, nullable=True)
     es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
     motivo_extemporaneo = Column(Text, nullable=True)

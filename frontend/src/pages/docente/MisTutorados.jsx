@@ -1005,7 +1005,7 @@ export default function MisTutorados() {
                       {r.confidencial && <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-purple-300">Confidencial</span>}
                     </div>
                     <h3 className="mt-2 font-semibold text-white">{r.titulo}</h3>
-                    <p className="mt-0.5 text-sm text-slate-300">{r.alumno_nombre} · {r.matricula}</p>
+                    <p className="mt-0.5 text-sm text-slate-300">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || 'sin identificar'}` : `${r.alumno_nombre} · ${r.matricula}`}</p>
                     <p className="text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</p>
                     {r.detalle && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-400">{r.detalle}</p>}
                     {r.resultado && <p className="mt-3 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-200"><b>Resultado:</b> {r.resultado}</p>}
@@ -1020,7 +1020,7 @@ export default function MisTutorados() {
                     {r.estado === "ENVIADO" && <button onClick={() => cambiarEstadoReporte(r, "RECIBIDO")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold">Confirmar recepción</button>}
                     {["ENVIADO", "RECIBIDO"].includes(r.estado) && <button onClick={() => cambiarEstadoReporte(r, "EN_SEGUIMIENTO")} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold">Iniciar seguimiento</button>}
                     <button onClick={() => { setAtenderReporte(r); setResultadoReporte(""); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold">Resolver y cerrar</button>
-                    <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>
+                    {!r.es_reporte_grupal && <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>}
                   </div>
                 )}
               </article>

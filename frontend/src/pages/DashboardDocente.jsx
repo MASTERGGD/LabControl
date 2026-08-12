@@ -433,11 +433,12 @@ export default function DashboardDocente() {
                     CERRADA: ['Cerrada', 'bg-slate-500/15 text-slate-400'],
                     CORRECCION: ['En corrección', 'bg-amber-500/15 text-amber-300'],
                     SIN_REGISTRO: ['Sin registro', 'bg-red-500/15 text-red-300'],
+                    NO_LECTIVA: [item.calendario?.motivo || 'Día no lectivo', 'bg-slate-500/15 text-slate-300'],
                   }[item.estado] || [item.estado, 'bg-slate-500/15 text-slate-400'];
                   return (
                     <tr key={item.carga_id} className="hover:bg-white/3">
                       <td className="px-5 py-3 font-bold text-white">{item.hora_inicio}–{item.hora_fin}</td>
-                      <td><p className="font-semibold text-white">{item.materia}</p><p className="text-xs text-slate-500">{item.carrera}</p></td>
+                      <td><p className="font-semibold text-white">{item.materia}</p><p className="text-xs text-slate-500">{item.estado === 'NO_LECTIVA' ? `Calendario oficial · ${item.calendario?.motivo}` : item.carrera}</p></td>
                       <td className="text-slate-400">{item.grupo}</td>
                       <td className="text-slate-400">{item.espacio}</td>
                       <td><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${estado[1]}`}>{estado[0]}</span></td>
