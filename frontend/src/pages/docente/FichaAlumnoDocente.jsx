@@ -6,7 +6,7 @@ import api from '../../hooks/useApi';
 
 const FORM_INICIAL = {
   tipo: 'OBSERVACION', titulo: '', detalle: '', calificacion: '',
-  estado: 'REGISTRADO', fecha_revision: '', categoria_reporte: 'ACADEMICO',
+  estado: 'REGISTRADO', fecha_limite: '', fecha_revision: '', categoria_reporte: 'ACADEMICO',
   prioridad_reporte: 'MEDIA', confidencial: false,
 };
 const PESTANAS = [
@@ -69,6 +69,7 @@ export default function FichaAlumnoDocente() {
       const { data } = await api.post(`/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}/registros`, {
         ...form,
         calificacion: form.tipo === 'CALIFICACION' ? Number(form.calificacion) : null,
+        fecha_limite: form.tipo === 'ACUERDO' && form.fecha_limite ? form.fecha_limite : null,
         fecha_revision: ['ACUERDO', 'TUTORIA'].includes(form.tipo) && form.fecha_revision
           ? form.fecha_revision : null,
         estado: ['ACUERDO', 'TUTORIA'].includes(form.tipo) ? 'PENDIENTE' : 'REGISTRADO',
@@ -91,8 +92,10 @@ export default function FichaAlumnoDocente() {
     setGuardandoAtencion(true);
     try {
       await api.patch(`/docencia/seguimiento/registros/${modalAtencion.registro.id}`, {
-        estado: 'ATENDIDO',
+        estado: modalAtencion.estado,
         resultado_atencion: modalAtencion.resultado.trim(),
+        fecha_limite: modalAtencion.estado === 'REPROGRAMADO' ? modalAtencion.fecha_limite : null,
+        fecha_revision: modalAtencion.estado === 'REPROGRAMADO' ? modalAtencion.fecha_revision : null,
       });
       setModalAtencion(null);
       cargar();
@@ -149,9 +152,10 @@ export default function FichaAlumnoDocente() {
   const promedio = calificaciones.length
     ? (calificaciones.reduce((total, r) => total + r.calificacion, 0) / calificaciones.length).toFixed(1)
     : '—';
-  const pendientes = datos?.registros.filter((r) => ['ACUERDO', 'TUTORIA'].includes(r.tipo) && r.estado === 'PENDIENTE') || [];
+  const estadosActivos = ['PENDIENTE', 'REPROGRAMADO'];
+  const pendientes = datos?.registros.filter((r) => ['ACUERDO', 'TUTORIA'].includes(r.tipo) && estadosActivos.includes(r.estado)) || [];
   const pendientesFiltrados = registrosFiltrados.filter((r) => (
-    ['ACUERDO', 'TUTORIA'].includes(r.tipo) && r.estado === 'PENDIENTE'
+    ['ACUERDO', 'TUTORIA'].includes(r.tipo) && estadosActivos.includes(r.estado)
   ));
   const registrosPestana = pestana === 'RESUMEN'
     ? registrosFiltrados
@@ -166,7 +170,7 @@ export default function FichaAlumnoDocente() {
   });
   const pendientesVencidos = pendientes.filter((r) => r.fecha_revision && r.fecha_revision < hoyISO);
   const pendientesHoy = pendientes.filter((r) => r.fecha_revision === hoyISO);
-  const actividadReciente = registrosFiltrados.filter((r) => r.estado !== 'PENDIENTE').slice(0, 4);
+  const actividadReciente = registrosFiltrados.filter((r) => !estadosActivos.includes(r.estado)).slice(0, 4);
 
   const tarjetaRegistro = (r) => (
     <article key={r.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
@@ -182,13 +186,14 @@ export default function FichaAlumnoDocente() {
       </div>
       {r.detalle && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}
       {r.resultado_atencion && <p className="mt-3 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200"><b>Resultado:</b> {r.resultado_atencion}</p>}
+      {r.fecha_limite && <p className="mt-2 text-xs text-slate-400">Compromiso del alumno: {fechaTexto(`${r.fecha_limite}T12:00:00`, false)}</p>}
       {r.fecha_revision && (
         <p className="mt-2 text-xs font-medium text-blue-400">Revisar el {fechaTexto(`${r.fecha_revision}T12:00:00`, false)}</p>
       )}
       {['ACUERDO', 'TUTORIA'].includes(r.tipo) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2 py-1 text-xs ${r.estado === 'PENDIENTE' ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{r.estado}</span>
-          {r.estado === 'PENDIENTE' && r.tipo === 'ACUERDO' && <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="text-xs font-semibold text-emerald-400">Registrar atención</button>}
+          <span className={`rounded-full px-2 py-1 text-xs ${estadosActivos.includes(r.estado) ? 'bg-amber-500/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{r.estado.replaceAll('_', ' ')}</span>
+          {estadosActivos.includes(r.estado) && r.tipo === 'ACUERDO' && <button onClick={() => setModalAtencion({ registro: r, estado: 'CUMPLIDO', resultado: '', fecha_limite: '', fecha_revision: '' })} className="text-xs font-semibold text-emerald-400">Registrar resultado</button>}
           {r.estado === 'PENDIENTE' && r.tipo === 'TUTORIA' && <span className="text-xs text-blue-300">Enviado al tutor del grupo</span>}
         </div>
       )}
@@ -211,10 +216,13 @@ export default function FichaAlumnoDocente() {
             <h3 className="mt-1 font-semibold text-white">{r.titulo}</h3>
             {r.detalle && <p className="mt-1 line-clamp-2 text-sm text-slate-400">{r.detalle}</p>}
           </div>
-          {r.fecha_revision && <p className={`shrink-0 text-xs font-medium ${vencido ? 'text-red-300' : 'text-slate-500'}`}>{fechaTexto(`${r.fecha_revision}T12:00:00`, false)}</p>}
+          <div className="shrink-0 text-right text-xs">
+            {r.fecha_limite && <p className="text-slate-500">Límite: {fechaTexto(`${r.fecha_limite}T12:00:00`, false)}</p>}
+            {r.fecha_revision && <p className={`font-medium ${vencido ? 'text-red-300' : 'text-slate-500'}`}>Revisión: {fechaTexto(`${r.fecha_revision}T12:00:00`, false)}</p>}
+          </div>
         </div>
         {r.tipo === 'ACUERDO'
-          ? <button onClick={() => setModalAtencion({ registro: r, resultado: '' })} className="mt-3 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Registrar atención →</button>
+          ? <button onClick={() => setModalAtencion({ registro: r, estado: 'CUMPLIDO', resultado: '', fecha_limite: '', fecha_revision: '' })} className="mt-3 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Registrar resultado →</button>
           : <p className="mt-3 text-xs font-semibold text-blue-300">Pendiente de atención por el tutor →</p>}
       </article>
     );
@@ -429,8 +437,8 @@ export default function FichaAlumnoDocente() {
           <form onSubmit={cerrarSeguimiento} onMouseDown={(e) => e.stopPropagation()} className="glass w-full max-w-lg overflow-hidden rounded-2xl shadow-2xl">
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
               <div>
-                <h2 className="font-semibold text-white">Registrar atención</h2>
-                <p className="mt-1 text-xs text-slate-400">Documenta el resultado antes de cerrar el pendiente.</p>
+                <h2 className="font-semibold text-white">Revisar acuerdo</h2>
+                <p className="mt-1 text-xs text-slate-400">Registra qué ocurrió y conserva la trazabilidad.</p>
               </div>
               <button type="button" disabled={guardandoAtencion} onClick={() => setModalAtencion(null)} className="text-2xl text-slate-400">×</button>
             </header>
@@ -440,6 +448,24 @@ export default function FichaAlumnoDocente() {
                 <p className="mt-1 font-semibold text-white">{modalAtencion.registro.titulo}</p>
                 {modalAtencion.registro.detalle && <p className="mt-1 text-sm text-slate-400">{modalAtencion.registro.detalle}</p>}
               </div>
+              <label className="block text-sm text-slate-300">
+                Resultado del acuerdo *
+                <select value={modalAtencion.estado} onChange={(e) => setModalAtencion({ ...modalAtencion, estado: e.target.value })} className="input-dark mt-1">
+                  <option value="CUMPLIDO">Cumplido</option>
+                  <option value="CUMPLIDO_PARCIAL">Cumplido parcialmente</option>
+                  <option value="NO_CUMPLIDO">No cumplido</option>
+                  <option value="REPROGRAMADO">Reprogramar seguimiento</option>
+                  <option value="CERRADO">Cerrar por otra causa</option>
+                </select>
+              </label>
+              {modalAtencion.estado === 'REPROGRAMADO' && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="text-sm text-slate-300">Nueva fecha límite *
+                  <input required type="date" value={modalAtencion.fecha_limite} onChange={(e) => setModalAtencion({ ...modalAtencion, fecha_limite: e.target.value })} className="input-dark mt-1" />
+                </label>
+                <label className="text-sm text-slate-300">Nueva revisión *
+                  <input required type="date" min={modalAtencion.fecha_limite} value={modalAtencion.fecha_revision} onChange={(e) => setModalAtencion({ ...modalAtencion, fecha_revision: e.target.value })} className="input-dark mt-1" />
+                </label>
+              </div>}
               <label className="block text-sm text-slate-300">
                 Resultado o acuerdo alcanzado *
                 <textarea
@@ -454,12 +480,12 @@ export default function FichaAlumnoDocente() {
                   placeholder="Ej. Se habló con el estudiante y se acordó revisar su avance el próximo viernes."
                 />
               </label>
-              <p className="text-xs text-slate-500">Al guardar, el caso pasará a atendido y permanecerá visible en su historial.</p>
+              <p className="text-xs text-slate-500">El resultado permanecerá en el historial. Reprogramar conserva el acuerdo pendiente con nuevas fechas.</p>
             </div>
             <footer className="flex flex-col-reverse gap-2 border-t border-white/10 px-5 py-4 sm:flex-row sm:justify-end">
               <button type="button" disabled={guardandoAtencion} onClick={() => setModalAtencion(null)} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
               <button disabled={guardandoAtencion || modalAtencion.resultado.trim().length < 3} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-                {guardandoAtencion ? 'Guardando…' : 'Guardar y marcar atendido'}
+                {guardandoAtencion ? 'Guardando…' : 'Guardar resultado'}
               </button>
             </footer>
           </form>
@@ -475,7 +501,7 @@ export default function FichaAlumnoDocente() {
             </header>
             <div className="p-5">
               <label className="block text-sm text-slate-300">Tipo
-                <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, calificacion: '', fecha_revision: '' })} className="input-dark mt-1">
+                <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, calificacion: '', fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
                   <option value="OBSERVACION">Observación docente</option>
                   <option value="CALIFICACION">Calificación parcial</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
@@ -515,8 +541,11 @@ export default function FichaAlumnoDocente() {
                   </label>
                 </div>
               )}
+              {form.tipo === 'ACUERDO' && <label className="mt-3 block text-sm text-slate-300">Fecha límite del compromiso
+                <input required type="date" value={form.fecha_limite} onChange={(e) => setForm({ ...form, fecha_limite: e.target.value })} className="input-dark mt-1" />
+              </label>}
               {['ACUERDO', 'TUTORIA'].includes(form.tipo) && <label className="mt-3 block text-sm text-slate-300">Fecha de revisión
-                <input required type="date" value={form.fecha_revision} onChange={(e) => setForm({ ...form, fecha_revision: e.target.value })} className="input-dark mt-1" />
+                <input required type="date" min={form.tipo === 'ACUERDO' ? form.fecha_limite : undefined} value={form.fecha_revision} onChange={(e) => setForm({ ...form, fecha_revision: e.target.value })} className="input-dark mt-1" />
               </label>}
               <label className="mt-3 block text-sm text-slate-300">Detalle
                 <textarea value={form.detalle} onChange={(e) => setForm({ ...form, detalle: e.target.value })} rows={4} className="input-dark mt-1" placeholder="Evidencia, acción acordada o contexto académico" />

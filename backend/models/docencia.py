@@ -190,6 +190,7 @@ class SeguimientoAlumnoDocente(Base):
     detalle = Column(Text, nullable=True)
     calificacion = Column(Float, nullable=True)
     estado = Column(String(20), nullable=False, default="REGISTRADO")
+    fecha_limite = Column(Date, nullable=True)
     fecha_revision = Column(Date, nullable=True)
     resultado_atencion = Column(Text, nullable=True)
     atendido_en = Column(DateTime, nullable=True)

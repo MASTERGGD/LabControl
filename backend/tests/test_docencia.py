@@ -193,7 +193,7 @@ def test_flujo_horario_clase_y_asistencia(client, db):
         f"/docencia/seguimiento/{carga_id}/alumnos/{alumno_id}/registros",
         json={
             "tipo": "ACUERDO", "titulo": "Actividad de recuperación",
-            "estado": "PENDIENTE", "fecha_revision": "2026-08-05",
+            "estado": "PENDIENTE", "fecha_limite": "2026-08-04", "fecha_revision": "2026-08-05",
         },
         headers=headers,
     )
@@ -202,13 +202,24 @@ def test_flujo_horario_clase_y_asistencia(client, db):
         headers=headers,
     )
     assert ficha_acuerdo.json()["registros"][0]["fecha_revision"] == "2026-08-05"
+    assert ficha_acuerdo.json()["registros"][0]["fecha_limite"] == "2026-08-04"
+    reprogramado = client.patch(
+        f"/docencia/seguimiento/registros/{acuerdo.json()['id']}",
+        json={
+            "estado": "REPROGRAMADO", "resultado_atencion": "El alumno solicitó una extensión justificada.",
+            "fecha_limite": "2026-08-07", "fecha_revision": "2026-08-08",
+        },
+        headers=headers,
+    )
+    assert reprogramado.status_code == 200
+    assert reprogramado.json()["estado"] == "REPROGRAMADO"
     atendido = client.patch(
         f"/docencia/seguimiento/registros/{acuerdo.json()['id']}",
-        json={"estado": "ATENDIDO", "resultado_atencion": "Se contactó al alumno y se acordó una revisión semanal."},
+        json={"estado": "CUMPLIDO_PARCIAL", "resultado_atencion": "El alumno entregó una parte y mostró avance verificable."},
         headers=headers,
     )
     assert atendido.status_code == 200
-    assert atendido.json()["estado"] == "ATENDIDO"
+    assert atendido.json()["estado"] == "CUMPLIDO_PARCIAL"
 
     dashboard = client.get("/docencia/dashboard", headers=headers)
     assert dashboard.status_code == 200, dashboard.text

@@ -297,10 +297,12 @@ export default function DashboardDocente() {
     dot: 'bg-red-400',
   });
   if (operacion?.resumen.acuerdos_pendientes > 0) atencionItems.push({
-    label: `${operacion.resumen.acuerdos_pendientes} acuerdo(s) académico(s) pendientes`,
+    label: operacion.resumen.acuerdos_vencidos > 0
+      ? `${operacion.resumen.acuerdos_vencidos} acuerdo(s) requieren revisión inmediata`
+      : `${operacion.resumen.acuerdos_pendientes} acuerdo(s) académico(s) pendientes`,
     path: '/docente/seguimiento',
-    color: 'text-amber-400',
-    dot: 'bg-amber-400',
+    color: operacion.resumen.acuerdos_vencidos > 0 ? 'text-red-400' : 'text-amber-400',
+    dot: operacion.resumen.acuerdos_vencidos > 0 ? 'bg-red-400' : 'bg-amber-400',
   });
 
   return (
@@ -380,7 +382,8 @@ export default function DashboardDocente() {
             icon="📌"
             label="Acuerdos pendientes"
             value={operacion?.resumen.acuerdos_pendientes ?? '…'}
-            sub="Seguimiento académico"
+            sub={operacion?.resumen.acuerdos_vencidos > 0 ? `${operacion.resumen.acuerdos_vencidos} vencido(s)` : 'Seguimiento académico'}
+            urgent={operacion?.resumen.acuerdos_vencidos > 0}
             onClick={() => navigate('/docente/seguimiento')}
           />
           <StatCard

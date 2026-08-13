@@ -158,6 +158,7 @@ class SeguimientoInput(BaseModel):
     detalle: Optional[str] = Field(None, max_length=2000)
     calificacion: Optional[float] = Field(None, ge=0, le=10)
     estado: str = Field("REGISTRADO", max_length=20)
+    fecha_limite: Optional[datetime.date] = None
     fecha_revision: Optional[datetime.date] = None
     categoria_reporte: str = Field("ACADEMICO", max_length=30)
     prioridad_reporte: str = Field("MEDIA", max_length=15)
@@ -171,6 +172,11 @@ class SeguimientoInput(BaseModel):
             raise ValueError("Tipo de seguimiento no válido")
         if self.tipo == "CALIFICACION" and self.calificacion is None:
             raise ValueError("La calificación es obligatoria")
+        if self.tipo == "ACUERDO":
+            if not self.fecha_limite or not self.fecha_revision:
+                raise ValueError("El acuerdo requiere fecha limite y fecha de revision")
+            if self.fecha_revision < self.fecha_limite:
+                raise ValueError("La fecha de revision debe ser igual o posterior a la fecha limite")
         self.categoria_reporte = self.categoria_reporte.upper()
         self.prioridad_reporte = self.prioridad_reporte.upper()
         if self.categoria_reporte not in {"ACADEMICO", "ASISTENCIA", "CONDUCTA", "PERSONAL", "OTRO"}:
@@ -183,14 +189,22 @@ class SeguimientoInput(BaseModel):
 class EstadoSeguimientoInput(BaseModel):
     estado: str
     resultado_atencion: Optional[str] = Field(None, max_length=2000)
+    fecha_limite: Optional[datetime.date] = None
+    fecha_revision: Optional[datetime.date] = None
 
     @model_validator(mode="after")
     def validar(self):
         self.estado = self.estado.upper()
-        if self.estado not in {"PENDIENTE", "ATENDIDO", "CERRADO"}:
+        estados_resultado = {"ATENDIDO", "CUMPLIDO", "CUMPLIDO_PARCIAL", "NO_CUMPLIDO", "CERRADO", "REPROGRAMADO"}
+        if self.estado not in {"PENDIENTE", *estados_resultado}:
             raise ValueError("Estado de seguimiento no válido")
-        if self.estado in {"ATENDIDO", "CERRADO"} and not (self.resultado_atencion or "").strip():
+        if self.estado in estados_resultado and not (self.resultado_atencion or "").strip():
             raise ValueError("El resultado de la atención es obligatorio")
+        if self.estado == "REPROGRAMADO":
+            if not self.fecha_limite or not self.fecha_revision:
+                raise ValueError("La reprogramacion requiere nuevas fechas")
+            if self.fecha_revision < self.fecha_limite:
+                raise ValueError("La fecha de revision debe ser igual o posterior a la fecha limite")
         return self
 
 
@@ -1957,6 +1971,7 @@ def ficha_alumno_docente(
         "registros": [{
             "id": r.id, "tipo": r.tipo, "titulo": r.titulo, "detalle": r.detalle,
             "calificacion": r.calificacion, "estado": r.estado,
+            "fecha_limite": r.fecha_limite.isoformat() if r.fecha_limite else None,
             "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
             "resultado_atencion": r.resultado_atencion,
             "atendido_en": r.atendido_en.isoformat() if r.atendido_en else None,
@@ -1978,7 +1993,8 @@ def registrar_seguimiento_alumno(
     registro = SeguimientoAlumnoDocente(
         docente_id=current_user.id, carga_docente_id=carga.id, alumno_id=alumno.id,
         tipo=data.tipo, titulo=data.titulo.strip(), detalle=data.detalle,
-        calificacion=data.calificacion, estado=data.estado, fecha_revision=data.fecha_revision,
+        calificacion=data.calificacion, estado=data.estado, fecha_limite=data.fecha_limite,
+        fecha_revision=data.fecha_revision,
     )
     db.add(registro)
     db.flush()
@@ -2063,7 +2079,11 @@ def actualizar_estado_seguimiento(
         raise HTTPException(409, "Este registro no maneja estado")
     registro.estado = data.estado
     registro.resultado_atencion = data.resultado_atencion.strip() if data.resultado_atencion else None
-    registro.atendido_en = datetime.datetime.utcnow() if data.estado in {"ATENDIDO", "CERRADO"} else None
+    if data.estado == "REPROGRAMADO":
+        registro.fecha_limite = data.fecha_limite
+        registro.fecha_revision = data.fecha_revision
+    estados_cerrados = {"ATENDIDO", "CUMPLIDO", "CUMPLIDO_PARCIAL", "NO_CUMPLIDO", "CERRADO"}
+    registro.atendido_en = datetime.datetime.utcnow() if data.estado in estados_cerrados else None
     db.commit()
     return {"id": registro.id, "estado": registro.estado}
 
@@ -2094,6 +2114,7 @@ def dashboard_docente(
             "resumen": {
                 "clases_hoy": 0, "clases_cerradas": 0, "asistencias_pendientes": 0,
                 "grupos_activos": 0, "alumnos_atencion": 0, "acuerdos_pendientes": 0,
+                "acuerdos_vencidos": 0,
             },
             "jornada": [], "grupos": [], "alumnos_prioritarios": [],
         }
@@ -2172,16 +2193,20 @@ def dashboard_docente(
     grupos = []
     alumnos_prioritarios_por_id = {}
     acuerdos_pendientes = 0
+    acuerdos_vencidos = 0
     for carga in cargas_seguimiento:
         seguimiento = seguimiento_grupo(carga.id, db, current_user)
         cargas_equivalentes_ids = [item.id for item in _cargas_equivalentes(db, carga)]
-        pendientes_carga = db.query(SeguimientoAlumnoDocente.id).filter(
+        acuerdos_activos = db.query(SeguimientoAlumnoDocente).filter(
             SeguimientoAlumnoDocente.carga_docente_id.in_(cargas_equivalentes_ids),
             SeguimientoAlumnoDocente.docente_id == current_user.id,
             SeguimientoAlumnoDocente.tipo == "ACUERDO",
-            SeguimientoAlumnoDocente.estado == "PENDIENTE",
-        ).count()
+            SeguimientoAlumnoDocente.estado.in_(["PENDIENTE", "REPROGRAMADO"]),
+        ).all()
+        pendientes_carga = len(acuerdos_activos)
+        vencidos_carga = sum(1 for acuerdo in acuerdos_activos if acuerdo.fecha_revision and acuerdo.fecha_revision < hoy)
         acuerdos_pendientes += pendientes_carga
+        acuerdos_vencidos += vencidos_carga
         grupos.append({
             "carga_id": carga.id,
             "materia": carga.actividad_nombre,
@@ -2192,6 +2217,7 @@ def dashboard_docente(
             "asistencia_promedio": seguimiento["promedio_asistencia"],
             "alumnos_alerta": seguimiento["alumnos_en_alerta"],
             "acuerdos_pendientes": pendientes_carga,
+            "acuerdos_vencidos": vencidos_carga,
             "ultima_clase": max(
                 (clase.fecha for clase in clases if clase.carga_docente_id in cargas_equivalentes_ids),
                 default=None,
@@ -2306,6 +2332,7 @@ def dashboard_docente(
             "grupos_activos": len({carga.grupo_academico_id for carga in cargas_seguimiento}),
             "alumnos_atencion": len(alumnos_prioritarios),
             "acuerdos_pendientes": acuerdos_pendientes,
+            "acuerdos_vencidos": acuerdos_vencidos,
         },
         "jornada": jornada,
         "calendario_hoy": calendario_hoy,
