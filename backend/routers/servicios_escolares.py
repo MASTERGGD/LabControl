@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import List, Optional
 
 from database import get_db
 from dependencies import get_current_user, hashear_password
@@ -66,6 +66,11 @@ class ResolucionPromocionIn(BaseModel):
     cuatrimestre_destino: Optional[int] = Field(None, ge=1, le=12)
     grupo_destino: Optional[str] = Field(None, max_length=10)
     observaciones: Optional[str] = Field(None, max_length=1000)
+
+
+class ResolucionPromocionMasivaIn(ResolucionPromocionIn):
+    inscripcion_ids: List[int] = Field(..., min_length=1, max_length=1000)
+    solo_pendientes: bool = True
 
 
 class PeriodoEscolarIn(BaseModel):
@@ -1204,7 +1209,9 @@ def _fila_promocion(inscripcion, promocion=None):
         "inscripcion_id": inscripcion.id, "promocion_id": promocion.id if promocion else None,
         "alumno_id": alumno.id, "matricula": alumno.matricula,
         "alumno": f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip(),
-        "carrera": grupo.carrera, "origen": f"{grupo.cuatrimestre}° {grupo.grupo}",
+        "carrera": grupo.carrera, "grupo_origen_id": grupo.id,
+        "cuatrimestre_origen": grupo.cuatrimestre, "grupo_origen": grupo.grupo,
+        "origen": f"{grupo.cuatrimestre}° {grupo.grupo}",
         "resolucion": resolucion,
         "cuatrimestre_destino": promocion.cuatrimestre_destino if promocion else min(grupo.cuatrimestre + 1, 12),
         "grupo_destino": promocion.grupo_destino if promocion else grupo.grupo,
@@ -1261,6 +1268,67 @@ def resolver_promocion(inscripcion_id: int, data: ResolucionPromocionIn, db: Ses
     promo.resuelto_por_id = current_user.id; promo.resuelto_en = _now()
     db.commit(); db.refresh(promo)
     return _fila_promocion(inscripcion, promo)
+
+
+@router.put("/promociones", summary="Resolver promoción de varios alumnos")
+def resolver_promociones_masivas(
+    data: ResolucionPromocionMasivaIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    destino = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_destino_id).first()
+    if not destino:
+        raise HTTPException(404, "Periodo destino no encontrado")
+    resolucion = data.resolucion.upper()
+    if resolucion not in RESOLUCIONES_PROMOCION or resolucion == "PENDIENTE":
+        raise HTTPException(422, "Selecciona una resolución definitiva para la operación masiva")
+    requiere_grupo = resolucion in {"PROMOVIDO", "REPITE"}
+    if requiere_grupo and (not data.cuatrimestre_destino or not data.grupo_destino):
+        raise HTTPException(422, "Indica cuatrimestre y grupo de destino")
+    ids = list(dict.fromkeys(data.inscripcion_ids))
+    inscripciones = db.query(InscripcionAlumno).filter(InscripcionAlumno.id.in_(ids)).all()
+    if len(inscripciones) != len(ids):
+        raise HTTPException(404, "Una o más inscripciones no existen")
+    grupos_origen = {i.grupo_academico_id for i in inscripciones}
+    if len(grupos_origen) != 1:
+        raise HTTPException(422, "La resolución masiva debe corresponder a un solo grupo de origen")
+    if inscripciones[0].grupo_academico.periodo_id == destino.id:
+        raise HTTPException(422, "El periodo destino debe ser diferente al periodo de origen")
+    promociones = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
+        PromocionAcademicaAlumno.inscripcion_origen_id.in_(ids),
+    ).all()}
+    actualizadas = omitidas = 0
+    for inscripcion in inscripciones:
+        promo = promociones.get(inscripcion.id)
+        if promo and promo.estado == "APLICADA":
+            omitidas += 1
+            continue
+        if data.solo_pendientes and promo and promo.resolucion != "PENDIENTE":
+            omitidas += 1
+            continue
+        if not promo:
+            promo = PromocionAcademicaAlumno(
+                alumno_id=inscripcion.alumno_id,
+                inscripcion_origen_id=inscripcion.id,
+                periodo_destino_id=destino.id,
+            )
+            db.add(promo)
+        promo.periodo_destino_id = destino.id
+        promo.resolucion = resolucion
+        promo.cuatrimestre_destino = data.cuatrimestre_destino if requiere_grupo else None
+        promo.grupo_destino = data.grupo_destino.strip().upper() if requiere_grupo else None
+        promo.observaciones = data.observaciones
+        promo.estado = "RESUELTA"
+        promo.resuelto_por_id = current_user.id
+        promo.resuelto_en = _now()
+        actualizadas += 1
+    db.commit()
+    return {
+        "actualizadas": actualizadas,
+        "omitidas": omitidas,
+        "mensaje": f"Se guardaron {actualizadas} resoluciones; {omitidas} se conservaron sin cambios.",
+    }
 
 
 @router.post("/promociones/aplicar", summary="Aplicar promociones resueltas")

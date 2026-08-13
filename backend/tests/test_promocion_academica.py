@@ -2,6 +2,7 @@ import datetime
 
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.cierre_academico import CierreAcademicoPeriodo
+from models.promocion_academica import PromocionAcademicaAlumno
 from tests.conftest import auth_headers, get_token
 
 
@@ -87,4 +88,54 @@ def test_servicios_escolares_rechaza_clave_de_periodo_invalida(client, admin_use
         headers=headers,
         json={"clave": "CUARTO 2026"},
     )
+    assert respuesta.status_code == 422
+
+
+def test_promocion_masiva_solo_actualiza_pendientes_y_conserva_excepciones(client, db, admin_user):
+    origen = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    destino = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    db.add_all([origen, destino]); db.flush()
+    grupo = GrupoAcademico(periodo_id=origen.id, carrera="TIEID", cuatrimestre=3, grupo="A", activo=True)
+    db.add(grupo); db.flush()
+    inscripciones = []
+    for indice in range(3):
+        alumno = CatalogoAlumno(
+            matricula=f"UTC2600{indice}", apellido_paterno="Alumno", apellido_materno="Prueba",
+            nombres=str(indice), carrera="TIEID", cuatrimestre=3, grupo="A",
+            periodo=origen.clave, activo=True,
+        )
+        db.add(alumno); db.flush()
+        inscripcion = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO")
+        db.add(inscripcion); db.flush(); inscripciones.append(inscripcion)
+    excepcion = PromocionAcademicaAlumno(
+        alumno_id=inscripciones[0].alumno_id, inscripcion_origen_id=inscripciones[0].id,
+        periodo_destino_id=destino.id, resolucion="REPITE", cuatrimestre_destino=3,
+        grupo_destino="B", estado="RESUELTA", resuelto_por_id=admin_user.id,
+    )
+    db.add(excepcion); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+
+    respuesta = client.put("/servicios-escolares/promociones", headers=headers, json={
+        "periodo_destino_id": destino.id, "inscripcion_ids": [i.id for i in inscripciones],
+        "resolucion": "PROMOVIDO", "cuatrimestre_destino": 4, "grupo_destino": "A",
+        "observaciones": "Promoción ordinaria del grupo", "solo_pendientes": True,
+    })
+
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json()["actualizadas"] == 2
+    assert respuesta.json()["omitidas"] == 1
+    db.expire_all()
+    promociones = db.query(PromocionAcademicaAlumno).order_by(PromocionAcademicaAlumno.inscripcion_origen_id).all()
+    assert len(promociones) == 3
+    assert promociones[0].resolucion == "REPITE"
+    assert [p.resolucion for p in promociones[1:]] == ["PROMOVIDO", "PROMOVIDO"]
+
+
+def test_promocion_masiva_requiere_destino_para_promovidos(client, db, admin_user):
+    destino = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    db.add(destino); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    respuesta = client.put("/servicios-escolares/promociones", headers=headers, json={
+        "periodo_destino_id": destino.id, "inscripcion_ids": [999], "resolucion": "PROMOVIDO",
+    })
     assert respuesta.status_code == 422
