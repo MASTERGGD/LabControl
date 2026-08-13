@@ -743,7 +743,11 @@ export default function MisTutorados() {
   useEffect(() => {
     api.get("/tutoria/grupos").then(({ data }) => {
       setGrupos(data);
-      if (data.length > 0) setGrupoSel(data[0]);
+      if (data.length > 0) {
+        const solicitado = Number(searchParams.get("grupo"));
+        const seleccionado = data.find((grupo) => grupo.id === solicitado) || data[0];
+        setGrupoSel(seleccionado);
+      }
     }).catch(() => showToast("Error al cargar grupos", "error"));
     cargarPendientes();
     cargarReportesTutor();
@@ -752,7 +756,7 @@ export default function MisTutorados() {
   useEffect(() => {
     if (!grupoSel) return;
     api.get(`/tutoria/grupos/${grupoSel.id}/alumnos`)
-      .then(({ data }) => setAlumnos(data))
+      .then(({ data }) => { setAlumnos(data); if (searchParams.get("accion") === "sesion") setModal("sesion"); })
       .catch(() => showToast("Error al cargar alumnos", "error"));
     api.get("/tutoria/canalizaciones")
       .then(({ data }) => setCanalizaciones(data))

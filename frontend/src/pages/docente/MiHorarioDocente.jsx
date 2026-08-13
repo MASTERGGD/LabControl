@@ -31,7 +31,7 @@ const TIPO_ESTILO = {
 const VACIO = {
   tipo_actividad: 'CLASE', actividad_nombre: '', dia_semana: 0,
   hora_inicio: '08:00', hora_fin: '09:00', grupo_academico_id: '',
-  materia_id: '', espacio_nombre: '', laboratorio_id: '', observaciones: '',
+  materia_id: '', grupo_tutorado_id: '', espacio_nombre: '', laboratorio_id: '', observaciones: '',
 };
 
 const minutosDeHora = (hora = '00:00') => {
@@ -54,6 +54,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     ...VACIO, ...actividad,
     grupo_academico_id: actividad.grupo_academico_id || '',
     materia_id: actividad.materia_id || '',
+    grupo_tutorado_id: actividad.grupo_tutorado_id || '',
     laboratorio_id: actividad.laboratorio_id || '',
   } : { ...VACIO, ...preseleccion });
   const [error, setError] = useState('');
@@ -63,6 +64,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   const [disponibilidadLab, setDisponibilidadLab] = useState(null);
   const [verificandoLab, setVerificandoLab] = useState(false);
   const esClase = form.tipo_actividad === 'CLASE';
+  const esTutoria = form.tipo_actividad === 'TUTORIA';
   const grupoSeleccionado = catalogos.grupos.find((g) => String(g.id) === String(form.grupo_academico_id));
   const materiaSeleccionada = catalogos.materias.find((m) => String(m.id) === String(form.materia_id));
   const asignacionGrupo = (grupoId, materiaId = form.materia_id) => (
@@ -98,6 +100,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     periodo_id: Number(periodoId),
     grupo_academico_id: esClase && form.grupo_academico_id ? Number(form.grupo_academico_id) : null,
     materia_id: esClase && form.materia_id ? Number(form.materia_id) : null,
+    grupo_tutorado_id: esTutoria && form.grupo_tutorado_id ? Number(form.grupo_tutorado_id) : null,
     laboratorio_id: form.laboratorio_id ? Number(form.laboratorio_id) : null,
   });
 
@@ -112,6 +115,14 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     if (campo === 'materia_id') {
       const materia = catalogos.materias.find((m) => String(m.id) === String(valor));
       if (materia) setForm((actual) => ({ ...actual, materia_id: valor, actividad_nombre: materia.nombre }));
+    }
+    if (campo === 'tipo_actividad' && valor === 'TUTORIA') {
+      const grupos = catalogos.grupos_tutorados || [];
+      setForm((actual) => ({ ...actual, tipo_actividad: valor, grupo_academico_id: '', materia_id: '', grupo_tutorado_id: grupos.length === 1 ? grupos[0].id : '', actividad_nombre: grupos.length === 1 ? `Tutoría grupal · ${grupos[0].cuatrimestre}° ${grupos[0].grupo}` : 'Tutoría grupal' }));
+    }
+    if (campo === 'grupo_tutorado_id') {
+      const grupo = (catalogos.grupos_tutorados || []).find((g) => String(g.id) === String(valor));
+      if (grupo) setForm((actual) => ({ ...actual, grupo_tutorado_id: valor, actividad_nombre: `Tutoría grupal · ${grupo.cuatrimestre}° ${grupo.grupo}` }));
     }
     if (campo === 'laboratorio_id') {
       const lab = catalogos.laboratorios.find((l) => String(l.id) === String(valor));
@@ -272,8 +283,20 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
               </label>
             </>
           )}
+          {esTutoria && (
+            <div className="sm:col-span-2">
+              <label className="text-sm text-slate-300">Grupo tutorado asignado *
+                <select required className="input-dark mt-1 w-full" value={form.grupo_tutorado_id} onChange={(e) => cambiar('grupo_tutorado_id', e.target.value)}>
+                  <option value="">{(catalogos.grupos_tutorados || []).length ? 'Selecciona tu grupo tutorado' : 'No tienes grupos tutorados asignados'}</option>
+                  {(catalogos.grupos_tutorados || []).map((grupo) => <option key={grupo.id} value={grupo.id}>{grupo.label}</option>)}
+                </select>
+              </label>
+              {!(catalogos.grupos_tutorados || []).length && <p className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">Solicita al Responsable de Tutoría que te asigne un grupo antes de agregar este bloque.</p>}
+              {(catalogos.grupos_tutorados || []).length === 1 && <p className="mt-1.5 text-xs text-emerald-400">✓ Tu grupo tutorado fue seleccionado automáticamente.</p>}
+            </div>
+          )}
           <label className={`text-sm text-slate-300 ${esClase ? 'sm:col-span-2' : ''}`}>Nombre de la actividad *
-            <input required className="input-dark mt-1 w-full" value={form.actividad_nombre} onChange={(e) => cambiar('actividad_nombre', e.target.value)} placeholder={esClase ? 'Nombre de la materia' : 'Ej. Tutoría grupal'} />
+            <input required readOnly={esTutoria} className="input-dark mt-1 w-full read-only:opacity-70" value={form.actividad_nombre} onChange={(e) => cambiar('actividad_nombre', e.target.value)} placeholder={esClase ? 'Nombre de la materia' : 'Ej. Tutoría grupal'} />
           </label>
           <label className="text-sm text-slate-300">Hora de inicio
             <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_inicio} onChange={(e) => cambiar('hora_inicio', e.target.value)} />
@@ -650,6 +673,9 @@ export default function MiHorarioDocente() {
                     {textoAccionClase(actividadPrincipal)}
                   </button>
                 )}
+                {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (
+                  <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${actividadPrincipal.grupo_tutorado_id}&accion=sesion`)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Iniciar tutoría</button>
+                )}
                 {esNoLectiva(actividadPrincipal) && (
                   <button onClick={() => navigate('/calendario-academico')} className="rounded-xl border border-slate-500/30 bg-slate-500/10 px-4 py-2.5 text-sm font-semibold text-slate-300">
                     Ver calendario oficial
@@ -844,6 +870,7 @@ export default function MiHorarioDocente() {
                               {textoAccionClase(item)}
                             </button>
                           )}
+                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion`)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Iniciar tutoría</button>}
                           {esNoLectiva(item) && (
                             <button onClick={() => navigate('/calendario-academico')} className="rounded-lg border border-slate-500/30 px-3 py-2 text-xs font-semibold text-slate-300">
                               Ver calendario

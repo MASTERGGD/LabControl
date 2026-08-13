@@ -16,6 +16,7 @@ from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente,
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
 )
+from models.tutoria import GrupoTutorado
 from tests.conftest import auth_headers, get_token
 
 
@@ -625,3 +626,23 @@ def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
     db.refresh(clase)
     assert clase.estado_reposicion == "CANCELADA"
     assert "Se acordó otra fecha" in clase.observacion_general
+
+
+def test_bloque_tutoria_exige_grupo_formal_asignado(client, db):
+    docente = Usuario(nombre="Tutor Formal", email="tutor.formal@test.mx", password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True)
+    ajeno = Usuario(nombre="Tutor Ajeno", email="tutor.ajeno@test.mx", password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True)
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, ajeno, periodo]); db.flush()
+    grupo = GrupoTutorado(tutor_id=docente.id, carrera="TIEID", cuatrimestre=9, grupo="A", periodo=periodo.clave, activo=True, estado="ACTIVO")
+    db.add(grupo); db.commit()
+    payload = {"periodo_id": periodo.id, "grupo_tutorado_id": grupo.id, "tipo_actividad": "TUTORIA", "actividad_nombre": "texto ignorado", "dia_semana": 2, "hora_inicio": "08:00", "hora_fin": "09:00"}
+    headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    catalogos = client.get("/docencia/catalogos", headers=headers)
+    assert catalogos.status_code == 200
+    assert catalogos.json()["grupos_tutorados"][0]["id"] == grupo.id
+    creada = client.post("/docencia/horario", headers=headers, json=payload)
+    assert creada.status_code == 200, creada.text
+    assert creada.json()["carga"]["grupo_tutorado_id"] == grupo.id
+    assert creada.json()["carga"]["actividad_nombre"] == "Tutoría grupal · 9° A"
+    denegada = client.post("/docencia/horario", headers=auth_headers(get_token(client, ajeno.email, "Docente123!")), json=payload)
+    assert denegada.status_code == 409

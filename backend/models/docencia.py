@@ -21,6 +21,7 @@ class CargaDocente(Base):
     periodo_id = Column(Integer, ForeignKey("periodos_escolares.id"), nullable=False, index=True)
     grupo_academico_id = Column(Integer, ForeignKey("grupos_academicos.id"), nullable=True, index=True)
     materia_id = Column(Integer, ForeignKey("catalogo_materias.id"), nullable=True)
+    grupo_tutorado_id = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=True, index=True)
     tipo_actividad = Column(String(20), nullable=False, default="CLASE")
     actividad_nombre = Column(String(200), nullable=False)
     dia_semana = Column(Integer, nullable=False)
@@ -38,6 +39,7 @@ class CargaDocente(Base):
     periodo = relationship("PeriodoEscolar")
     grupo_academico = relationship("GrupoAcademico")
     materia = relationship("CatalogoMateria")
+    grupo_tutorado = relationship("GrupoTutorado")
     laboratorio = relationship("Laboratorio")
     clases = relationship("ClaseDocente", back_populates="carga")
 

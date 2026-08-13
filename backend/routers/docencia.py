@@ -48,6 +48,7 @@ class CargaInput(BaseModel):
     periodo_id: int
     grupo_academico_id: Optional[int] = None
     materia_id: Optional[int] = None
+    grupo_tutorado_id: Optional[int] = None
     tipo_actividad: str = "CLASE"
     actividad_nombre: str = Field(..., min_length=2, max_length=200)
     dia_semana: int = Field(..., ge=0, le=5)
@@ -66,6 +67,8 @@ class CargaInput(BaseModel):
             raise ValueError("La hora final debe ser posterior a la inicial")
         if self.tipo_actividad == "CLASE" and not self.grupo_academico_id:
             raise ValueError("Las clases deben tener un grupo")
+        if self.tipo_actividad == "TUTORIA" and not self.grupo_tutorado_id:
+            raise ValueError("Selecciona uno de tus grupos tutorados")
         return self
 
 
@@ -455,6 +458,21 @@ def _commit_asignacion(db: Session):
         raise
 
 
+def _validar_asignacion_tutoria(db: Session, data: CargaInput, docente_id: int, periodo: PeriodoEscolar):
+    if data.tipo_actividad != "TUTORIA":
+        return None
+    grupo = db.query(GrupoTutorado).filter(
+        GrupoTutorado.id == data.grupo_tutorado_id,
+        GrupoTutorado.tutor_id == docente_id,
+        GrupoTutorado.activo == True,
+        GrupoTutorado.estado == "ACTIVO",
+        GrupoTutorado.periodo == periodo.clave,
+    ).first()
+    if not grupo:
+        raise HTTPException(409, "El grupo tutorado no está asignado a tu cuenta en este periodo")
+    return grupo
+
+
 def _serializar_carga(c: CargaDocente, db: Session):
     grupo = c.grupo_academico
     lab = c.laboratorio
@@ -472,10 +490,17 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "periodo": c.periodo.clave if c.periodo else None,
         "grupo_academico_id": c.grupo_academico_id,
         "grupo": (
-            f"{grupo.cuatrimestre}° {grupo.grupo}" if grupo else None
+            f"{grupo.cuatrimestre}° {grupo.grupo}" if grupo
+            else f"{c.grupo_tutorado.cuatrimestre}° {c.grupo_tutorado.grupo}" if c.grupo_tutorado
+            else None
         ),
-        "carrera": grupo.carrera if grupo else None,
+        "carrera": grupo.carrera if grupo else c.grupo_tutorado.carrera if c.grupo_tutorado else None,
         "materia_id": c.materia_id,
+        "grupo_tutorado_id": c.grupo_tutorado_id,
+        "grupo_tutorado": (
+            f"{c.grupo_tutorado.cuatrimestre}° {c.grupo_tutorado.grupo} · {c.grupo_tutorado.carrera}"
+            if c.grupo_tutorado else None
+        ),
         "actividad_nombre": c.actividad_nombre,
         "tipo_actividad": c.tipo_actividad,
         "dia_semana": c.dia_semana,
@@ -659,6 +684,12 @@ def catalogos_docente(
                 "docente": carga.docente.nombre if carga.docente else "Docente",
                 "es_propia": carga.docente_id == current_user.id,
             })
+    grupos_tutorados = db.query(GrupoTutorado).filter(
+        GrupoTutorado.tutor_id == current_user.id,
+        GrupoTutorado.activo == True,
+        GrupoTutorado.estado == "ACTIVO",
+        GrupoTutorado.periodo == (periodo.clave if elegido and periodo else ""),
+    ).order_by(GrupoTutorado.carrera, GrupoTutorado.cuatrimestre, GrupoTutorado.grupo).all()
     return {
         "periodo_sugerido_id": elegido,
         "periodos": [{
@@ -677,6 +708,10 @@ def catalogos_docente(
             "cuatrimestre_oficial": m.cuatrimestre_oficial,
         } for m in materias_q.all()],
         "asignaciones_materias": list(asignaciones.values()),
+        "grupos_tutorados": [{
+            "id": g.id, "carrera": g.carrera, "cuatrimestre": g.cuatrimestre,
+            "grupo": g.grupo, "label": f"{g.cuatrimestre}° {g.grupo} · {g.carrera}",
+        } for g in grupos_tutorados],
         "laboratorios": [{"id": l.id, "nombre": l.nombre} for l in db.query(Laboratorio).filter(Laboratorio.activo == True).all()],
         "espacios": [{"id": e.id, "nombre": e.nombre} for e in db.query(EspacioInstitucional).filter(EspacioInstitucional.activo == True).all()],
     }
@@ -713,9 +748,12 @@ def crear_carga(
     current_user: Usuario = Depends(get_current_user),
 ):
     _solo_docente(current_user)
-    _validar_periodo_actual(db, data.periodo_id)
+    periodo = _validar_periodo_actual(db, data.periodo_id)
     _validar_identidad_academica(db, data)
     _validar_asignacion_materia(db, data, current_user.id)
+    grupo_tutoria = _validar_asignacion_tutoria(db, data, current_user.id, periodo)
+    if grupo_tutoria:
+        data.actividad_nombre = f"Tutoría grupal · {grupo_tutoria.cuatrimestre}° {grupo_tutoria.grupo}"
     carga = CargaDocente(docente_id=current_user.id, estado="BORRADOR", **data.model_dump())
     db.add(carga)
     db.flush()
@@ -738,9 +776,12 @@ def actualizar_carga(
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
     _validar_carga_actual(db, carga)
-    _validar_periodo_actual(db, data.periodo_id)
+    periodo = _validar_periodo_actual(db, data.periodo_id)
     _validar_identidad_academica(db, data)
     _validar_asignacion_materia(db, data, current_user.id, carga.id)
+    grupo_tutoria = _validar_asignacion_tutoria(db, data, current_user.id, periodo)
+    if grupo_tutoria:
+        data.actividad_nombre = f"Tutoría grupal · {grupo_tutoria.cuatrimestre}° {grupo_tutoria.grupo}"
     cambia_laboratorio = any(
         getattr(carga, campo) != getattr(data, campo)
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
