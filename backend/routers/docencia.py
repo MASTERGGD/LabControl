@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -407,6 +408,36 @@ def _validar_identidad_academica(db: Session, data: CargaInput):
         raise HTTPException(422, "La materia no corresponde al periodo académico seleccionado")
 
 
+def _validar_asignacion_materia(db: Session, data: CargaInput, docente_id: int, excluir_id=None):
+    """Una materia-grupo pertenece a un solo docente, aunque tenga varios bloques."""
+    if data.tipo_actividad != "CLASE":
+        return
+    consulta = db.query(CargaDocente).filter(
+        CargaDocente.activo == True,
+        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.periodo_id == data.periodo_id,
+        CargaDocente.grupo_academico_id == data.grupo_academico_id,
+        CargaDocente.materia_id == data.materia_id,
+        CargaDocente.docente_id != docente_id,
+    )
+    if excluir_id:
+        consulta = consulta.filter(CargaDocente.id != excluir_id)
+    asignada = consulta.first()
+    if asignada:
+        docente = asignada.docente.nombre if asignada.docente else "otro docente"
+        raise HTTPException(409, f"Esta materia ya está asignada a {docente} para el grupo seleccionado")
+
+
+def _commit_asignacion(db: Session):
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        if "uq_docente_materia_grupo" in str(error.orig):
+            raise HTTPException(409, "La materia y el grupo fueron asignados a otro docente mientras guardabas") from error
+        raise
+
+
 def _serializar_carga(c: CargaDocente, db: Session):
     grupo = c.grupo_academico
     lab = c.laboratorio
@@ -587,6 +618,24 @@ def catalogos_docente(
     grupos = grupos_q.order_by(
         GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo
     ).all()
+    asignaciones = {}
+    if elegido:
+        cargas_asignadas = db.query(CargaDocente).filter(
+            CargaDocente.activo == True,
+            CargaDocente.tipo_actividad == "CLASE",
+            CargaDocente.periodo_id == elegido,
+            CargaDocente.materia_id.isnot(None),
+            CargaDocente.grupo_academico_id.isnot(None),
+        ).all()
+        for carga in cargas_asignadas:
+            clave = (carga.materia_id, carga.grupo_academico_id)
+            asignaciones.setdefault(clave, {
+                "materia_id": carga.materia_id,
+                "grupo_academico_id": carga.grupo_academico_id,
+                "docente_id": carga.docente_id,
+                "docente": carga.docente.nombre if carga.docente else "Docente",
+                "es_propia": carga.docente_id == current_user.id,
+            })
     return {
         "periodo_sugerido_id": elegido,
         "periodos": [{
@@ -604,6 +653,7 @@ def catalogos_docente(
             "id": m.id, "nombre": m.nombre, "carrera": m.carrera,
             "cuatrimestre_oficial": m.cuatrimestre_oficial,
         } for m in materias_q.all()],
+        "asignaciones_materias": list(asignaciones.values()),
         "laboratorios": [{"id": l.id, "nombre": l.nombre} for l in db.query(Laboratorio).filter(Laboratorio.activo == True).all()],
         "espacios": [{"id": e.id, "nombre": e.nombre} for e in db.query(EspacioInstitucional).filter(EspacioInstitucional.activo == True).all()],
     }
@@ -642,11 +692,12 @@ def crear_carga(
     _solo_docente(current_user)
     _validar_periodo_actual(db, data.periodo_id)
     _validar_identidad_academica(db, data)
+    _validar_asignacion_materia(db, data, current_user.id)
     carga = CargaDocente(docente_id=current_user.id, estado="BORRADOR", **data.model_dump())
     db.add(carga)
     db.flush()
     avisos = _advertencias(db, carga, carga.id)
-    db.commit()
+    _commit_asignacion(db)
     db.refresh(carga)
     return {"carga": _serializar_carga(carga, db), "advertencias": avisos}
 
@@ -666,6 +717,7 @@ def actualizar_carga(
     _validar_carga_actual(db, carga)
     _validar_periodo_actual(db, data.periodo_id)
     _validar_identidad_academica(db, data)
+    _validar_asignacion_materia(db, data, current_user.id, carga.id)
     cambia_laboratorio = any(
         getattr(carga, campo) != getattr(data, campo)
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
@@ -676,7 +728,7 @@ def actualizar_carga(
         setattr(carga, campo, valor)
     carga.estado = "BORRADOR"
     avisos = _advertencias(db, carga, carga.id)
-    db.commit()
+    _commit_asignacion(db)
     db.refresh(carga)
     return {"carga": _serializar_carga(carga, db), "advertencias": avisos}
 

@@ -65,6 +65,12 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   const esClase = form.tipo_actividad === 'CLASE';
   const grupoSeleccionado = catalogos.grupos.find((g) => String(g.id) === String(form.grupo_academico_id));
   const materiaSeleccionada = catalogos.materias.find((m) => String(m.id) === String(form.materia_id));
+  const asignacionGrupo = (grupoId, materiaId = form.materia_id) => (
+    (catalogos.asignaciones_materias || []).find((asignacion) => (
+      String(asignacion.materia_id) === String(materiaId)
+      && String(asignacion.grupo_academico_id) === String(grupoId)
+    ))
+  );
   const normalizar = (valor) => String(valor || '').trim().replace(/\s+/g, ' ').toLocaleUpperCase('es');
   const gruposCompatibles = materiaSeleccionada ? catalogos.grupos.filter((grupo) => (
     (!materiaSeleccionada.carrera || normalizar(grupo.carrera) === normalizar(materiaSeleccionada.carrera))
@@ -118,11 +124,15 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
       && (materia.cuatrimestre_oficial == null
         || Number(grupo.cuatrimestre) === Number(materia.cuatrimestre_oficial))
     ));
+    const disponibles = compatibles.filter((grupo) => {
+      const asignacion = asignacionGrupo(grupo.id, materia.id);
+      return !asignacion || asignacion.es_propia;
+    });
     setForm((actual) => ({
       ...actual,
       materia_id: materia.id,
       actividad_nombre: materia.nombre,
-      grupo_academico_id: compatibles.length === 1 ? compatibles[0].id : '',
+      grupo_academico_id: disponibles.length === 1 ? disponibles[0].id : '',
     }));
     setMateriaBusqueda(materia.nombre);
     setBuscadorMateriaAbierto(false);
@@ -250,10 +260,15 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
               <label className="text-sm text-slate-300">Grupo *
                 <select required disabled={!form.materia_id || !gruposCompatibles.length} className="input-dark mt-1 w-full disabled:cursor-not-allowed disabled:opacity-60" value={form.grupo_academico_id} onChange={(e) => cambiar('grupo_academico_id', e.target.value)}>
                   <option value="">{!form.materia_id ? 'Selecciona primero una materia' : !gruposCompatibles.length ? 'No hay grupos compatibles' : 'Selecciona un grupo'}</option>
-                  {gruposCompatibles.map((g) => <option key={g.id} value={g.id}>{g.label} · {g.total_alumnos} alumno{g.total_alumnos === 1 ? '' : 's'}</option>)}
+                  {gruposCompatibles.map((g) => {
+                    const asignacion = asignacionGrupo(g.id);
+                    const ocupada = asignacion && !asignacion.es_propia;
+                    return <option key={g.id} value={g.id} disabled={ocupada}>{g.label} · {ocupada ? `Asignada a ${asignacion.docente}` : asignacion?.es_propia ? 'Tu materia' : `${g.total_alumnos} alumno${g.total_alumnos === 1 ? '' : 's'}`}</option>;
+                  })}
                 </select>
-                {form.materia_id && gruposCompatibles.length === 1 && grupoSeleccionado && <span className="mt-1 block text-xs text-emerald-400">✓ Grupo asignado automáticamente</span>}
+                {form.materia_id && grupoSeleccionado && gruposCompatibles.filter((g) => { const a = asignacionGrupo(g.id); return !a || a.es_propia; }).length === 1 && <span className="mt-1 block text-xs text-emerald-400">✓ Grupo disponible asignado automáticamente</span>}
                 {form.materia_id && !gruposCompatibles.length && <span className="mt-1 block text-xs text-amber-400">No existe un grupo activo para la carrera y cuatrimestre de esta materia.</span>}
+                {form.materia_id && gruposCompatibles.length > 0 && gruposCompatibles.every((g) => { const a = asignacionGrupo(g.id); return a && !a.es_propia; }) && <span className="mt-1 block text-xs text-amber-400">Todos los grupos compatibles ya fueron asignados a otros docentes.</span>}
               </label>
             </>
           )}

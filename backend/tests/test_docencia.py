@@ -546,3 +546,50 @@ def test_materias_corresponden_a_division_de_carrera(client, db):
         headers=auth_headers(token_escolares),
     )
     assert denegada.status_code == 403
+
+
+def test_materia_grupo_solo_puede_pertenecer_a_un_docente(client, db):
+    docentes = [Usuario(
+        nombre=nombre, email=correo, password_hash=hashear_password("Docente123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    ) for nombre, correo in (("Gilberto", "gilberto.asignacion@test.mx"), ("Bruno", "bruno.asignacion@test.mx"))]
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([*docentes, periodo]); db.flush()
+    grupos = [GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=9, grupo=letra, activo=True,
+    ) for letra in ("A", "B")]
+    materia = CatalogoMateria(
+        nombre="Extracción de conocimiento", carrera="TIEID",
+        cuatrimestre_oficial=9, periodo=periodo.clave, activo=True,
+    )
+    db.add_all([*grupos, materia]); db.commit()
+    base = {
+        "periodo_id": periodo.id, "materia_id": materia.id, "tipo_actividad": "CLASE",
+        "actividad_nombre": materia.nombre, "hora_inicio": "08:00", "hora_fin": "09:00",
+        "espacio_nombre": "S3", "laboratorio_id": None,
+    }
+    gilberto_h = auth_headers(get_token(client, docentes[0].email, "Docente123!"))
+    bruno_h = auth_headers(get_token(client, docentes[1].email, "Docente123!"))
+
+    primera = client.post("/docencia/horario", headers=gilberto_h, json={
+        **base, "grupo_academico_id": grupos[0].id, "dia_semana": 0,
+    })
+    assert primera.status_code == 200, primera.text
+    segundo_bloque = client.post("/docencia/horario", headers=gilberto_h, json={
+        **base, "grupo_academico_id": grupos[0].id, "dia_semana": 2,
+    })
+    assert segundo_bloque.status_code == 200, segundo_bloque.text
+    duplicada = client.post("/docencia/horario", headers=bruno_h, json={
+        **base, "grupo_academico_id": grupos[0].id, "dia_semana": 1,
+    })
+    assert duplicada.status_code == 409
+    assert "Gilberto" in duplicada.json()["detail"]
+    otro_grupo = client.post("/docencia/horario", headers=bruno_h, json={
+        **base, "grupo_academico_id": grupos[1].id, "dia_semana": 1,
+    })
+    assert otro_grupo.status_code == 200, otro_grupo.text
+
+    catalogos = client.get("/docencia/catalogos", headers=bruno_h).json()
+    asignacion_a = next(a for a in catalogos["asignaciones_materias"] if a["grupo_academico_id"] == grupos[0].id)
+    assert asignacion_a["docente"] == "Gilberto"
+    assert asignacion_a["es_propia"] is False
