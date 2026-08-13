@@ -593,3 +593,35 @@ def test_materia_grupo_solo_puede_pertenecer_a_un_docente(client, db):
     asignacion_a = next(a for a in catalogos["asignaciones_materias"] if a["grupo_academico_id"] == grupos[0].id)
     assert asignacion_a["docente"] == "Gilberto"
     assert asignacion_a["es_propia"] is False
+
+
+def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
+    docente = Usuario(nombre="Docente Reposición", email="reposicion@test.mx", password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True)
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, periodo]); db.flush()
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera="TIEID", cuatrimestre=9, grupo="A", activo=True)
+    materia = CatalogoMateria(nombre="Extracción", carrera="TIEID", cuatrimestre_oficial=9, periodo=periodo.clave, activo=True)
+    db.add_all([grupo, materia]); db.flush()
+    hoy = datetime.datetime.now(ZoneInfo("America/Mexico_City")).date()
+    fecha_original = hoy - datetime.timedelta(days=7)
+    carga = CargaDocente(docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id, materia_id=materia.id, tipo_actividad="CLASE", actividad_nombre=materia.nombre, dia_semana=fecha_original.weekday(), hora_inicio="08:00", hora_fin="09:00", estado="ACTIVO", activo=True)
+    db.add(carga); db.commit()
+    headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    fecha_reposicion = hoy + datetime.timedelta(days=1)
+    respuesta = client.post(f"/docencia/horario/{carga.id}/reposiciones", headers=headers, json={
+        "fecha_original": fecha_original.isoformat(), "fecha": fecha_reposicion.isoformat(),
+        "hora_inicio": "14:00", "hora_fin": "15:00", "motivo": "Suspensión institucional",
+        "tema": "Continuación del tema pendiente",
+    })
+    assert respuesta.status_code == 200, respuesta.text
+    clase = db.query(ClaseDocente).one()
+    assert clase.es_reposicion is True
+    assert clase.estado == "PROGRAMADA"
+    assert clase.fecha_original == fecha_original
+    assert carga.dia_semana == fecha_original.weekday()
+    assert carga.hora_inicio == "08:00"
+    cancelada = client.post(f"/docencia/reposiciones/{clase.id}/cancelar", headers=headers, json={"motivo": "Se acordó otra fecha"})
+    assert cancelada.status_code == 200
+    db.refresh(clase)
+    assert clase.estado_reposicion == "CANCELADA"
+    assert "Se acordó otra fecha" in clase.observacion_general

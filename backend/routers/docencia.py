@@ -79,6 +79,23 @@ class CapturaExtemporaneaInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
 
 
+class ReposicionInput(BaseModel):
+    fecha: datetime.date
+    fecha_original: datetime.date
+    hora_inicio: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    hora_fin: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    motivo: str = Field(..., min_length=5, max_length=500)
+    tema: Optional[str] = Field(None, max_length=300)
+
+    @model_validator(mode="after")
+    def validar(self):
+        if self.hora_inicio >= self.hora_fin:
+            raise ValueError("La hora final debe ser posterior a la inicial")
+        if self.fecha <= self.fecha_original:
+            raise ValueError("La reposición debe programarse después de la clase original")
+        return self
+
+
 class AsistenciaInput(BaseModel):
     estado: str
     observacion: Optional[str] = Field(None, max_length=500)
@@ -519,6 +536,12 @@ def _serializar_clase(clase: ClaseDocente):
         "observacion_general": observacion_limpia,
         "correcciones_asistencia": correcciones,
         "es_extemporanea": clase.es_extemporanea,
+        "es_reposicion": clase.es_reposicion,
+        "fecha_original": clase.fecha_original.isoformat() if clase.fecha_original else None,
+        "hora_inicio_reposicion": clase.hora_inicio_reposicion,
+        "hora_fin_reposicion": clase.hora_fin_reposicion,
+        "motivo_reposicion": clase.motivo_reposicion,
+        "estado_reposicion": clase.estado_reposicion,
         "motivo_extemporaneo": clase.motivo_extemporaneo,
         "capturada_extemporanea_en": (
             clase.capturada_extemporanea_en.isoformat()
@@ -1046,7 +1069,93 @@ def clases_de_hoy(
         item["clase_estado"] = clase.estado if clase else None
         item["calendario"] = estado_fecha_academica(db, carga.periodo_id, hoy.date())
         resultado.append(item)
+    reposiciones = db.query(ClaseDocente).join(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+        ClaseDocente.es_reposicion == True,
+        ClaseDocente.fecha == hoy.date(),
+        ClaseDocente.estado_reposicion != "CANCELADA",
+    ).all()
+    for clase in reposiciones:
+        if any(item.get("clase_id") == clase.id for item in resultado):
+            continue
+        item = _serializar_carga(clase.carga, db)
+        item.update({
+            "clase_id": clase.id, "clase_estado": clase.estado,
+            "es_reposicion": True, "fecha_original": clase.fecha_original.isoformat(),
+            "motivo_reposicion": clase.motivo_reposicion,
+            "hora_inicio": clase.hora_inicio_reposicion,
+            "hora_fin": clase.hora_fin_reposicion,
+            "calendario": estado_fecha_academica(db, clase.carga.periodo_id, hoy.date()),
+        })
+        resultado.append(item)
+    resultado.sort(key=lambda item: item["hora_inicio"])
     return resultado
+
+
+@router.post("/horario/{carga_id}/reposiciones")
+def programar_reposicion(carga_id: int, data: ReposicionInput, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id, CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True, CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga:
+        raise HTTPException(404, "Materia no encontrada")
+    _validar_carga_actual(db, carga)
+    if data.fecha_original.weekday() != carga.dia_semana:
+        raise HTTPException(422, "La fecha original no corresponde al horario oficial de la materia")
+    if data.fecha < _ahora_mx().date():
+        raise HTTPException(422, "La reposición no puede programarse en una fecha pasada")
+    if db.query(ClaseDocente).filter(ClaseDocente.carga_docente_id == carga.id, ClaseDocente.fecha == data.fecha).first():
+        raise HTTPException(409, "La materia ya tiene una clase o reposición en esa fecha")
+    clase = ClaseDocente(
+        carga_docente_id=carga.id, fecha=data.fecha, estado="PROGRAMADA",
+        es_reposicion=True, fecha_original=data.fecha_original,
+        hora_inicio_reposicion=data.hora_inicio, hora_fin_reposicion=data.hora_fin,
+        motivo_reposicion=data.motivo.strip(), tema_pendiente=(data.tema or "").strip() or None,
+        estado_reposicion="PROGRAMADA",
+    )
+    db.add(clase); db.commit(); db.refresh(clase)
+    return _serializar_clase(clase)
+
+
+@router.post("/reposiciones/{clase_id}/cancelar")
+def cancelar_reposicion(clase_id: int, data: CorreccionInput, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id, ClaseDocente.es_reposicion == True,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Reposición no encontrada")
+    if clase.estado not in {"PROGRAMADA"}:
+        raise HTTPException(409, "Solo una reposición pendiente puede cancelarse")
+    clase.estado = "CANCELADA"; clase.estado_reposicion = "CANCELADA"
+    clase.cancelada_en = datetime.datetime.utcnow()
+    clase.observacion_general = f"Reposición cancelada: {data.motivo.strip()}"
+    db.commit()
+    return {"mensaje": "Reposición cancelada; permanece en el historial"}
+
+
+@router.post("/reposiciones/{clase_id}/iniciar")
+def iniciar_reposicion(clase_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    hoy = _ahora_mx().date()
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id, ClaseDocente.es_reposicion == True,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Reposición no encontrada")
+    if clase.fecha != hoy or clase.estado_reposicion == "CANCELADA":
+        raise HTTPException(409, "La reposición no está vigente hoy")
+    if clase.estado == "PROGRAMADA":
+        clase.estado = "ABIERTA"; clase.estado_reposicion = "EN_CURSO"; clase.inicio = datetime.datetime.utcnow()
+        inscripciones = db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.grupo_academico_id == clase.carga.grupo_academico_id,
+            InscripcionAlumno.estado == "ACTIVO",
+        ).all()
+        for inscripcion in inscripciones:
+            db.add(AsistenciaDocente(clase_docente_id=clase.id, alumno_id=inscripcion.alumno_id, estado="PRESENTE"))
+        db.commit(); db.refresh(clase)
+    return _serializar_clase(clase)
 
 
 @router.post("/horario/{carga_id}/iniciar")

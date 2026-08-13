@@ -68,6 +68,13 @@ class ClaseDocente(Base):
     es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
     motivo_extemporaneo = Column(Text, nullable=True)
     capturada_extemporanea_en = Column(DateTime, nullable=True)
+    es_reposicion = Column(Boolean, nullable=False, default=False, server_default=false())
+    fecha_original = Column(Date, nullable=True)
+    hora_inicio_reposicion = Column(String(5), nullable=True)
+    hora_fin_reposicion = Column(String(5), nullable=True)
+    motivo_reposicion = Column(Text, nullable=True)
+    estado_reposicion = Column(String(20), nullable=True)
+    cancelada_en = Column(DateTime, nullable=True)
 
     carga = relationship("CargaDocente", back_populates="clases")
     asistencias = relationship("AsistenciaDocente", back_populates="clase", cascade="all, delete-orphan")

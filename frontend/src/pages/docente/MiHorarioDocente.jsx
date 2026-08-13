@@ -377,6 +377,9 @@ export default function MiHorarioDocente() {
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
   const [creandoExtemporanea, setCreandoExtemporanea] = useState(false);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
+  const [modalReposicion, setModalReposicion] = useState(null);
+  const [formReposicion, setFormReposicion] = useState({ fecha_original: '', fecha: '', hora_inicio: '', hora_fin: '', motivo: '', tema: '' });
+  const [guardandoReposicion, setGuardandoReposicion] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(true);
   const [ahora, setAhora] = useState(() => new Date());
@@ -497,6 +500,23 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
   };
+  const abrirReposicion = (carga = horario.find((item) => item.tipo_actividad === 'CLASE')) => {
+    if (!carga) return;
+    setModalReposicion(carga);
+    setFormReposicion({ fecha_original: '', fecha: '', hora_inicio: carga.hora_inicio, hora_fin: carga.hora_fin, motivo: '', tema: '' });
+  };
+  const guardarReposicion = async (e) => {
+    e.preventDefault();
+    if (guardandoReposicion) return;
+    setGuardandoReposicion(true);
+    try {
+      await api.post(`/docencia/horario/${modalReposicion.id}/reposiciones`, formReposicion);
+      setModalReposicion(null);
+      setMensaje('Reposición programada como evento único; el horario oficial no fue modificado.');
+      await cargar(periodoId);
+    } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo programar la reposición.'); }
+    finally { setGuardandoReposicion(false); }
+  };
   const crearExtemporanea = async (e) => {
     e.preventDefault();
     if (!modalExtemporanea || motivoExtemporaneo.trim().length < 5) return;
@@ -540,9 +560,15 @@ export default function MiHorarioDocente() {
         ? 'Continuar clase'
         : 'Iniciar clase'
   );
-  const abrirClase = (item) => (
-    item.clase_id ? navigate(`/docente/clase/${item.clase_id}`) : iniciar(item.id)
-  );
+  const abrirClase = async (item) => {
+    if (item.es_reposicion && item.clase_estado === 'PROGRAMADA') {
+      try {
+        const { data } = await api.post(`/docencia/reposiciones/${item.clase_id}/iniciar`);
+        navigate(`/docente/clase/${data.id}`);
+      } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo iniciar la reposición.'); }
+    } else if (item.clase_id) navigate(`/docente/clase/${item.clase_id}`);
+    else iniciar(item.id);
+  };
   const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
 
   return (
@@ -550,8 +576,8 @@ export default function MiHorarioDocente() {
       <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Mi horario docente</h1>
-            <p className="hidden text-sm text-slate-400 sm:block">Captura en SIGA el horario oficial entregado por tu Dirección de División.</p>
+            <h1 className="text-2xl font-bold text-white">Agenda y horario docente</h1>
+            <p className="hidden text-sm text-slate-400 sm:block">Opera tus clases del día y administra por separado el horario oficial recurrente.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             {esPeriodoActual && extemporaneas.length > 0 && (
@@ -563,6 +589,7 @@ export default function MiHorarioDocente() {
                 Capturar clase anterior ({extemporaneas.length})
               </button>
             )}
+            {esPeriodoActual && horario.some((item) => item.tipo_actividad === 'CLASE') && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición</button>}
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
@@ -636,6 +663,9 @@ export default function MiHorarioDocente() {
           </section>
         )}
 
+        <section className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Configuración del cuatrimestre</p><h2 className="mt-1 text-lg font-bold text-white">Horario oficial recurrente</h2><p className="mt-1 text-sm text-slate-400">Los bloques de esta cuadrícula se repiten cada semana. Para recuperar una clase en una sola fecha usa “Programar reposición”.</p></div>
+        </section>
         <section className="space-y-3 md:hidden">
           <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {DIAS.map((dia, indice) => (
@@ -801,6 +831,7 @@ export default function MiHorarioDocente() {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-semibold text-white">{item.actividad_nombre}</p>
+                              {item.es_reposicion && <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-300">REPOSICIÓN</span>}
                               <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${esNoLectiva(item) ? 'bg-slate-500/20 text-slate-300' : destacada ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-slate-400'}`}>{etiqueta}</span>
                             </div>
                             <p className="mt-0.5 text-xs text-slate-400">{item.grupo || item.tipo_actividad} · {item.espacio_nombre || 'Sin espacio'}</p>
@@ -829,6 +860,23 @@ export default function MiHorarioDocente() {
               </ol>
             </div>
           </section>
+        </div>
+      )}
+      {modalReposicion && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardandoReposicion && setModalReposicion(null)}>
+          <form onSubmit={guardarReposicion} onMouseDown={(e) => e.stopPropagation()} className="glass w-full max-w-lg overflow-hidden rounded-2xl border border-blue-500/20 shadow-2xl">
+            <header className="flex items-start justify-between border-b border-white/10 px-5 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-300">Evento de una sola fecha</p><h2 className="mt-1 text-lg font-bold text-white">Programar reposición</h2><p className="mt-1 text-sm text-slate-400">No modifica el horario oficial recurrente.</p></div><button type="button" onClick={() => setModalReposicion(null)} className="text-2xl text-slate-400">×</button></header>
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <label className="text-sm text-slate-300 sm:col-span-2">Materia y grupo<select className="input-dark mt-1.5" value={modalReposicion.id} onChange={(e) => abrirReposicion(horario.find((item) => String(item.id) === e.target.value))}>{horario.filter((item) => item.tipo_actividad === 'CLASE').map((item) => <option key={item.id} value={item.id}>{item.actividad_nombre} · {item.grupo}</option>)}</select></label>
+              <label className="text-sm text-slate-300">Fecha original no impartida<input required type="date" value={formReposicion.fecha_original} onChange={(e) => setFormReposicion({ ...formReposicion, fecha_original: e.target.value })} className="input-dark mt-1.5" /></label>
+              <label className="text-sm text-slate-300">Fecha de reposición<input required type="date" min={new Date().toISOString().slice(0, 10)} value={formReposicion.fecha} onChange={(e) => setFormReposicion({ ...formReposicion, fecha: e.target.value })} className="input-dark mt-1.5" /></label>
+              <label className="text-sm text-slate-300">Hora de inicio<input required type="time" value={formReposicion.hora_inicio} onChange={(e) => setFormReposicion({ ...formReposicion, hora_inicio: e.target.value })} className="input-dark mt-1.5" /></label>
+              <label className="text-sm text-slate-300">Hora de fin<input required type="time" value={formReposicion.hora_fin} onChange={(e) => setFormReposicion({ ...formReposicion, hora_fin: e.target.value })} className="input-dark mt-1.5" /></label>
+              <label className="text-sm text-slate-300 sm:col-span-2">Motivo *<textarea required minLength={5} rows={2} value={formReposicion.motivo} onChange={(e) => setFormReposicion({ ...formReposicion, motivo: e.target.value })} className="input-dark mt-1.5" placeholder="Explica por qué no se impartió la clase original" /></label>
+              <label className="text-sm text-slate-300 sm:col-span-2">Tema a recuperar<input value={formReposicion.tema} onChange={(e) => setFormReposicion({ ...formReposicion, tema: e.target.value })} className="input-dark mt-1.5" placeholder="Tema completo, continuación o asesoría" /></label>
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4"><button type="button" onClick={() => setModalReposicion(null)} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={guardandoReposicion} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardandoReposicion ? 'Programando…' : 'Programar una sola vez'}</button></footer>
+          </form>
         </div>
       )}
       {cargaAConfirmar && (
