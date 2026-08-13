@@ -82,6 +82,27 @@ class CapturaExtemporaneaInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
 
 
+class ClaseNoImpartidaInput(BaseModel):
+    fecha: datetime.date
+    motivo: str = Field(..., min_length=5, max_length=500)
+    programar_reposicion: bool = False
+    fecha_reposicion: Optional[datetime.date] = None
+    hora_inicio: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    hora_fin: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    tema: Optional[str] = Field(None, max_length=300)
+
+    @model_validator(mode="after")
+    def validar(self):
+        if self.programar_reposicion:
+            if not self.fecha_reposicion or not self.hora_inicio or not self.hora_fin:
+                raise ValueError("Indica fecha y horario de la reposicion")
+            if self.fecha_reposicion <= self.fecha:
+                raise ValueError("La reposicion debe ser posterior a la clase original")
+            if self.hora_inicio >= self.hora_fin:
+                raise ValueError("La hora final debe ser posterior a la inicial")
+        return self
+
+
 class ReposicionInput(BaseModel):
     fecha: datetime.date
     fecha_original: datetime.date
@@ -575,7 +596,12 @@ def _serializar_clase(clase: ClaseDocente):
         "observacion_general": observacion_limpia,
         "correcciones_asistencia": correcciones,
         "es_extemporanea": clase.es_extemporanea,
+        "motivo_no_impartida": clase.motivo_no_impartida,
+        "declarada_no_impartida_en": (
+            clase.declarada_no_impartida_en.isoformat() if clase.declarada_no_impartida_en else None
+        ),
         "es_reposicion": clase.es_reposicion,
+        "clase_origen_id": clase.clase_origen_id,
         "fecha_original": clase.fecha_original.isoformat() if clase.fecha_original else None,
         "hora_inicio_reposicion": clase.hora_inicio_reposicion,
         "hora_fin_reposicion": clase.hora_fin_reposicion,
@@ -1096,6 +1122,78 @@ def crear_captura_extemporanea(
     return _serializar_clase(clase)
 
 
+@router.post("/horario/{carga_id}/no-impartida")
+def declarar_clase_no_impartida(
+    carga_id: int,
+    data: ClaseNoImpartidaInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.estado == "ACTIVO",
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Clase programada no encontrada")
+    _validar_carga_actual(db, carga)
+    _validar_ventana_extemporanea(db, carga, data.fecha)
+    if db.query(ClaseDocente.id).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.fecha == data.fecha,
+    ).first():
+        raise HTTPException(409, "Esta clase ya tiene un registro")
+
+    original = ClaseDocente(
+        carga_docente_id=carga.id,
+        fecha=data.fecha,
+        estado="NO_IMPARTIDA",
+        fin=datetime.datetime.utcnow(),
+        motivo_no_impartida=data.motivo.strip(),
+        declarada_no_impartida_en=datetime.datetime.utcnow(),
+        observacion_general=f"Clase no impartida: {data.motivo.strip()}",
+        tema_pendiente=(data.tema or "").strip() or None,
+    )
+    db.add(original)
+    db.flush()
+
+    reposicion = None
+    if data.programar_reposicion:
+        if data.fecha_reposicion < _ahora_mx().date():
+            raise HTTPException(422, "La reposicion no puede programarse en una fecha pasada")
+        if db.query(ClaseDocente.id).filter(
+            ClaseDocente.carga_docente_id == carga.id,
+            ClaseDocente.fecha == data.fecha_reposicion,
+        ).first():
+            raise HTTPException(409, "La materia ya tiene una clase o reposicion en esa fecha")
+        reposicion = ClaseDocente(
+            carga_docente_id=carga.id,
+            fecha=data.fecha_reposicion,
+            estado="PROGRAMADA",
+            es_reposicion=True,
+            clase_origen_id=original.id,
+            fecha_original=data.fecha,
+            hora_inicio_reposicion=data.hora_inicio,
+            hora_fin_reposicion=data.hora_fin,
+            motivo_reposicion=data.motivo.strip(),
+            tema_pendiente=(data.tema or "").strip() or None,
+            estado_reposicion="PROGRAMADA",
+        )
+        db.add(reposicion)
+        db.flush()
+    db.commit()
+    return {
+        "clase_original": _serializar_clase(original),
+        "reposicion": _serializar_clase(reposicion) if reposicion else None,
+        "mensaje": (
+            "Clase no impartida y reposicion programada"
+            if reposicion else "Clase no impartida; la reposicion queda pendiente"
+        ),
+    }
+
+
 @router.get("/hoy")
 def clases_de_hoy(
     db: Session = Depends(get_db),
@@ -1162,9 +1260,15 @@ def programar_reposicion(carga_id: int, data: ReposicionInput, db: Session = Dep
         raise HTTPException(422, "La reposición no puede programarse en una fecha pasada")
     if db.query(ClaseDocente).filter(ClaseDocente.carga_docente_id == carga.id, ClaseDocente.fecha == data.fecha).first():
         raise HTTPException(409, "La materia ya tiene una clase o reposición en esa fecha")
+    original = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.fecha == data.fecha_original,
+        ClaseDocente.estado == "NO_IMPARTIDA",
+    ).first()
     clase = ClaseDocente(
         carga_docente_id=carga.id, fecha=data.fecha, estado="PROGRAMADA",
-        es_reposicion=True, fecha_original=data.fecha_original,
+        es_reposicion=True, clase_origen_id=original.id if original else None,
+        fecha_original=data.fecha_original,
         hora_inicio_reposicion=data.hora_inicio, hora_fin_reposicion=data.hora_fin,
         motivo_reposicion=data.motivo.strip(), tema_pendiente=(data.tema or "").strip() or None,
         estado_reposicion="PROGRAMADA",

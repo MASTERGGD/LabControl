@@ -403,6 +403,24 @@ def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
     )
     assert duplicada.status_code == 409
 
+    clase_extemporanea = db.query(ClaseDocente).filter(ClaseDocente.id == creada.json()["id"]).one()
+    db.delete(clase_extemporanea)
+    db.commit()
+    no_impartida = client.post(
+        f"/docencia/horario/{vigente.id}/no-impartida",
+        headers=headers,
+        json={
+            "fecha": "2026-07-30", "motivo": "No hubo energia electrica en el edificio.",
+            "programar_reposicion": True, "fecha_reposicion": "2026-08-01",
+            "hora_inicio": "10:00", "hora_fin": "11:00", "tema": "Tema pendiente",
+        },
+    )
+    assert no_impartida.status_code == 200, no_impartida.text
+    assert no_impartida.json()["clase_original"]["estado"] == "NO_IMPARTIDA"
+    assert no_impartida.json()["clase_original"]["motivo_no_impartida"] == "No hubo energia electrica en el edificio."
+    assert no_impartida.json()["reposicion"]["clase_origen_id"] == no_impartida.json()["clase_original"]["id"]
+    assert no_impartida.json()["reposicion"]["estado_reposicion"] == "PROGRAMADA"
+
     fuera_plazo = client.post(
         f"/docencia/horario/{vencida.id}/captura-extemporanea",
         headers=headers,

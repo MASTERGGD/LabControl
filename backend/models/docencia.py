@@ -70,7 +70,10 @@ class ClaseDocente(Base):
     es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
     motivo_extemporaneo = Column(Text, nullable=True)
     capturada_extemporanea_en = Column(DateTime, nullable=True)
+    motivo_no_impartida = Column(Text, nullable=True)
+    declarada_no_impartida_en = Column(DateTime, nullable=True)
     es_reposicion = Column(Boolean, nullable=False, default=False, server_default=false())
+    clase_origen_id = Column(Integer, ForeignKey("clases_docentes.id"), nullable=True, index=True)
     fecha_original = Column(Date, nullable=True)
     hora_inicio_reposicion = Column(String(5), nullable=True)
     hora_fin_reposicion = Column(String(5), nullable=True)
@@ -84,6 +87,7 @@ class ClaseDocente(Base):
         "CorreccionAsistenciaDocente", back_populates="clase",
         cascade="all, delete-orphan",
     )
+    clase_origen = relationship("ClaseDocente", remote_side=[id], foreign_keys=[clase_origen_id])
 
 
 class AsistenciaDocente(Base):
