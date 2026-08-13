@@ -1009,6 +1009,7 @@ def reservar_laboratorio_carga(
             materia=carga.actividad_nombre,
             carrera=carga.grupo_academico.carrera,
             cuatrimestre=carga.periodo.clave,
+            periodo_id=carga.periodo_id,
             cuatrimestre_materia=str(carga.grupo_academico.cuatrimestre),
             grupo=f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}",
             estado="PROGRAMADA",

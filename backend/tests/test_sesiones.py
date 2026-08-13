@@ -9,11 +9,17 @@ Casos cubiertos:
   5. Laboratorio inexistente devuelve 404
   6. Sin autenticación devuelve 401
 """
+import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
+import routers.sesiones as sesiones_router
 from tests.conftest import get_token, auth_headers
 from models.usuario import RolUsuario
 from dependencies import hashear_password
-from models.catalogo import CatalogoAlumno
+from models.catalogo import CatalogoAlumno, PeriodoEscolar
+from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
+from models.horario import HorarioDisponible, Reservacion
 from models.laboratorio import Computadora
 
 
@@ -223,3 +229,45 @@ class TestSesiones:
             },
         )
         assert resp.status_code == 401
+
+    def test_reserva_recurrente_respeta_suspension_del_calendario(
+        self, client, db, admin_user, docente_user, lab, monkeypatch,
+    ):
+        fecha = datetime.date(2026, 9, 16)
+        ahora = datetime.datetime(2026, 9, 16, 8, 30, tzinfo=ZoneInfo("America/Mexico_City"))
+        monkeypatch.setattr(sesiones_router, "now_mx", lambda: ahora)
+        periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+        db.add(periodo); db.flush()
+        calendario = CalendarioAcademico(
+            periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin_user.id,
+        )
+        db.add(calendario); db.flush()
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, titulo="Suspensión oficial", tipo="SUSPENSION_GENERAL",
+            fecha_inicio=fecha, fecha_fin=fecha, requiere_asistencia=False,
+            permite_iniciar_clase=False, genera_alertas=False, creado_por_id=admin_user.id,
+        ))
+        horario = HorarioDisponible(
+            laboratorio_id=lab.id, dia_semana=2, hora_inicio="08:00", hora_fin="09:00",
+            cuatrimestre="SEP-DIC-2026", activo=True,
+        )
+        db.add(horario); db.flush()
+        reserva = Reservacion(
+            horario_id=horario.id, laboratorio_id=lab.id, docente_id=docente_user.id,
+            periodo_id=periodo.id, materia="Programación", carrera="IDGS",
+            cuatrimestre="SEP-DIC-2026", cuatrimestre_materia="3", grupo="A",
+            estado="PROGRAMADA", creado_por=admin_user.id,
+        )
+        db.add(reserva); db.commit()
+        token = get_token(client, "docente@test.com", "DocentePass123")
+
+        respuesta = client.post(
+            "/sesiones",
+            headers=auth_headers(token),
+            json={"laboratorio_id": lab.id, "reservacion_id": reserva.id},
+        )
+
+        assert respuesta.status_code == 409
+        assert "Suspensión oficial" in respuesta.json()["detail"]
+        db.refresh(reserva)
+        assert reserva.estado == "PROGRAMADA"

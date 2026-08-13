@@ -240,6 +240,9 @@ class TestReservaciones:
         assert r.status_code == 201
         data = r.json()
         assert data["materia"] == "Programación I"
+        assert data["periodo_id"] is not None
+        assert data["periodo"] == "ENE-ABR 2026"
+        assert data["calendario_estado"] == "SIN_CONFIGURAR"
 
     def test_grupo_compatible_con_periodo_separado_por_guiones(self, client, db):
         tok, lab, docente, h_id = self._setup(client, db)

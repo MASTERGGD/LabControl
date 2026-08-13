@@ -8,13 +8,14 @@ from models.sesion import SesionClase, AsignacionPC, ObservacionPC
 from models.horario import Reservacion, HorarioDisponible
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno
+from models.catalogo import CatalogoAlumno, PeriodoEscolar
 from dependencies import get_current_user, require_roles, crear_access_token, decodificar_token
 from jose import JWTError
 from permissions import require_permission
 from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
 from services.timezone import now_mx
+from services.calendario_academico import estado_fecha_academica
 import datetime
 import uuid
 
@@ -370,6 +371,20 @@ async def abrir_sesion(
             res = db.query(Reservacion).filter(Reservacion.id == data.reservacion_id).first()
             if not res:
                 raise HTTPException(status_code=404, detail="Reservación no encontrada")
+
+            periodo_id = res.periodo_id
+            if not periodo_id:
+                periodo_normalizado = "".join(ch for ch in (res.cuatrimestre or "").upper() if ch.isalnum())
+                periodo = next((p for p in db.query(PeriodoEscolar).all()
+                                if "".join(ch for ch in p.clave.upper() if ch.isalnum()) == periodo_normalizado), None)
+                periodo_id = periodo.id if periodo else None
+            regla_calendario = estado_fecha_academica(db, periodo_id, ahora_mx.date())
+            if not regla_calendario["permite_iniciar_clase"]:
+                motivo = regla_calendario["motivo"] or "día no lectivo"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"La reserva sigue vigente, pero hoy no genera sesión por el calendario escolar: {motivo}.",
+                )
 
             # Solo el docente titular (o suplente) puede iniciarla
             es_titular  = res.docente_id == current_user.id

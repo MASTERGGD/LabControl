@@ -7,6 +7,7 @@ from models.horario import HorarioDisponible, Reservacion, SolicitudConflicto, B
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from models.catalogo import GrupoAcademico, PeriodoEscolar
+from models.calendario_academico import CalendarioAcademico
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
@@ -282,6 +283,9 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
     suplente = db.query(Usuario).filter(Usuario.id == r.docente_suplente_id).first() if r.docente_suplente_id else None
     lab = db.query(Laboratorio).filter(Laboratorio.id == r.laboratorio_id).first()
     horario = db.query(HorarioDisponible).filter(HorarioDisponible.id == r.horario_id).first()
+    calendario = db.query(CalendarioAcademico).filter(
+        CalendarioAcademico.periodo_id == r.periodo_id,
+    ).first() if r.periodo_id else None
     return {
         "id": r.id,
         "horario_id": r.horario_id,
@@ -298,6 +302,9 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
         "materia":              r.materia,
         "carrera":              r.carrera,
         "cuatrimestre":         r.cuatrimestre,
+        "periodo_id":           r.periodo_id,
+        "periodo":              r.periodo.clave if r.periodo else r.cuatrimestre,
+        "calendario_estado":    calendario.estado if calendario else "SIN_CONFIGURAR",
         "cuatrimestre_materia": r.cuatrimestre_materia,
         "grupo":                r.grupo,
         "identidad_academica":  _identidad_label(r.materia, r.carrera, r.cuatrimestre_materia, r.grupo),
@@ -830,8 +837,19 @@ def crear_reservacion(
     periodo_academico = next((periodo for periodo in db.query(PeriodoEscolar).filter(
         PeriodoEscolar.activo == True,
     ).order_by(PeriodoEscolar.id.desc()).all() if _normalizar_periodo(periodo.clave) == periodo_buscado), None)
+    periodo_preexistente = periodo_academico is not None
+    if not periodo_academico:
+        # Compatibilidad con instalaciones heredadas: toda nueva reserva queda
+        # vinculada formalmente aunque el periodo sólo existiera como texto.
+        periodo_academico = PeriodoEscolar(
+            clave=data.cuatrimestre.strip().upper().replace("-202", " 202"),
+            activo=True,
+            es_actual=False,
+        )
+        db.add(periodo_academico)
+        db.flush()
     grupo_academico = None
-    if periodo_academico:
+    if periodo_preexistente:
         grupo_academico = db.query(GrupoAcademico).filter(
             GrupoAcademico.periodo_id == periodo_academico.id,
             GrupoAcademico.activo == True,
@@ -863,6 +881,7 @@ def crear_reservacion(
         horario_id=data.horario_id,
         laboratorio_id=data.laboratorio_id,
         docente_id=data.docente_id,
+        periodo_id=periodo_academico.id,
         materia=data.materia,
         carrera=data.carrera,
         cuatrimestre=data.cuatrimestre,
