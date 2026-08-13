@@ -10,6 +10,8 @@ from dependencies import get_current_user
 from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente, ClaseDocente
+from models.horario import Reservacion
+from models.sesion import SesionClase
 from models.tutoria import ReporteTutor
 from models.usuario import Usuario
 from services.user_permissions import puede_gestionar_materias
@@ -47,6 +49,15 @@ class ReaperturaIn(BaseModel):
 
 def _ahora():
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _normalizar_periodo(valor):
+    return "".join(ch for ch in (valor or "").upper() if ch.isalnum())
+
+
+def _reservaciones_periodo(db, clave):
+    buscada = _normalizar_periodo(clave)
+    return [r for r in db.query(Reservacion).all() if _normalizar_periodo(r.cuatrimestre) == buscada]
 
 
 def _resumen_carga(db, carga):
@@ -103,6 +114,12 @@ def _ser_cierre(db, cierre, usuario):
     if not puede_gestionar_materias(db, usuario):
         cargas = [c for c in cargas if c.docente_id == usuario.id]
     filas = [_ser_confirmacion(db, c, confirmaciones.get(c.id)) for c in cargas]
+    reservaciones = _reservaciones_periodo(db, cierre.periodo.clave)
+    reservacion_ids = [r.id for r in reservaciones]
+    sesiones_abiertas = db.query(SesionClase).filter(
+        SesionClase.reservacion_id.in_(reservacion_ids),
+        SesionClase.estado != "CERRADA",
+    ).count() if reservacion_ids else 0
     return {
         "id": cierre.id, "periodo_id": cierre.periodo_id, "periodo": cierre.periodo.clave,
         "estado": cierre.estado,
@@ -111,6 +128,12 @@ def _ser_cierre(db, cierre, usuario):
         "observaciones": cierre.observaciones, "puede_administrar": puede_gestionar_materias(db, usuario),
         "total_cargas": len(filas), "confirmadas": sum(1 for f in filas if f["estado"] == "CONFIRMADA_DOCENTE"),
         "con_pendientes": sum(1 for f in filas if not f["resumen"]["puede_confirmar"]),
+        "laboratorios": {
+            "reservaciones": len(reservaciones),
+            "reservaciones_archivadas": sum(1 for r in reservaciones if r.estado == "ARCHIVADA"),
+            "sesiones_abiertas": sesiones_abiertas,
+            "puede_cerrar": sesiones_abiertas == 0,
+        },
         "cargas": filas,
     }
 
@@ -141,6 +164,17 @@ def configurar(data: ConfiguracionIn, db: Session = Depends(get_db), current_use
         pendientes = db.query(CargaDocente).filter(CargaDocente.periodo_id == periodo.id, CargaDocente.activo == True, CargaDocente.tipo_actividad == "CLASE").count()
         confirmadas = db.query(ConfirmacionCargaDocente).join(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == periodo.id, ConfirmacionCargaDocente.estado == "CONFIRMADA_DOCENTE").count()
         if confirmadas < pendientes: raise HTTPException(409, f"Faltan {pendientes - confirmadas} cargas por confirmar")
+        reservaciones = _reservaciones_periodo(db, periodo.clave)
+        reservacion_ids = [r.id for r in reservaciones]
+        sesiones_abiertas = db.query(SesionClase).filter(
+            SesionClase.reservacion_id.in_(reservacion_ids),
+            SesionClase.estado != "CERRADA",
+        ).count() if reservacion_ids else 0
+        if sesiones_abiertas:
+            raise HTTPException(409, f"Faltan {sesiones_abiertas} sesiones de laboratorio por cerrar")
+        for reservacion in reservaciones:
+            if reservacion.estado == "PROGRAMADA":
+                reservacion.estado = "ARCHIVADA"
         cierre.cerrado_por_id = current_user.id; cierre.cerrado_en = _ahora()
     db.commit(); db.refresh(cierre)
     return _ser_cierre(db, cierre, current_user)

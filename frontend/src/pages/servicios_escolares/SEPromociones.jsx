@@ -7,25 +7,49 @@ const RESOLUCIONES = [
   ['ESTADIA', 'Estadía'], ['EGRESO', 'Egreso'], ['BAJA_TEMPORAL', 'Baja temporal'], ['BAJA_DEFINITIVA', 'Baja definitiva'],
 ];
 
+const siguientePeriodo = (clave = '') => {
+  const normalizada = clave.toUpperCase().replace(/–/g, '-').trim();
+  const match = normalizada.match(/^(ENE-ABR|MAY-AGO|SEP-DIC)[ -](\d{4})$/);
+  if (!match) return '';
+  const [, bloque, anioTexto] = match; const anio = Number(anioTexto);
+  if (bloque === 'ENE-ABR') return `MAY-AGO ${anio}`;
+  if (bloque === 'MAY-AGO') return `SEP-DIC ${anio}`;
+  return `ENE-ABR ${anio + 1}`;
+};
+
 export default function SEPromociones() {
   const [periodos, setPeriodos] = useState([]);
   const [origen, setOrigen] = useState(''); const [destino, setDestino] = useState('');
   const [data, setData] = useState(null); const [filtro, setFiltro] = useState('');
   const [modal, setModal] = useState(null); const [form, setForm] = useState({});
   const [confirmarAplicacion, setConfirmarAplicacion] = useState(false);
-  const [mensaje, setMensaje] = useState(''); const [error, setError] = useState(''); const [cargando, setCargando] = useState(false);
+  const [mensaje, setMensaje] = useState(''); const [error, setError] = useState(''); const [cargando, setCargando] = useState(false); const [creandoPeriodo, setCreandoPeriodo] = useState(false);
 
   useEffect(() => { api.get('/servicios-escolares/periodos').then(({ data: rows }) => {
-    setPeriodos(rows); const actual = rows.find(p => p.es_actual) || rows[0]; const anterior = rows.find(p => p.id !== actual?.id);
-    setOrigen(String(anterior?.id || '')); setDestino(String(actual?.id || ''));
+    setPeriodos(rows); const actual = rows.find(p => p.es_actual) || rows[0]; const claveSiguiente = siguientePeriodo(actual?.clave);
+    const siguiente = rows.find(p => p.clave.toUpperCase().replace(/–/g, '-').trim() === claveSiguiente);
+    setOrigen(String(actual?.id || '')); setDestino(String(siguiente?.id || ''));
   }).catch(() => setError('No se pudieron cargar los periodos.')); }, []);
 
   const cargar = async () => {
-    if (!origen || !destino || origen === destino) return;
+    if (!origen || !destino) { setData(null); setError('Crea o selecciona un periodo destino.'); return; }
+    if (origen === destino) { setData(null); setError('El periodo que concluye y el periodo destino deben ser diferentes.'); return; }
     setCargando(true); setError('');
     try { const { data: respuesta } = await api.get('/servicios-escolares/promociones', { params: { periodo_origen_id: origen, periodo_destino_id: destino } }); setData(respuesta); }
     catch (e) { setError(e.response?.data?.detail || 'No se pudo cargar la promoción.'); }
     finally { setCargando(false); }
+  };
+  const crearSiguiente = async () => {
+    const periodoOrigen = periodos.find(p => String(p.id) === String(origen));
+    const clave = siguientePeriodo(periodoOrigen?.clave);
+    if (!clave) { setError('No se pudo calcular el siguiente periodo escolar.'); return; }
+    setCreandoPeriodo(true); setError(''); setMensaje('');
+    try {
+      const { data: nuevo } = await api.post('/servicios-escolares/periodos', { clave });
+      setPeriodos(actuales => [nuevo, ...actuales]); setDestino(String(nuevo.id));
+      setMensaje(`${nuevo.clave} fue creado en preparación. Su agenda de laboratorios inicia vacía.`);
+    } catch (e) { setError(e.response?.data?.detail || 'No se pudo crear el periodo destino.'); }
+    finally { setCreandoPeriodo(false); }
   };
   useEffect(() => { if (origen && destino) cargar(); }, [origen, destino]);
 
@@ -41,7 +65,7 @@ export default function SEPromociones() {
 
   return <AdminLayout><div className="space-y-5 p-6">
     <div><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-500">Servicios Escolares</p><h1 className="mt-1 text-2xl font-bold text-white">Promoción de cuatrimestre</h1><p className="mt-1 text-sm text-slate-400">Resuelve el destino de cada alumno sin alterar sus periodos anteriores.</p></div>
-    <section className="glass grid gap-4 rounded-2xl p-5 md:grid-cols-[1fr_1fr_auto]"><label className="text-sm text-slate-300">Periodo que concluye<select className="input-dark mt-1" value={origen} onChange={e => setOrigen(e.target.value)}>{periodos.map(p => <option key={p.id} value={p.id}>{p.clave}</option>)}</select></label><label className="text-sm text-slate-300">Periodo destino<select className="input-dark mt-1" value={destino} onChange={e => setDestino(e.target.value)}>{periodos.map(p => <option key={p.id} value={p.id}>{p.clave}</option>)}</select></label><button onClick={cargar} className="self-end rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white">Actualizar propuesta</button></section>
+    <section className="glass grid gap-4 rounded-2xl p-5 md:grid-cols-[1fr_1fr_auto]"><label className="text-sm text-slate-300">Periodo que concluye<select className="input-dark mt-1" value={origen} onChange={e => { setOrigen(e.target.value); setData(null); }}>{periodos.map(p => <option key={p.id} value={p.id}>{p.clave}{p.es_actual ? ' · Actual' : ''}</option>)}</select></label><label className="text-sm text-slate-300">Periodo destino<select className="input-dark mt-1" value={destino} onChange={e => { setDestino(e.target.value); setData(null); }}><option value="">Selecciona un periodo</option>{periodos.filter(p => String(p.id) !== String(origen)).map(p => <option key={p.id} value={p.id}>{p.clave}</option>)}</select>{!destino && origen && <button type="button" disabled={creandoPeriodo} onClick={crearSiguiente} className="mt-2 text-xs font-semibold text-emerald-400 disabled:opacity-50">{creandoPeriodo ? 'Creando periodo…' : `Crear ${siguientePeriodo(periodos.find(p => String(p.id) === String(origen))?.clave) || 'periodo siguiente'} en preparación`}</button>}</label><button disabled={!origen || !destino || origen === destino} onClick={cargar} className="self-end rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40">Actualizar propuesta</button></section>
     {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}{mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
     {data && <><div className={`rounded-xl border p-4 ${data.puede_aplicar ? 'border-emerald-500/25 bg-emerald-500/10' : 'border-amber-500/25 bg-amber-500/10'}`}><div className="flex flex-wrap items-center justify-between gap-3"><div><b className="text-white">{data.periodo_origen} → {data.periodo_destino}</b><p className="text-sm text-slate-300">{data.revisados}/{data.total} revisados · {data.aplicados} aplicados · cierre {data.cierre_academico.replaceAll('_',' ')}</p></div><button disabled={!data.puede_aplicar || data.revisados === 0} onClick={() => setConfirmarAplicacion(true)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Aplicar resoluciones</button></div></div>
     <section className="glass overflow-hidden rounded-2xl"><div className="border-b border-white/10 p-4"><input className="input-dark" placeholder="Buscar alumno, matrícula o carrera…" value={filtro} onChange={e => setFiltro(e.target.value)} /></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-white/[.03] text-xs uppercase text-slate-500"><tr><th className="p-4">Alumno</th><th>Origen</th><th>Resolución</th><th>Destino</th><th></th></tr></thead><tbody className="divide-y divide-white/5">{filas.map(a => <tr key={a.inscripcion_id}><td className="p-4"><b className="text-white">{a.alumno}</b><br/><span className="text-xs text-slate-500">{a.matricula} · {a.carrera}</span></td><td className="text-slate-300">{a.origen}</td><td><span className="rounded-full bg-white/5 px-2 py-1 text-xs text-slate-300">{a.resolucion.replaceAll('_',' ')}</span></td><td className="text-slate-300">{['PROMOVIDO','REPITE'].includes(a.resolucion) ? `${a.cuatrimestre_destino}° ${a.grupo_destino}` : '—'}</td><td className="pr-4 text-right"><button disabled={a.estado === 'APLICADA'} onClick={() => abrir(a)} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400 disabled:opacity-30">{a.estado === 'APLICADA' ? 'Aplicada' : 'Resolver'}</button></td></tr>)}</tbody></table>{!cargando && !filas.length && <p className="p-8 text-center text-sm text-slate-500">No hay alumnos para mostrar.</p>}</div></section></>}

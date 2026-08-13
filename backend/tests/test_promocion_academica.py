@@ -52,3 +52,39 @@ def test_servicios_escolares_promueve_sin_borrar_historial(client, db, admin_use
     trayectoria = expediente.json()["trayectoria_academica"]
     assert len(trayectoria) == 2
     assert trayectoria[0]["resolucion"] == "PROMOVIDO"
+
+
+def test_servicios_escolares_crea_periodo_destino_en_preparacion(client, db, admin_user):
+    origen = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add(origen); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+
+    respuesta = client.post(
+        "/servicios-escolares/periodos",
+        headers=headers,
+        json={"clave": "SEP-DIC 2026"},
+    )
+
+    assert respuesta.status_code == 201, respuesta.text
+    creado = respuesta.json()
+    assert creado["clave"] == "SEP-DIC 2026"
+    assert creado["estado"] == "PREPARACION"
+    assert creado["es_actual"] is False
+    assert db.query(PeriodoEscolar).filter_by(clave="SEP-DIC 2026", es_actual=False).count() == 1
+
+    duplicado = client.post(
+        "/servicios-escolares/periodos",
+        headers=headers,
+        json={"clave": "SEP-DIC 2026"},
+    )
+    assert duplicado.status_code == 409
+
+
+def test_servicios_escolares_rechaza_clave_de_periodo_invalida(client, admin_user):
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    respuesta = client.post(
+        "/servicios-escolares/periodos",
+        headers=headers,
+        json={"clave": "CUARTO 2026"},
+    )
+    assert respuesta.status_code == 422

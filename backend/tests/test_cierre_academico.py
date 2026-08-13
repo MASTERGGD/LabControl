@@ -4,6 +4,9 @@ from dependencies import hashear_password
 from models.catalogo import GrupoAcademico, PeriodoEscolar
 from models.cierre_academico import ConfirmacionCargaDocente
 from models.docencia import CargaDocente, ClaseDocente
+from models.horario import HorarioDisponible, Reservacion
+from models.laboratorio import Laboratorio
+from models.sesion import SesionClase
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
 
@@ -105,3 +108,46 @@ def test_docente_no_puede_configurar_cierre(client, db):
     headers = auth_headers(get_token(client, docente.email, "Docente123!"))
     respuesta = client.put("/cierre-academico", headers=headers, json={"periodo_id": periodo.id, "estado": "PRECIERRE"})
     assert respuesta.status_code == 403
+
+
+def test_cierre_bloquea_sesion_laboratorio_y_archiva_reserva(client, db):
+    admin, docente, periodo, carga = _escenario(db)
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    hoy = datetime.date.today()
+    assert client.put("/cierre-academico", headers=admin_h, json={
+        "periodo_id": periodo.id, "estado": "CONFIRMACION",
+        "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
+        "confirmacion_fin": (hoy + datetime.timedelta(days=2)).isoformat(),
+    }).status_code == 200
+    db.add(ClaseDocente(carga_docente_id=carga.id, fecha=hoy, estado="CERRADA")); db.flush()
+    laboratorio = Laboratorio(nombre="Laboratorio de cierre", activo=True)
+    db.add(laboratorio); db.flush()
+    horario = HorarioDisponible(
+        laboratorio_id=laboratorio.id, dia_semana=1, hora_inicio="08:00", hora_fin="09:00",
+        cuatrimestre="MAY-AGO-2026", activo=True,
+    )
+    db.add(horario); db.flush()
+    reserva = Reservacion(
+        horario_id=horario.id, laboratorio_id=laboratorio.id, docente_id=docente.id,
+        materia="Bases de datos", carrera="TIEID", cuatrimestre="MAY-AGO-2026",
+        cuatrimestre_materia="3", grupo="A", estado="PROGRAMADA", creado_por=admin.id,
+    )
+    db.add(reserva); db.flush()
+    sesion = SesionClase(
+        reservacion_id=reserva.id, laboratorio_id=laboratorio.id, docente_id=docente.id,
+        codigo_sesion="CIERRE-LAB-1", estado="ABIERTA",
+    )
+    db.add(sesion); db.commit()
+    assert client.post(f"/cierre-academico/cargas/{carga.id}/confirmar", headers=docente_h, json={}).status_code == 200
+
+    bloqueado = client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert bloqueado.status_code == 409
+    assert "sesiones de laboratorio" in bloqueado.json()["detail"]
+
+    sesion.estado = "CERRADA"; db.commit()
+    cerrado = client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert cerrado.status_code == 200, cerrado.text
+    db.refresh(reserva)
+    assert reserva.estado == "ARCHIVADA"
+    assert cerrado.json()["laboratorios"]["reservaciones_archivadas"] == 1

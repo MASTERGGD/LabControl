@@ -19,7 +19,7 @@ import unicodedata
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -66,6 +66,20 @@ class ResolucionPromocionIn(BaseModel):
     cuatrimestre_destino: Optional[int] = Field(None, ge=1, le=12)
     grupo_destino: Optional[str] = Field(None, max_length=10)
     observaciones: Optional[str] = Field(None, max_length=1000)
+
+
+class PeriodoEscolarIn(BaseModel):
+    clave: str = Field(..., min_length=8, max_length=20)
+
+    @field_validator("clave")
+    @classmethod
+    def validar_clave(cls, value: str):
+        clave = " ".join(value.strip().upper().replace("–", "-").split())
+        bloques = ("ENE-ABR ", "MAY-AGO ", "SEP-DIC ")
+        bloque = next((item for item in bloques if clave.startswith(item)), None)
+        if not bloque or len(clave) != len(bloque) + 4 or not clave[-4:].isdigit():
+            raise ValueError("Usa el formato ENE-ABR 2026, MAY-AGO 2026 o SEP-DIC 2026")
+        return clave
 
 
 def _require_carreras_reader(db: Session, user: Usuario):
@@ -1088,6 +1102,33 @@ def listar_periodos_escolares(
         "es_actual_configurado": p.es_actual,
         "coincide_con_fecha": _normalizar_periodo(p.clave) == _normalizar_periodo(_clave_periodo_por_fecha()),
     } for p in periodos]
+
+
+@router.post("/periodos", status_code=status.HTTP_201_CREATED, summary="Crear periodo escolar en preparación")
+def crear_periodo_escolar(
+    data: PeriodoEscolarIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    existente = next((p for p in db.query(PeriodoEscolar).all()
+                      if _normalizar_periodo(p.clave) == _normalizar_periodo(data.clave)), None)
+    if existente:
+        raise HTTPException(409, "El periodo escolar ya existe")
+    periodo = PeriodoEscolar(clave=data.clave, activo=True, es_actual=False)
+    db.add(periodo)
+    db.commit()
+    db.refresh(periodo)
+    return {
+        "id": periodo.id,
+        "clave": periodo.clave,
+        "activo": periodo.activo,
+        "es_actual": False,
+        "es_actual_configurado": False,
+        "coincide_con_fecha": _normalizar_periodo(periodo.clave) == _normalizar_periodo(_clave_periodo_por_fecha()),
+        "estado": "PREPARACION",
+        "mensaje": f"{periodo.clave} fue creado en preparación.",
+    }
 
 
 @router.patch("/periodos/{periodo_id}/establecer-actual", summary="Establecer periodo escolar actual")
