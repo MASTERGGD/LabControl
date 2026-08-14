@@ -623,8 +623,13 @@ def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
     hoy = datetime.datetime.now(ZoneInfo("America/Mexico_City")).date()
     fecha_original = hoy - datetime.timedelta(days=7)
     carga = CargaDocente(docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id, materia_id=materia.id, tipo_actividad="CLASE", actividad_nombre=materia.nombre, dia_semana=fecha_original.weekday(), hora_inicio="08:00", hora_fin="09:00", estado="ACTIVO", activo=True)
-    db.add(carga); db.commit()
+    db.add(carga); db.flush()
+    original = ClaseDocente(carga_docente_id=carga.id, fecha=fecha_original, estado="NO_IMPARTIDA", motivo_no_impartida="Suspensión institucional")
+    db.add(original); db.commit()
     headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    pendientes = client.get("/docencia/reposiciones/pendientes", headers=headers)
+    assert pendientes.status_code == 200
+    assert pendientes.json()[0]["clase_id"] == original.id
     fecha_reposicion = hoy + datetime.timedelta(days=1)
     respuesta = client.post(f"/docencia/horario/{carga.id}/reposiciones", headers=headers, json={
         "fecha_original": fecha_original.isoformat(), "fecha": fecha_reposicion.isoformat(),
@@ -632,12 +637,14 @@ def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
         "tema": "Continuación del tema pendiente",
     })
     assert respuesta.status_code == 200, respuesta.text
-    clase = db.query(ClaseDocente).one()
+    clase = db.query(ClaseDocente).filter(ClaseDocente.es_reposicion == True).one()
     assert clase.es_reposicion is True
+    assert clase.clase_origen_id == original.id
     assert clase.estado == "PROGRAMADA"
     assert clase.fecha_original == fecha_original
     assert carga.dia_semana == fecha_original.weekday()
     assert carga.hora_inicio == "08:00"
+    assert client.get("/docencia/reposiciones/pendientes", headers=headers).json() == []
     cancelada = client.post(f"/docencia/reposiciones/{clase.id}/cancelar", headers=headers, json={"motivo": "Se acordó otra fecha"})
     assert cancelada.status_code == 200
     db.refresh(clase)

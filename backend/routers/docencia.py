@@ -1195,9 +1195,18 @@ def programar_reposicion(carga_id: int, data: ReposicionInput, db: Session = Dep
         ClaseDocente.fecha == data.fecha_original,
         ClaseDocente.estado == "NO_IMPARTIDA",
     ).first()
+    if not original:
+        raise HTTPException(409, "Primero registra la clase original como no impartida")
+    reposicion_activa = db.query(ClaseDocente.id).filter(
+        ClaseDocente.clase_origen_id == original.id,
+        ClaseDocente.es_reposicion == True,
+        ClaseDocente.estado_reposicion != "CANCELADA",
+    ).first()
+    if reposicion_activa:
+        raise HTTPException(409, "Esta clase no impartida ya tiene una reposición programada")
     clase = ClaseDocente(
         carga_docente_id=carga.id, fecha=data.fecha, estado="PROGRAMADA",
-        es_reposicion=True, clase_origen_id=original.id if original else None,
+        es_reposicion=True, clase_origen_id=original.id,
         fecha_original=data.fecha_original,
         hora_inicio_reposicion=data.hora_inicio, hora_fin_reposicion=data.hora_fin,
         motivo_reposicion=data.motivo.strip(), tema_pendiente=(data.tema or "").strip() or None,
@@ -1205,6 +1214,43 @@ def programar_reposicion(carga_id: int, data: ReposicionInput, db: Session = Dep
     )
     db.add(clase); db.commit(); db.refresh(clase)
     return _serializar_clase(clase)
+
+
+@router.get("/reposiciones/pendientes")
+def reposiciones_pendientes(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    """Sesiones no impartidas del periodo actual que todavía pueden reponerse."""
+    _solo_docente(current_user)
+    actual = _periodo_actual(db)
+    if not actual:
+        return []
+    originales = db.query(ClaseDocente).join(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.periodo_id == actual.id,
+        CargaDocente.activo == True,
+        ClaseDocente.estado == "NO_IMPARTIDA",
+        ClaseDocente.es_reposicion == False,
+    ).order_by(ClaseDocente.fecha.desc()).all()
+    ids_con_reposicion = {
+        row[0] for row in db.query(ClaseDocente.clase_origen_id).filter(
+            ClaseDocente.clase_origen_id.in_([clase.id for clase in originales]),
+            ClaseDocente.es_reposicion == True,
+            ClaseDocente.estado_reposicion != "CANCELADA",
+        ).all()
+    } if originales else set()
+    return [{
+        "clase_id": clase.id,
+        "carga_id": clase.carga_docente_id,
+        "fecha_original": clase.fecha.isoformat(),
+        "materia": clase.carga.actividad_nombre,
+        "grupo": (
+            f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
+            if clase.carga.grupo_academico else None
+        ),
+        "hora_inicio": clase.carga.hora_inicio,
+        "hora_fin": clase.carga.hora_fin,
+        "motivo": clase.motivo_no_impartida,
+        "tema": clase.tema_pendiente,
+    } for clase in originales if clase.id not in ids_con_reposicion]
 
 
 @router.post("/reposiciones/{clase_id}/cancelar")

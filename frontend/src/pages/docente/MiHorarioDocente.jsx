@@ -395,6 +395,7 @@ export default function MiHorarioDocente() {
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
   const [extemporaneas, setExtemporaneas] = useState([]);
+  const [reposicionesPendientes, setReposicionesPendientes] = useState([]);
   const [modalExtemporanea, setModalExtemporanea] = useState(null);
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
   const [resolucionPendiente, setResolucionPendiente] = useState('IMPARTIDA');
@@ -419,16 +420,18 @@ export default function MiHorarioDocente() {
       const elegido = idPeriodo || cats.periodo_sugerido_id;
       setCatalogos(cats);
       setPeriodoId(String(elegido || ''));
-      const [horarioRes, hoyRes, extemporaneasRes, cierreRes] = await Promise.all([
+      const [horarioRes, hoyRes, extemporaneasRes, reposicionesRes, cierreRes] = await Promise.all([
         api.get('/docencia/horario', { params: elegido ? { periodo_id: elegido } : {} }),
         api.get('/docencia/hoy'),
         api.get('/docencia/capturas-extemporaneas/disponibles'),
+        api.get('/docencia/reposiciones/pendientes'),
         api.get('/cierre-academico', { params: { periodo_id: elegido } }),
       ]);
       setHorario(horarioRes.data);
       const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
       setHoy(periodoElegido?.es_actual ? hoyRes.data : []);
       setExtemporaneas(periodoElegido?.es_actual ? extemporaneasRes.data : []);
+      setReposicionesPendientes(periodoElegido?.es_actual ? reposicionesRes.data : []);
       setCierre(cierreRes.data);
     } catch {
       setMensaje('No se pudo cargar el módulo docente.');
@@ -506,17 +509,17 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
   };
-  const abrirReposicion = (carga = horario.find((item) => item.tipo_actividad === 'CLASE')) => {
-    if (!carga) return;
-    setModalReposicion(carga);
-    setFormReposicion({ fecha_original: '', fecha: '', hora_inicio: carga.hora_inicio, hora_fin: carga.hora_fin, motivo: '', tema: '' });
+  const abrirReposicion = (pendiente = reposicionesPendientes[0]) => {
+    if (!pendiente) return;
+    setModalReposicion(pendiente);
+    setFormReposicion({ fecha_original: pendiente.fecha_original, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: pendiente.motivo || '', tema: pendiente.tema || '' });
   };
   const guardarReposicion = async (e) => {
     e.preventDefault();
     if (guardandoReposicion) return;
     setGuardandoReposicion(true);
     try {
-      await api.post(`/docencia/horario/${modalReposicion.id}/reposiciones`, formReposicion);
+      await api.post(`/docencia/horario/${modalReposicion.carga_id}/reposiciones`, formReposicion);
       setModalReposicion(null);
       setMensaje('Reposición programada como evento único; el horario oficial no fue modificado.');
       await cargar(periodoId);
@@ -632,7 +635,7 @@ export default function MiHorarioDocente() {
                 Capturar clase anterior ({extemporaneas.length})
               </button>
             )}
-            {esPeriodoActual && horario.some((item) => item.tipo_actividad === 'CLASE') && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición</button>}
+            {esPeriodoActual && reposicionesPendientes.length > 0 && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición ({reposicionesPendientes.length})</button>}
             <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
               {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
             </select>
@@ -909,8 +912,8 @@ export default function MiHorarioDocente() {
           <form onSubmit={guardarReposicion} onMouseDown={(e) => e.stopPropagation()} className="glass w-full max-w-lg overflow-hidden rounded-2xl border border-blue-500/20 shadow-2xl">
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-300">Evento de una sola fecha</p><h2 className="mt-1 text-lg font-bold text-white">Programar reposición</h2><p className="mt-1 text-sm text-slate-400">No modifica el horario oficial recurrente.</p></div><button type="button" onClick={() => setModalReposicion(null)} className="text-2xl text-slate-400">×</button></header>
             <div className="grid gap-4 p-5 sm:grid-cols-2">
-              <label className="text-sm text-slate-300 sm:col-span-2">Materia y grupo<select className="input-dark mt-1.5" value={modalReposicion.id} onChange={(e) => abrirReposicion(horario.find((item) => String(item.id) === e.target.value))}>{horario.filter((item) => item.tipo_actividad === 'CLASE').map((item) => <option key={item.id} value={item.id}>{item.actividad_nombre} · {item.grupo}</option>)}</select></label>
-              <label className="text-sm text-slate-300">Fecha original no impartida<input required type="date" value={formReposicion.fecha_original} onChange={(e) => setFormReposicion({ ...formReposicion, fecha_original: e.target.value })} className="input-dark mt-1.5" /></label>
+              <label className="text-sm text-slate-300 sm:col-span-2">Clase no impartida pendiente<select className="input-dark mt-1.5" value={modalReposicion.clase_id} onChange={(e) => abrirReposicion(reposicionesPendientes.find((item) => String(item.clase_id) === e.target.value))}>{reposicionesPendientes.map((item) => <option key={item.clase_id} value={item.clase_id}>{item.fecha_original} · {item.materia} · {item.grupo}</option>)}</select></label>
+              <label className="text-sm text-slate-300">Fecha original no impartida<input readOnly type="date" value={formReposicion.fecha_original} className="input-dark mt-1.5 cursor-not-allowed opacity-70" /></label>
               <label className="text-sm text-slate-300">Fecha de reposición<input required type="date" min={new Date().toISOString().slice(0, 10)} value={formReposicion.fecha} onChange={(e) => setFormReposicion({ ...formReposicion, fecha: e.target.value })} className="input-dark mt-1.5" /></label>
               <label className="text-sm text-slate-300">Hora de inicio<input required type="time" value={formReposicion.hora_inicio} onChange={(e) => setFormReposicion({ ...formReposicion, hora_inicio: e.target.value })} className="input-dark mt-1.5" /></label>
               <label className="text-sm text-slate-300">Hora de fin<input required type="time" value={formReposicion.hora_fin} onChange={(e) => setFormReposicion({ ...formReposicion, hora_fin: e.target.value })} className="input-dark mt-1.5" /></label>
