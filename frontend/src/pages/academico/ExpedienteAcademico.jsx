@@ -104,6 +104,9 @@ function Resumen({ data, setTab }) {
   const r = data.resumen;
   const sem = SEMAFORO[r.semaforo] || SEMAFORO.GRIS;
   const alertas = data.materias.filter(m => ['RIESGO_ALTO', 'RIESGO_MEDIO'].includes(m.estado));
+  const tendencias = r.tendencias_asistencia;
+  const calidad = r.calidad_datos;
+  const tonoVariacion = valor => valor == null ? 'text-slate-500' : valor < 0 ? 'text-red-400' : valor > 0 ? 'text-emerald-400' : 'text-slate-400';
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
@@ -115,6 +118,36 @@ function Resumen({ data, setTab }) {
         <Kpi label="Reportes abiertos" value={r.reportes_abiertos} tone="text-orange-400" />
         <Kpi label="Canalizaciones" value={r.canalizaciones_activas} tone="text-cyan-400" />
       </div>
+
+      {(tendencias || calidad) && (
+        <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
+          {tendencias && <Panel className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h2 className="font-semibold">Tendencia reciente de asistencia</h2><p className="mt-1 text-xs text-slate-500">Ventanas calculadas hasta la última clase registrada: {fmt(tendencias.fecha_referencia)}.</p></div>
+              <button onClick={() => setTab('asistencia')} className="text-xs font-semibold text-blue-400">Ver análisis completo →</button>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {[
+                ['Últimos 7 días', tendencias.ultimos_7_dias, tendencias.variacion_7_dias_vs_global],
+                ['Últimos 30 días', tendencias.ultimos_30_dias, tendencias.variacion_30_dias_vs_global],
+              ].map(([label, periodo, variacion]) => <div key={label} className="rounded-xl border border-slate-500/15 p-4">
+                <p className="text-xs font-semibold text-slate-500">{label}</p>
+                <div className="mt-1 flex items-end justify-between gap-3"><p className="text-2xl font-bold">{periodo?.porcentaje != null ? `${periodo.porcentaje}%` : 'Sin datos'}</p><p className={`text-xs font-semibold ${tonoVariacion(variacion)}`}>{variacion == null ? 'Sin comparación' : `${variacion > 0 ? '+' : ''}${variacion} pp vs. global`}</p></div>
+                <p className="mt-2 text-[10px] text-slate-500">{periodo?.registros || 0} registros · {periodo?.falta || 0} faltas · {periodo?.retardo || 0} retardos</p>
+              </div>)}
+            </div>
+          </Panel>}
+          {calidad && <Panel className="p-5">
+            <h2 className="font-semibold">Vigencia y calidad de datos</h2>
+            <p className="mt-1 text-xs text-slate-500">Última clase: {fmt(calidad.ultima_clase)}{calidad.ultima_actualizacion_asistencia ? ` · Asistencia actualizada: ${fmtFechaHora(calidad.ultima_actualizacion_asistencia)}` : ''}</p>
+            <div className="mt-4 space-y-2">
+              {calidad.advertencias.map((advertencia, index) => <div key={index} className={`rounded-lg border px-3 py-2 text-xs ${advertencia.startsWith('Sin advertencias') ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>{advertencia}</div>)}
+            </div>
+            {!!calidad.materias_sin_asistencia.length && <p className="mt-3 text-[10px] text-slate-500"><b>Sin asistencias:</b> {calidad.materias_sin_asistencia.join(', ')}</p>}
+            {!!calidad.materias_sin_evidencias.length && <p className="mt-2 text-[10px] text-slate-500"><b>Sin evidencias:</b> {calidad.materias_sin_evidencias.join(', ')}</p>}
+          </Panel>}
+        </div>
+      )}
 
       <Panel className={`p-5 ${sem.box}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -444,21 +477,69 @@ function Tutoria({ tutoria }) {
   );
 }
 
-function Timeline({ items }) {
+function Timeline({ alumnoId, materias }) {
+  const [items, setItems] = useState([]);
+  const [tipo, setTipo] = useState('TODOS');
+  const [materiaClave, setMateriaClave] = useState('');
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [pagina, setPagina] = useState(1);
+  const [hayMas, setHayMas] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelado = false;
+    setLoading(true);
+    setError('');
+    api.get(`/expediente-academico/alumnos/${alumnoId}/timeline`, {
+      params: {
+        tipo, pagina, limite: 20,
+        ...(materiaClave ? { materia_clave: materiaClave } : {}),
+        ...(fechaInicio ? { fecha_inicio: fechaInicio } : {}),
+        ...(fechaFin ? { fecha_fin: fechaFin } : {}),
+      },
+    }).then(({ data }) => {
+      if (cancelado) return;
+      setItems(data.items);
+      setHayMas(data.paginacion.hay_mas);
+    }).catch(err => {
+      if (!cancelado) setError(err.response?.data?.detail || 'No se pudo consultar la línea de tiempo.');
+    }).finally(() => {
+      if (!cancelado) setLoading(false);
+    });
+    return () => { cancelado = true; };
+  }, [alumnoId, tipo, materiaClave, fechaInicio, fechaFin, pagina]);
+
+  const cambiarFiltro = setter => event => { setter(event.target.value); setPagina(1); };
   return (
-    <Panel className="p-5">
-      <h2 className="font-semibold">Línea de tiempo académica</h2>
-      <p className="mt-1 text-xs text-slate-500">Asistencia excepcional, evaluaciones, acuerdos y seguimiento tutorial.</p>
-      <div className="mt-5 space-y-0">
+    <div className="space-y-4">
+      <Panel className="p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="text-xs font-semibold text-slate-500">Tipo de evento<select value={tipo} onChange={cambiarFiltro(setTipo)} className="input-dark mt-1 w-full"><option value="TODOS">Todos</option><option value="ASISTENCIA">Asistencia excepcional</option><option value="EVALUACION">Evaluaciones</option><option value="ACUERDO">Acuerdos</option><option value="REPORTE">Reportes</option><option value="TUTORIA">Tutoría</option></select></label>
+          <label className="text-xs font-semibold text-slate-500">Materia<select value={materiaClave} onChange={cambiarFiltro(setMateriaClave)} className="input-dark mt-1 w-full"><option value="">Todas las materias</option>{materias.map(materia => <option key={materia.clave} value={materia.clave}>{materia.materia}</option>)}</select></label>
+          <label className="text-xs font-semibold text-slate-500">Desde<input type="date" value={fechaInicio} max={fechaFin || undefined} onChange={cambiarFiltro(setFechaInicio)} className="input-dark mt-1 w-full" /></label>
+          <label className="text-xs font-semibold text-slate-500">Hasta<input type="date" value={fechaFin} min={fechaInicio || undefined} onChange={cambiarFiltro(setFechaFin)} className="input-dark mt-1 w-full" /></label>
+        </div>
+        {(tipo !== 'TODOS' || materiaClave || fechaInicio || fechaFin) && <button type="button" onClick={() => { setTipo('TODOS'); setMateriaClave(''); setFechaInicio(''); setFechaFin(''); setPagina(1); }} className="mt-3 text-xs font-semibold text-blue-400">Limpiar filtros</button>}
+      </Panel>
+      <Panel className="p-5">
+        <h2 className="font-semibold">Línea de tiempo académica</h2>
+        <p className="mt-1 text-xs text-slate-500">Asistencia excepcional, evaluaciones, acuerdos y seguimiento tutorial.</p>
+        {error && <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {loading && <p className="py-8 text-center text-sm text-slate-500">Consultando movimientos…</p>}
+        {!loading && <div className="mt-5 space-y-0">
         {items.map((e, i) => (
-          <div key={`${e.tipo}-${e.fecha}-${i}`} className="grid grid-cols-[16px_1fr] gap-3">
+          <div key={e.id || `${e.tipo}-${e.fecha}-${i}`} className="grid grid-cols-[16px_1fr] gap-3">
             <div className="flex flex-col items-center"><span className={`mt-1 h-3 w-3 rounded-full ${e.tipo === 'ASISTENCIA' ? 'bg-red-400' : e.tipo === 'EVALUACION' ? 'bg-violet-400' : e.tipo === 'TUTORIA' ? 'bg-cyan-400' : e.tipo === 'REPORTE' ? 'bg-orange-400' : 'bg-blue-400'}`} />{i < items.length - 1 && <span className="w-px flex-1 bg-slate-500/20" />}</div>
-            <div className="pb-5"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{e.titulo}</p><Badge className="border-slate-500/30 text-slate-400">{e.tipo}</Badge>{e.estado && <Badge className="border-amber-500/30 text-amber-400">{labelEstado(e.estado)}</Badge>}</div>{e.descripcion && <p className="mt-1 text-sm text-slate-400">{e.descripcion}</p>}<p className="mt-1 text-[10px] text-slate-500">{fmtFechaHora(e.fecha)}</p></div>
+            <div className="pb-5"><div className="flex flex-wrap items-center gap-2"><p className="font-medium">{e.titulo}</p><Badge className="border-slate-500/30 text-slate-400">{e.tipo}</Badge>{e.estado && <Badge className="border-amber-500/30 text-amber-400">{labelEstado(e.estado)}</Badge>}</div>{e.descripcion && <p className="mt-1 text-sm text-slate-400">{e.descripcion}</p>}<p className="mt-1 text-[10px] text-slate-500">{fmtFechaHora(e.fecha)}{e.materia ? ` · ${e.materia}` : ''}</p></div>
           </div>
         ))}
-        {!items.length && <p className="py-8 text-center text-sm text-slate-500">Todavía no hay movimientos académicos.</p>}
-      </div>
-    </Panel>
+        {!items.length && !error && <p className="py-8 text-center text-sm text-slate-500">No hay movimientos que coincidan con los filtros.</p>}
+        </div>}
+        <div className="mt-3 flex items-center justify-between border-t border-slate-500/15 pt-3"><p className="text-xs text-slate-500">Página {pagina}</p><div className="flex gap-2"><button disabled={pagina <= 1 || loading} onClick={() => setPagina(valor => valor - 1)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs disabled:opacity-30">Anterior</button><button disabled={!hayMas || loading} onClick={() => setPagina(valor => valor + 1)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs disabled:opacity-30">Siguiente</button></div></div>
+      </Panel>
+    </div>
   );
 }
 
@@ -507,6 +588,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
   if (!panorama) return <Panel className="p-8 text-center text-sm text-red-400">{error || 'Sin información del grupo.'}</Panel>;
 
   const r = panorama.resumen;
+  const cumplimiento = r.cumplimiento_sesiones;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
@@ -517,8 +599,37 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
         <Kpi label="Requieren atención" value={r.alumnos_atencion} tone="text-amber-400" />
         <Kpi label="Sin información" value={r.sin_datos} tone="text-slate-400" />
         <Kpi label="Acuerdos pendientes" value={r.acuerdos_pendientes} tone="text-orange-400" />
-        <Kpi label="Cobertura" value={`${r.cobertura_asistencia}%`} hint="Asistencias capturadas" tone="text-cyan-400" />
+        <Kpi
+          label="Cobertura de captura"
+          value={`${r.cobertura_asistencia}%`}
+          hint={r.cobertura_asistencia_detalle
+            ? `${r.cobertura_asistencia_detalle.registros_capturados} de ${r.cobertura_asistencia_detalle.registros_esperados} pases esperados en clases registradas`
+            : 'Asistencias capturadas'}
+          tone="text-cyan-400"
+        />
       </div>
+
+      {cumplimiento && <Panel className="p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-semibold">Cumplimiento de sesiones programadas</h2>
+              <Badge className={cumplimiento.disponible ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-500'}>{cumplimiento.disponible ? 'CALENDARIO OFICIAL' : 'NO CALCULABLE'}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">{cumplimiento.mensaje}</p>
+            {cumplimiento.disponible && <div className="mt-3">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${cumplimiento.porcentaje >= 85 ? 'bg-emerald-500' : cumplimiento.porcentaje >= 70 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.min(100, cumplimiento.porcentaje || 0)}%` }} /></div>
+              <p className="mt-2 text-[10px] text-slate-500">Del {fmt(cumplimiento.fecha_inicio)} al {fmt(cumplimiento.fecha_corte)} · Se excluyen suspensiones y recesos publicados.</p>
+            </div>}
+          </div>
+          {cumplimiento.disponible && <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-center sm:grid-cols-4">
+            <div><p className="text-2xl font-bold text-blue-400">{cumplimiento.porcentaje ?? '—'}%</p><p className="text-[10px] text-slate-500">Cumplimiento</p></div>
+            <div><p className="text-xl font-bold">{cumplimiento.sesiones_registradas}/{cumplimiento.sesiones_esperadas}</p><p className="text-[10px] text-slate-500">Registradas</p></div>
+            <div><p className="text-xl font-bold text-red-400">{cumplimiento.sesiones_sin_registro}</p><p className="text-[10px] text-slate-500">Sin registro</p></div>
+            <div><p className="text-xl font-bold text-violet-400">{cumplimiento.sesiones_adicionales}</p><p className="text-[10px] text-slate-500">Adicionales</p></div>
+          </div>}
+        </div>
+      </Panel>}
 
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -558,7 +669,11 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
             <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
               {panorama.alumnos.map(alumno => (
                 <tr key={alumno.id} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
-                  <td className="px-5 py-3"><p className="font-semibold">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.matricula}</p></td>
+                  <td className="px-5 py-3">
+                    <p className="font-semibold">{alumno.nombre}</p>
+                    <p className="text-xs text-slate-500">{alumno.matricula}</p>
+                    {!!alumno.razones_estado?.length && <p className="mt-1 max-w-md text-[10px] leading-4 text-slate-500">{alumno.razones_estado.slice(0, 2).join(' · ')}</p>}
+                  </td>
                   <td className={`px-3 py-3 text-center font-bold ${alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td>
                   <td className={`px-3 py-3 text-center font-bold ${alumno.promedio_evidencias != null && alumno.promedio_evidencias < 7 ? 'text-red-400' : ''}`}>{alumno.promedio_evidencias ?? '—'}</td>
                   <td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td>
@@ -766,7 +881,19 @@ export default function ExpedienteAcademico() {
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div><h2 className="text-2xl font-bold">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p></div>
-                    <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}><div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full ${SEMAFORO[data.resumen.semaforo]?.dot}`} /><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{SEMAFORO[data.resumen.semaforo]?.label}</span></div></div>
+                    <div className="flex flex-wrap gap-3">
+                      <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
+                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Riesgo integral</p>
+                        <div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full ${SEMAFORO[data.resumen.semaforo]?.dot}`} /><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{SEMAFORO[data.resumen.semaforo]?.label}</span></div>
+                      </div>
+                      {data.resumen.alerta_inmediata && (
+                        <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.box}`}>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Alerta inmediata</p>
+                          <div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.dot}`} /><span className={`text-sm font-bold ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}`}>{SEMAFORO[data.resumen.alerta_inmediata.nivel]?.label}</span></div>
+                          <p className="mt-1 max-w-xs text-[10px] text-slate-500">{data.resumen.alerta_inmediata.razones?.[0]}</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </Panel>
 
@@ -781,7 +908,7 @@ export default function ExpedienteAcademico() {
                 {tab === 'evaluaciones' && <Evaluaciones data={data} />}
                 {tab === 'acuerdos' && <Acuerdos acuerdos={data.acuerdos} puedeDepurar={['SUPER_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES'].includes(usuario?.rol)} onDeleted={id => setData(actual => ({ ...actual, acuerdos: actual.acuerdos.filter(a => a.id !== id), resumen: { ...actual.resumen, acuerdos_pendientes: Math.max(0, actual.resumen.acuerdos_pendientes - (actual.acuerdos.find(a => a.id === id)?.estado === 'PENDIENTE' ? 1 : 0)) } }))} />}
                 {tab === 'tutoria' && <Tutoria tutoria={data.tutoria} />}
-                {tab === 'timeline' && <Timeline items={data.timeline} />}
+                {tab === 'timeline' && <Timeline alumnoId={data.alumno.id} materias={data.materias} />}
               </div>
             )}
           </div>

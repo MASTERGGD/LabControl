@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
+from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
 )
@@ -33,6 +34,16 @@ router = APIRouter(prefix="/expediente-academico", tags=["Expediente Académico"
 ESTADOS_ASISTENCIA = ("PRESENTE", "FALTA", "RETARDO", "JUSTIFICADA")
 ESTADOS_ABIERTOS = {"PENDIENTE", "ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "SIN_TUTOR"}
 MX_TIMEZONE = ZoneInfo("America/Mexico_City")
+
+# Umbrales institucionales centralizados para que todas las vistas apliquen
+# exactamente las mismas reglas de negocio.
+UMBRAL_ASISTENCIA_RIESGO = 80.0
+UMBRAL_ASISTENCIA_ATENCION = 90.0
+UMBRAL_PROMEDIO_RIESGO = 7.0
+UMBRAL_PROMEDIO_ATENCION = 8.0
+UMBRAL_RACHA_RIESGO = 3
+UMBRAL_RACHA_ATENCION = 2
+UMBRAL_MATERIAS_ALTAS_ROJO = 2
 
 
 class EliminarAcuerdoPruebaInput(BaseModel):
@@ -63,6 +74,341 @@ def _nombre_alumno(alumno: CatalogoAlumno) -> str:
     return " ".join(filter(None, [
         alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres,
     ])).strip()
+
+
+def _clave_materia(carga: CargaDocente) -> str:
+    return (
+        f"materia:{carga.materia_id}" if carga.materia_id
+        else f"actividad:{carga.actividad_nombre.strip().upper()}:{carga.docente_id}"
+    )
+
+
+def _estado_materia(porcentaje: float | None, promedio: float | None) -> str:
+    if ((porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO)
+            or (promedio is not None and promedio < UMBRAL_PROMEDIO_RIESGO)):
+        return "RIESGO_ALTO"
+    if ((porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION)
+            or (promedio is not None and promedio < UMBRAL_PROMEDIO_ATENCION)):
+        return "RIESGO_MEDIO"
+    if porcentaje is not None or promedio is not None:
+        return "REGULAR"
+    return "SIN_DATOS"
+
+
+def _momento_clase(clase: ClaseDocente, carga: CargaDocente | None):
+    hora = carga.hora_inicio if carga else None
+    try:
+        hora_clase = datetime.time.fromisoformat(hora) if hora else datetime.time.min
+    except ValueError:
+        hora_clase = datetime.time.min
+    return datetime.datetime.combine(clase.fecha, hora_clase), clase.id
+
+
+def _racha_reciente_por_materia(
+    asistencias: list[AsistenciaDocente],
+    clase_por_id: dict[int, ClaseDocente],
+    carga_por_id: dict[int, CargaDocente],
+) -> dict:
+    """Obtiene la mayor racha vigente de FALTA, separada por materia."""
+    por_materia = defaultdict(list)
+    nombres = {}
+    for asistencia in asistencias:
+        clase = clase_por_id.get(asistencia.clase_docente_id)
+        carga = carga_por_id.get(clase.carga_docente_id) if clase else None
+        if not clase or not carga:
+            continue
+        clave = _clave_materia(carga)
+        nombres[clave] = carga.actividad_nombre
+        por_materia[clave].append((asistencia, clase, carga))
+
+    rachas = []
+    for clave, registros in por_materia.items():
+        registros.sort(
+            key=lambda item: _momento_clase(item[1], item[2]), reverse=True,
+        )
+        cantidad = 0
+        fechas = []
+        for asistencia, clase, _carga in registros:
+            if asistencia.estado != "FALTA":
+                break
+            cantidad += 1
+            fechas.append(clase.fecha)
+        if cantidad:
+            rachas.append({
+                "materia_clave": clave,
+                "materia": nombres[clave],
+                "cantidad": cantidad,
+                "desde": min(fechas).isoformat(),
+                "hasta": max(fechas).isoformat(),
+            })
+    if not rachas:
+        return {
+            "cantidad": 0, "materia": None, "materia_clave": None,
+            "desde": None, "hasta": None,
+            "registros_analizados": len(asistencias),
+        }
+    resultado = max(rachas, key=lambda item: (item["cantidad"], item["hasta"]))
+    resultado["registros_analizados"] = len(asistencias)
+    return resultado
+
+
+def _clasificar_panorama(
+    porcentaje: float | None,
+    promedio: float | None,
+    racha: dict,
+    acuerdos_pendientes: int,
+    reportes_abiertos: int,
+) -> tuple[str, list[str]]:
+    razones_riesgo = []
+    razones_atencion = []
+    if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO:
+        razones_riesgo.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_RIESGO:g}%)")
+    elif porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION:
+        razones_atencion.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_ATENCION:g}%)")
+    if promedio is not None and promedio < UMBRAL_PROMEDIO_RIESGO:
+        razones_riesgo.append(f"Promedio de evidencias de {promedio} (menor a {UMBRAL_PROMEDIO_RIESGO:g})")
+    elif promedio is not None and promedio < UMBRAL_PROMEDIO_ATENCION:
+        razones_atencion.append(f"Promedio de evidencias de {promedio} (menor a {UMBRAL_PROMEDIO_ATENCION:g})")
+    if racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
+        razones_riesgo.append(f"{racha['cantidad']} faltas consecutivas en {racha['materia']}")
+    elif racha["cantidad"] >= UMBRAL_RACHA_ATENCION:
+        razones_atencion.append(f"{racha['cantidad']} faltas consecutivas en {racha['materia']}")
+    if acuerdos_pendientes:
+        razones_atencion.append(f"{acuerdos_pendientes} acuerdo(s) pendiente(s)")
+    if reportes_abiertos:
+        razones_atencion.append(f"{reportes_abiertos} reporte(s) abierto(s)")
+
+    if razones_riesgo:
+        return "RIESGO", razones_riesgo + razones_atencion
+    if razones_atencion:
+        return "ATENCION", razones_atencion
+    if porcentaje is None and promedio is None:
+        return "SIN_DATOS", ["Sin asistencias ni evidencias registradas"]
+    return "REGULAR", ["Sin indicadores preventivos en los registros disponibles"]
+
+
+def _alerta_inmediata(racha: dict) -> dict:
+    if not racha.get("registros_analizados"):
+        nivel = "GRIS"
+        razones = ["Sin asistencias suficientes para calcular rachas por materia"]
+    elif racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
+        nivel = "ROJO"
+        razones = [f"{racha['cantidad']} faltas consecutivas en {racha['materia']}"]
+    elif racha["cantidad"] >= UMBRAL_RACHA_ATENCION:
+        nivel = "AMARILLO"
+        razones = [f"{racha['cantidad']} faltas consecutivas en {racha['materia']}"]
+    else:
+        nivel = "VERDE"
+        razones = ["Sin rachas recientes de faltas por materia"]
+    return {"nivel": nivel, "razones": razones, "racha": racha}
+
+
+def _resumen_asistencia_ventana(
+    asistencias: list[AsistenciaDocente],
+    clase_por_id: dict[int, ClaseDocente],
+    fecha_inicio: datetime.date,
+    fecha_fin: datetime.date,
+) -> dict:
+    registros = [
+        asistencia for asistencia in asistencias
+        if (clase := clase_por_id.get(asistencia.clase_docente_id))
+        and fecha_inicio <= clase.fecha <= fecha_fin
+    ]
+    conteos = {estado.lower(): 0 for estado in ESTADOS_ASISTENCIA}
+    for asistencia in registros:
+        if asistencia.estado in ESTADOS_ASISTENCIA:
+            conteos[asistencia.estado.lower()] += 1
+    asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
+    porcentaje = round(asistio * 100 / len(registros), 1) if registros else None
+    return {
+        "desde": fecha_inicio.isoformat(),
+        "hasta": fecha_fin.isoformat(),
+        "registros": len(registros),
+        "porcentaje": porcentaje,
+        **conteos,
+    }
+
+
+def _tendencias_asistencia(
+    asistencias: list[AsistenciaDocente],
+    clases: list[ClaseDocente],
+    asistencia_global: float | None,
+) -> dict:
+    if not clases:
+        return {
+            "fecha_referencia": None,
+            "ultimos_7_dias": None,
+            "ultimos_30_dias": None,
+            "variacion_7_dias_vs_global": None,
+            "variacion_30_dias_vs_global": None,
+        }
+    fecha_referencia = max(clase.fecha for clase in clases)
+    clase_por_id = {clase.id: clase for clase in clases}
+    ultimos_7 = _resumen_asistencia_ventana(
+        asistencias, clase_por_id,
+        fecha_referencia - datetime.timedelta(days=6), fecha_referencia,
+    )
+    ultimos_30 = _resumen_asistencia_ventana(
+        asistencias, clase_por_id,
+        fecha_referencia - datetime.timedelta(days=29), fecha_referencia,
+    )
+    def variacion(periodo):
+        if periodo["porcentaje"] is None or asistencia_global is None:
+            return None
+        return round(periodo["porcentaje"] - asistencia_global, 1)
+    return {
+        "fecha_referencia": fecha_referencia.isoformat(),
+        "ultimos_7_dias": ultimos_7,
+        "ultimos_30_dias": ultimos_30,
+        "variacion_7_dias_vs_global": variacion(ultimos_7),
+        "variacion_30_dias_vs_global": variacion(ultimos_30),
+    }
+
+
+def _calidad_datos(
+    materias: list[dict],
+    clases: list[ClaseDocente],
+    asistencias: list[AsistenciaDocente],
+) -> dict:
+    materias_sin_asistencia = [
+        materia["materia"] for materia in materias
+        if materia["asistencias_registradas"] == 0
+    ]
+    materias_sin_evidencias = [
+        materia["materia"] for materia in materias
+        if materia["evaluaciones_registradas"] == 0
+    ]
+    actualizaciones_asistencia = [
+        asistencia.actualizado_en for asistencia in asistencias
+        if asistencia.actualizado_en
+    ]
+    advertencias = []
+    if not clases:
+        advertencias.append("No hay clases registradas para el grupo actual")
+    if materias_sin_asistencia:
+        advertencias.append(
+            f"{len(materias_sin_asistencia)} materia(s) sin asistencias capturadas"
+        )
+    if materias_sin_evidencias:
+        advertencias.append(
+            f"{len(materias_sin_evidencias)} materia(s) sin evidencias registradas"
+        )
+    if not advertencias:
+        advertencias.append("Sin advertencias de captura en el periodo actual")
+    return {
+        "calculado_en": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "ultima_clase": max((clase.fecha for clase in clases), default=None).isoformat() if clases else None,
+        "ultima_actualizacion_asistencia": _iso_utc(max(actualizaciones_asistencia)) if actualizaciones_asistencia else None,
+        "materias_sin_asistencia": materias_sin_asistencia,
+        "materias_sin_evidencias": materias_sin_evidencias,
+        "advertencias": advertencias,
+    }
+
+
+def _cumplimiento_sesiones(
+    db: Session,
+    periodo_id: int | None,
+    cargas: list[CargaDocente],
+    clases: list[ClaseDocente],
+    fecha_corte: datetime.date | None = None,
+) -> dict:
+    """Compara ocurrencias lectivas del horario con clases registradas.
+
+    El cálculo requiere un calendario publicado con hitos oficiales de inicio y
+    fin. Suspensiones o recesos prevalecen sobre cualquier evento lectivo.
+    """
+    base = {
+        "disponible": False,
+        "estado": "SIN_CALENDARIO",
+        "porcentaje": None,
+        "sesiones_esperadas": 0,
+        "sesiones_registradas": 0,
+        "sesiones_sin_registro": 0,
+        "sesiones_adicionales": 0,
+        "fecha_inicio": None,
+        "fecha_corte": None,
+        "fecha_fin_oficial": None,
+        "mensaje": "Se requiere un calendario académico publicado con fechas oficiales de inicio y fin",
+    }
+    if not periodo_id or not cargas:
+        return base
+    calendario = db.query(CalendarioAcademico).filter(
+        CalendarioAcademico.periodo_id == periodo_id,
+        CalendarioAcademico.estado == "PUBLICADO",
+    ).first()
+    if not calendario:
+        return base
+    eventos = db.query(EventoCalendarioAcademico).filter(
+        EventoCalendarioAcademico.calendario_id == calendario.id,
+        EventoCalendarioAcademico.activo == True,
+    ).all()
+    inicios = [
+        evento.fecha_inicio for evento in eventos
+        if evento.tipo == "INICIO_CUATRIMESTRE"
+    ]
+    finales = [
+        evento.fecha_fin for evento in eventos
+        if evento.tipo in {"FIN_ACTIVIDADES_ACADEMICAS", "FIN_CUATRIMESTRE"}
+    ]
+    if not inicios or not finales:
+        return {
+            **base,
+            "estado": "CALENDARIO_INCOMPLETO",
+            "mensaje": "El calendario publicado no define inicio y fin oficiales del periodo",
+        }
+    fecha_inicio = min(inicios)
+    fecha_fin_oficial = max(finales)
+    hoy_mx = datetime.datetime.now(MX_TIMEZONE).date()
+    corte = min(fecha_corte or hoy_mx, fecha_fin_oficial)
+    if corte < fecha_inicio:
+        return {
+            **base,
+            "estado": "PERIODO_NO_INICIADO",
+            "fecha_inicio": fecha_inicio.isoformat(),
+            "fecha_corte": corte.isoformat(),
+            "fecha_fin_oficial": fecha_fin_oficial.isoformat(),
+            "mensaje": "El periodo académico todavía no inicia",
+        }
+
+    def requiere_asistencia(fecha):
+        aplicables = [
+            evento for evento in eventos
+            if evento.fecha_inicio <= fecha <= evento.fecha_fin
+        ]
+        restrictivos = [
+            evento for evento in aplicables
+            if not evento.requiere_asistencia or not evento.permite_iniciar_clase
+        ]
+        if restrictivos:
+            return False
+        return True
+
+    esperadas = set()
+    for carga in cargas:
+        fecha = fecha_inicio
+        while fecha <= corte:
+            if fecha.weekday() == carga.dia_semana and requiere_asistencia(fecha):
+                esperadas.add((carga.id, fecha))
+            fecha += datetime.timedelta(days=1)
+    registradas = {(clase.carga_docente_id, clase.fecha) for clase in clases}
+    registradas_esperadas = esperadas & registradas
+    adicionales = registradas - esperadas
+    total_esperadas = len(esperadas)
+    total_registradas = len(registradas_esperadas)
+    porcentaje = round(total_registradas * 100 / total_esperadas, 1) if total_esperadas else None
+    return {
+        "disponible": True,
+        "estado": "CALCULADO",
+        "porcentaje": porcentaje,
+        "sesiones_esperadas": total_esperadas,
+        "sesiones_registradas": total_registradas,
+        "sesiones_sin_registro": max(0, total_esperadas - total_registradas),
+        "sesiones_adicionales": len(adicionales),
+        "fecha_inicio": fecha_inicio.isoformat(),
+        "fecha_corte": corte.isoformat(),
+        "fecha_fin_oficial": fecha_fin_oficial.isoformat(),
+        "mensaje": "Sesiones registradas respecto de las sesiones lectivas esperadas según horario y calendario oficial",
+    }
 
 
 def _acceso_institucional(db: Session, usuario: Usuario) -> bool:
@@ -168,10 +514,7 @@ def _grupo_y_cargas(db: Session, alumno: CatalogoAlumno):
 def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDocente]):
     grupos = {}
     for carga in cargas:
-        clave = (
-            f"materia:{carga.materia_id}" if carga.materia_id
-            else f"actividad:{carga.actividad_nombre.strip().upper()}:{carga.docente_id}"
-        )
+        clave = _clave_materia(carga)
         if clave not in grupos:
             docente = db.query(Usuario).filter(Usuario.id == carga.docente_id).first()
             grupos[clave] = {
@@ -219,13 +562,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             if calificaciones else None
         )
         acuerdos = [r for r in registros if r.tipo == "ACUERDO"]
-        estado = "SIN_DATOS"
-        if (porcentaje is not None and porcentaje < 80) or (promedio is not None and promedio < 7):
-            estado = "RIESGO_ALTO"
-        elif (porcentaje is not None and porcentaje < 90) or (promedio is not None and promedio < 8):
-            estado = "RIESGO_MEDIO"
-        elif porcentaje is not None or promedio is not None:
-            estado = "REGULAR"
+        estado = _estado_materia(porcentaje, promedio)
 
         materias.append({
             **item,
@@ -265,19 +602,28 @@ def _semaforo(materias, acuerdos, reportes):
         1 for r in reportes if r.estado in ESTADOS_ABIERTOS and r.prioridad == "ALTA"
     )
 
-    if asistencia_global is not None and asistencia_global < 80:
+    if asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
         razones.append(f"Asistencia global crítica de {asistencia_global}%")
     if riesgos_altos:
         razones.append(f"{riesgos_altos} materia(s) en riesgo alto")
+    if riesgos_medios:
+        razones.append(f"{riesgos_medios} materia(s) en riesgo medio")
     if acuerdos_vencidos:
         razones.append(f"{acuerdos_vencidos} acuerdo(s) vencido(s)")
     if reportes_altos:
         razones.append(f"{reportes_altos} reporte(s) de prioridad alta abierto(s)")
+    elif reportes_abiertos:
+        razones.append(f"{reportes_abiertos} reporte(s) abierto(s)")
+    if (asistencia_global is not None
+            and UMBRAL_ASISTENCIA_RIESGO <= asistencia_global < UMBRAL_ASISTENCIA_ATENCION):
+        razones.append(f"Asistencia global preventiva de {asistencia_global}%")
 
-    if riesgos_altos >= 2 or reportes_altos or (asistencia_global is not None and asistencia_global < 80):
+    if riesgos_altos >= UMBRAL_MATERIAS_ALTAS_ROJO or reportes_altos or (
+        asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO
+    ):
         nivel = "ROJO"
     elif riesgos_altos or riesgos_medios or acuerdos_vencidos or reportes_abiertos or (
-        asistencia_global is not None and asistencia_global < 90
+        asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_ATENCION
     ):
         nivel = "AMARILLO"
         if not razones:
@@ -549,8 +895,12 @@ def panorama_alumnos_grupo(
             ClaseDocente.carga_docente_id.in_(carga_ids),
         ).all() if carga_ids else []
     )
+    cumplimiento_sesiones = _cumplimiento_sesiones(
+        db, grupo.periodo_id, cargas, clases,
+    )
     clase_ids = [clase.id for clase in clases]
-    fecha_clase = {clase.id: clase.fecha for clase in clases}
+    clase_por_id = {clase.id: clase for clase in clases}
+    carga_por_id = {carga.id: carga for carga in cargas}
     asistencias = (
         db.query(AsistenciaDocente).filter(
             AsistenciaDocente.clase_docente_id.in_(clase_ids),
@@ -590,16 +940,9 @@ def panorama_alumnos_grupo(
         asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
         porcentaje = round(asistio * 100 / total_asistencia, 1) if total_asistencia else None
 
-        ordenadas = sorted(
-            registros_asistencia,
-            key=lambda item: fecha_clase.get(item.clase_docente_id, datetime.date.min),
-            reverse=True,
+        racha = _racha_reciente_por_materia(
+            registros_asistencia, clase_por_id, carga_por_id,
         )
-        faltas_consecutivas = 0
-        for asistencia in ordenadas:
-            if asistencia.estado != "FALTA":
-                break
-            faltas_consecutivas += 1
 
         registros = seguimiento_por_alumno[alumno.id]
         calificaciones = [
@@ -618,19 +961,9 @@ def panorama_alumnos_grupo(
             1 for reporte in reportes_por_alumno[alumno.id]
             if reporte.estado in ESTADOS_ABIERTOS
         )
-        tiene_datos = total_asistencia > 0 or promedio is not None
-        if not tiene_datos:
-            semaforo = "SIN_DATOS"
-        elif (porcentaje is not None and porcentaje < 80) or (
-            promedio is not None and promedio < 7
-        ) or faltas_consecutivas >= 3:
-            semaforo = "RIESGO"
-        elif (porcentaje is not None and porcentaje < 90) or (
-            promedio is not None and promedio < 8
-        ) or faltas_consecutivas >= 2 or acuerdos_pendientes or reportes_abiertos:
-            semaforo = "ATENCION"
-        else:
-            semaforo = "REGULAR"
+        semaforo, razones_estado = _clasificar_panorama(
+            porcentaje, promedio, racha, acuerdos_pendientes, reportes_abiertos,
+        )
         filas.append({
             "id": alumno.id,
             "matricula": alumno.matricula,
@@ -640,10 +973,12 @@ def panorama_alumnos_grupo(
             "faltas": conteos["falta"],
             "retardos": conteos["retardo"],
             "justificadas": conteos["justificada"],
-            "faltas_consecutivas": faltas_consecutivas,
+            "faltas_consecutivas": racha["cantidad"],
+            "racha_faltas": racha,
             "acuerdos_pendientes": acuerdos_pendientes,
             "reportes_abiertos": reportes_abiertos,
             "estado": semaforo,
+            "razones_estado": razones_estado,
         })
 
     todas_filas = filas
@@ -703,6 +1038,14 @@ def panorama_alumnos_grupo(
                 round(total_registros * 100 / (len(alumnos) * len(clases)), 1)
                 if alumnos and clases else 0
             ),
+            "cobertura_asistencia_detalle": {
+                "registros_capturados": total_registros,
+                "registros_esperados": len(alumnos) * len(clases),
+                "alumnos": len(alumnos),
+                "clases_registradas": len(clases),
+                "descripcion": "Completitud del pase de lista sobre las clases registradas",
+            },
+            "cumplimiento_sesiones": cumplimiento_sesiones,
         },
         "alumnos": paginadas,
         "paginacion": {
@@ -754,6 +1097,164 @@ def buscar_alumnos(
         "carrera": a.carrera, "cuatrimestre": a.cuatrimestre,
         "grupo": a.grupo, "periodo": a.periodo,
     } for a in alumnos]
+
+
+@router.get(
+    "/alumnos/{alumno_id}/timeline",
+    summary="Línea de tiempo académica paginada",
+)
+def timeline_alumno(
+    alumno_id: int,
+    tipo: str = Query(
+        default="TODOS",
+        pattern="^(TODOS|ASISTENCIA|EVALUACION|ACUERDO|REPORTE|TUTORIA)$",
+    ),
+    materia_clave: Optional[str] = Query(default=None, max_length=120),
+    fecha_inicio: Optional[datetime.date] = None,
+    fecha_fin: Optional[datetime.date] = None,
+    pagina: int = Query(default=1, ge=1),
+    limite: int = Query(default=20, ge=10, le=50),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if fecha_inicio and fecha_fin and fecha_fin < fecha_inicio:
+        raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
+    alumno = _obtener_alumno_autorizado(db, alumno_id, current_user)
+    _grupo, cargas = _grupo_y_cargas(db, alumno)
+    cargas_por_id = {carga.id: carga for carga in cargas}
+    if materia_clave:
+        cargas_por_id = {
+            carga_id: carga for carga_id, carga in cargas_por_id.items()
+            if _clave_materia(carga) == materia_clave
+        }
+    carga_ids = list(cargas_por_id)
+    offset = (pagina - 1) * limite
+    max_por_fuente = pagina * limite + 1
+    eventos = []
+    inicio_dt = datetime.datetime.combine(fecha_inicio, datetime.time.min) if fecha_inicio else None
+    fin_dt = datetime.datetime.combine(fecha_fin, datetime.time.max) if fecha_fin else None
+
+    if tipo in {"TODOS", "ASISTENCIA"} and carga_ids:
+        consulta = (
+            db.query(AsistenciaDocente, ClaseDocente)
+            .join(ClaseDocente, ClaseDocente.id == AsistenciaDocente.clase_docente_id)
+            .filter(
+                AsistenciaDocente.alumno_id == alumno.id,
+                ClaseDocente.carga_docente_id.in_(carga_ids),
+                AsistenciaDocente.estado.in_({"FALTA", "RETARDO", "JUSTIFICADA"}),
+            )
+        )
+        if fecha_inicio:
+            consulta = consulta.filter(ClaseDocente.fecha >= fecha_inicio)
+        if fecha_fin:
+            consulta = consulta.filter(ClaseDocente.fecha <= fecha_fin)
+        for asistencia, clase in consulta.order_by(
+            ClaseDocente.fecha.desc(), ClaseDocente.id.desc(),
+        ).limit(max_por_fuente).all():
+            carga = cargas_por_id[clase.carga_docente_id]
+            eventos.append({
+                "id": f"asistencia:{asistencia.id}",
+                "tipo": "ASISTENCIA",
+                "fecha": _fecha_hora_clase_mx(clase.fecha, carga.hora_inicio),
+                "titulo": asistencia.estado.title(),
+                "descripcion": carga.actividad_nombre,
+                "estado": asistencia.estado,
+                "materia": carga.actividad_nombre,
+                "materia_clave": _clave_materia(carga),
+            })
+
+    if tipo in {"TODOS", "EVALUACION", "ACUERDO"} and (carga_ids or not materia_clave):
+        tipos_seguimiento = []
+        if tipo in {"TODOS", "EVALUACION"}:
+            tipos_seguimiento.append("CALIFICACION")
+        if tipo in {"TODOS", "ACUERDO"}:
+            tipos_seguimiento.append("ACUERDO")
+        consulta = db.query(SeguimientoAlumnoDocente).filter(
+            SeguimientoAlumnoDocente.alumno_id == alumno.id,
+            SeguimientoAlumnoDocente.tipo.in_(tipos_seguimiento),
+        )
+        if materia_clave:
+            consulta = consulta.filter(SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids))
+        if inicio_dt:
+            consulta = consulta.filter(SeguimientoAlumnoDocente.creado_en >= inicio_dt)
+        if fin_dt:
+            consulta = consulta.filter(SeguimientoAlumnoDocente.creado_en <= fin_dt)
+        for registro in consulta.order_by(
+            SeguimientoAlumnoDocente.creado_en.desc(),
+            SeguimientoAlumnoDocente.id.desc(),
+        ).limit(max_por_fuente).all():
+            carga = cargas_por_id.get(registro.carga_docente_id) or registro.carga
+            es_evaluacion = registro.tipo == "CALIFICACION"
+            eventos.append({
+                "id": f"{'evaluacion' if es_evaluacion else 'acuerdo'}:{registro.id}",
+                "tipo": "EVALUACION" if es_evaluacion else "ACUERDO",
+                "fecha": _iso_utc(registro.creado_en),
+                "titulo": (
+                    f"{carga.actividad_nombre}: {registro.titulo}"
+                    if es_evaluacion else registro.titulo
+                ),
+                "descripcion": (
+                    f"Calificación informativa: {registro.calificacion}"
+                    if es_evaluacion else registro.detalle
+                ),
+                "estado": None if es_evaluacion else registro.estado,
+                "materia": carga.actividad_nombre,
+                "materia_clave": _clave_materia(carga),
+            })
+
+    if not materia_clave and tipo in {"TODOS", "REPORTE"}:
+        consulta = db.query(ReporteTutor).filter(ReporteTutor.alumno_id == alumno.id)
+        if inicio_dt:
+            consulta = consulta.filter(ReporteTutor.creado_en >= inicio_dt)
+        if fin_dt:
+            consulta = consulta.filter(ReporteTutor.creado_en <= fin_dt)
+        for reporte in consulta.order_by(
+            ReporteTutor.creado_en.desc(), ReporteTutor.id.desc(),
+        ).limit(max_por_fuente).all():
+            eventos.append({
+                "id": f"reporte:{reporte.id}", "tipo": "REPORTE",
+                "fecha": _iso_utc(reporte.creado_en), "titulo": reporte.titulo,
+                "descripcion": reporte.detalle, "estado": reporte.estado,
+                "materia": None, "materia_clave": None,
+            })
+
+    if not materia_clave and tipo in {"TODOS", "TUTORIA"}:
+        consulta = (
+            db.query(RegistroSesionAlumno, SesionTutoria)
+            .join(SesionTutoria, SesionTutoria.id == RegistroSesionAlumno.sesion_id)
+            .filter(RegistroSesionAlumno.alumno_id == alumno.id)
+        )
+        if fecha_inicio:
+            consulta = consulta.filter(SesionTutoria.fecha >= fecha_inicio)
+        if fecha_fin:
+            consulta = consulta.filter(SesionTutoria.fecha <= fecha_fin)
+        for registro, sesion in consulta.order_by(
+            SesionTutoria.fecha.desc(), SesionTutoria.id.desc(),
+        ).limit(max_por_fuente).all():
+            eventos.append({
+                "id": f"tutoria:{sesion.id}:{registro.id}", "tipo": "TUTORIA",
+                "fecha": sesion.fecha.isoformat(),
+                "titulo": f"Sesión de tutoría {sesion.tipo_sesion.lower()}",
+                "descripcion": registro.tema or registro.comentarios,
+                "estado": "ASISTIÓ" if registro.asistio else "NO ASISTIÓ",
+                "materia": None, "materia_clave": None,
+            })
+
+    eventos.sort(key=lambda evento: evento["fecha"] or "", reverse=True)
+    visibles = eventos[offset:offset + limite]
+    return {
+        "items": visibles,
+        "paginacion": {
+            "pagina": pagina,
+            "limite": limite,
+            "hay_mas": len(eventos) > offset + limite,
+        },
+        "filtros": {
+            "tipo": tipo, "materia_clave": materia_clave,
+            "fecha_inicio": fecha_inicio.isoformat() if fecha_inicio else None,
+            "fecha_fin": fecha_fin.isoformat() if fecha_fin else None,
+        },
+    }
 
 
 @router.get("/alumnos/{alumno_id}", summary="Expediente académico integral del alumno")
@@ -809,12 +1310,7 @@ def expediente_alumno(
         } for registro, sesion in registros_sesion]
 
     nivel, razones, asistencia_global = _semaforo(materias, acuerdos, reportes)
-    timeline = []
-    carga_materia = {
-        carga.id: {"nombre": carga.actividad_nombre, "hora_inicio": carga.hora_inicio}
-        for carga in cargas
-    }
-    carga_ids = list(carga_materia)
+    carga_ids = [carga.id for carga in cargas]
     clases_patron = []
     asistencias_patron = []
     if carga_ids:
@@ -828,54 +1324,18 @@ def expediente_alumno(
                 AsistenciaDocente.clase_docente_id.in_(ids_clases_patron),
             ).all() if ids_clases_patron else []
         )
-        excepciones = [
-            (asistencia, next(
-                clase for clase in clases_patron
-                if clase.id == asistencia.clase_docente_id
-            ))
-            for asistencia in asistencias_patron
-            if asistencia.estado in {"FALTA", "RETARDO", "JUSTIFICADA"}
-        ]
-        for asistencia, clase in excepciones:
-            timeline.append({
-                "tipo": "ASISTENCIA",
-                "fecha": _fecha_hora_clase_mx(
-                    clase.fecha,
-                    carga_materia.get(clase.carga_docente_id, {}).get("hora_inicio"),
-                ),
-                "titulo": asistencia.estado.title(),
-                "descripcion": carga_materia.get(clase.carga_docente_id, {}).get("nombre"),
-                "estado": asistencia.estado,
-            })
-    for materia in materias:
-        for evaluacion in materia["evaluaciones"]:
-            timeline.append({
-                "tipo": "EVALUACION", "fecha": evaluacion["fecha"],
-                "titulo": f"{materia['materia']}: {evaluacion['titulo']}",
-                "descripcion": f"Calificación informativa: {evaluacion['calificacion']}",
-                "estado": None,
-            })
-    for acuerdo in acuerdos:
-        timeline.append({
-            "tipo": "ACUERDO", "fecha": _iso_utc(acuerdo.creado_en),
-            "titulo": acuerdo.titulo, "descripcion": acuerdo.detalle,
-            "estado": acuerdo.estado,
-        })
-    for reporte in reportes:
-        timeline.append({
-            "tipo": "REPORTE", "fecha": _iso_utc(reporte.creado_en),
-            "titulo": reporte.titulo, "descripcion": reporte.detalle,
-            "estado": reporte.estado,
-        })
-    for sesion in sesiones:
-        timeline.append({
-            "tipo": "TUTORIA", "fecha": sesion["fecha"],
-            "titulo": f"Sesión de tutoría {sesion['tipo'].lower()}",
-            "descripcion": sesion["tema"] or sesion["comentarios"],
-            "estado": "ASISTIÓ" if sesion["asistio"] else "NO ASISTIÓ",
-        })
-    timeline.sort(key=lambda e: e["fecha"] or "", reverse=True)
-
+    racha_reciente = _racha_reciente_por_materia(
+        asistencias_patron,
+        {clase.id: clase for clase in clases_patron},
+        {carga.id: carga for carga in cargas},
+    )
+    alerta_inmediata = _alerta_inmediata(racha_reciente)
+    tendencias_asistencia = _tendencias_asistencia(
+        asistencias_patron, clases_patron, asistencia_global,
+    )
+    calidad_datos = _calidad_datos(
+        materias, clases_patron, asistencias_patron,
+    )
     total_evaluaciones = sum(m["evaluaciones_registradas"] for m in materias)
     promedios = [m["promedio_evidencias"] for m in materias if m["promedio_evidencias"] is not None]
     inscripciones_historial = (db.query(InscripcionAlumno).join(GrupoAcademico).filter(
@@ -937,6 +1397,18 @@ def expediente_alumno(
             "reportes_abiertos": sum(1 for r in reportes if r.estado in ESTADOS_ABIERTOS),
             "canalizaciones_activas": sum(1 for c in canalizaciones if c.estado in {"PENDIENTE", "EN_SEGUIMIENTO"}),
             "semaforo": nivel, "razones_semaforo": razones,
+            "alerta_inmediata": alerta_inmediata,
+            "tendencias_asistencia": tendencias_asistencia,
+            "calidad_datos": calidad_datos,
+            "umbrales": {
+                "asistencia_riesgo": UMBRAL_ASISTENCIA_RIESGO,
+                "asistencia_atencion": UMBRAL_ASISTENCIA_ATENCION,
+                "promedio_riesgo": UMBRAL_PROMEDIO_RIESGO,
+                "promedio_atencion": UMBRAL_PROMEDIO_ATENCION,
+                "racha_riesgo": UMBRAL_RACHA_RIESGO,
+                "racha_atencion": UMBRAL_RACHA_ATENCION,
+                "materias_riesgo_alto_para_rojo": UMBRAL_MATERIAS_ALTAS_ROJO,
+            },
         },
         "materias": materias,
         "patrones_asistencia": {
@@ -967,7 +1439,7 @@ def expediente_alumno(
             "creado_en": a.creado_en.isoformat(),
             "atendido_en": a.atendido_en.isoformat() if a.atendido_en else None,
         } for a in acuerdos],
-        "timeline": timeline[:100],
+        "timeline_paginada": True,
         "trayectoria_academica": trayectoria,
         "nota_calificaciones": (
             "Las calificaciones mostradas son evidencias registradas por docentes. "
