@@ -72,11 +72,6 @@ class CargaInput(BaseModel):
         return self
 
 
-class CopiarHorarioInput(BaseModel):
-    periodo_origen_id: int
-    periodo_destino_id: int
-
-
 class CapturaExtemporaneaInput(BaseModel):
     fecha: datetime.date
     motivo: str = Field(..., min_length=5, max_length=500)
@@ -872,72 +867,6 @@ def eliminar_carga(
     carga.activo = False
     db.commit()
     return {"mensaje": "Actividad retirada del horario"}
-
-
-@router.post("/horario/copiar-periodo")
-def copiar_horario_periodo(
-    data: CopiarHorarioInput,
-    db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
-):
-    _solo_docente(current_user)
-    if data.periodo_origen_id == data.periodo_destino_id:
-        raise HTTPException(422, "El periodo de origen y destino deben ser diferentes")
-    destino = _validar_periodo_actual(db, data.periodo_destino_id)
-    origen = db.query(PeriodoEscolar).filter(
-        PeriodoEscolar.id == data.periodo_origen_id,
-        PeriodoEscolar.activo == True,
-    ).first()
-    if not origen:
-        raise HTTPException(404, "Periodo de origen no encontrado")
-    existentes = db.query(CargaDocente.id).filter(
-        CargaDocente.docente_id == current_user.id,
-        CargaDocente.periodo_id == destino.id,
-        CargaDocente.activo == True,
-    ).first()
-    if existentes:
-        raise HTTPException(
-            409,
-            "El periodo actual ya tiene actividades. La copia se detuvo para evitar duplicados.",
-        )
-    cargas_origen = db.query(CargaDocente).filter(
-        CargaDocente.docente_id == current_user.id,
-        CargaDocente.periodo_id == origen.id,
-        CargaDocente.activo == True,
-    ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all()
-    if not cargas_origen:
-        raise HTTPException(404, "No hay actividades en el periodo de origen")
-    nuevas = []
-    for anterior in cargas_origen:
-        es_clase = anterior.tipo_actividad == "CLASE"
-        nueva = CargaDocente(
-            docente_id=current_user.id,
-            periodo_id=destino.id,
-            grupo_academico_id=None if es_clase else anterior.grupo_academico_id,
-            materia_id=None if es_clase else anterior.materia_id,
-            tipo_actividad=anterior.tipo_actividad,
-            actividad_nombre=anterior.actividad_nombre,
-            dia_semana=anterior.dia_semana,
-            hora_inicio=anterior.hora_inicio,
-            hora_fin=anterior.hora_fin,
-            espacio_nombre=anterior.espacio_nombre,
-            laboratorio_id=None,
-            estado="BORRADOR",
-            observaciones=(
-                f"Copiado de {origen.clave}. Revalidar grupo, materia y espacio."
-                if es_clase else f"Copiado de {origen.clave}. Revalidar espacio."
-            ),
-        )
-        db.add(nueva)
-        nuevas.append(nueva)
-    db.commit()
-    for nueva in nuevas:
-        db.refresh(nueva)
-    return {
-        "mensaje": f"Se copiaron {len(nuevas)} actividades como borradores.",
-        "total": len(nuevas),
-        "cargas": [_serializar_carga(carga, db) for carga in nuevas],
-    }
 
 
 @router.post("/horario/verificar-laboratorio")

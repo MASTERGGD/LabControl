@@ -281,7 +281,7 @@ def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):
     assert iniciar_historica.status_code == 409
     assert "solo para consulta" in iniciar_historica.json()["detail"]
 
-    copia = client.post(
+    copia_retirada = client.post(
         "/docencia/horario/copiar-periodo",
         json={
             "periodo_origen_id": anterior.id,
@@ -289,23 +289,11 @@ def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):
         },
         headers=headers,
     )
-    assert copia.status_code == 200, copia.text
-    assert copia.json()["total"] == 1
-    copiada = copia.json()["cargas"][0]
-    assert copiada["periodo_id"] == actual.id
-    assert copiada["estado"] == "BORRADOR"
-    assert copiada["grupo_academico_id"] is None
-    assert copiada["laboratorio_id"] is None
-
-    duplicada = client.post(
-        "/docencia/horario/copiar-periodo",
-        json={
-            "periodo_origen_id": anterior.id,
-            "periodo_destino_id": actual.id,
-        },
-        headers=headers,
-    )
-    assert duplicada.status_code == 409
+    assert copia_retirada.status_code == 405
+    assert db.query(CargaDocente).filter(
+        CargaDocente.docente_id == docente.id,
+        CargaDocente.periodo_id == actual.id,
+    ).count() == 0
 
 
 def test_servicios_escolares_confirma_periodo_vigente(client, db):

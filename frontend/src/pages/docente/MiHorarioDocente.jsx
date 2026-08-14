@@ -394,7 +394,6 @@ export default function MiHorarioDocente() {
   const [modal, setModal] = useState(null);
   const [actividadARetirar, setActividadARetirar] = useState(null);
   const [retirando, setRetirando] = useState(false);
-  const [copiando, setCopiando] = useState(false);
   const [extemporaneas, setExtemporaneas] = useState([]);
   const [modalExtemporanea, setModalExtemporanea] = useState(null);
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
@@ -450,7 +449,6 @@ export default function MiHorarioDocente() {
   ));
   const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
-  const periodoAnterior = catalogos.periodos.find((p) => !p.es_actual);
   const abrirConfirmacionCarga = (carga) => {
     setCargaAConfirmar(carga);
     setObservacionesCierre('');
@@ -470,23 +468,6 @@ export default function MiHorarioDocente() {
       await cargar(periodoId);
     } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo confirmar la materia.'); }
     finally { setConfirmandoCarga(false); }
-  };
-
-  const copiarHorarioAnterior = async () => {
-    if (!periodoAnterior || copiando) return;
-    setCopiando(true);
-    try {
-      const { data } = await api.post('/docencia/horario/copiar-periodo', {
-        periodo_origen_id: periodoAnterior.id,
-        periodo_destino_id: Number(periodoId),
-      });
-      setMensaje(`${data.mensaje} Revisa cada clase y asigna el grupo y la materia del nuevo cuatrimestre.`);
-      await cargar(periodoId);
-    } catch (err) {
-      setMensaje(err.response?.data?.detail || 'No se pudo copiar el horario anterior.');
-    } finally {
-      setCopiando(false);
-    }
   };
 
   const guardada = ({ advertencias = [] }) => {
@@ -670,15 +651,10 @@ export default function MiHorarioDocente() {
             Estás consultando {periodoSeleccionado.clave}. Este horario es histórico: puedes revisarlo, pero no editarlo ni iniciar clases.
           </div>
         )}
-        {esPeriodoActual && !horario.length && periodoAnterior && !cargando && (
-          <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-semibold text-emerald-200">Comienza el horario de {periodoSeleccionado?.clave}</p>
-              <p className="text-sm text-slate-300">Puedes tomar la distribución de {periodoAnterior.clave} como borrador. Los grupos, materias y laboratorios deberán validarse nuevamente.</p>
-            </div>
-            <button disabled={copiando} onClick={copiarHorarioAnterior} className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-              {copiando ? 'Copiando…' : 'Tomar horario anterior como base'}
-            </button>
+        {esPeriodoActual && !horario.length && !cargando && (
+          <div className="rounded-xl border border-blue-500/25 bg-blue-500/[0.08] px-4 py-3">
+            <p className="font-semibold text-blue-200">Horario de {periodoSeleccionado?.clave} sin actividades</p>
+            <p className="mt-1 text-sm text-slate-300">Configura únicamente las materias, grupos y actividades asignadas para este cuatrimestre. Los horarios de periodos anteriores permanecen disponibles solo para consulta.</p>
           </div>
         )}
 
