@@ -6,6 +6,7 @@ from typing import Optional, List
 from database import get_db
 from models.catalogo import CatalogoAlumno, CatalogoMateria, CatalogoCarrera, CatalogoCarreraAlias, PeriodoEscolar, GrupoAcademico, InscripcionAlumno
 from models.usuario import Usuario, RolUsuario
+from models.ficha_socioeconomica import FichaSocioeconomica
 from dependencies import get_current_user, require_roles
 from services.user_permissions import puede_gestionar_materias
 import openpyxl
@@ -137,7 +138,7 @@ def _sincronizar_inscripcion(db, alumno):
         InscripcionAlumno.estado == "ACTIVO",
     ).update({"estado": "INACTIVO"}, synchronize_session=False)
 
-def _serializar_alumno(a: CatalogoAlumno) -> dict:
+def _serializar_alumno(a: CatalogoAlumno, ficha: FichaSocioeconomica | None = None, usuario: Usuario | None = None) -> dict:
     return {
         "id":               a.id,
         "matricula":        a.matricula,
@@ -150,6 +151,9 @@ def _serializar_alumno(a: CatalogoAlumno) -> dict:
         "grupo":            a.grupo,
         "periodo":          a.periodo,
         "activo":           a.activo,
+        "correo_institucional": a.correo_institucional,
+        "tiene_acceso_siga": a.usuario_id is not None and (usuario.activo if usuario else True),
+        "ficha": ({"id": ficha.id, "periodo": ficha.periodo, "estado": ficha.estado.value} if ficha else None),
     }
 
 def _serializar_materia(m: CatalogoMateria) -> dict:
@@ -209,8 +213,17 @@ def listar_alumnos(
             CatalogoAlumno.apellido_materno.ilike(term) |
             CatalogoAlumno.matricula.ilike(term)
         )
-    return [_serializar_alumno(a) for a in
-            query.order_by(CatalogoAlumno.apellido_paterno, CatalogoAlumno.nombres).all()]
+    alumnos = query.order_by(CatalogoAlumno.apellido_paterno, CatalogoAlumno.nombres).all()
+    ids = [a.id for a in alumnos]
+    fichas = db.query(FichaSocioeconomica).filter(
+        FichaSocioeconomica.alumno_id.in_(ids),
+    ).order_by(FichaSocioeconomica.activado_en.desc()).all() if ids else []
+    ficha_por_alumno = {}
+    for ficha in fichas:
+        ficha_por_alumno.setdefault(ficha.alumno_id, ficha)
+    usuario_ids = [a.usuario_id for a in alumnos if a.usuario_id]
+    usuarios = {u.id: u for u in db.query(Usuario).filter(Usuario.id.in_(usuario_ids)).all()} if usuario_ids else {}
+    return [_serializar_alumno(a, ficha_por_alumno.get(a.id), usuarios.get(a.usuario_id)) for a in alumnos]
 
 
 @router.get("/alumnos/buscar", summary="Autocomplete de alumnos para SesionActiva")

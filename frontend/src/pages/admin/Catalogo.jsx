@@ -698,6 +698,15 @@ function ModalActivacionMasiva({ alumnos, periodoInicial, periodos, onClose, onO
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardando && onClose()}><form onSubmit={activar} onMouseDown={e => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900 shadow-2xl"><header className="border-b border-white/10 px-5 py-4"><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Activación masiva</p><h2 className="mt-1 text-lg font-bold text-white">Activar {alumnos.length} estudios</h2><p className="mt-1 text-sm text-slate-400">Las fichas existentes se conservarán y serán omitidas.</p></header><div className="space-y-4 p-5"><label className="text-sm text-slate-300">Periodo<select required value={periodo} onChange={e => setPeriodo(e.target.value)} className="input-dark mt-1.5 w-full">{periodos.map(p => <option key={p} value={p}>{p}</option>)}</select></label><div className="max-h-40 overflow-y-auto rounded-xl border border-white/10 p-3 text-xs text-slate-400">{alumnos.map(a => <p key={a.id} className="py-1"><span className="font-mono text-slate-500">{a.matricula}</span> · {a.nombre_completo}</p>)}</div>{error && <p className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}</div><footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4"><button type="button" disabled={guardando} onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={guardando || !periodo} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Activando…' : `Activar ${alumnos.length} fichas`}</button></footer></form></div>;
 }
 
+function ModalAccesoAlumno({ alumno, onClose, onOk }) {
+  const [correo, setCorreo] = useState(alumno.correo_institucional || '');
+  const [guardando, setGuardando] = useState(false);
+  const [resultado, setResultado] = useState(null);
+  const [error, setError] = useState('');
+  const activar = async (e) => { e.preventDefault(); setGuardando(true); setError(''); try { const { data } = await api.post(`/servicios-escolares/alumnos/${alumno.id}/activar-acceso`, { correo_institucional: correo.trim() || null }); setResultado(data); onOk(); } catch (err) { setError(err.response?.data?.detail || 'No se pudo crear el acceso SIGA.'); } finally { setGuardando(false); } };
+  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"><div className="w-full max-w-md overflow-hidden rounded-2xl border border-blue-500/20 bg-slate-900 shadow-2xl">{resultado ? <div className="p-6"><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Acceso creado</p><h2 className="mt-1 text-lg font-bold text-white">Entrega estas credenciales al alumno</h2><div className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/10 p-4"><p className="text-xs text-slate-400">Usuario</p><p className="mt-1 break-all font-mono text-white">{resultado.email}</p><p className="mt-4 text-xs text-slate-400">Contraseña temporal</p><p className="mt-1 font-mono text-xl font-bold tracking-wider text-amber-300">{resultado.password_temporal}</p></div><p className="mt-4 text-xs leading-5 text-slate-500">La contraseña solo se muestra ahora. Al ingresar, el alumno deberá cambiarla y será dirigido a su estudio.</p><button onClick={onClose} className="mt-5 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Entendido</button></div> : <form onSubmit={activar}><header className="border-b border-white/10 px-5 py-4"><p className="text-xs font-bold uppercase tracking-wider text-blue-400">Cuenta de alumno</p><h2 className="mt-1 text-lg font-bold text-white">Dar acceso a SIGA</h2><p className="mt-1 text-sm text-slate-400">{alumno.nombre_completo} · {alumno.matricula}</p></header><div className="p-5"><label className="text-sm text-slate-300">Correo de acceso <span className="text-slate-500">(opcional)</span><input type="email" value={correo} onChange={e => setCorreo(e.target.value)} placeholder={`${alumno.matricula}@alumno.utecan.edu.mx`} className="input-dark mt-1.5 w-full" /></label><p className="mt-3 text-xs text-slate-500">Si queda vacío, se utilizará la matrícula como correo institucional.</p>{error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}</div><footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4"><button type="button" onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={guardando} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Creando…' : 'Crear acceso'}</button></footer></form>}</div></div>;
+}
+
 export default function Catalogo({ modo = 'completo' }) {
   const [tab, setTab] = useState(modo === 'materias' ? 'materias' : 'alumnos');
 
@@ -734,6 +743,7 @@ export default function Catalogo({ modo = 'completo' }) {
   const [alumnoParaEstudio, setAlumnoParaEstudio] = useState(null);
   const [seleccionados, setSeleccionados] = useState(() => new Set());
   const [activarSeleccionados, setActivarSeleccionados] = useState(false);
+  const [alumnoParaAcceso, setAlumnoParaAcceso] = useState(null);
   const [mensaje, setMensaje] = useState('');
 
   // Cargar datos de referencia al inicio
@@ -956,6 +966,8 @@ export default function Catalogo({ modo = 'completo' }) {
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Grupo</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Periodo</th>
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Estado</th>
+                    <th className="text-left text-slate-400 text-xs font-medium px-3 py-3">Acceso SIGA</th>
+                    <th className="text-left text-slate-400 text-xs font-medium px-3 py-3">Estudio</th>
                     <th className="px-4 py-3"/>
                   </tr>
                 </thead>
@@ -974,6 +986,8 @@ export default function Catalogo({ modo = 'completo' }) {
                           {a.grupo}
                         </span>
                       </td>
+                      <td className="px-3 py-3 text-xs">{a.tiene_acceso_siga ? <span className="font-medium text-emerald-500">✓ Habilitado</span> : <button onClick={() => setAlumnoParaAcceso(a)} className="font-semibold text-blue-500 hover:text-blue-400">Dar acceso</button>}</td>
+                      <td className="px-3 py-3 text-xs">{a.ficha && a.ficha.periodo === (filtPeriodo || a.periodo) ? <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 font-medium text-emerald-500">{a.ficha.estado.replaceAll('_', ' ')}</span> : <span className="text-slate-500">Sin activar</span>}</td>
                       <td className="px-4 py-3 text-xs text-slate-400">{a.periodo}</td>
                       <td className="px-3 py-3 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -989,7 +1003,7 @@ export default function Catalogo({ modo = 'completo' }) {
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                             Editar
                           </button>
-                          {a.activo && <button onClick={() => setAlumnoParaEstudio(a)}
+                          {a.activo && (!a.ficha || a.ficha.periodo !== (filtPeriodo || a.periodo) || a.ficha.estado === 'RECHAZADA') && <button onClick={() => setAlumnoParaEstudio(a)}
                             className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
                             Activar estudio
                           </button>}
@@ -1156,6 +1170,7 @@ export default function Catalogo({ modo = 'completo' }) {
       )}
       {alumnoParaEstudio && <ModalActivarEstudio alumno={alumnoParaEstudio} periodoInicial={filtPeriodo || periodoInstitucionalActual} periodos={periodos} onClose={() => setAlumnoParaEstudio(null)} onOk={(texto) => { setAlumnoParaEstudio(null); setMensaje(texto); }} />}
       {activarSeleccionados && <ModalActivacionMasiva alumnos={alumnos.filter(a => seleccionados.has(a.id))} periodoInicial={filtPeriodo || periodoInstitucionalActual} periodos={periodos} onClose={() => setActivarSeleccionados(false)} onOk={(data) => { setActivarSeleccionados(false); setSeleccionados(new Set()); setMensaje(`${data.resumen.creadas} ficha(s) activada(s) · ${data.resumen.omitidas} ya existentes · ${data.resumen.errores} error(es).`); }} />}
+      {alumnoParaAcceso && <ModalAccesoAlumno alumno={alumnoParaAcceso} onClose={() => { setAlumnoParaAcceso(null); cargarAlumnos(); }} onOk={cargarAlumnos} />}
 
       {/* ── Modales ──────────────────────────────────────────────────────────── */}
       {(modalAlumno === 'nuevo' || (modalAlumno && typeof modalAlumno === 'object')) && (
