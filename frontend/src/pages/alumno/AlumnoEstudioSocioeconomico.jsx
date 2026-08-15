@@ -55,14 +55,14 @@ const SECCIONES = [
     titulo: "Situación económica",
     campos: [
       { name: "depende_de", label: "Depende económicamente de", type: "select", options: ["", "Papá", "Mamá", "Independiente", "Otros"], required: true },
-      { name: "responsable_nombre", label: "Nombre de la persona responsable", required: true },
-      { name: "responsable_parentesco", label: "Parentesco", required: true },
-      { name: "responsable_ocupacion", label: "Ocupación", required: true },
-      { name: "responsable_estudios", label: "Máximo nivel de estudios", required: true },
-      { name: "responsable_telefono", label: "Teléfono de la persona responsable", pattern: "telefono" },
-      { name: "ingreso_mensual", label: "Ingreso mensual familiar aproximado", type: "number", required: true },
-      { name: "gasto_mensual", label: "Gasto mensual familiar aproximado", type: "number", required: true },
-      { name: "dependientes", label: "Personas que dependen del jefe de familia", type: "number", required: true },
+      { name: "responsable_nombre", label: "Nombre de la persona responsable", required: true, economicResponsible: true },
+      { name: "responsable_parentesco", label: "Parentesco", required: true, economicResponsible: true },
+      { name: "responsable_ocupacion", label: "Ocupación", required: true, economicResponsible: true },
+      { name: "responsable_estudios", label: "Máximo nivel de estudios", type: "select", options: ["", "Sin escolaridad", "Primaria", "Secundaria", "Bachillerato", "Técnico", "Licenciatura", "Posgrado"], required: true, economicResponsible: true },
+      { name: "responsable_telefono", label: "Teléfono de la persona responsable", pattern: "telefono", economicResponsible: true },
+      { name: "ingreso_mensual", label: "Ingreso mensual familiar aproximado", type: "number", required: true, min: 0, money: true },
+      { name: "gasto_mensual", label: "Gasto mensual familiar aproximado", type: "number", required: true, min: 0, money: true },
+      { name: "dependientes", label: "Personas que dependen del jefe de familia", type: "number", required: true, min: 0, integer: true },
       { name: "recibe_apoyo", label: "Recibe apoyo económico o beca", type: "boolean", required: true },
       { name: "institucion_apoyo", label: "Institución o programa de apoyo", dependsOn: ["recibe_apoyo", "SI"] },
     ],
@@ -103,6 +103,7 @@ function normalizar(v) {
 }
 
 function campoVisible(campo, form) {
+  if (campo.economicResponsible && form.depende_de === "Independiente") return false;
   if (!campo.dependsOn) return true;
   const [name, value] = campo.dependsOn;
   return form[name] === value;
@@ -125,6 +126,8 @@ function validarCampo(campo, form) {
     const n = Number(value);
     if (Number.isNaN(n) || n < 0 || n > 10) return "Debe estar entre 0 y 10";
   }
+  if (campo.type === "number" && Number(value) < (campo.min ?? -Infinity)) return `El valor mínimo es ${campo.min}`;
+  if (campo.integer && !Number.isInteger(Number(value))) return "Debe ser un número entero";
   return null;
 }
 
@@ -148,7 +151,14 @@ function InputCampo({ campo, form, setForm, error, carreras = [], disabled = fal
   if (!campoVisible(campo, form)) return null;
   const common = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
   const set = value => {
-    setForm(prev => ({ ...prev, [campo.name]: value }));
+    setForm(prev => {
+      const siguiente = { ...prev, [campo.name]: value };
+      if (campo.name === "depende_de") {
+        siguiente.responsable_parentesco = value === "Papá" ? "Padre" : value === "Mamá" ? "Madre" : value === "Independiente" || value === "Otros" ? "" : prev.responsable_parentesco;
+        if (value === "Independiente") ["responsable_nombre", "responsable_ocupacion", "responsable_estudios", "responsable_telefono"].forEach(key => { siguiente[key] = ""; });
+      }
+      return siguiente;
+    });
     if (campo.pattern === "cp") {
       setPostal(null); setErrorPostal('');
       if (/^\d{5}$/.test(value)) {
@@ -166,7 +176,9 @@ function InputCampo({ campo, form, setForm, error, carreras = [], disabled = fal
       }
     }
   };
-  const opciones = campo.name === "carrera" && carreras.length
+  const opciones = campo.name === "responsable_parentesco"
+    ? (form.depende_de === "Papá" ? ["Padre"] : form.depende_de === "Mamá" ? ["Madre"] : ["", "Tutor/a", "Abuelo/a", "Hermano/a", "Cónyuge", "Otro"])
+    : campo.name === "carrera" && carreras.length
     ? ["", ...carreras.map(c => c.nombre)]
     : campo.options;
 
@@ -176,7 +188,7 @@ function InputCampo({ campo, form, setForm, error, carreras = [], disabled = fal
         {campo.label}{campo.required || campo.dependsOn ? " *" : ""}
       </label>
       {opciones ? (
-        <select disabled={disabled} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`}>
+        <select disabled={disabled || (campo.name === "responsable_parentesco" && ["Papá", "Mamá"].includes(form.depende_de))} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`}>
           {opciones.map(op => <option key={op} value={op}>{op || "Seleccionar"}</option>)}
         </select>
       ) : campo.type === "boolean" ? (
@@ -193,7 +205,7 @@ function InputCampo({ campo, form, setForm, error, carreras = [], disabled = fal
       ) : campo.type === "textarea" ? (
         <textarea disabled={disabled} value={form[campo.name]} onChange={e => set(e.target.value)} rows={4} className={`${common} disabled:bg-slate-100`} />
       ) : (
-        <input disabled={disabled} inputMode={campo.pattern === "cp" ? "numeric" : undefined} maxLength={campo.pattern === "cp" ? 5 : undefined} type={campo.type || "text"} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`} />
+        <input disabled={disabled} min={campo.min} step={campo.integer ? 1 : campo.money ? 100 : undefined} inputMode={campo.pattern === "cp" ? "numeric" : campo.type === "number" ? "decimal" : undefined} maxLength={campo.pattern === "cp" ? 5 : undefined} type={campo.type || "text"} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`} />
       )}
       {buscandoPostal && <p className="mt-1 text-xs text-blue-600">Consultando código postal…</p>}
       {errorPostal && <p className="mt-1 text-xs text-amber-600">{errorPostal}</p>}

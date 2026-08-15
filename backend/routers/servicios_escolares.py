@@ -1061,9 +1061,9 @@ class GuardarFichaBody(BaseModel):
     responsable_ocupacion:  Optional[str]   = None
     responsable_estudios:   Optional[str]   = None
     responsable_telefono:   Optional[str]   = None
-    ingreso_mensual:        Optional[float] = None
-    gasto_mensual:          Optional[float] = None
-    dependientes:           Optional[int]   = None
+    ingreso_mensual:        Optional[float] = Field(None, ge=0)
+    gasto_mensual:          Optional[float] = Field(None, ge=0)
+    dependientes:           Optional[int]   = Field(None, ge=0)
     recibe_apoyo:           Optional[bool]  = None
     institucion_apoyo:      Optional[str]   = None
     # Sección 5
@@ -1132,6 +1132,15 @@ def guardar_ficha(
         "tiene_discapacidad","discapacidad_tipo","discapacidad_medicamento","informacion_relevante",
     ]
     body_dict = body.model_dump(exclude_none=True, exclude={"enviar"})
+    depende_de = body_dict.get("depende_de", ficha.depende_de)
+    if depende_de == "Papá":
+        body_dict["responsable_parentesco"] = "Padre"
+    elif depende_de == "Mamá":
+        body_dict["responsable_parentesco"] = "Madre"
+    elif depende_de == "Independiente":
+        for campo in ("responsable_nombre", "responsable_parentesco", "responsable_ocupacion", "responsable_estudios", "responsable_telefono"):
+            setattr(ficha, campo, None)
+            body_dict.pop(campo, None)
     for campo in campos:
         if campo in body_dict:
             setattr(ficha, campo, body_dict[campo])
