@@ -17,6 +17,9 @@ import secrets
 import string
 import unicodedata
 import threading
+import json
+import urllib.error
+import urllib.request
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -55,6 +58,33 @@ def _require_se(db: Session, user: Usuario):
 def _require_alumno(user: Usuario):
     if user.rol != RolUsuario.ALUMNO:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Acceso solo para alumnos")
+
+
+@router.get("/catalogos/codigo-postal/{codigo}", summary="Consultar domicilio por código postal")
+def consultar_codigo_postal(codigo: str, current_user: Usuario = Depends(get_current_user)):
+    if not codigo.isdigit() or len(codigo) != 5:
+        raise HTTPException(422, "El código postal debe contener cinco dígitos")
+    try:
+        request = urllib.request.Request(
+            f"https://postali.app/api/v1/mx/cp/{codigo}",
+            headers={"User-Agent": "SIGA-UTECAN/1.0", "Accept": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise HTTPException(404, "Código postal no encontrado")
+        raise HTTPException(503, "El catálogo postal no está disponible")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        raise HTTPException(503, "El catálogo postal no está disponible; captura el domicilio manualmente")
+    asentamientos = data.get("asentamientos") or []
+    return {
+        "codigo_postal": data.get("cp", codigo),
+        "estado": data.get("estado") or "",
+        "municipio": data.get("municipio") or "",
+        "localidad": next((item.get("ciudad") for item in asentamientos if item.get("ciudad")), data.get("municipio") or ""),
+        "colonias": sorted({item.get("nombre") for item in asentamientos if item.get("nombre")}),
+    }
 
 
 def _sincronizar_datos_institucionales(ficha: FichaSocioeconomica, alumno: CatalogoAlumno):

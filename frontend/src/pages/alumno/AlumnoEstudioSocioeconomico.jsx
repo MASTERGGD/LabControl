@@ -26,17 +26,17 @@ const SECCIONES = [
     campos: [
       { name: "telefono", label: "Teléfono principal", required: true, pattern: "telefono" },
       { name: "procedencia_calle", label: "Procedencia: calle y número", required: true },
+      { name: "procedencia_cp", label: "Procedencia: código postal", required: true, pattern: "cp" },
       { name: "procedencia_colonia", label: "Procedencia: colonia", required: true },
       { name: "procedencia_localidad", label: "Procedencia: localidad", required: true },
       { name: "procedencia_municipio", label: "Procedencia: municipio", required: true },
       { name: "procedencia_estado", label: "Procedencia: estado", required: true },
-      { name: "procedencia_cp", label: "Procedencia: código postal", required: true, pattern: "cp" },
       { name: "residencia_calle", label: "Residencia: calle y número", required: true },
+      { name: "residencia_cp", label: "Residencia: código postal", required: true, pattern: "cp" },
       { name: "residencia_colonia", label: "Residencia: colonia", required: true },
       { name: "residencia_localidad", label: "Residencia: localidad", required: true },
       { name: "residencia_municipio", label: "Residencia: municipio", required: true },
       { name: "residencia_estado", label: "Residencia: estado", required: true },
-      { name: "residencia_cp", label: "Residencia: código postal", required: true, pattern: "cp" },
     ],
   },
   {
@@ -141,10 +141,31 @@ function calcularCalidad(form) {
   };
 }
 
-function InputCampo({ campo, form, setForm, error, carreras = [] }) {
+function InputCampo({ campo, form, setForm, error, carreras = [], disabled = false }) {
+  const [postal, setPostal] = useState(null);
+  const [buscandoPostal, setBuscandoPostal] = useState(false);
+  const [errorPostal, setErrorPostal] = useState('');
   if (!campoVisible(campo, form)) return null;
   const common = "mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-  const set = value => setForm(prev => ({ ...prev, [campo.name]: value }));
+  const set = value => {
+    setForm(prev => ({ ...prev, [campo.name]: value }));
+    if (campo.pattern === "cp") {
+      setPostal(null); setErrorPostal('');
+      if (/^\d{5}$/.test(value)) {
+        setBuscandoPostal(true);
+        const prefijo = campo.name.startsWith("procedencia") ? "procedencia" : "residencia";
+        api.get(`/servicios-escolares/catalogos/codigo-postal/${value}`).then(({ data }) => {
+          setPostal(data);
+          setForm(prev => ({ ...prev,
+            [`${prefijo}_estado`]: data.estado || prev[`${prefijo}_estado`],
+            [`${prefijo}_municipio`]: data.municipio || prev[`${prefijo}_municipio`],
+            [`${prefijo}_localidad`]: data.localidad || prev[`${prefijo}_localidad`],
+            [`${prefijo}_colonia`]: data.colonias?.length === 1 ? data.colonias[0] : prev[`${prefijo}_colonia`],
+          }));
+        }).catch(err => setErrorPostal(err.response?.data?.detail || 'No se pudo consultar el código postal.')).finally(() => setBuscandoPostal(false));
+      }
+    }
+  };
   const opciones = campo.name === "carrera" && carreras.length
     ? ["", ...carreras.map(c => c.nombre)]
     : campo.options;
@@ -155,11 +176,11 @@ function InputCampo({ campo, form, setForm, error, carreras = [] }) {
         {campo.label}{campo.required || campo.dependsOn ? " *" : ""}
       </label>
       {opciones ? (
-        <select value={form[campo.name]} onChange={e => set(e.target.value)} className={common}>
+        <select disabled={disabled} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`}>
           {opciones.map(op => <option key={op} value={op}>{op || "Seleccionar"}</option>)}
         </select>
       ) : campo.type === "boolean" ? (
-        <select value={form[campo.name]} onChange={e => set(e.target.value)} className={common}>
+        <select disabled={disabled} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`}>
           <option value="">Seleccionar</option>
           <option value="NO">No</option>
           <option value="SI">Sí</option>
@@ -170,10 +191,13 @@ function InputCampo({ campo, form, setForm, error, carreras = [] }) {
           <span>{campo.label}</span>
         </label>
       ) : campo.type === "textarea" ? (
-        <textarea value={form[campo.name]} onChange={e => set(e.target.value)} rows={4} className={common} />
+        <textarea disabled={disabled} value={form[campo.name]} onChange={e => set(e.target.value)} rows={4} className={`${common} disabled:bg-slate-100`} />
       ) : (
-        <input type={campo.type || "text"} value={form[campo.name]} onChange={e => set(e.target.value)} className={common} />
+        <input disabled={disabled} inputMode={campo.pattern === "cp" ? "numeric" : undefined} maxLength={campo.pattern === "cp" ? 5 : undefined} type={campo.type || "text"} value={form[campo.name]} onChange={e => set(e.target.value)} className={`${common} disabled:bg-slate-100`} />
       )}
+      {buscandoPostal && <p className="mt-1 text-xs text-blue-600">Consultando código postal…</p>}
+      {errorPostal && <p className="mt-1 text-xs text-amber-600">{errorPostal}</p>}
+      {postal?.colonias?.length > 1 && <select className={common} value={form[campo.name.startsWith("procedencia") ? "procedencia_colonia" : "residencia_colonia"]} onChange={e => setForm(prev => ({ ...prev, [campo.name.startsWith("procedencia") ? "procedencia_colonia" : "residencia_colonia"]: e.target.value }))}><option value="">Selecciona una colonia</option>{postal.colonias.map(colonia => <option key={colonia} value={colonia}>{colonia}</option>)}</select>}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -234,6 +258,7 @@ export default function AlumnoEstudioSocioeconomico() {
   const [enviando, setEnviando]     = useState(false);
   const [apiError, setApiError]     = useState("");
   const [guardadoOk, setGuardadoOk] = useState(false);
+  const [mismoDomicilio, setMismoDomicilio] = useState(false);
 
   if (usuario.rol && usuario.rol !== "ALUMNO") {
     return <Navigate to="/" replace />;
@@ -272,6 +297,17 @@ export default function AlumnoEstudioSocioeconomico() {
   }, []);
 
   useEffect(() => { cargarFicha(); }, [cargarFicha]);
+  useEffect(() => {
+    if (!mismoDomicilio) return;
+    setForm(actual => ({ ...actual,
+      residencia_calle: actual.procedencia_calle,
+      residencia_colonia: actual.procedencia_colonia,
+      residencia_localidad: actual.procedencia_localidad,
+      residencia_municipio: actual.procedencia_municipio,
+      residencia_estado: actual.procedencia_estado,
+      residencia_cp: actual.procedencia_cp,
+    }));
+  }, [mismoDomicilio, form.procedencia_calle, form.procedencia_colonia, form.procedencia_localidad, form.procedencia_municipio, form.procedencia_estado, form.procedencia_cp]);
 
   const seccion      = SECCIONES.find(s => s.id === seccionId) || SECCIONES[0];
   const calidad      = useMemo(() => calcularCalidad(form), [form]);
@@ -433,6 +469,7 @@ export default function AlumnoEstudioSocioeconomico() {
 
           <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
             {seccion.id === "personales" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2"><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Datos institucionales</p><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-xs text-slate-500">Nombre</p><p className="font-semibold text-slate-900">{alumnoInfo.nombre}</p></div><div><p className="text-xs text-slate-500">Matrícula</p><p className="font-mono font-semibold text-slate-900">{alumnoInfo.matricula}</p></div><div><p className="text-xs text-slate-500">Carrera</p><p className="font-semibold text-slate-900">{alumnoInfo.carrera}</p></div></div><p className="mt-3 text-xs text-blue-700">Esta información proviene de Servicios Escolares y no requiere captura.</p></div>}
+            {seccion.id === "domicilios" && <label className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 md:col-span-2"><input type="checkbox" checked={mismoDomicilio} onChange={e => setMismoDomicilio(e.target.checked)} className="mt-1" /><span><b>Mi domicilio actual es el mismo que mi domicilio de procedencia</b><span className="mt-1 block text-xs text-emerald-700">Se copiarán y mantendrán sincronizados todos los campos del domicilio.</span></span></label>}
             {seccion.campos.map(campo => (
               <InputCampo
                 key={campo.name}
@@ -441,6 +478,7 @@ export default function AlumnoEstudioSocioeconomico() {
                 setForm={soloLectura ? () => {} : setForm}
                 error={soloLectura ? "" : validarCampo(campo, form)}
                 carreras={carreras}
+                disabled={soloLectura || (mismoDomicilio && campo.name.startsWith("residencia_"))}
               />
             ))}
           </div>

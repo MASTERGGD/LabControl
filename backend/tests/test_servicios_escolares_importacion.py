@@ -1,5 +1,6 @@
 from pathlib import Path
 import io
+import json
 import openpyxl
 
 from dependencies import hashear_password
@@ -10,6 +11,20 @@ from tests.conftest import auth_headers, get_token
 
 
 PLANTILLA = Path(r"C:\Users\mtrog\OneDrive\Escritorio\ESCRITORIO 13 DE MAYO\Proyectos TI\CONTROL DE LABORATORIOS\Plantilla_Alumnos_UTECAN.xlsx")
+
+
+def test_consulta_codigo_postal_normaliza_domicilio(client, db, monkeypatch):
+    admin = Usuario(nombre="Admin Postal", email="postal@test.mx", password_hash=hashear_password("Test1234!"), rol=RolUsuario.SUPER_ADMIN, activo=True)
+    db.add(admin); db.commit()
+    payload = {"cp": "24900", "estado": "Campeche", "municipio": "Candelaria", "asentamientos": [{"nombre": "San Martín", "ciudad": "Candelaria"}, {"nombre": "Centro", "ciudad": "Candelaria"}]}
+    class Respuesta:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return json.dumps(payload).encode("utf-8")
+    monkeypatch.setattr("routers.servicios_escolares.urllib.request.urlopen", lambda *args, **kwargs: Respuesta())
+    response = client.get("/servicios-escolares/catalogos/codigo-postal/24900", headers=auth_headers(get_token(client, admin.email, "Test1234!")))
+    assert response.status_code == 200, response.text
+    assert response.json() == {"codigo_postal": "24900", "estado": "Campeche", "municipio": "Candelaria", "localidad": "Candelaria", "colonias": ["Centro", "San Martín"]}
 
 
 def test_activacion_masiva_de_fichas_es_idempotente(client, db):
