@@ -57,6 +57,11 @@ def _require_alumno(user: Usuario):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Acceso solo para alumnos")
 
 
+def _sincronizar_datos_institucionales(ficha: FichaSocioeconomica, alumno: CatalogoAlumno):
+    ficha.nombre_completo = f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip()
+    ficha.carrera = alumno.carrera
+
+
 RESOLUCIONES_PROMOCION = {"PROMOVIDO", "REPITE", "ESTADIA", "EGRESO", "BAJA_TEMPORAL", "BAJA_DEFINITIVA", "PENDIENTE"}
 
 
@@ -740,6 +745,7 @@ def activar_ficha(
         activado_por_id=current_user.id,
         activado_en=_now(),
     )
+    _sincronizar_datos_institucionales(ficha, a)
     db.add(ficha)
     db.commit()
     db.refresh(ficha)
@@ -784,11 +790,13 @@ def activar_fichas_masivo(
         elif alumno_id in existentes:
             omitidas.append({"alumno_id": alumno_id, "matricula": alumno.matricula, "motivo": "Ya tiene ficha en el periodo"})
         else:
-            db.add(FichaSocioeconomica(
+            ficha = FichaSocioeconomica(
                 alumno_id=alumno_id, periodo=data.periodo,
                 estado=EstadoFicha.PENDIENTE_CAPTURA,
                 activado_por_id=current_user.id, activado_en=_now(),
-            ))
+            )
+            _sincronizar_datos_institucionales(ficha, alumno)
+            db.add(ficha)
             creadas.append({"alumno_id": alumno_id, "matricula": alumno.matricula})
     db.commit()
     registrar(db, accion=Accion.ACTIVAR_FICHA, recurso=Recurso.ALUMNO,
@@ -970,6 +978,8 @@ def mi_ficha(
             "periodo": cat.periodo,
         }}
 
+    _sincronizar_datos_institucionales(ficha, cat)
+
     data = _serializar_ficha_completa(ficha)
     data["alumno"] = {
         "nombre":    current_user.nombre,
@@ -1074,9 +1084,11 @@ def guardar_ficha(
         raise HTTPException(400,
             f"No puedes modificar una ficha en estado {ficha.estado.value}")
 
-    # Aplicar todos los campos del body
+    # Nombre y carrera son datos institucionales; el alumno no puede modificarlos.
+    _sincronizar_datos_institucionales(ficha, cat)
+    # Aplicar únicamente los campos capturados por el alumno.
     campos = [
-        "nombre_completo","fecha_ingreso","carrera","sexo","estado_civil",
+        "fecha_ingreso","sexo","estado_civil",
         "lugar_nacimiento","fecha_nacimiento","tiene_hijos","num_hijos",
         "habla_lengua","lengua","telefono","procedencia_calle","procedencia_colonia",
         "procedencia_localidad","procedencia_municipio","procedencia_estado","procedencia_cp",
@@ -1090,8 +1102,6 @@ def guardar_ficha(
         "tiene_discapacidad","discapacidad_tipo","discapacidad_medicamento","informacion_relevante",
     ]
     body_dict = body.model_dump(exclude_none=True, exclude={"enviar"})
-    if "carrera" in body_dict:
-        body_dict["carrera"] = _validar_carrera_activa(db, body_dict["carrera"])
     for campo in campos:
         if campo in body_dict:
             setattr(ficha, campo, body_dict[campo])

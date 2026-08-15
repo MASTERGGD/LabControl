@@ -9,10 +9,7 @@ const SECCIONES = [
     id: "personales",
     titulo: "Datos personales",
     campos: [
-      { name: "nombre", label: "Nombre completo", required: true },
-      { name: "matricula", label: "Matricula", required: true, pattern: "matricula" },
       { name: "fecha_ingreso", label: "Fecha de ingreso", type: "date", required: true },
-      { name: "carrera", label: "Carrera", required: true },
       { name: "sexo", label: "Sexo", type: "select", options: ["", "Femenino", "Masculino", "Prefiero no decirlo"], required: true },
       { name: "estado_civil", label: "Estado civil", type: "select", options: ["", "Soltero", "Casado", "Union libre", "Otro"], required: true },
       { name: "lugar_nacimiento", label: "Lugar de nacimiento", required: true },
@@ -435,6 +432,7 @@ export default function AlumnoEstudioSocioeconomico() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 p-6 md:grid-cols-2">
+            {seccion.id === "personales" && <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2"><p className="text-xs font-bold uppercase tracking-wider text-blue-600">Datos institucionales</p><div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><div><p className="text-xs text-slate-500">Nombre</p><p className="font-semibold text-slate-900">{alumnoInfo.nombre}</p></div><div><p className="text-xs text-slate-500">Matrícula</p><p className="font-mono font-semibold text-slate-900">{alumnoInfo.matricula}</p></div><div><p className="text-xs text-slate-500">Carrera</p><p className="font-semibold text-slate-900">{alumnoInfo.carrera}</p></div></div><p className="mt-3 text-xs text-blue-700">Esta información proviene de Servicios Escolares y no requiere captura.</p></div>}
             {seccion.campos.map(campo => (
               <InputCampo
                 key={campo.name}

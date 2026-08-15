@@ -21,6 +21,9 @@ def test_activacion_masiva_de_fichas_es_idempotente(client, db):
     primera = client.post("/servicios-escolares/fichas/activar-masivo", headers=headers, json=payload)
     assert primera.status_code == 200, primera.text
     assert primera.json()["resumen"] == {"creadas": 2, "omitidas": 0, "errores": 0}
+    ficha = db.query(FichaSocioeconomica).filter(FichaSocioeconomica.alumno_id == alumnos[0].id).one()
+    assert ficha.nombre_completo == "PRUEBA MASIVA ALUMNO 0"
+    assert ficha.carrera == "TIEID"
     segunda = client.post("/servicios-escolares/fichas/activar-masivo", headers=headers, json=payload)
     assert segunda.status_code == 200, segunda.text
     assert segunda.json()["resumen"] == {"creadas": 0, "omitidas": 2, "errores": 0}
