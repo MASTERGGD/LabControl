@@ -657,6 +657,32 @@ function ModalMateria({ materia, periodos, periodoInicial, carreras, onClose, on
 //  Página principal
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function ModalActivarEstudio({ alumno, periodoInicial, periodos, onClose, onOk }) {
+  const [periodo, setPeriodo] = useState(periodoInicial || periodos[0] || '');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  const activar = async (e) => {
+    e.preventDefault();
+    if (!periodo || guardando) return;
+    setGuardando(true); setError('');
+    try {
+      await api.post(`/servicios-escolares/alumnos/${alumno.id}/fichas`, null, { params: { periodo } });
+      onOk(`Estudio socioeconómico activado para ${alumno.nombre_completo}.`);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo activar el estudio socioeconómico.');
+    } finally { setGuardando(false); }
+  };
+
+  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardando && onClose()}>
+    <form onSubmit={activar} onMouseDown={e => e.stopPropagation()} className="w-full max-w-md overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900 shadow-2xl">
+      <header className="border-b border-white/10 px-5 py-4"><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Servicios Escolares</p><h2 className="mt-1 text-lg font-bold text-white">Activar estudio socioeconómico</h2><p className="mt-1 text-sm text-slate-400">{alumno.nombre_completo} · {alumno.matricula}</p></header>
+      <div className="p-5"><label className="text-sm text-slate-300">Periodo<select required value={periodo} onChange={e => setPeriodo(e.target.value)} className="input-dark mt-1.5 w-full">{periodos.map(p => <option key={p} value={p}>{p}</option>)}</select></label><p className="mt-3 text-xs leading-5 text-slate-500">El alumno podrá capturar y guardar su información al ingresar a SIGA.</p>{error && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}</div>
+      <footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4"><button type="button" disabled={guardando} onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={guardando || !periodo} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Activando…' : 'Activar ficha'}</button></footer>
+    </form>
+  </div>;
+}
+
 export default function Catalogo({ modo = 'completo' }) {
   const [tab, setTab] = useState(modo === 'materias' ? 'materias' : 'alumnos');
 
@@ -690,6 +716,8 @@ export default function Catalogo({ modo = 'completo' }) {
 
   // Confirmar desactivar
   const [confirmDesactivar, setConfirmDesactivar] = useState(null);
+  const [alumnoParaEstudio, setAlumnoParaEstudio] = useState(null);
+  const [mensaje, setMensaje] = useState('');
 
   // Cargar datos de referencia al inicio
   useEffect(() => {
@@ -843,6 +871,7 @@ export default function Catalogo({ modo = 'completo' }) {
       {/* ── TAB ALUMNOS ──────────────────────────────────────────────────────── */}
       {tab === 'alumnos' && (
         <>
+          {mensaje && <div className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{mensaje}</div>}
           {/* Filtros */}
           <div className="flex flex-wrap gap-3 mb-4 bg-gray-800 border border-gray-700 rounded-xl p-4">
             <input value={filtQ} onChange={e => setFiltQ(e.target.value)}
@@ -939,6 +968,10 @@ export default function Catalogo({ modo = 'completo' }) {
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                             Editar
                           </button>
+                          {a.activo && <button onClick={() => setAlumnoParaEstudio(a)}
+                            className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors">
+                            Activar estudio
+                          </button>}
                           {a.activo ? (
                             <button onClick={() => setConfirmDesactivar({ tipo: 'alumnos', id: a.id, nombre: a.nombre_completo })}
                               className="text-xs text-red-400 hover:text-red-300 transition-colors">
@@ -1100,6 +1133,7 @@ export default function Catalogo({ modo = 'completo' }) {
           </div>
         </div>
       )}
+      {alumnoParaEstudio && <ModalActivarEstudio alumno={alumnoParaEstudio} periodoInicial={filtPeriodo || periodoInstitucionalActual} periodos={periodos} onClose={() => setAlumnoParaEstudio(null)} onOk={(texto) => { setAlumnoParaEstudio(null); setMensaje(texto); }} />}
 
       {/* ── Modales ──────────────────────────────────────────────────────────── */}
       {(modalAlumno === 'nuevo' || (modalAlumno && typeof modalAlumno === 'object')) && (
