@@ -22,30 +22,30 @@ function Badge({ estado }) {
 // ── Secciones para mostrar en detalle ────────────────────────────────────────
 const SECCIONES_DETALLE = [
   { titulo: 'Datos personales', campos: [
-    ['nombre_completo','Nombre completo'],['fecha_ingreso','Fecha ingreso'],
+    ['nombre_completo','Nombre completo'],['fecha_ingreso','Fecha de ingreso'],
     ['carrera','Carrera'],['sexo','Sexo'],['estado_civil','Estado civil'],
-    ['lugar_nacimiento','Lugar de nacimiento'],['fecha_nacimiento','Fecha nacimiento'],
-    ['tiene_hijos','Tiene hijos'],['num_hijos','Núm. hijos'],
-    ['habla_lengua','Habla lengua indígena'],['lengua','Lengua'],
+    ['lugar_nacimiento','Lugar de nacimiento'],['fecha_nacimiento','Fecha de nacimiento'],
+    ['tiene_hijos','Tiene hijos'],['num_hijos','Número de hijos'],
+    ['habla_lengua','Habla una lengua distinta al español'],['lengua','Lengua'],
   ]},
   { titulo: 'Contacto y domicilios', campos: [
     ['telefono','Teléfono'],
-    ['procedencia_calle','Proc. calle'],['procedencia_colonia','Proc. colonia'],
-    ['procedencia_localidad','Proc. localidad'],['procedencia_municipio','Proc. municipio'],
-    ['procedencia_estado','Proc. estado'],['procedencia_cp','Proc. C.P.'],
-    ['residencia_calle','Res. calle'],['residencia_colonia','Res. colonia'],
-    ['residencia_localidad','Res. localidad'],['residencia_municipio','Res. municipio'],
-    ['residencia_estado','Res. estado'],['residencia_cp','Res. C.P.'],
+    ['procedencia_calle','Calle y número de procedencia'],['procedencia_colonia','Colonia de procedencia'],
+    ['procedencia_localidad','Localidad de procedencia'],['procedencia_municipio','Municipio de procedencia'],
+    ['procedencia_estado','Estado de procedencia'],['procedencia_cp','Código postal de procedencia'],
+    ['residencia_calle','Calle y número de residencia'],['residencia_colonia','Colonia de residencia'],
+    ['residencia_localidad','Localidad de residencia'],['residencia_municipio','Municipio de residencia'],
+    ['residencia_estado','Estado de residencia'],['residencia_cp','Código postal de residencia'],
   ]},
   { titulo: 'Antecedentes escolares', campos: [
     ['bachillerato','Bachillerato'],['bachillerato_ubicacion','Ubicación'],
-    ['periodo_estudios','Período estudios'],['promedio','Promedio'],['area_bachillerato','Área'],
+    ['periodo_estudios','Periodo de estudios'],['promedio','Promedio'],['area_bachillerato','Área de bachillerato'],
   ]},
   { titulo: 'Situación económica', campos: [
     ['depende_de','Depende de'],['responsable_nombre','Nombre responsable'],
     ['responsable_parentesco','Parentesco'],['responsable_ocupacion','Ocupación'],
     ['responsable_estudios','Estudios responsable'],['responsable_telefono','Tel. responsable'],
-    ['ingreso_mensual','Ingreso mensual'],['gasto_mensual','Gasto mensual'],
+    ['ingreso_mensual','Ingreso mensual familiar'],['gasto_mensual','Gasto mensual familiar'],
     ['dependientes','Dependientes'],['recibe_apoyo','Recibe apoyo'],['institucion_apoyo','Institución'],
   ]},
   { titulo: 'Salud', campos: [
@@ -55,6 +55,44 @@ const SECCIONES_DETALLE = [
     ['informacion_relevante','Información relevante'],
   ]},
 ];
+
+const CAMPOS_FECHA = new Set(['fecha_ingreso', 'fecha_nacimiento']);
+const CAMPOS_MONEDA = new Set(['ingreso_mensual', 'gasto_mensual']);
+const CAMPOS_TEXTO_NORMALIZADO = new Set([
+  'lugar_nacimiento', 'procedencia_calle', 'procedencia_colonia', 'procedencia_localidad',
+  'procedencia_municipio', 'procedencia_estado', 'residencia_calle', 'residencia_colonia',
+  'residencia_localidad', 'residencia_municipio', 'residencia_estado', 'bachillerato',
+  'bachillerato_ubicacion', 'responsable_nombre', 'responsable_ocupacion',
+]);
+
+function tituloTexto(valor) {
+  return String(valor).trim().replace(/\s*,\s*/g, ', ').replace(/(^|[\s,])\p{L}/gu, letra => letra.toUpperCase());
+}
+
+function campoAplica(campo, ficha) {
+  if (campo === 'num_hijos') return ficha.tiene_hijos === true;
+  if (campo === 'lengua') return ficha.habla_lengua === true;
+  if (campo === 'institucion_apoyo') return ficha.recibe_apoyo === true;
+  if (['alergia_cual', 'alergia_medicamento'].includes(campo)) return ficha.tiene_alergia === true;
+  if (['enfermedad_cual', 'enfermedad_medicamento'].includes(campo)) return ficha.enfermedad_cronica === true;
+  if (['discapacidad_tipo', 'discapacidad_medicamento'].includes(campo)) return ficha.tiene_discapacidad === true;
+  if (campo.startsWith('responsable_')) return ficha.depende_de !== 'Independiente';
+  return true;
+}
+
+function advertenciasFicha(ficha) {
+  const avisos = [];
+  const ingreso = ficha.fecha_ingreso ? new Date(`${ficha.fecha_ingreso}T12:00:00`) : null;
+  if (ingreso && ingreso > new Date()) avisos.push('La fecha de ingreso está en el futuro.');
+  const match = ficha.periodo?.match(/(ENE-ABR|MAY-AGO|SEP-DIC)\s+(\d{4})/);
+  if (ingreso && match) {
+    const rangos = { 'ENE-ABR': [0, 3], 'MAY-AGO': [4, 7], 'SEP-DIC': [8, 11] };
+    const [inicio, fin] = rangos[match[1]];
+    if (ingreso.getFullYear() !== Number(match[2]) || ingreso.getMonth() < inicio || ingreso.getMonth() > fin) avisos.push(`La fecha de ingreso no corresponde al periodo ${ficha.periodo}.`);
+  }
+  if (Number(ficha.gasto_mensual) > Number(ficha.ingreso_mensual)) avisos.push('El gasto mensual es mayor que el ingreso familiar declarado.');
+  return avisos;
+}
 
 // ── Modal detalle + revisión ──────────────────────────────────────────────────
 function ModalFicha({ fichaId, onClose, onCambio }) {
@@ -74,8 +112,8 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
 
   const guardarEstado = async () => {
     if (!accion) return;
-    if (accion === 'REQUIERE_CORRECCION' && !nota.trim()) {
-      setError('Escribe la nota de corrección para el alumno'); return;
+    if (['REQUIERE_CORRECCION', 'RECHAZADA'].includes(accion) && !nota.trim()) {
+      setError(accion === 'RECHAZADA' ? 'Escribe el motivo del rechazo' : 'Escribe la nota de corrección para el alumno'); return;
     }
     setSaving(true); setError('');
     try {
@@ -91,18 +129,22 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
 
   const puedeRevisar = ficha && ['ENVIADA', 'REQUIERE_CORRECCION'].includes(ficha.estado);
 
-  const fmt = (v) => {
+  const fmt = (campo, v) => {
     if (v === null || v === undefined || v === '') return <span className="text-slate-600">—</span>;
     if (v === true)  return <span className="text-emerald-400">Sí</span>;
     if (v === false) return <span className="text-slate-500">No</span>;
+    if (CAMPOS_FECHA.has(campo)) return new Date(`${v}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (CAMPOS_MONEDA.has(campo)) return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(v);
+    if (CAMPOS_TEXTO_NORMALIZADO.has(campo)) return tituloTexto(v);
     return String(v);
   };
+  const advertencias = ficha ? advertenciasFicha(ficha) : [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 overflow-y-auto">
-      <div className="glass rounded-2xl w-full max-w-3xl my-4">
+      <div className="glass flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl my-2">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-white/10">
+        <div className="flex shrink-0 items-start justify-between p-6 border-b border-white/10">
           <div>
             <h3 className="text-lg font-bold text-white">Ficha socioeconómica</h3>
             {ficha && (
@@ -121,7 +163,7 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
         ) : (
           <>
             {/* Estado actual */}
-            <div className="px-6 pt-4 flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-3 px-6 pt-4">
               <Badge estado={ficha.estado} />
               {ficha.enviada_en && (
                 <span className="text-xs text-slate-500">
@@ -134,16 +176,17 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
             </div>
 
             {/* Datos de la ficha por secciones */}
-            <div className="p-6 space-y-6 max-h-[50vh] overflow-y-auto">
+            <div className="flex-1 space-y-6 overflow-y-auto p-6">
+              {advertencias.length > 0 && <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Revisa antes de decidir</p><ul className="mt-2 space-y-1 text-sm text-amber-200">{advertencias.map(aviso => <li key={aviso}>• {aviso}</li>)}</ul></div>}
               {SECCIONES_DETALLE.map(sec => (
                 <div key={sec.titulo}>
                   <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wide">{sec.titulo}</h4>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     {sec.campos.map(([campo, label]) => (
-                      ficha[campo] !== null && ficha[campo] !== undefined && ficha[campo] !== '' ? (
+                      campoAplica(campo, ficha) && ficha[campo] !== null && ficha[campo] !== undefined && ficha[campo] !== '' ? (
                         <div key={campo} className="flex flex-col">
                           <span className="text-xs text-slate-500">{label}</span>
-                          <span className="text-sm text-white">{fmt(ficha[campo])}</span>
+                          <span className="text-sm text-white">{fmt(campo, ficha[campo])}</span>
                         </div>
                       ) : null
                     ))}
@@ -154,7 +197,7 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
 
             {/* Revisión */}
             {puedeRevisar && (
-              <div className="border-t border-white/10 p-6 space-y-4">
+              <div className="shrink-0 border-t border-white/10 bg-slate-950/30 p-5 space-y-4">
                 <h4 className="text-sm font-semibold text-white">Decisión de revisión</h4>
                 <div className="flex gap-2">
                   {['VALIDADA', 'REQUIERE_CORRECCION', 'RECHAZADA'].map(op => {
@@ -173,7 +216,7 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
                         className={`flex-1 rounded-xl border px-3 py-2 text-xs font-semibold transition-all ${
                           accion === op
                             ? colors[op] + ' ring-2 ring-offset-1 ring-offset-transparent'
-                            : 'border-white/10 text-slate-400 hover:border-white/20'
+                            : `${colors[op]} opacity-60 hover:opacity-100`
                         }`}
                       >
                         {labels[op]}
@@ -188,7 +231,7 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
                     onChange={e => setNota(e.target.value)}
                     placeholder={accion === 'REQUIERE_CORRECCION'
                       ? 'Indica al alumno qué debe corregir…'
-                      : 'Motivo del rechazo (opcional)…'}
+                      : 'Indica el motivo del rechazo…'}
                     rows={3}
                     className="input-dark w-full text-sm"
                   />
@@ -201,7 +244,7 @@ function ModalFicha({ fichaId, onClose, onCambio }) {
                   <button
                     onClick={guardarEstado}
                     disabled={!accion || saving}
-                    className="btn-primary disabled:opacity-50"
+                    className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 ${accion === 'VALIDADA' ? 'bg-emerald-600 hover:bg-emerald-500' : accion === 'REQUIERE_CORRECCION' ? 'bg-orange-600 hover:bg-orange-500' : accion === 'RECHAZADA' ? 'bg-red-600 hover:bg-red-500' : ''}`}
                   >
                     {saving ? 'Guardando…' : 'Confirmar decisión'}
                   </button>

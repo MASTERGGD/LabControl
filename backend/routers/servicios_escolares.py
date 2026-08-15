@@ -937,6 +937,8 @@ def cambiar_estado_ficha(
             raise HTTPException(400, "Debe indicar la nota de corrección para el alumno")
         f.nota_correccion = body.nota_correccion
     elif nuevo == "RECHAZADA":
+        if not body.nota_correccion:
+            raise HTTPException(400, "Debe indicar el motivo del rechazo")
         f.nota_correccion = body.nota_correccion
 
     db.commit()
