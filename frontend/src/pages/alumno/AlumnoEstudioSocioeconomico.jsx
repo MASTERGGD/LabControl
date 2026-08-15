@@ -11,32 +11,32 @@ const SECCIONES = [
     campos: [
       { name: "fecha_ingreso", label: "Fecha de ingreso", type: "date", required: true },
       { name: "sexo", label: "Sexo", type: "select", options: ["", "Femenino", "Masculino", "Prefiero no decirlo"], required: true },
-      { name: "estado_civil", label: "Estado civil", type: "select", options: ["", "Soltero", "Casado", "Union libre", "Otro"], required: true },
+      { name: "estado_civil", label: "Estado civil", type: "select", options: ["", "Soltero", "Casado", "Unión libre", "Otro"], required: true },
       { name: "lugar_nacimiento", label: "Lugar de nacimiento", required: true },
       { name: "fecha_nacimiento", label: "Fecha de nacimiento", type: "date", required: true },
       { name: "tiene_hijos", label: "Tiene hijos", type: "boolean", required: true },
-      { name: "num_hijos", label: "Numero de hijos", type: "number", dependsOn: ["tiene_hijos", "SI"] },
-      { name: "habla_lengua", label: "Habla lengua distinta al espanol", type: "boolean", required: true },
-      { name: "lengua", label: "Cual lengua", dependsOn: ["habla_lengua", "SI"] },
+      { name: "num_hijos", label: "Número de hijos", type: "number", dependsOn: ["tiene_hijos", "SI"] },
+      { name: "habla_lengua", label: "Habla una lengua distinta al español", type: "boolean", required: true },
+      { name: "lengua", label: "Cuál lengua", dependsOn: ["habla_lengua", "SI"] },
     ],
   },
   {
     id: "domicilios",
     titulo: "Contacto y domicilios",
     campos: [
-      { name: "telefono", label: "Telefono principal", required: true, pattern: "telefono" },
-      { name: "procedencia_calle", label: "Procedencia: calle y numero", required: true },
+      { name: "telefono", label: "Teléfono principal", required: true, pattern: "telefono" },
+      { name: "procedencia_calle", label: "Procedencia: calle y número", required: true },
       { name: "procedencia_colonia", label: "Procedencia: colonia", required: true },
       { name: "procedencia_localidad", label: "Procedencia: localidad", required: true },
       { name: "procedencia_municipio", label: "Procedencia: municipio", required: true },
       { name: "procedencia_estado", label: "Procedencia: estado", required: true },
-      { name: "procedencia_cp", label: "Procedencia: codigo postal", required: true, pattern: "cp" },
-      { name: "residencia_calle", label: "Residencia: calle y numero", required: true },
+      { name: "procedencia_cp", label: "Procedencia: código postal", required: true, pattern: "cp" },
+      { name: "residencia_calle", label: "Residencia: calle y número", required: true },
       { name: "residencia_colonia", label: "Residencia: colonia", required: true },
       { name: "residencia_localidad", label: "Residencia: localidad", required: true },
       { name: "residencia_municipio", label: "Residencia: municipio", required: true },
       { name: "residencia_estado", label: "Residencia: estado", required: true },
-      { name: "residencia_cp", label: "Residencia: codigo postal", required: true, pattern: "cp" },
+      { name: "residencia_cp", label: "Residencia: código postal", required: true, pattern: "cp" },
     ],
   },
   {
@@ -44,27 +44,27 @@ const SECCIONES = [
     titulo: "Antecedentes escolares",
     campos: [
       { name: "bachillerato", label: "Bachillerato o escuela de procedencia", required: true },
-      { name: "bachillerato_ubicacion", label: "Lugar de ubicaci?n", required: true },
+      { name: "bachillerato_ubicacion", label: "Lugar de ubicación", required: true },
       { name: "periodo_estudios", label: "Periodo de estudios", required: true },
       { name: "promedio", label: "Promedio general", type: "number", required: true, pattern: "promedio" },
-      { name: "area_bachillerato", label: "?rea de bachillerato", type: "select", options: ["", "F?sico-Matem?tico", "Econ?mico-Administrativo", "Ciencias Sociales", "Qu?mico-Biol?gico", "Humanidades", "General", "Otro"], required: true },
+      { name: "area_bachillerato", label: "Área de bachillerato", type: "select", options: ["", "Físico-Matemático", "Económico-Administrativo", "Ciencias Sociales", "Químico-Biológico", "Humanidades", "General", "Otro"], required: true },
     ],
   },
   {
     id: "economia",
-    titulo: "Situaci?n econ?mica",
+    titulo: "Situación económica",
     campos: [
-      { name: "depende_de", label: "Depende econ?micamente de", type: "select", options: ["", "Pap?", "Mam?", "Independiente", "Otros"], required: true },
+      { name: "depende_de", label: "Depende económicamente de", type: "select", options: ["", "Papá", "Mamá", "Independiente", "Otros"], required: true },
       { name: "responsable_nombre", label: "Nombre de la persona responsable", required: true },
       { name: "responsable_parentesco", label: "Parentesco", required: true },
-      { name: "responsable_ocupacion", label: "Ocupaci?n", required: true },
-      { name: "responsable_estudios", label: "M?ximo nivel de estudios", required: true },
-      { name: "responsable_telefono", label: "Tel?fono de la persona responsable", pattern: "telefono" },
+      { name: "responsable_ocupacion", label: "Ocupación", required: true },
+      { name: "responsable_estudios", label: "Máximo nivel de estudios", required: true },
+      { name: "responsable_telefono", label: "Teléfono de la persona responsable", pattern: "telefono" },
       { name: "ingreso_mensual", label: "Ingreso mensual familiar aproximado", type: "number", required: true },
       { name: "gasto_mensual", label: "Gasto mensual familiar aproximado", type: "number", required: true },
       { name: "dependientes", label: "Personas que dependen del jefe de familia", type: "number", required: true },
-      { name: "recibe_apoyo", label: "Recibe apoyo econ?mico o beca", type: "boolean", required: true },
-      { name: "institucion_apoyo", label: "Instituci?n o programa de apoyo", dependsOn: ["recibe_apoyo", "SI"] },
+      { name: "recibe_apoyo", label: "Recibe apoyo económico o beca", type: "boolean", required: true },
+      { name: "institucion_apoyo", label: "Institución o programa de apoyo", dependsOn: ["recibe_apoyo", "SI"] },
     ],
   },
   {
@@ -72,23 +72,23 @@ const SECCIONES = [
     titulo: "Salud y condiciones relevantes",
     campos: [
       { name: "tiene_alergia", label: "Tiene alergia", type: "boolean", required: true },
-      { name: "alergia_cual", label: "Cu?l alergia", dependsOn: ["tiene_alergia", "SI"] },
+      { name: "alergia_cual", label: "Cuál alergia", dependsOn: ["tiene_alergia", "SI"] },
       { name: "alergia_medicamento", label: "Medicamento por alergia", dependsOn: ["tiene_alergia", "SI"] },
-      { name: "enfermedad_cronica", label: "Tiene enfermedad cr?nica", type: "boolean", required: true },
-      { name: "enfermedad_cual", label: "Cu?l enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
+      { name: "enfermedad_cronica", label: "Tiene una enfermedad crónica", type: "boolean", required: true },
+      { name: "enfermedad_cual", label: "Cuál enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
       { name: "enfermedad_medicamento", label: "Medicamento por enfermedad", dependsOn: ["enfermedad_cronica", "SI"] },
       { name: "tiene_discapacidad", label: "Tiene discapacidad", type: "boolean", required: true },
       { name: "discapacidad_tipo", label: "Tipo de discapacidad", dependsOn: ["tiene_discapacidad", "SI"] },
       { name: "discapacidad_medicamento", label: "Medicamento o apoyo requerido", dependsOn: ["tiene_discapacidad", "SI"] },
-      { name: "informacion_relevante", label: "Informaci?n relevante", type: "textarea" },
+      { name: "informacion_relevante", label: "Información relevante", type: "textarea" },
     ],
   },
   {
     id: "confirmacion",
-    titulo: "Confirmaci?n",
+    titulo: "Confirmación",
     campos: [
-      { name: "confirmo_veracidad", label: "Confirmo que la informaci?n proporcionada es correcta", type: "checkbox", required: true },
-      { name: "acepto_uso", label: "Acepto el uso institucional de la informaci?n para seguimiento acad?mico y tutorial", type: "checkbox", required: true },
+      { name: "confirmo_veracidad", label: "Confirmo que la información proporcionada es correcta", type: "checkbox", required: true },
+      { name: "acepto_uso", label: "Acepto el uso institucional de la información para seguimiento académico y tutorial", type: "checkbox", required: true },
     ],
   },
 ];
@@ -119,7 +119,7 @@ function validarCampo(campo, form) {
     return "Debe tener 10 dígitos";
   }
   if (campo.pattern === "cp" && !/^\d{5}$/.test(normalizar(value))) {
-    return "Debe tener 5 digitos";
+    return "Debe tener 5 dígitos";
   }
   if (campo.pattern === "promedio") {
     const n = Number(value);
@@ -162,7 +162,7 @@ function InputCampo({ campo, form, setForm, error, carreras = [] }) {
         <select value={form[campo.name]} onChange={e => set(e.target.value)} className={common}>
           <option value="">Seleccionar</option>
           <option value="NO">No</option>
-          <option value="SI">Si</option>
+          <option value="SI">Sí</option>
         </select>
       ) : campo.type === "checkbox" ? (
         <label className="mt-2 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
