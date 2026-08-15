@@ -60,6 +60,11 @@ def _require_alumno(user: Usuario):
 RESOLUCIONES_PROMOCION = {"PROMOVIDO", "REPITE", "ESTADIA", "EGRESO", "BAJA_TEMPORAL", "BAJA_DEFINITIVA", "PENDIENTE"}
 
 
+class ActivacionMasivaFichasIn(BaseModel):
+    alumno_ids: List[int] = Field(..., min_length=1, max_length=1000)
+    periodo: str = Field(..., min_length=5, max_length=30)
+
+
 class ResolucionPromocionIn(BaseModel):
     periodo_destino_id: int
     resolucion: str
@@ -750,6 +755,47 @@ def activar_ficha(
               })
 
     return _serializar_ficha_resumen(ficha)
+
+
+@router.post("/fichas/activar-masivo", summary="Activar fichas socioeconómicas para varios alumnos")
+def activar_fichas_masivo(
+    data: ActivacionMasivaFichasIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    ids = list(dict.fromkeys(data.alumno_ids))
+    alumnos = db.query(CatalogoAlumno).filter(CatalogoAlumno.id.in_(ids)).all()
+    alumnos_por_id = {alumno.id: alumno for alumno in alumnos}
+    existentes = {
+        ficha.alumno_id for ficha in db.query(FichaSocioeconomica).filter(
+            FichaSocioeconomica.alumno_id.in_(ids),
+            FichaSocioeconomica.periodo == data.periodo,
+            FichaSocioeconomica.estado != EstadoFicha.RECHAZADA,
+        ).all()
+    }
+    creadas, omitidas, errores = [], [], []
+    for alumno_id in ids:
+        alumno = alumnos_por_id.get(alumno_id)
+        if not alumno:
+            errores.append({"alumno_id": alumno_id, "motivo": "Alumno no encontrado"})
+        elif not alumno.activo:
+            errores.append({"alumno_id": alumno_id, "matricula": alumno.matricula, "motivo": "Alumno inactivo"})
+        elif alumno_id in existentes:
+            omitidas.append({"alumno_id": alumno_id, "matricula": alumno.matricula, "motivo": "Ya tiene ficha en el periodo"})
+        else:
+            db.add(FichaSocioeconomica(
+                alumno_id=alumno_id, periodo=data.periodo,
+                estado=EstadoFicha.PENDIENTE_CAPTURA,
+                activado_por_id=current_user.id, activado_en=_now(),
+            ))
+            creadas.append({"alumno_id": alumno_id, "matricula": alumno.matricula})
+    db.commit()
+    registrar(db, accion=Accion.ACTIVAR_FICHA, recurso=Recurso.ALUMNO,
+              usuario=current_user, detalle={"periodo": data.periodo, "activacion_masiva": True,
+              "creadas": len(creadas), "omitidas": len(omitidas), "errores": len(errores)})
+    return {"periodo": data.periodo, "creadas": creadas, "omitidas": omitidas, "errores": errores,
+            "resumen": {"creadas": len(creadas), "omitidas": len(omitidas), "errores": len(errores)}}
 
 
 @router.get("/fichas", summary="Listar todas las fichas (SE)")

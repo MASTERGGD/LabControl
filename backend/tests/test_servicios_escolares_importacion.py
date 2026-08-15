@@ -5,10 +5,26 @@ import openpyxl
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.catalogo import CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
+from models.ficha_socioeconomica import FichaSocioeconomica
 from tests.conftest import auth_headers, get_token
 
 
 PLANTILLA = Path(r"C:\Users\mtrog\OneDrive\Escritorio\ESCRITORIO 13 DE MAYO\Proyectos TI\CONTROL DE LABORATORIOS\Plantilla_Alumnos_UTECAN.xlsx")
+
+
+def test_activacion_masiva_de_fichas_es_idempotente(client, db):
+    admin = Usuario(nombre="Admin Fichas", email="fichas@test.mx", password_hash=hashear_password("Test1234!"), rol=RolUsuario.SUPER_ADMIN, activo=True)
+    alumnos = [CatalogoAlumno(matricula=f"UTC2600{i}", apellido_paterno="PRUEBA", apellido_materno="MASIVA", nombres=f"ALUMNO {i}", carrera="TIEID", cuatrimestre=1, grupo="A", periodo="MAY-AGO 2026", activo=True) for i in range(2)]
+    db.add_all([admin, *alumnos]); db.commit()
+    headers = auth_headers(get_token(client, admin.email, "Test1234!"))
+    payload = {"alumno_ids": [a.id for a in alumnos], "periodo": "MAY-AGO 2026"}
+    primera = client.post("/servicios-escolares/fichas/activar-masivo", headers=headers, json=payload)
+    assert primera.status_code == 200, primera.text
+    assert primera.json()["resumen"] == {"creadas": 2, "omitidas": 0, "errores": 0}
+    segunda = client.post("/servicios-escolares/fichas/activar-masivo", headers=headers, json=payload)
+    assert segunda.status_code == 200, segunda.text
+    assert segunda.json()["resumen"] == {"creadas": 0, "omitidas": 2, "errores": 0}
+    assert db.query(FichaSocioeconomica).count() == 2
 
 
 def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):

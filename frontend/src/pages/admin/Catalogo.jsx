@@ -683,6 +683,21 @@ function ModalActivarEstudio({ alumno, periodoInicial, periodos, onClose, onOk }
   </div>;
 }
 
+function ModalActivacionMasiva({ alumnos, periodoInicial, periodos, onClose, onOk }) {
+  const [periodo, setPeriodo] = useState(periodoInicial || periodos[0] || '');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const activar = async (e) => {
+    e.preventDefault(); setGuardando(true); setError('');
+    try {
+      const { data } = await api.post('/servicios-escolares/fichas/activar-masivo', { alumno_ids: alumnos.map(a => a.id), periodo });
+      onOk(data);
+    } catch (err) { setError(err.response?.data?.detail || 'No se pudo completar la activación masiva.'); }
+    finally { setGuardando(false); }
+  };
+  return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardando && onClose()}><form onSubmit={activar} onMouseDown={e => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-emerald-500/20 bg-slate-900 shadow-2xl"><header className="border-b border-white/10 px-5 py-4"><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Activación masiva</p><h2 className="mt-1 text-lg font-bold text-white">Activar {alumnos.length} estudios</h2><p className="mt-1 text-sm text-slate-400">Las fichas existentes se conservarán y serán omitidas.</p></header><div className="space-y-4 p-5"><label className="text-sm text-slate-300">Periodo<select required value={periodo} onChange={e => setPeriodo(e.target.value)} className="input-dark mt-1.5 w-full">{periodos.map(p => <option key={p} value={p}>{p}</option>)}</select></label><div className="max-h-40 overflow-y-auto rounded-xl border border-white/10 p-3 text-xs text-slate-400">{alumnos.map(a => <p key={a.id} className="py-1"><span className="font-mono text-slate-500">{a.matricula}</span> · {a.nombre_completo}</p>)}</div>{error && <p className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}</div><footer className="flex justify-end gap-2 border-t border-white/10 px-5 py-4"><button type="button" disabled={guardando} onClick={onClose} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={guardando || !periodo} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Activando…' : `Activar ${alumnos.length} fichas`}</button></footer></form></div>;
+}
+
 export default function Catalogo({ modo = 'completo' }) {
   const [tab, setTab] = useState(modo === 'materias' ? 'materias' : 'alumnos');
 
@@ -717,6 +732,8 @@ export default function Catalogo({ modo = 'completo' }) {
   // Confirmar desactivar
   const [confirmDesactivar, setConfirmDesactivar] = useState(null);
   const [alumnoParaEstudio, setAlumnoParaEstudio] = useState(null);
+  const [seleccionados, setSeleccionados] = useState(() => new Set());
+  const [activarSeleccionados, setActivarSeleccionados] = useState(false);
   const [mensaje, setMensaje] = useState('');
 
   // Cargar datos de referencia al inicio
@@ -774,6 +791,7 @@ export default function Catalogo({ modo = 'completo' }) {
     if (tab === 'alumnos')  cargarAlumnos();
     if (tab === 'materias') cargarMaterias();
   }, [tab, cargarAlumnos, cargarMaterias]);
+  useEffect(() => { setSeleccionados(actual => new Set([...actual].filter(id => alumnos.some(a => a.id === id && a.activo)))); }, [alumnos]);
 
   // ── Desactivar ──────────────────────────────────────────────────────────────
   const desactivar = async (tipo, id) => {
@@ -872,6 +890,7 @@ export default function Catalogo({ modo = 'completo' }) {
       {tab === 'alumnos' && (
         <>
           {mensaje && <div className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{mensaje}</div>}
+          {seleccionados.size > 0 && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-4 py-3"><p className="text-sm text-emerald-200"><b>{seleccionados.size}</b> alumno(s) seleccionado(s)</p><div className="flex gap-2"><button onClick={() => setSeleccionados(new Set())} className="rounded-lg px-3 py-2 text-xs text-slate-400">Limpiar</button><button onClick={() => setActivarSeleccionados(true)} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">Activar estudios seleccionados</button></div></div>}
           {/* Filtros */}
           <div className="flex flex-wrap gap-3 mb-4 bg-gray-800 border border-gray-700 rounded-xl p-4">
             <input value={filtQ} onChange={e => setFiltQ(e.target.value)}
@@ -929,6 +948,7 @@ export default function Catalogo({ modo = 'completo' }) {
               <table className="w-full text-sm">
                 <thead className="bg-slate-950/60">
                   <tr>
+                    <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Seleccionar alumnos visibles" checked={alumnos.filter(a => a.activo).length > 0 && alumnos.filter(a => a.activo).every(a => seleccionados.has(a.id))} onChange={e => setSeleccionados(e.target.checked ? new Set(alumnos.filter(a => a.activo).map(a => a.id)) : new Set())} /></th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Matrícula</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Nombre completo</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Carrera</th>
@@ -942,6 +962,7 @@ export default function Catalogo({ modo = 'completo' }) {
                 <tbody className="divide-y divide-gray-700/50">
                   {alumnos.map(a => (
                     <tr key={a.id} className={`hover:bg-white/8/30 transition-colors ${!a.activo ? 'opacity-50' : ''}`}>
+                      <td className="px-3 py-3"><input type="checkbox" disabled={!a.activo} aria-label={`Seleccionar ${a.nombre_completo}`} checked={seleccionados.has(a.id)} onChange={() => setSeleccionados(actual => { const next = new Set(actual); if (next.has(a.id)) next.delete(a.id); else next.add(a.id); return next; })} /></td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-300">{a.matricula}</td>
                       <td className="px-4 py-3">
                         <p className="text-white font-medium">{a.nombre_completo}</p>
@@ -1134,6 +1155,7 @@ export default function Catalogo({ modo = 'completo' }) {
         </div>
       )}
       {alumnoParaEstudio && <ModalActivarEstudio alumno={alumnoParaEstudio} periodoInicial={filtPeriodo || periodoInstitucionalActual} periodos={periodos} onClose={() => setAlumnoParaEstudio(null)} onOk={(texto) => { setAlumnoParaEstudio(null); setMensaje(texto); }} />}
+      {activarSeleccionados && <ModalActivacionMasiva alumnos={alumnos.filter(a => seleccionados.has(a.id))} periodoInicial={filtPeriodo || periodoInstitucionalActual} periodos={periodos} onClose={() => setActivarSeleccionados(false)} onOk={(data) => { setActivarSeleccionados(false); setSeleccionados(new Set()); setMensaje(`${data.resumen.creadas} ficha(s) activada(s) · ${data.resumen.omitidas} ya existentes · ${data.resumen.errores} error(es).`); }} />}
 
       {/* ── Modales ──────────────────────────────────────────────────────────── */}
       {(modalAlumno === 'nuevo' || (modalAlumno && typeof modalAlumno === 'object')) && (
