@@ -301,14 +301,16 @@ export default function ClaseAsistencia() {
                   <label className="text-sm font-medium text-slate-300">Actividades realizadas <span className="font-normal text-slate-500">(Opcional)</span>
                     <textarea value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Práctica, ejercicio o dinámica" />
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Tarea asignada <span className="font-normal text-slate-500">(Opcional)</span>
-                    <textarea value={bitacora.tarea_asignada} onChange={(e) => setBitacora({ ...bitacora, tarea_asignada: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Actividad y fecha de entrega" />
+                  <label className="text-sm font-medium text-slate-300">Trabajo asignado al grupo <span className="font-normal text-slate-500">(Opcional)</span>
+                    <textarea value={bitacora.tarea_asignada} onChange={(e) => setBitacora({ ...bitacora, tarea_asignada: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Describe la actividad y, si aplica, la fecha de entrega" />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Trabajo que los estudiantes realizarán después de esta clase.</span>
                   </label>
                   <details defaultOpen={Boolean(bitacora.tema_pendiente || bitacora.incidencias || texto)} className="rounded-xl border border-white/10 bg-white/[0.02] sm:col-span-2">
                     <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-300">+ Agregar información adicional <span className="ml-1 font-normal text-slate-500">(Opcional)</span></summary>
                     <div className="grid gap-4 border-t border-white/10 p-4 sm:grid-cols-2">
-                      <label className="text-sm font-medium text-slate-300">Tema pendiente
+                      <label className="text-sm font-medium text-slate-300">Tema para retomar en la siguiente clase
                         <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Punto para retomar en la siguiente clase" />
+                        <span className="mt-1 block text-xs font-normal text-slate-500">Contenido que no se alcanzó a impartir; no corresponde a una tarea del grupo.</span>
                       </label>
                       <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3">
                         <label className="block text-sm font-medium text-slate-300">Tipo de incidencia

@@ -401,6 +401,7 @@ export default function MiHorarioDocente() {
   const [periodoId, setPeriodoId] = useState('');
   const [horario, setHorario] = useState([]);
   const [hoy, setHoy] = useState([]);
+  const [recordatorios, setRecordatorios] = useState({});
   const [cierre, setCierre] = useState(null);
   const [cargaAConfirmar, setCargaAConfirmar] = useState(null);
   const [observacionesCierre, setObservacionesCierre] = useState('');
@@ -435,12 +436,13 @@ export default function MiHorarioDocente() {
       const elegido = idPeriodo || cats.periodo_sugerido_id;
       setCatalogos(cats);
       setPeriodoId(String(elegido || ''));
-      const [horarioRes, hoyRes, extemporaneasRes, reposicionesRes, cierreRes] = await Promise.all([
+      const [horarioRes, hoyRes, extemporaneasRes, reposicionesRes, cierreRes, historialRes] = await Promise.all([
         api.get('/docencia/horario', { params: elegido ? { periodo_id: elegido } : {} }),
         api.get('/docencia/hoy'),
         api.get('/docencia/capturas-extemporaneas/disponibles'),
         api.get('/docencia/reposiciones/pendientes'),
         api.get('/cierre-academico', { params: { periodo_id: elegido } }),
+        api.get('/docencia/historial'),
       ]);
       setHorario(horarioRes.data);
       const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
@@ -448,6 +450,15 @@ export default function MiHorarioDocente() {
       setExtemporaneas(periodoElegido?.es_actual ? extemporaneasRes.data : []);
       setReposicionesPendientes(periodoElegido?.es_actual ? reposicionesRes.data : []);
       setCierre(cierreRes.data);
+      const fechaLocal = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+      const ultimos = historialRes.data
+        .filter((clase) => clase.estado === 'CERRADA' && clase.fecha < fechaLocal && (clase.bitacora?.tarea_asignada?.trim() || clase.bitacora?.tema_pendiente?.trim()))
+        .sort((a, b) => b.fecha.localeCompare(a.fecha))
+        .reduce((acc, clase) => {
+          if (!acc[clase.carga.id]) acc[clase.carga.id] = clase;
+          return acc;
+        }, {});
+      setRecordatorios(ultimos);
     } catch {
       setMensaje('No se pudo cargar el módulo docente.');
     } finally {
@@ -643,6 +654,7 @@ export default function MiHorarioDocente() {
     else iniciar(item);
   };
   const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
+  const recordatorioPrincipal = actividadPrincipal ? recordatorios[actividadPrincipal.id] : null;
 
   return (
     <AdminLayout>
@@ -716,6 +728,22 @@ export default function MiHorarioDocente() {
                     <p className="mt-2 text-sm font-semibold text-slate-300">
                       {actividadPrincipal.calendario?.motivo} · No se requiere registrar clase ni asistencia.
                     </p>
+                  )}
+                  {!esNoLectiva(actividadPrincipal) && recordatorioPrincipal && (
+                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                      {recordatorioPrincipal.bitacora?.tarea_asignada?.trim() && (
+                        <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-2 text-blue-100">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-blue-300">Trabajo asignado en la clase anterior</span>
+                          <span className="mt-1 block">{recordatorioPrincipal.bitacora.tarea_asignada}</span>
+                        </div>
+                      )}
+                      {recordatorioPrincipal.bitacora?.tema_pendiente?.trim() && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-amber-100">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">Tema para retomar</span>
+                          <span className="mt-1 block">{recordatorioPrincipal.bitacora.tema_pendiente}</span>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
