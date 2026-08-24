@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -41,12 +41,19 @@ class Reservacion(Base):
     estado              = Column(String, default="PROGRAMADA")
     creado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     observaciones = Column(String, nullable=True)
+    tipo_actividad = Column(String(30), nullable=False, default="CLASE")
+    fecha_actividad = Column(Date, nullable=True)
+    autorizada_dia_no_lectivo = Column(Boolean, nullable=False, default=False)
+    autorizado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    autorizado_en = Column(DateTime, nullable=True)
+    motivo_autorizacion = Column(String(300), nullable=True)
 
     horario     = relationship("HorarioDisponible", back_populates="reservaciones")
     laboratorio = relationship("Laboratorio", back_populates="reservaciones")
     docente     = relationship("Usuario", back_populates="reservaciones", foreign_keys=[docente_id])
     carga_docente = relationship("CargaDocente")
     periodo = relationship("PeriodoEscolar")
+    autorizado_por = relationship("Usuario", foreign_keys=[autorizado_por_id])
     sesiones    = relationship("SesionClase", back_populates="reservacion")
     solicitudes = relationship("SolicitudConflicto", back_populates="reservacion", cascade="all, delete-orphan")
     requerimiento = relationship("RequerimientoClase", back_populates="reservacion", uselist=False, cascade="all, delete-orphan")

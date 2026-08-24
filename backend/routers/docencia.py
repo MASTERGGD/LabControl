@@ -1,8 +1,20 @@
 import datetime
+import io
+import re
+from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+import openpyxl
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -33,6 +45,10 @@ router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
 MX = ZoneInfo("America/Mexico_City")
 TIPOS = {"CLASE", "TUTORIA", "DESCARGA", "RECESO", "OTRA"}
 ESTADOS_ASISTENCIA = {"PRESENTE", "FALTA", "RETARDO", "JUSTIFICADA"}
+
+
+def _nombre_archivo(valor: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", valor or "reporte").strip("_") or "reporte"
 
 
 def _ahora_mx():
@@ -514,6 +530,24 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "EN_DISPUTA" if any(r.estado == "EN_DISPUTA" for r in reservas_lab)
         else "RESERVADO" if reservas_lab else "SIN_RESERVACION"
     )
+    ahora_local = _ahora_mx()
+    minuto_actual = ahora_local.hour * 60 + ahora_local.minute
+    reservas_programadas = [r for r in reservas_lab if r.estado == "PROGRAMADA"]
+    reserva_en_ventana = next((
+        r for r in reservas_programadas
+        if r.horario
+        and r.horario.dia_semana == ahora_local.weekday()
+        and (
+            (int(r.horario.hora_inicio[:2]) * 60 + int(r.horario.hora_inicio[3:5]) - 15)
+            <= minuto_actual
+            <= (int(r.horario.hora_fin[:2]) * 60 + int(r.horario.hora_fin[3:5]) + 15)
+        )
+    ), None)
+    reserva_operable = (
+        next((r for r in reservas_lab if r.estado == "EN_CURSO"), None)
+        or reserva_en_ventana
+        or next(iter(reservas_programadas), None)
+    )
     return {
         "id": c.id,
         "periodo_id": c.periodo_id,
@@ -539,6 +573,7 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "espacio_nombre": lab.nombre if lab else c.espacio_nombre,
         "laboratorio_id": c.laboratorio_id,
         "estado_reserva_laboratorio": estado_reserva_lab if c.laboratorio_id else None,
+        "reservacion_laboratorio_id": reserva_operable.id if reserva_operable else None,
         "estado": c.estado,
         "observaciones": c.observaciones,
         "puede_iniciar_hoy": (
@@ -1322,6 +1357,25 @@ def iniciar_clase(
     ).first()
     if existente:
         return _serializar_clase(existente)
+    tolerancia = datetime.timedelta(minutes=15)
+    inicio_programado = datetime.datetime.combine(
+        hoy.date(), datetime.time.fromisoformat(carga.hora_inicio), tzinfo=MX,
+    )
+    fin_programado = datetime.datetime.combine(
+        hoy.date(), datetime.time.fromisoformat(carga.hora_fin), tzinfo=MX,
+    )
+    apertura = inicio_programado - tolerancia
+    cierre_ventana = fin_programado + tolerancia
+    if hoy < apertura:
+        raise HTTPException(
+            409,
+            f"Esta clase inicia a las {carga.hora_inicio}. Podrás iniciarla desde las {apertura.strftime('%H:%M')}.",
+        )
+    if hoy > cierre_ventana:
+        raise HTTPException(
+            409,
+            f"La ventana para iniciar esta clase terminó a las {cierre_ventana.strftime('%H:%M')}. Revisa las opciones de clase pendiente.",
+        )
     clase = ClaseDocente(carga_docente_id=carga.id, fecha=hoy.date(), estado="ABIERTA")
     db.add(clase)
     db.flush()
@@ -2166,6 +2220,128 @@ def actualizar_estado_seguimiento(
     registro.atendido_en = datetime.datetime.utcnow() if data.estado in estados_cerrados else None
     db.commit()
     return {"id": registro.id, "estado": registro.estado}
+
+
+@router.get("/seguimiento/{carga_id}/exportar.xlsx")
+def exportar_seguimiento_excel(
+    carga_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Genera el concentrado de asistencia de una materia y grupo del docente."""
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Carga académica no encontrada")
+    cargas = _cargas_equivalentes(db, carga)
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id.in_([item.id for item in cargas]),
+        ClaseDocente.estado == "CERRADA",
+    ).order_by(ClaseDocente.fecha.asc()).all()
+    inscripciones = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).all()
+    alumnos = sorted(
+        [item.alumno for item in inscripciones],
+        key=lambda a: (a.apellido_paterno or "", a.apellido_materno or "", a.nombres or ""),
+    )
+    por_clase = {
+        clase.id: {asistencia.alumno_id: asistencia.estado for asistencia in clase.asistencias}
+        for clase in clases
+    }
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Concentrado"
+    grupo = carga.grupo_academico
+    ws.append(["SIGA · Concentrado de asistencia"])
+    ws.append(["Materia", carga.actividad_nombre, "Grupo", f"{grupo.cuatrimestre}° {grupo.grupo}"])
+    ws.append(["Carrera", grupo.carrera, "Periodo", carga.periodo.clave if carga.periodo else ""])
+    ws.append([])
+    encabezados = ["Matrícula", "Alumno"] + [clase.fecha.strftime("%d/%m/%Y") for clase in clases] + ["P", "F", "R", "J", "% asistencia"]
+    ws.append(encabezados)
+    abreviatura = {"PRESENTE": "P", "FALTA": "F", "RETARDO": "R", "JUSTIFICADA": "J"}
+    for alumno in alumnos:
+        estados = [por_clase[clase.id].get(alumno.id, "") for clase in clases]
+        conteos = {estado: estados.count(estado) for estado in ESTADOS_ASISTENCIA}
+        asistio = conteos["PRESENTE"] + conteos["RETARDO"] + conteos["JUSTIFICADA"]
+        porcentaje = round(asistio * 100 / len(estados), 1) if estados else None
+        nombre = f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+        ws.append([alumno.matricula, nombre] + [abreviatura.get(e, "") for e in estados] + [
+            conteos["PRESENTE"], conteos["FALTA"], conteos["RETARDO"], conteos["JUSTIFICADA"], porcentaje,
+        ])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(2, len(encabezados)))
+    ws["A1"].font = Font(size=16, bold=True, color="FFFFFF")
+    ws["A1"].fill = PatternFill("solid", fgColor="047857")
+    ws["A1"].alignment = Alignment(horizontal="center")
+    for cell in ws[5]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0F766E")
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+    ws.freeze_panes = "C6"
+    ws.auto_filter.ref = f"A5:{get_column_letter(len(encabezados))}{ws.max_row}"
+    ws.column_dimensions["A"].width = 16
+    ws.column_dimensions["B"].width = 38
+    for index in range(3, len(encabezados) + 1):
+        ws.column_dimensions[get_column_letter(index)].width = 12
+    salida = io.BytesIO()
+    wb.save(salida)
+    salida.seek(0)
+    nombre = _nombre_archivo(f"Asistencia_{carga.actividad_nombre}_{grupo.cuatrimestre}_{grupo.grupo}")
+    return StreamingResponse(
+        salida,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"'},
+    )
+
+
+@router.get("/clases/{clase_id}/exportar.pdf")
+def exportar_clase_pdf(
+    clase_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Genera una lista de asistencia imprimible para una sesión docente."""
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    salida = io.BytesIO()
+    doc = SimpleDocTemplate(salida, pagesize=landscape(letter), leftMargin=1.2 * cm, rightMargin=1.2 * cm, topMargin=1.2 * cm, bottomMargin=1.2 * cm)
+    estilos = getSampleStyleSheet()
+    carga = clase.carga
+    serializada = _serializar_clase(clase)
+    materia = escape(carga.actividad_nombre or "—")
+    grupo_texto = escape(serializada["carga"]["grupo"] or "—")
+    docente_texto = escape(carga.docente.nombre if carga.docente else "—")
+    espacio_texto = escape(serializada["carga"]["espacio_nombre"] or "—")
+    contenido = [
+        Paragraph("SIGA · Lista de asistencia", estilos["Title"]),
+        Paragraph(f"<b>Materia:</b> {materia} &nbsp;&nbsp; <b>Grupo:</b> {grupo_texto} &nbsp;&nbsp; <b>Fecha:</b> {clase.fecha.strftime('%d/%m/%Y')}", estilos["Normal"]),
+        Paragraph(f"<b>Docente:</b> {docente_texto} &nbsp;&nbsp; <b>Horario:</b> {carga.hora_inicio}–{carga.hora_fin} &nbsp;&nbsp; <b>Espacio:</b> {espacio_texto}", estilos["Normal"]),
+        Spacer(1, 0.35 * cm),
+    ]
+    filas = [["N.º", "Matrícula", "Alumno", "Estado", "Observación", "Firma"]]
+    for indice, asistencia in enumerate(sorted(clase.asistencias, key=lambda a: (a.alumno.apellido_paterno, a.alumno.nombres)), 1):
+        alumno = asistencia.alumno
+        filas.append([indice, alumno.matricula, f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip(), asistencia.estado, asistencia.observacion or "", ""])
+    tabla = Table(filas, repeatRows=1, colWidths=[1.1 * cm, 2.8 * cm, 7.3 * cm, 2.7 * cm, 7.2 * cm, 4.2 * cm])
+    tabla.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#047857")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#94A3B8")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F1F5F9")]),
+    ]))
+    contenido.extend([tabla, Spacer(1, 0.5 * cm), Paragraph("Firma del docente: ______________________________________________", estilos["Normal"])])
+    doc.build(contenido)
+    salida.seek(0)
+    nombre = _nombre_archivo(f"Lista_{carga.actividad_nombre}_{clase.fecha.isoformat()}")
+    return StreamingResponse(salida, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{nombre}.pdf"'})
 
 
 @router.get("/historial")

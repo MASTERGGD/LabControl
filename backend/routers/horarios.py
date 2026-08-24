@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from database import get_db
@@ -11,6 +12,8 @@ from models.calendario_academico import CalendarioAcademico
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
+from services.calendario_academico import estado_fecha_academica
+from services.timezone import now_mx
 from rls import assert_lab_write, lab_filter
 import datetime
 
@@ -27,6 +30,8 @@ router = APIRouter(prefix="/horarios", tags=["Horarios y Reservaciones"])
 
 # Días de la semana
 DIAS = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado"}
+TIPOS_ACTIVIDAD = {"CLASE", "REPOSICION", "CURSO_EXTRAORDINARIO", "CAPACITACION", "CERTIFICACION", "MANTENIMIENTO", "ACTIVIDAD_INSTITUCIONAL"}
+TIPOS_NO_ACADEMICOS = {"CAPACITACION", "CERTIFICACION", "MANTENIMIENTO", "ACTIVIDAD_INSTITUCIONAL"}
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -65,6 +70,8 @@ class ReservacionCreate(BaseModel):
         description="Cuatrimestre de la materia (1–12)")
     grupo: str    = Field(..., min_length=1, max_length=20)
     observaciones: Optional[str] = None
+    tipo_actividad: str = Field(default="CLASE", max_length=30)
+    fecha_actividad: Optional[datetime.date] = None
     # Requerimientos embebidos (se crean automáticamente si existen)
     req_items:           Optional[List[str]] = None
     req_descripcion:     Optional[str]       = None
@@ -79,6 +86,9 @@ class ReservacionUpdate(BaseModel):
     estado: Optional[str]           = None
     observaciones: Optional[str]    = None
     docente_suplente_id: Optional[int] = None
+
+class AutorizarDiaNoLectivoBody(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=300)
 
 class RequerimientoResolverSchema(BaseModel):
     estado:     str            # CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
@@ -107,7 +117,7 @@ def _serializar_horario(h: HorarioDisponible, db: Session) -> dict:
 
     reservacion_activa = db.query(Reservacion).filter(
         Reservacion.horario_id == h.id,
-        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"])
     ).first()
 
     reservacion_data = None
@@ -310,6 +320,12 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
         "identidad_academica":  _identidad_label(r.materia, r.carrera, r.cuatrimestre_materia, r.grupo),
         "estado":               r.estado,
         "observaciones":        r.observaciones,
+        "tipo_actividad":       r.tipo_actividad or "CLASE",
+        "fecha_actividad":      r.fecha_actividad.isoformat() if r.fecha_actividad else None,
+        "autorizada_dia_no_lectivo": bool(r.autorizada_dia_no_lectivo),
+        "autorizado_por":       r.autorizado_por.nombre if r.autorizado_por else None,
+        "autorizado_en":        r.autorizado_en.isoformat() if r.autorizado_en else None,
+        "motivo_autorizacion":  r.motivo_autorizacion,
         "requerimiento":        _serializar_requerimiento(r.requerimiento) if r.requerimiento else None,
     }
 
@@ -318,15 +334,18 @@ def _verificar_conflicto(
     horario_id: int,
     laboratorio_id: int,
     cuatrimestre: str,
-    excluir_id: Optional[int] = None
+    excluir_id: Optional[int] = None,
+    fecha_actividad: Optional[datetime.date] = None,
 ):
     """Verifica que el slot no esté ya reservado en ese cuatrimestre."""
     q = db.query(Reservacion).filter(
         Reservacion.horario_id == horario_id,
         Reservacion.laboratorio_id == laboratorio_id,
         Reservacion.cuatrimestre == cuatrimestre,
-        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
     )
+    if fecha_actividad:
+        q = q.filter(or_(Reservacion.fecha_actividad == None, Reservacion.fecha_actividad == fecha_actividad))
     if excluir_id:
         q = q.filter(Reservacion.id != excluir_id)
     if q.first():
@@ -600,7 +619,7 @@ def eliminar_horario(
         raise HTTPException(status_code=404, detail="Horario no encontrado")
     reservado = db.query(Reservacion).filter(
         Reservacion.horario_id == horario_id,
-        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"])
     ).first()
     if reservado:
         raise HTTPException(status_code=409, detail="No se puede eliminar: el horario tiene reservaciones activas")
@@ -646,7 +665,7 @@ def disponibilidad(
     for h in horarios:
         reservacion = db.query(Reservacion).filter(
             Reservacion.horario_id == h.id,
-            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
+            Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
 
         mi_solicitud  = None
@@ -813,25 +832,35 @@ def crear_reservacion(
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
-    # ── Identidad académica obligatoria ──────────────────────────────────────
-    faltan = [f for f, v in [
-        ("carrera",              data.carrera),
-        ("cuatrimestre_materia", data.cuatrimestre_materia),
-    ] if not v or not str(v).strip()]
-    if faltan:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"La reservación requiere identidad académica completa. "
-                f"Faltan: {', '.join(faltan)}. "
-                f"Selecciona la materia desde el catálogo para autocompletar estos campos."
-            )
-        )
+    tipo_actividad = (data.tipo_actividad or "CLASE").strip().upper()
+    if tipo_actividad not in TIPOS_ACTIVIDAD:
+        raise HTTPException(422, f"Tipo de actividad no válido. Opciones: {sorted(TIPOS_ACTIVIDAD)}")
+    es_no_academica = tipo_actividad in TIPOS_NO_ACADEMICOS
+    if es_no_academica and not data.fecha_actividad:
+        raise HTTPException(422, "Las actividades institucionales requieren una fecha específica")
 
-    try:
-        cuatrimestre_materia = int(str(data.cuatrimestre_materia).strip())
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=422, detail="El cuatrimestre de la materia no es válido.")
+    # ── Identidad académica obligatoria solo para clases ─────────────────────
+    if not es_no_academica:
+        faltan = [f for f, v in [
+            ("carrera",              data.carrera),
+            ("cuatrimestre_materia", data.cuatrimestre_materia),
+        ] if not v or not str(v).strip()]
+        if faltan:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"La reservación requiere identidad académica completa. "
+                    f"Faltan: {', '.join(faltan)}. "
+                    f"Selecciona la materia desde el catálogo para autocompletar estos campos."
+                )
+            )
+
+    cuatrimestre_materia = None
+    if not es_no_academica:
+        try:
+            cuatrimestre_materia = int(str(data.cuatrimestre_materia).strip())
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="El cuatrimestre de la materia no es válido.")
 
     periodo_buscado = _normalizar_periodo(data.cuatrimestre)
     periodo_academico = next((periodo for periodo in db.query(PeriodoEscolar).filter(
@@ -849,7 +878,7 @@ def crear_reservacion(
         db.add(periodo_academico)
         db.flush()
     grupo_academico = None
-    if periodo_preexistente:
+    if periodo_preexistente and not es_no_academica:
         grupo_academico = db.query(GrupoAcademico).filter(
             GrupoAcademico.periodo_id == periodo_academico.id,
             GrupoAcademico.activo == True,
@@ -870,7 +899,16 @@ def crear_reservacion(
     if not horario:
         raise HTTPException(status_code=404, detail="Horario no encontrado o inactivo")
 
-    _verificar_conflicto(db, data.horario_id, data.laboratorio_id, data.cuatrimestre)
+    if data.fecha_actividad and data.fecha_actividad.weekday() != horario.dia_semana:
+        raise HTTPException(422, f"La fecha seleccionada no corresponde a {DIAS.get(horario.dia_semana)}")
+
+    _verificar_conflicto(db, data.horario_id, data.laboratorio_id, data.cuatrimestre, fecha_actividad=data.fecha_actividad)
+
+    regla_fecha = estado_fecha_academica(db, periodo_academico.id, data.fecha_actividad) if data.fecha_actividad else None
+    requiere_autorizacion = bool(
+        es_no_academica and regla_fecha
+        and (not regla_fecha["permite_iniciar_clase"] or not regla_fecha["requiere_asistencia"])
+    )
 
     # Extraer campos de requerimiento antes de crear la reservación
     req_items           = data.req_items
@@ -883,16 +921,36 @@ def crear_reservacion(
         docente_id=data.docente_id,
         periodo_id=periodo_academico.id,
         materia=data.materia,
-        carrera=data.carrera,
+        carrera=data.carrera or ("INSTITUCIONAL" if es_no_academica else None),
         cuatrimestre=data.cuatrimestre,
-        cuatrimestre_materia=data.cuatrimestre_materia,
-        grupo=grupo_academico.grupo if grupo_academico else data.grupo.strip().upper(),
+        cuatrimestre_materia=data.cuatrimestre_materia or ("N/A" if es_no_academica else None),
+        grupo=grupo_academico.grupo if grupo_academico else (data.grupo.strip().upper() if data.grupo else "INSTITUCIONAL"),
         observaciones=data.observaciones,
-        estado="PROGRAMADA",
+        estado="PENDIENTE_AUTORIZACION" if requiere_autorizacion else "PROGRAMADA",
         creado_por=current_user.id,
+        tipo_actividad=tipo_actividad,
+        fecha_actividad=data.fecha_actividad,
     )
     db.add(r)
     db.flush()  # obtener r.id sin commit
+
+    if requiere_autorizacion:
+        responsables = db.query(Usuario).filter(
+            Usuario.activo == True,
+            or_(
+                Usuario.rol == RolUsuario.SUPER_ADMIN,
+                (Usuario.rol == RolUsuario.LAB_ADMIN) & (Usuario.laboratorio_id == data.laboratorio_id),
+            ),
+        ).all()
+        for responsable in responsables:
+            crear_notificacion(
+                db, responsable.id,
+                tipo="ACTIVIDAD_DIA_NO_LECTIVO",
+                titulo="Actividad de laboratorio por autorizar",
+                mensaje=f"{data.materia} solicita uso del laboratorio el {data.fecha_actividad.isoformat()} en día no lectivo.",
+                url="/admin/reservaciones",
+                enviar_email=False,
+            )
 
     # Crear requerimiento si hay datos
     hay_req = (req_items and len(req_items) > 0) or (req_descripcion and req_descripcion.strip())
@@ -1027,7 +1085,7 @@ def solicitar_slot(
 
     r = db.query(Reservacion).filter(
         Reservacion.id == reservacion_id,
-        Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"])
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"])
     ).first()
     if not r:
         raise HTTPException(status_code=404, detail="Reservación no encontrada o inactiva")
@@ -1475,7 +1533,7 @@ def bloquear_slot(
     if data.cancelar_reservacion:
         r = db.query(Reservacion).filter(
             Reservacion.horario_id == horario_id,
-            Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
+            Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
         if r:
             r.estado = "CANCELADA"
@@ -1618,6 +1676,34 @@ def resolver_requerimiento(
     return _serializar_requerimiento(req)
 
 
+@router.post("/reservaciones/{reservacion_id}/autorizar-dia-no-lectivo", summary="Autorizar actividad institucional en día no lectivo")
+def autorizar_dia_no_lectivo(
+    reservacion_id: int,
+    body: AutorizarDiaNoLectivoBody,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)),
+):
+    reservacion = db.query(Reservacion).filter(Reservacion.id == reservacion_id).first()
+    if not reservacion:
+        raise HTTPException(404, "Reservación no encontrada")
+    assert_lab_write(reservacion.laboratorio_id, current_user)
+    if (reservacion.tipo_actividad or "CLASE") not in TIPOS_NO_ACADEMICOS:
+        raise HTTPException(409, "Solo las actividades institucionales pueden recibir esta autorización")
+    if not reservacion.fecha_actividad:
+        raise HTTPException(409, "La actividad no tiene una fecha específica")
+    regla = estado_fecha_academica(db, reservacion.periodo_id, reservacion.fecha_actividad)
+    if regla["permite_iniciar_clase"] and regla["requiere_asistencia"]:
+        raise HTTPException(409, "La fecha es lectiva y no necesita autorización excepcional")
+    reservacion.autorizada_dia_no_lectivo = True
+    reservacion.autorizado_por_id = current_user.id
+    reservacion.autorizado_en = _utcnow()
+    reservacion.motivo_autorizacion = body.motivo.strip()
+    reservacion.estado = "PROGRAMADA"
+    db.commit()
+    db.refresh(reservacion)
+    return _serializar_reservacion(reservacion, db)
+
+
 # ─── Marcar estado de reservación (IMPARTIDA / NO_ASISTIO / CANCELADA_TARDIA) ──
 
 class MarcarEstadoBody(BaseModel):
@@ -1649,6 +1735,33 @@ def marcar_estado_reservacion(
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
 
     assert_lab_write(res.laboratorio_id, current_user)
+
+    if (res.tipo_actividad or "CLASE") in TIPOS_NO_ACADEMICOS:
+        raise HTTPException(
+            status_code=409,
+            detail="Las actividades institucionales no generan cumplimiento docente ni estados de clase.",
+        )
+
+    # Una fecha que el calendario declara no lectiva no puede producir
+    # incumplimiento docente. La reservación permanece vigente, pero no genera
+    # NO_ASISTIO ni CANCELADA_TARDIA ese día.
+    if body.estado in {"NO_ASISTIO", "CANCELADA_TARDIA"}:
+        periodo_id = res.periodo_id
+        if not periodo_id:
+            periodo_normalizado = _normalizar_periodo(res.cuatrimestre)
+            periodo = next((p for p in db.query(PeriodoEscolar).all()
+                            if _normalizar_periodo(p.clave) == periodo_normalizado), None)
+            periodo_id = periodo.id if periodo else None
+        regla_calendario = estado_fecha_academica(db, periodo_id, now_mx().date())
+        if not regla_calendario["requiere_asistencia"] or not regla_calendario["genera_alertas"]:
+            motivo = regla_calendario["motivo"] or "día no lectivo"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No se puede registrar incumplimiento docente en una fecha "
+                    f"no lectiva: {motivo}. La reservación permanece vigente."
+                ),
+            )
 
     estado_anterior = res.estado
 

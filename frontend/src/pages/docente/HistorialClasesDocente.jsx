@@ -47,6 +47,14 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
   const porcentaje = asistenciaClase(clase);
   const tieneIncidencia = Boolean(clase.bitacora?.incidencias || clase.observacion_general);
   const correcciones = clase.correcciones_asistencia || [];
+  const exportarPdf = async () => {
+    const { data, headers } = await api.get(`/docencia/clases/${clase.id}/exportar.pdf`, { responseType: 'blob' });
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(data);
+    enlace.download = headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1] || `lista_${clase.fecha}.pdf`;
+    enlace.click();
+    URL.revokeObjectURL(enlace.href);
+  };
   return (
     <article className={`border-b border-white/10 transition last:border-b-0 ${abierta ? 'bg-white/[0.035]' : 'hover:bg-white/[0.025]'}`}>
       <button type="button" onClick={onToggle} aria-expanded={abierta} className="grid w-full gap-3 px-4 py-3 text-left md:grid-cols-[130px_minmax(210px,1.25fr)_minmax(180px,1fr)_120px_125px_28px] md:items-center">
@@ -64,7 +72,7 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
             {clase.estado === 'NO_IMPARTIDA'
               ? <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] p-3 text-sm text-red-200"><b>Motivo:</b> {clase.motivo_no_impartida}</div>
               : <div className="grid grid-cols-4 gap-2 text-center">{[['Presentes', r.presente || 0, 'text-emerald-400'], ['Faltas', r.falta || 0, 'text-red-400'], ['Retardos', r.retardo || 0, 'text-amber-400'], ['Justif.', r.justificada || 0, 'text-cyan-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/[0.04] px-2 py-2"><b className={`block ${tone}`}>{value}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>}
-            {clase.estado !== 'NO_IMPARTIDA' && <button onClick={onDetalle} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Ver registro completo</button>}
+            {clase.estado !== 'NO_IMPARTIDA' && <div className="flex flex-col gap-2"><button onClick={onDetalle} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Ver registro completo</button><button onClick={exportarPdf} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300">Descargar lista PDF</button></div>}
           </div>
           {!!correcciones.length && (
             <div className="mt-4 overflow-hidden rounded-xl border border-blue-500/20 bg-blue-500/[0.04]">

@@ -295,7 +295,9 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   const isDay = themeKey === 'day';
   const [form, setForm] = useState({
     materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
+    tipo_actividad: 'CLASE', fecha_actividad: '',
   });
+  const esInstitucional = ['CAPACITACION', 'CERTIFICACION', 'MANTENIMIENTO', 'ACTIVIDAD_INSTITUCIONAL'].includes(form.tipo_actividad);
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
   const [gruposDisponibles, setGruposDisponibles] = useState([]);
@@ -348,9 +350,10 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.materia.trim()) { setError('Escribe o selecciona una materia.'); return; }
-    if (!materiaInfo) { setError('Selecciona una materia del catálogo académico para registrar su identidad.'); return; }
-    if (!form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
+    if (!form.materia.trim()) { setError(esInstitucional ? 'Escribe el nombre de la actividad.' : 'Escribe o selecciona una materia.'); return; }
+    if (!esInstitucional && !materiaInfo) { setError('Selecciona una materia del catálogo académico para registrar su identidad.'); return; }
+    if (!esInstitucional && !form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
+    if (esInstitucional && !form.fecha_actividad) { setError('Selecciona la fecha específica de la actividad.'); return; }
     setSaving(true); setError('');
     const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
     try {
@@ -362,7 +365,9 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
         carrera:              form.carrera   || undefined,
         cuatrimestre:         form.cuatrimestre,
         cuatrimestre_materia: form.cuatrimestre_materia || undefined,
-        grupo:                form.grupo,
+        grupo:                esInstitucional ? 'INSTITUCIONAL' : form.grupo,
+        tipo_actividad:       form.tipo_actividad,
+        fecha_actividad:      esInstitucional ? form.fecha_actividad : undefined,
         req_items:            reqItems.length ? reqItems : undefined,
         req_descripcion:      notaReq.trim() || undefined,
         req_tiene_instalador: checks.software ? tieneInstalador : undefined,
@@ -400,14 +405,21 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           >×</button>
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+          <div>
+            <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Tipo de actividad *</label>
+            <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
+              <option value="CLASE">Clase ordinaria</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
+            </select>
+          </div>
+          {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span></label>}
           {/* Materia */}
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
-              Materia *
-              <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>
+              {esInstitucional ? 'Nombre de la actividad *' : 'Materia *'}
+              {!esInstitucional && <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="font-normal text-xs ml-1">(escribe para buscar en catálogo)</span>}
             </label>
             <div className="[&_input:focus]:ring-green-500">
-              <AutocompleteInput
+              {esInstitucional ? <input className="input-dark w-full" value={materiaQuery} placeholder="Ej. Capacitación de Microsoft 365" onChange={e => { setMateriaQuery(e.target.value); setForm(f => ({ ...f, materia: e.target.value })); }} /> : <AutocompleteInput
                 endpoint="/catalogo/materias/buscar"
                 placeholder="Ej. Bases de Datos, Inglés…"
                 value={materiaQuery}
@@ -428,7 +440,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                     )}
                   </div>
                 )}
-              />
+              />}
             </div>
             {/* Contexto académico autocompletado */}
             {materiaInfo && (materiaInfo.carrera || materiaInfo.cuatrimestre_oficial) && (
@@ -459,14 +471,14 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                 )}
               </div>
             )}
-            {!materiaInfo && form.materia && (
+            {!esInstitucional && !materiaInfo && form.materia && (
               <p className="text-xs text-amber-500 mt-1">⚠️ Selecciona una opción del catálogo para registrar carrera y cuatrimestre.</p>
             )}
             <input type="text" required className="sr-only" value={form.materia} readOnly tabIndex={-1} />
           </div>
 
           {/* Grupo */}
-          <div>
+          {!esInstitucional && <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Grupo *</label>
             <select
               required
@@ -485,7 +497,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             {materiaInfo && !cargandoGrupos && !gruposDisponibles.length && (
               <p className="mt-1 text-xs text-amber-500">No existe un grupo activo para esta carrera, cuatrimestre y periodo.</p>
             )}
-          </div>
+          </div>}
 
           {/* ── Requerimientos ── */}
           <div

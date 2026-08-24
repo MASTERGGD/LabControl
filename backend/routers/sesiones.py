@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from services.auditoria import registrar, Accion, Recurso
@@ -9,6 +9,7 @@ from models.horario import Reservacion, HorarioDisponible
 from models.laboratorio import Laboratorio, Computadora
 from models.usuario import Usuario, RolUsuario
 from models.catalogo import CatalogoAlumno, PeriodoEscolar
+from models.docencia import ClaseDocente
 from dependencies import get_current_user, require_roles, crear_access_token, decodificar_token
 from jose import JWTError
 from permissions import require_permission
@@ -91,6 +92,13 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
     total_alumnos = db.query(AsignacionPC).filter(
         AsignacionPC.sesion_id == s.id
     ).count()
+    clase_docente_id = None
+    if s.reservacion_id and s.reservacion and s.reservacion.carga_docente_id:
+        clase = db.query(ClaseDocente).filter(
+            ClaseDocente.carga_docente_id == s.reservacion.carga_docente_id,
+            ClaseDocente.fecha == now_mx().date(),
+        ).first()
+        clase_docente_id = clase.id if clase else None
 
     # Calcular tiempo restante (en segundos) o exceso si está abierta
     ahora = _utcnow()
@@ -122,6 +130,7 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
         "total_alumnos": total_alumnos,
         "observacion_general": s.observacion_general,
         "reservacion_id": s.reservacion_id,
+        "clase_docente_id": clase_docente_id,
         "overtime_min": s.overtime_min or 0,
         "tiempo_restante_seg": tiempo_restante_seg,
         "en_overtime": en_overtime,
@@ -324,6 +333,7 @@ def sesiones_activas(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Abrir sesión de clase")
 async def abrir_sesion(
     request: Request,
+    response: Response,
     data: SesionCreate,
     db: Session = Depends(get_db),
     # RBAC: solo SUPER_ADMIN, LAB_ADMIN y DOCENTE pueden abrir sesiones
@@ -335,6 +345,19 @@ async def abrir_sesion(
     dia_mx    = ahora_mx.weekday()              # 0=lun … 6=dom
     hora_mx   = ahora_mx.strftime("%H:%M")      # "07:00"
     TOLERANCIA = datetime.timedelta(minutes=15)
+
+    # Un reintento de la misma reservación recupera la sesión abierta. Esto
+    # permite que el inicio integrado sea seguro ante doble clic o recarga.
+    if data.reservacion_id:
+        existente = db.query(SesionClase).filter(
+            SesionClase.reservacion_id == data.reservacion_id,
+            SesionClase.estado == "ABIERTA",
+        ).first()
+        if existente:
+            if current_user.rol == RolUsuario.DOCENTE and existente.docente_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Esta sesión pertenece a otro docente")
+            response.status_code = status.HTTP_200_OK
+            return _serializar_sesion(existente, db)
 
     # Solo un docente puede tener una sesión abierta a la vez
     if current_user.rol == RolUsuario.DOCENTE:
@@ -380,11 +403,17 @@ async def abrir_sesion(
                 periodo_id = periodo.id if periodo else None
             regla_calendario = estado_fecha_academica(db, periodo_id, ahora_mx.date())
             if not regla_calendario["permite_iniciar_clase"]:
-                motivo = regla_calendario["motivo"] or "día no lectivo"
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"La reserva sigue vigente, pero hoy no genera sesión por el calendario escolar: {motivo}.",
-                )
+                es_institucional = (res.tipo_actividad or "CLASE") in {
+                    "CAPACITACION", "CERTIFICACION", "MANTENIMIENTO", "ACTIVIDAD_INSTITUCIONAL",
+                }
+                if not (es_institucional and res.autorizada_dia_no_lectivo):
+                    motivo = regla_calendario["motivo"] or "día no lectivo"
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"La reserva sigue vigente, pero hoy no genera sesión por el calendario escolar: {motivo}.",
+                    )
+            if res.fecha_actividad and res.fecha_actividad != ahora_mx.date():
+                raise HTTPException(409, f"Esta actividad está autorizada únicamente para el {res.fecha_actividad.isoformat()}.")
 
             # Solo el docente titular (o suplente) puede iniciarla
             es_titular  = res.docente_id == current_user.id
@@ -448,6 +477,27 @@ async def abrir_sesion(
                     )
 
         else:
+            # Las sesiones sin reservación también son uso docente del
+            # laboratorio y deben respetar el calendario del periodo vigente.
+            periodo_actual = db.query(PeriodoEscolar).filter(
+                PeriodoEscolar.activo == True,
+                PeriodoEscolar.es_actual == True,
+            ).order_by(PeriodoEscolar.id.desc()).first()
+            regla_calendario = estado_fecha_academica(
+                db,
+                periodo_actual.id if periodo_actual else None,
+                ahora_mx.date(),
+            )
+            if not regla_calendario["permite_iniciar_clase"]:
+                motivo = regla_calendario["motivo"] or "día no lectivo"
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Hoy no se puede iniciar una sesión docente de laboratorio "
+                        f"por el calendario escolar: {motivo}."
+                    ),
+                )
+
             # ── Verificar que no haya reservación vigente de otro ──
             # Buscar si hay alguna reservación activa de OTRO docente en este lab en este slot horario
             reservaciones_lab = (
@@ -498,7 +548,11 @@ async def abrir_sesion(
         raise HTTPException(status_code=422, detail="tipo_sesion debe ser CLASE o LIBRE")
 
     # Determinar tipo: respetar LIBRE explícito; si no, CLASE si tiene materia+grupo o reservación.
-    es_libre = tipo_solicitado == "LIBRE" or (not data.reservacion_id and not (data.materia and data.grupo))
+    reservacion_no_academica = bool(
+        data.reservacion_id
+        and (res.tipo_actividad or "CLASE") in {"CAPACITACION", "CERTIFICACION", "MANTENIMIENTO", "ACTIVIDAD_INSTITUCIONAL"}
+    )
+    es_libre = reservacion_no_academica or tipo_solicitado == "LIBRE" or (not data.reservacion_id and not (data.materia and data.grupo))
     tipo_sesion = "LIBRE" if es_libre else "CLASE"
 
     # Identidad académica: heredar de la reservación si viene de una; si no, usar lo enviado

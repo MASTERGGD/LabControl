@@ -312,6 +312,8 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
   const [estadoCumplimiento, setEstadoCumplimiento] = useState('IMPARTIDA');
   const [motivoCumplimiento, setMotivoCumplimiento] = useState('');
   const [marcando, setMarcando] = useState(false);
+  const [motivoAutorizacion, setMotivoAutorizacion] = useState('');
+  const [autorizando, setAutorizando] = useState(false);
   const r = slot.reservacion;
   const haySolicitud = slot.solicitudes_n > 0;
 
@@ -357,6 +359,17 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
     }
   };
 
+  const handleAutorizar = async () => {
+    if (motivoAutorizacion.trim().length < 5) return;
+    setAutorizando(true); setError('');
+    try {
+      await api.post(`/horarios/reservaciones/${r.id}/autorizar-dia-no-lectivo`, { motivo: motivoAutorizacion.trim() });
+      onGuardado(); onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo autorizar la actividad');
+    } finally { setAutorizando(false); }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-sm rounded-2xl overflow-hidden shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
@@ -369,6 +382,8 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
         </div>
         <div className="p-5 space-y-3">
           <div className="glass-sm rounded-xl p-4 space-y-2 text-sm" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>
+            <p><span className="text-slate-400">Tipo:</span> <span className="font-semibold text-white ml-2">{(r.tipo_actividad || 'CLASE').replaceAll('_', ' ')}</span></p>
+            {r.fecha_actividad && <p><span className="text-slate-400">Fecha:</span> <span className="text-slate-200 ml-2">{r.fecha_actividad}</span></p>}
             <p><span className="text-slate-400">Materia:</span> <span className="font-semibold text-white ml-2">{r.materia}</span></p>
             {(r.carrera || r.cuatrimestre_materia) && (
               <div className="flex flex-wrap gap-1.5 ml-1">
@@ -387,6 +402,14 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
             <p><span className="text-slate-400">Grupo:</span> <span className="text-slate-200 ml-2">{r.grupo}</span></p>
             <p><span className="text-slate-400">Cuatrimestre:</span> <span className="text-slate-200 ml-2">{r.cuatrimestre}</span></p>
           </div>
+
+          {esAdmin && r.estado === 'PENDIENTE_AUTORIZACION' && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+              <div><p className="text-sm font-semibold text-amber-300">Actividad en día no lectivo</p><p className="mt-1 text-xs text-slate-400">Autoriza únicamente si corresponde a una actividad institucional válida.</p></div>
+              <textarea rows={2} value={motivoAutorizacion} onChange={e => setMotivoAutorizacion(e.target.value)} className="input-dark w-full" placeholder="Motivo y fundamento de la autorización" />
+              <button type="button" disabled={autorizando || motivoAutorizacion.trim().length < 5} onClick={handleAutorizar} className="w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{autorizando ? 'Autorizando…' : 'Autorizar uso excepcional'}</button>
+            </div>
+          )}
 
           {/* Requerimientos registrados (nuevo modelo) */}
           {r.requerimiento && <RequerimientoPanel req={r.requerimiento} />}

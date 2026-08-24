@@ -16,6 +16,7 @@ Helper público:
 import datetime
 import logging
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 
 def _utcnow() -> datetime.datetime:
@@ -34,6 +35,7 @@ from models.sesion import SesionClase
 from models.horario import Reservacion
 from models.laboratorio import Laboratorio
 from models.comunicado import Comunicado, ComunicadoRespuesta, ComunicadoRespuestaMensaje
+from models.docencia import CargaDocente, ClaseDocente
 from services.email import enviar_notificacion
 
 logger = logging.getLogger("labcontrol.notificaciones")
@@ -339,7 +341,37 @@ def verificar_eventos(
                 )
                 generadas += 1
 
-    # 5. Seguimientos de comunicados dirigidos al usuario actual.
+    # ── 5. Capturas docentes sin cerrar ─────────────────────────────────────
+    if current_user.rol in {RolUsuario.DOCENTE, RolUsuario.SUPER_ADMIN}:
+        hoy_local = datetime.datetime.now(ZoneInfo("America/Mexico_City")).date()
+        abiertas = (
+            db.query(ClaseDocente)
+            .join(CargaDocente)
+            .filter(
+                CargaDocente.docente_id == current_user.id,
+                ClaseDocente.estado.in_(["ABIERTA", "CORRECCION"]),
+                ClaseDocente.fecha <= hoy_local,
+            )
+            .order_by(ClaseDocente.fecha.asc())
+            .all()
+        )
+        if abiertas:
+            ids = ",".join(str(clase.id) for clase in abiertas)
+            referencia = f"Clases abiertas: {ids}"
+            if not _ya_notificado(current_user.id, "ASISTENCIA_PENDIENTE", referencia, horas=20):
+                primera = abiertas[0]
+                crear_notificacion(
+                    db,
+                    current_user.id,
+                    tipo="ASISTENCIA_PENDIENTE",
+                    titulo=f"{len(abiertas)} asistencia(s) sin cerrar",
+                    mensaje=f"{referencia}. Concluye la captura para evitar registros extemporáneos.",
+                    url=f"/docente/clase/{primera.id}",
+                    enviar_email=False,
+                )
+                generadas += 1
+
+    # 6. Seguimientos de comunicados dirigidos al usuario actual.
     #    Sirve como respaldo si el comentario se guardo, pero la notificacion
     #    no se genero en el momento por una version anterior o un fallo puntual.
     hace_30_dias = ahora - datetime.timedelta(days=30)

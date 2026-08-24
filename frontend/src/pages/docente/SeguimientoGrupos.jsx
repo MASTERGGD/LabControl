@@ -67,6 +67,20 @@ export default function SeguimientoGrupos() {
 
   const cargaActual = useMemo(() => cargas.find((c) => String(c.id) === seleccion), [cargas, seleccion]);
 
+  const exportarConcentrado = async () => {
+    try {
+      const { data, headers } = await api.get(`/docencia/seguimiento/${seleccion}/exportar.xlsx`, { responseType: 'blob' });
+      const enlace = document.createElement('a');
+      enlace.href = URL.createObjectURL(data);
+      const indicado = headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1];
+      enlace.download = indicado || 'concentrado_asistencia.xlsx';
+      enlace.click();
+      URL.revokeObjectURL(enlace.href);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo generar el concentrado de asistencia.');
+    }
+  };
+
   const abrirJustificacion = (alumno) => {
     const hoy = new Date();
     const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
@@ -154,9 +168,10 @@ export default function SeguimientoGrupos() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Seguimiento de grupos</h1>
-          <p className="text-sm text-slate-400">Consulta asistencias por materia, detecta faltas recurrentes y revisa sesiones anteriores.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h1 className="text-2xl font-bold text-white">Seguimiento de grupos</h1>
+          <p className="text-sm text-slate-400">Consulta asistencias por materia, detecta faltas recurrentes y revisa sesiones anteriores.</p></div>
+          {seleccion && <button onClick={exportarConcentrado} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300">Exportar concentrado Excel</button>}
         </div>
         <div className="glass rounded-2xl p-4">
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Periodo escolar</label>
@@ -205,7 +220,28 @@ export default function SeguimientoGrupos() {
                 </div>
               </div>
             )}
-            <div className="glass overflow-x-auto rounded-2xl">
+            <div className="space-y-3 md:hidden">
+              <div className="glass rounded-2xl px-4 py-3"><h2 className="font-semibold text-white">{cargaActual?.actividad_nombre}</h2><p className="text-xs text-slate-400">{cargaActual?.grupo} · {cargaActual?.carrera}</p></div>
+              {datos.alumnos.map((a) => (
+                <article key={a.alumno_id} className="glass rounded-2xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><p className="truncate font-semibold text-white">{a.nombre}</p><p className="text-xs text-slate-500">{a.matricula}</p></div>
+                    <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${a.porcentaje_asistencia < 80 ? 'bg-red-500/15 text-red-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{a.porcentaje_asistencia}%</span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
+                    {[['Presentes', a.presente, 'text-emerald-400'], ['Faltas', a.falta, 'text-red-400'], ['Retardos', a.retardo, 'text-amber-400'], ['Justif.', a.justificada, 'text-blue-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/5 p-2"><b className={`block text-base ${tone}`}>{value}</b><span className="text-[10px] text-slate-500">{label}</span></div>)}
+                  </div>
+                  <div className="mt-3 rounded-xl bg-white/[0.025] p-3">
+                    {a.alertas?.length ? a.alertas.map((alerta) => <div key={alerta.tipo} className="mb-2 last:mb-0"><p className="text-xs font-semibold text-red-300">{alerta.mensaje}</p><p className="text-xs text-slate-400">{alerta.accion}</p></div>) : <p className="text-xs text-emerald-400">Sin alertas activas</p>}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {esPeriodoActual && a.falta > 0 ? <button onClick={() => abrirJustificacion(a)} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-300">Justificar faltas</button> : <span />}
+                    <button onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300">Ver ficha →</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="glass hidden overflow-x-auto rounded-2xl md:block">
               <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold text-white">{cargaActual?.actividad_nombre}</h2><p className="text-xs text-slate-400">{cargaActual?.grupo} · {cargaActual?.carrera}</p></div>
               <table className="w-full min-w-[980px] text-left text-sm">
                 <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Alertas y acción sugerida</th><th></th></tr></thead>

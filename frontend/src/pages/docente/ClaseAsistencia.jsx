@@ -22,6 +22,7 @@ export default function ClaseAsistencia() {
   const [modal, setModal] = useState(null);
   const [texto, setTexto] = useState('');
   const [justificacionActual, setJustificacionActual] = useState(null);
+  const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
   const [bitacora, setBitacora] = useState({
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
     tarea_asignada: '', incidencias: '', incidencia_tipo: '',
@@ -108,6 +109,7 @@ export default function ClaseAsistencia() {
     }
   };
   const abrirCierre = () => {
+    setAsistenciaRevisada(clase.estado === 'CORRECCION');
     setTexto(clase.observacion_general || '');
     setBitacora({
       tema_impartido: clase.bitacora?.tema_impartido || '',
@@ -336,12 +338,26 @@ export default function ClaseAsistencia() {
                       </div>
                     </div>
                   </details>
+                  {clase.estado !== 'CORRECCION' && (
+                    <label className="flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-4 text-sm text-slate-200 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={asistenciaRevisada}
+                        onChange={(e) => setAsistenciaRevisada(e.target.checked)}
+                        className="mt-0.5 h-5 w-5 shrink-0 accent-emerald-500"
+                      />
+                      <span>
+                        <b className="block text-emerald-300">Confirmo que revisé la asistencia del grupo</b>
+                        Verifiqué los {r.total} registros: {r.presente} presentes, {r.falta} faltas, {r.retardo} retardos y {r.justificada} justificadas.
+                      </span>
+                    </label>
+                  )}
                   <p className="text-xs text-slate-500 sm:col-span-2">* Campo obligatorio. Los demás campos pueden dejarse vacíos.</p>
                 </div>
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setModal(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
-                <button disabled={cerrando || (modal === 'justificar' ? texto.trim().length < 5 : modal !== 'corregir' && !bitacora.tema_impartido.trim())} onClick={modal === 'justificar' ? guardarJustificacionActual : modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'justificar' ? 'bg-blue-600' : modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                <button disabled={cerrando || (modal === 'justificar' ? texto.trim().length < 5 : modal !== 'corregir' && (!bitacora.tema_impartido.trim() || (clase.estado !== 'CORRECCION' && !asistenciaRevisada)))} onClick={modal === 'justificar' ? guardarJustificacionActual : modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'justificar' ? 'bg-blue-600' : modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
                   {cerrando ? 'Guardando...' : modal === 'justificar' ? 'Justificar esta sesión' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar y guardar'}
                 </button>
               </div>

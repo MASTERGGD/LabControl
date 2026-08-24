@@ -48,6 +48,21 @@ const estadoActividad = (item, minutoActual) => {
   return 'PENDIENTE';
 };
 
+const puedeIniciarActividad = (item, minutoActual) => (
+  Boolean(item?.clase_id)
+  || (
+    minutoActual >= minutosDeHora(item?.hora_inicio) - 15
+    && minutoActual <= minutosDeHora(item?.hora_fin) + 15
+  )
+);
+
+const textoVentanaInicio = (item) => {
+  const apertura = minutosDeHora(item?.hora_inicio) - 15;
+  const horas = Math.floor(apertura / 60);
+  const minutos = apertura % 60;
+  return `Disponible a las ${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
+};
+
 function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose, onGuardada }) {
   const navigate = useNavigate();
   const [form, setForm] = useState(actividad ? {
@@ -501,10 +516,24 @@ export default function MiHorarioDocente() {
       setRetirando(false);
     }
   };
-  const iniciar = async (id) => {
+  const iniciar = async (item) => {
     try {
-      const { data } = await api.post(`/docencia/horario/${id}/iniciar`);
-      navigate(`/docente/clase/${data.id}`);
+      const clase = item.clase_id
+        ? { id: item.clase_id }
+        : (await api.post(`/docencia/horario/${item.id}/iniciar`)).data;
+      if (item.laboratorio_id && item.estado_reserva_laboratorio === 'RESERVADO' && item.reservacion_laboratorio_id) {
+        const [horaInicio, minutoInicio] = item.hora_inicio.split(':').map(Number);
+        const [horaFin, minutoFin] = item.hora_fin.split(':').map(Number);
+        const duracion = Math.max(15, Math.min(300, ((horaFin * 60) + minutoFin) - ((horaInicio * 60) + minutoInicio)));
+        const { data: sesion } = await api.post('/sesiones', {
+          laboratorio_id: item.laboratorio_id,
+          reservacion_id: item.reservacion_laboratorio_id,
+          fin_estimado_min: duracion,
+        });
+        navigate(`/docente/sesion/${sesion.id}`, { state: { claseDocenteId: clase.id } });
+        return;
+      }
+      navigate(`/docente/clase/${clase.id}`);
     } catch (err) {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
@@ -583,6 +612,9 @@ export default function MiHorarioDocente() {
     || agendaHoy.at(-1)
   );
   const estadoPrincipal = actividadPrincipal?.estadoDia;
+  const puedeIniciarPrincipal = actividadPrincipal
+    ? puedeIniciarActividad(actividadPrincipal, minutoActual)
+    : false;
   const tituloPrincipal = estadoPrincipal === 'EN_CURSO'
     ? 'Clase en curso'
     : estadoPrincipal === 'NO_LECTIVA'
@@ -597,7 +629,9 @@ export default function MiHorarioDocente() {
       ? 'Ver o corregir asistencia'
       : item.clase_id
         ? 'Continuar clase'
-        : 'Iniciar clase'
+        : item.estado_reserva_laboratorio === 'RESERVADO'
+          ? 'Iniciar clase en laboratorio'
+          : 'Iniciar clase'
   );
   const abrirClase = async (item) => {
     if (item.es_reposicion && item.clase_estado === 'PROGRAMADA') {
@@ -605,8 +639,8 @@ export default function MiHorarioDocente() {
         const { data } = await api.post(`/docencia/reposiciones/${item.clase_id}/iniciar`);
         navigate(`/docente/clase/${data.id}`);
       } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo iniciar la reposición.'); }
-    } else if (item.clase_id) navigate(`/docente/clase/${item.clase_id}`);
-    else iniciar(item.id);
+    } else if (item.clase_estado === 'CERRADA') navigate(`/docente/clase/${item.clase_id}`);
+    else iniciar(item);
   };
   const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
 
@@ -687,8 +721,13 @@ export default function MiHorarioDocente() {
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 {actividadPrincipal.tipo_actividad === 'CLASE' && !esNoLectiva(actividadPrincipal) && (
-                  <button onClick={() => abrirClase(actividadPrincipal)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">
-                    {textoAccionClase(actividadPrincipal)}
+                  <button
+                    onClick={() => abrirClase(actividadPrincipal)}
+                    disabled={!puedeIniciarPrincipal}
+                    title={!puedeIniciarPrincipal ? 'La clase puede iniciarse desde 15 minutos antes de su horario.' : ''}
+                    className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                  >
+                    {puedeIniciarPrincipal ? textoAccionClase(actividadPrincipal) : textoVentanaInicio(actividadPrincipal)}
                   </button>
                 )}
                 {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (
@@ -856,6 +895,7 @@ export default function MiHorarioDocente() {
               <ol className="space-y-2">
                 {agendaHoy.map((item) => {
                   const destacada = item.id === actividadPrincipal.id;
+                  const puedeIniciarItem = puedeIniciarActividad(item, minutoActual);
                   const etiqueta = {
                     FINALIZADA: 'Finalizada',
                     EN_CURSO: 'En curso',
@@ -884,8 +924,16 @@ export default function MiHorarioDocente() {
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
                           {item.tipo_actividad === 'CLASE' && !esNoLectiva(item) && (
-                            <button onClick={() => abrirClase(item)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">
-                              {textoAccionClase(item)}
+                            <button
+                              onClick={() => abrirClase(item)}
+                              disabled={!puedeIniciarItem}
+                              className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                            >
+                              {puedeIniciarItem
+                                ? textoAccionClase(item)
+                                : item.estadoDia === 'PROXIMA'
+                                  ? textoVentanaInicio(item)
+                                  : 'Ventana de inicio finalizada'}
                             </button>
                           )}
                           {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion`)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Iniciar tutoría</button>}

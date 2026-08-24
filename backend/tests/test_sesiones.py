@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import routers.sesiones as sesiones_router
+import routers.horarios as horarios_router
 from tests.conftest import get_token, auth_headers
 from models.usuario import RolUsuario
 from dependencies import hashear_password
@@ -21,6 +22,7 @@ from models.catalogo import CatalogoAlumno, PeriodoEscolar
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
 from models.horario import HorarioDisponible, Reservacion
 from models.laboratorio import Computadora
+from models.cumplimiento import EventoCumplimiento
 
 
 class TestSesiones:
@@ -271,3 +273,134 @@ class TestSesiones:
         assert "Suspensión oficial" in respuesta.json()["detail"]
         db.refresh(reserva)
         assert reserva.estado == "PROGRAMADA"
+
+    def test_sesion_docente_sin_reserva_respeta_periodo_vacacional(
+        self, client, db, admin_user, docente_user, lab, monkeypatch,
+    ):
+        fecha = datetime.date(2026, 8, 24)
+        ahora = datetime.datetime(2026, 8, 24, 10, 0, tzinfo=ZoneInfo("America/Mexico_City"))
+        monkeypatch.setattr(sesiones_router, "now_mx", lambda: ahora)
+        periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+        db.add(periodo); db.flush()
+        calendario = CalendarioAcademico(
+            periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin_user.id,
+        )
+        db.add(calendario); db.flush()
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, titulo="Periodo vacacional", tipo="VACACIONES",
+            fecha_inicio=fecha, fecha_fin=fecha, requiere_asistencia=False,
+            permite_iniciar_clase=False, genera_alertas=False, creado_por_id=admin_user.id,
+        ))
+        db.commit()
+        token = get_token(client, "docente@test.com", "DocentePass123")
+
+        respuesta = self._abrir_sesion(client, token, lab.id)
+
+        assert respuesta.status_code == 409
+        assert "Periodo vacacional" in respuesta.json()["detail"]
+
+    def test_no_asistio_no_se_registra_en_fecha_no_lectiva(
+        self, client, db, admin_user, docente_user, lab, monkeypatch,
+    ):
+        fecha = datetime.date(2026, 8, 24)
+        ahora = datetime.datetime(2026, 8, 24, 10, 0, tzinfo=ZoneInfo("America/Mexico_City"))
+        monkeypatch.setattr(horarios_router, "now_mx", lambda: ahora)
+        periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+        db.add(periodo); db.flush()
+        calendario = CalendarioAcademico(
+            periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin_user.id,
+        )
+        db.add(calendario); db.flush()
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, titulo="Periodo vacacional", tipo="VACACIONES",
+            fecha_inicio=fecha, fecha_fin=fecha, requiere_asistencia=False,
+            permite_iniciar_clase=False, genera_alertas=False, creado_por_id=admin_user.id,
+        ))
+        horario = HorarioDisponible(
+            laboratorio_id=lab.id, dia_semana=0, hora_inicio="10:00", hora_fin="11:00",
+            cuatrimestre="MAY-AGO-2026", activo=True,
+        )
+        db.add(horario); db.flush()
+        reserva = Reservacion(
+            horario_id=horario.id, laboratorio_id=lab.id, docente_id=docente_user.id,
+            periodo_id=periodo.id, materia="Programación", carrera="IDGS",
+            cuatrimestre="MAY-AGO-2026", cuatrimestre_materia="3", grupo="A",
+            estado="PROGRAMADA", creado_por=admin_user.id,
+        )
+        db.add(reserva); db.commit()
+        token = get_token(client, "admin@test.com", "AdminPass123")
+
+        respuesta = client.post(
+            f"/horarios/reservaciones/{reserva.id}/marcar-estado",
+            headers=auth_headers(token),
+            json={"estado": "NO_ASISTIO", "motivo": "No se presentó"},
+        )
+
+        assert respuesta.status_code == 409
+        assert "Periodo vacacional" in respuesta.json()["detail"]
+        assert db.query(EventoCumplimiento).count() == 0
+        db.refresh(reserva)
+        assert reserva.estado == "PROGRAMADA"
+
+    def test_capacitacion_autorizada_puede_iniciar_en_dia_no_lectivo(
+        self, client, db, admin_user, docente_user, lab, monkeypatch,
+    ):
+        fecha = datetime.date(2026, 8, 24)
+        ahora = datetime.datetime(2026, 8, 24, 10, 30, tzinfo=ZoneInfo("America/Mexico_City"))
+        monkeypatch.setattr(sesiones_router, "now_mx", lambda: ahora)
+        periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+        db.add(periodo); db.flush()
+        calendario = CalendarioAcademico(periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin_user.id)
+        db.add(calendario); db.flush()
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, titulo="Periodo vacacional", tipo="VACACIONES",
+            fecha_inicio=fecha, fecha_fin=fecha, requiere_asistencia=False,
+            permite_iniciar_clase=False, genera_alertas=False, creado_por_id=admin_user.id,
+        ))
+        horario = HorarioDisponible(
+            laboratorio_id=lab.id, dia_semana=0, hora_inicio="10:00", hora_fin="11:00",
+            cuatrimestre="MAY-AGO-2026", activo=True,
+        )
+        db.add(horario); db.commit()
+        docente_token = get_token(client, "docente@test.com", "DocentePass123")
+        admin_token = get_token(client, "admin@test.com", "AdminPass123")
+
+        creada = client.post("/horarios/reservaciones", headers=auth_headers(docente_token), json={
+            "horario_id": horario.id, "laboratorio_id": lab.id, "docente_id": docente_user.id,
+            "materia": "Capacitación de Microsoft 365", "cuatrimestre": "MAY-AGO-2026",
+            "grupo": "INSTITUCIONAL", "tipo_actividad": "CAPACITACION",
+            "fecha_actividad": fecha.isoformat(),
+        })
+        assert creada.status_code == 201, creada.text
+        assert creada.json()["estado"] == "PENDIENTE_AUTORIZACION"
+
+        bloqueada = client.post("/sesiones", headers=auth_headers(docente_token), json={
+            "laboratorio_id": lab.id, "reservacion_id": creada.json()["id"],
+        })
+        assert bloqueada.status_code == 409
+
+        autorizada = client.post(
+            f"/horarios/reservaciones/{creada.json()['id']}/autorizar-dia-no-lectivo",
+            headers=auth_headers(admin_token), json={"motivo": "Capacitación institucional autorizada"},
+        )
+        assert autorizada.status_code == 200, autorizada.text
+        assert autorizada.json()["autorizada_dia_no_lectivo"] is True
+
+        iniciada = client.post("/sesiones", headers=auth_headers(docente_token), json={
+            "laboratorio_id": lab.id, "reservacion_id": creada.json()["id"],
+        })
+        assert iniciada.status_code == 201, iniciada.text
+        assert iniciada.json()["tipo_sesion"] == "LIBRE"
+
+        reintento = client.post("/sesiones", headers=auth_headers(docente_token), json={
+            "laboratorio_id": lab.id, "reservacion_id": creada.json()["id"],
+        })
+        assert reintento.status_code == 200, reintento.text
+        assert reintento.json()["id"] == iniciada.json()["id"]
+
+        cumplimiento = client.post(
+            f"/horarios/reservaciones/{creada.json()['id']}/marcar-estado",
+            headers=auth_headers(admin_token), json={"estado": "IMPARTIDA"},
+        )
+        assert cumplimiento.status_code == 409
+        assert db.query(EventoCumplimiento).count() == 0

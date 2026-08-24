@@ -2028,8 +2028,17 @@ export default function SesionActiva() {
               isDay ? 'bg-blue-700 hover:bg-blue-800 text-white shadow-sm' : 'bg-blue-700 hover:bg-blue-600 text-white'
             }`}
             style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#1d4ed8', border: '1px solid #1e40af' } : { color: '#ffffff' }) }}>
-            Asistencia
+            Control del laboratorio
           </button>
+          {esDocente && sesion.clase_docente_id && (
+            <button onClick={() => navigate(`/docente/clase/${sesion.clase_docente_id}`)}
+              className={`rounded-lg text-xs font-semibold transition-colors ${
+                isDay ? 'bg-indigo-700 hover:bg-indigo-800 text-white shadow-sm' : 'bg-indigo-700 hover:bg-indigo-600 text-white'
+              }`}
+              style={{ padding: '6px 16px', ...(isDay ? { color: '#ffffff', backgroundColor: '#4338ca', border: '1px solid #3730a3' } : { color: '#ffffff' }) }}>
+              Pase de lista oficial
+            </button>
+          )}
           <button onClick={() => setModalObs({})}
             className={`rounded-lg text-xs font-semibold transition-colors ${
               isDay ? 'bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 shadow-sm' : 'bg-yellow-700 hover:bg-yellow-600 text-white'

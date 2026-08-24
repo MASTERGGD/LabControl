@@ -20,7 +20,11 @@ from models.tutoria import GrupoTutorado
 from tests.conftest import auth_headers, get_token
 
 
-def test_flujo_horario_clase_y_asistencia(client, db):
+def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
+    reloj = {
+        "ahora": datetime.datetime(2026, 8, 24, 7, 30, tzinfo=ZoneInfo("America/Mexico_City")),
+    }
+    monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: reloj["ahora"])
     docente = Usuario(
         nombre="Docente Horario",
         email="docencia@test.mx",
@@ -44,7 +48,7 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     db.add(laboratorio)
     db.flush()
     db.add(HorarioDisponible(
-        laboratorio_id=laboratorio.id, dia_semana=datetime.datetime.now(ZoneInfo("America/Mexico_City")).weekday(),
+        laboratorio_id=laboratorio.id, dia_semana=reloj["ahora"].weekday(),
         hora_inicio="08:00", hora_fin="09:00", cuatrimestre="MAY-AGO-2026", activo=True,
     ))
     alumnos = [
@@ -65,7 +69,7 @@ def test_flujo_horario_clase_y_asistencia(client, db):
 
     token = get_token(client, docente.email, "Docente123!")
     headers = auth_headers(token)
-    dia_hoy = datetime.datetime.now(ZoneInfo("America/Mexico_City")).weekday()
+    dia_hoy = reloj["ahora"].weekday()
     payload = {
         "periodo_id": periodo.id,
         "grupo_academico_id": grupo.id,
@@ -111,6 +115,11 @@ def test_flujo_horario_clase_y_asistencia(client, db):
     )
     assert solapada.status_code == 409
 
+    anticipada = client.post(f"/docencia/horario/{carga_id}/iniciar", headers=headers)
+    assert anticipada.status_code == 409
+    assert "desde las 07:45" in anticipada.json()["detail"]
+
+    reloj["ahora"] = reloj["ahora"].replace(hour=8, minute=30)
     iniciada = client.post(f"/docencia/horario/{carga_id}/iniciar", headers=headers)
     assert iniciada.status_code == 200, iniciada.text
     clase = iniciada.json()
