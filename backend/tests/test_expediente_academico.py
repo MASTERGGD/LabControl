@@ -224,6 +224,25 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert vista_grupo["alumnos"][0]["id"] == alumno.id
     assert vista_grupo["alumnos"][0]["estado"] == "RIESGO"
     assert vista_grupo["paginacion"]["total"] == 1
+    assert vista_grupo["alcance"] == "GRUPO"
+    assert len(vista_grupo["materias"]) == 1
+    materia_clave = vista_grupo["materias"][0]["clave"]
+    panorama_materia = client.get(
+        f"/expediente-academico/panorama/grupos/{carga.grupo_academico_id}/alumnos",
+        params={"materia_clave": materia_clave, "pagina": 1, "limite": 25},
+        headers=admin_headers,
+    )
+    assert panorama_materia.status_code == 200, panorama_materia.text
+    vista_materia = panorama_materia.json()
+    assert vista_materia["alcance"] == "MATERIA"
+    assert vista_materia["materia_seleccionada"]["nombre"] == carga.actividad_nombre
+    assert vista_materia["materia_seleccionada"]["docentes"] == [reportante.nombre]
+    assert vista_materia["resumen"]["asistencia_global"] == 66.7
+    materia_invalida = client.get(
+        f"/expediente-academico/panorama/grupos/{carga.grupo_academico_id}/alumnos",
+        params={"materia_clave": "materia:999999"}, headers=admin_headers,
+    )
+    assert materia_invalida.status_code == 422
 
     respuesta = client.get(
         f"/expediente-academico/alumnos/{alumno.id}", headers=admin_headers,

@@ -556,6 +556,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
   const [panorama, setPanorama] = useState(null);
   const [busqueda, setBusqueda] = useState('');
   const [estado, setEstado] = useState('TODOS');
+  const [materiaClave, setMateriaClave] = useState('');
   const [pagina, setPagina] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -565,7 +566,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
     setLoading(true);
     try {
       const { data } = await api.get(`/expediente-academico/panorama/grupos/${grupoId}/alumnos`, {
-        params: { q: busqueda, estado, pagina, limite: 25 },
+        params: { q: busqueda, estado, pagina, limite: 25, materia_clave: materiaClave || undefined },
       });
       setPanorama(data);
       setError('');
@@ -574,14 +575,15 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
     } finally {
       setLoading(false);
     }
-  }, [grupoId, busqueda, estado, pagina]);
+  }, [grupoId, busqueda, estado, materiaClave, pagina]);
 
   useEffect(() => {
     const timer = setTimeout(cargar, 250);
     return () => clearTimeout(timer);
   }, [cargar]);
 
-  useEffect(() => { setPagina(1); }, [grupoId, busqueda, estado]);
+  useEffect(() => { setMateriaClave(''); }, [grupoId]);
+  useEffect(() => { setPagina(1); }, [grupoId, busqueda, estado, materiaClave]);
 
   if (!grupoId) return null;
   if (!panorama && loading) return <Panel className="p-10 text-center text-sm text-slate-500">Calculando indicadores del grupo…</Panel>;
@@ -589,11 +591,12 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
 
   const r = panorama.resumen;
   const cumplimiento = r.cumplimiento_sesiones;
+  const materiaSeleccionada = panorama.materia_seleccionada;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
         <Kpi label="Alumnos" value={r.total_alumnos} />
-        <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} tone={r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
+        <Kpi label={materiaSeleccionada ? 'Asistencia materia' : 'Asistencia global'} value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} tone={r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
         <Kpi label="Prom. evidencias" value={r.promedio_evidencias} hint="No oficial" tone="text-violet-400" />
         <Kpi label="En riesgo" value={r.alumnos_riesgo} tone={r.alumnos_riesgo ? 'text-red-400' : 'text-emerald-400'} />
         <Kpi label="Requieren atención" value={r.alumnos_atencion} tone="text-amber-400" />
@@ -635,9 +638,14 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-bold">{panorama.grupo.cuatrimestre}° {panorama.grupo.grupo} · {panorama.grupo.carrera}</h2>
-            <p className="text-xs text-slate-500">{panorama.grupo.periodo} · {r.materias} materias · {r.clases_registradas} clases registradas · {r.faltas_totales} faltas</p>
+            <p className="text-xs text-slate-500">{panorama.grupo.periodo} · {materiaSeleccionada ? materiaSeleccionada.nombre : `${r.materias} materias`} · {r.clases_registradas} clases registradas · {r.faltas_totales} faltas</p>
+            {materiaSeleccionada?.docentes?.length > 0 && <p className="mt-1 text-xs font-medium text-blue-400">Docente{materiaSeleccionada.docentes.length === 1 ? '' : 's'}: {materiaSeleccionada.docentes.join(', ')}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
+            <select value={materiaClave} onChange={e => setMateriaClave(e.target.value)} className="input-dark w-64" aria-label="Filtrar panorama por materia">
+              <option value="">Todas las materias</option>
+              {panorama.materias.map(materia => <option key={materia.clave} value={materia.clave}>{materia.nombre}</option>)}
+            </select>
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-64" placeholder="Buscar en este grupo…" />
             <select value={estado} onChange={e => setEstado(e.target.value)} className="input-dark w-48">
               <option value="TODOS">Todos los estados</option>
@@ -652,6 +660,11 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno }) {
 
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
       <Panel className="overflow-hidden">
+        <div className={`border-b px-5 py-3 text-xs ${isDay ? 'border-slate-200 bg-blue-50 text-blue-800' : 'border-white/10 bg-blue-500/[0.06] text-blue-300'}`}>
+          {materiaSeleccionada
+            ? `Indicadores calculados únicamente con ${materiaSeleccionada.nombre}. La lista conserva a todos los alumnos inscritos en el grupo.`
+            : 'Indicadores consolidados con todas las materias configuradas para el grupo.'}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left text-sm">
             <thead className={`text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-white/[0.035] text-slate-400'}`}>

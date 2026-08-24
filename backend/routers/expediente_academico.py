@@ -852,6 +852,7 @@ def panorama_grupos(
 )
 def panorama_alumnos_grupo(
     grupo_id: int,
+    materia_clave: Optional[str] = Query(default=None, max_length=250),
     q: str = Query(default="", max_length=100),
     estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|SIN_DATOS)$"),
     pagina: int = Query(default=1, ge=1),
@@ -884,11 +885,28 @@ def panorama_alumnos_grupo(
     alumnos = consulta_alumnos.distinct().all()
     alumno_ids = [alumno.id for alumno in alumnos]
 
-    cargas = db.query(CargaDocente).filter(
+    todas_cargas = db.query(CargaDocente).filter(
         CargaDocente.grupo_academico_id == grupo_id,
         CargaDocente.tipo_actividad == "CLASE",
         CargaDocente.activo == True,
     ).all()
+    materias_disponibles = []
+    for clave in dict.fromkeys(_clave_materia(carga) for carga in todas_cargas):
+        cargas_materia = [carga for carga in todas_cargas if _clave_materia(carga) == clave]
+        docentes = sorted({carga.docente.nombre for carga in cargas_materia if carga.docente})
+        materias_disponibles.append({
+            "clave": clave,
+            "nombre": cargas_materia[0].actividad_nombre,
+            "docentes": docentes,
+            "cargas": len(cargas_materia),
+        })
+    materias_disponibles.sort(key=lambda materia: materia["nombre"].lower())
+    if materia_clave and materia_clave not in {materia["clave"] for materia in materias_disponibles}:
+        raise HTTPException(422, "La materia seleccionada no pertenece al grupo")
+    cargas = [
+        carga for carga in todas_cargas
+        if not materia_clave or _clave_materia(carga) == materia_clave
+    ]
     carga_ids = [carga.id for carga in cargas]
     clases = (
         db.query(ClaseDocente).filter(
@@ -916,7 +934,7 @@ def panorama_alumnos_grupo(
     reportes = (
         db.query(ReporteTutor).filter(
             ReporteTutor.alumno_id.in_(alumno_ids),
-        ).all() if alumno_ids else []
+        ).all() if alumno_ids and not materia_clave else []
     )
 
     asistencia_por_alumno = defaultdict(list)
@@ -1017,6 +1035,12 @@ def panorama_alumnos_grupo(
             "turno": grupo.turno,
             "periodo": grupo.periodo.clave if grupo.periodo else None,
         },
+        "materias": materias_disponibles,
+        "materia_seleccionada": next(
+            (materia for materia in materias_disponibles if materia["clave"] == materia_clave),
+            None,
+        ),
+        "alcance": "MATERIA" if materia_clave else "GRUPO",
         "resumen": {
             "total_alumnos": len(alumnos),
             "asistencia_global": asistencia_global,
