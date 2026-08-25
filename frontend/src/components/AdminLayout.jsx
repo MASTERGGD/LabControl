@@ -6,6 +6,7 @@ import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
 import ThemeSwitcher from './ThemeSwitcher';
 import { useTheme } from '../context/ThemeContext';
+import { usePeriodo } from '../context/PeriodoContext';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 
@@ -938,6 +939,7 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const homePath = getHomePath(usuario);
   const { themeKey } = useTheme();
+  const { periodos, periodo, periodoActual, esHistorico, cargando: cargandoPeriodos, seleccionarPeriodo } = usePeriodo();
   const isDay = themeKey === 'day';
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [menuMovil,    setMenuMovil]    = useState(false);
@@ -1086,6 +1088,37 @@ export default function AdminLayout({ children }) {
           {/* Derecha: acciones */}
           <div className="flex items-center gap-2">
 
+            {/* Contexto académico global: inicia en el periodo actual y permite consultar históricos. */}
+            {periodo && (
+              <label
+                className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5"
+                style={{
+                  background: esHistorico ? (isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)') : 'var(--topbar-bg)',
+                  borderColor: esHistorico ? (isDay ? '#FCD34D' : 'rgba(245,158,11,0.35)') : 'var(--topbar-border)',
+                }}
+                title={esHistorico ? 'Periodo histórico en modo consulta' : 'Periodo académico activo'}
+              >
+                <svg className={`w-4 h-4 shrink-0 ${esHistorico ? 'text-amber-500' : 'text-emerald-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                <span className="hidden lg:block text-[10px] font-bold uppercase tracking-wider text-slate-500">Periodo</span>
+                <select
+                  value={periodo.id}
+                  disabled={cargandoPeriodos}
+                  onChange={event => seleccionarPeriodo(event.target.value)}
+                  className="max-w-[118px] sm:max-w-[170px] bg-transparent text-xs font-semibold outline-none cursor-pointer"
+                  style={{color:'var(--main-text)'}}
+                  aria-label="Periodo académico de trabajo"
+                >
+                  {periodos.map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.clave}{item.es_actual ? ' · Actual' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {/* Campana */}
             <NotificacionesBell comunicadosPendientes={pendientesComunicados} />
             <ThemeSwitcher />
@@ -1130,6 +1163,36 @@ export default function AdminLayout({ children }) {
 
         {/* Contenido */}
         <main className="flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>
+          {esHistorico && periodo && (
+            <div
+              className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"
+              style={{
+                background: isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)',
+                border: `1px solid ${isDay ? '#FCD34D' : 'rgba(245,158,11,0.32)'}`,
+                color: isDay ? '#78350F' : '#FDE68A',
+              }}
+              role="status"
+            >
+              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div className="flex-1">
+                <p className="font-semibold">Consultando {periodo.clave}</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  Estás viendo información de un periodo histórico. El periodo operativo actual es {periodoActual?.clave || 'el configurado por Servicios Escolares'}.
+                </p>
+              </div>
+              {periodoActual && (
+                <button
+                  type="button"
+                  onClick={() => seleccionarPeriodo(periodoActual.id)}
+                  className="shrink-0 rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold hover:bg-white/10"
+                >
+                  Volver al actual
+                </button>
+              )}
+            </div>
+          )}
           {sessionInfo?.active_count > 1 && (
             <div
               className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"

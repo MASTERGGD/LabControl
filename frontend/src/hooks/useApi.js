@@ -13,12 +13,28 @@ const SESSION_KEYS = [
   'usuario',
   'labcontrol_session_id',
   'labcontrol_last_activity',
+  'siga_periodo_id',
+  'siga_periodo_clave',
+  'siga_periodo_historico',
 ];
 
 // ── Adjuntar token en cada petición ──────────────────────────────────────────
 api.interceptors.request.use(config => {
   const token = sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  const periodoId = sessionStorage.getItem('siga_periodo_id');
+  const periodoClave = sessionStorage.getItem('siga_periodo_clave');
+  if (token && periodoId) {
+    config.headers['X-SIGA-Periodo-Id'] = periodoId;
+    config.headers['X-SIGA-Periodo'] = periodoClave;
+    if (config.method?.toLowerCase() === 'get' && !config.params?.sin_contexto_periodo) {
+      config.params = { periodo_id: periodoId, periodo: periodoClave, ...config.params };
+    }
+  }
+  if (config.params?.sin_contexto_periodo) {
+    const { sin_contexto_periodo, ...params } = config.params;
+    config.params = params;
+  }
   return config;
 });
 

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { PeriodoProvider } from './context/PeriodoContext';
 import PWAInstallBanner from './components/PWAInstallBanner';
 import { ROUTE_PERMISSIONS } from './config/permissions';
 
@@ -484,10 +485,12 @@ export default function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <AppRoutes />
-            <PWAInstallBanner />
-          </BrowserRouter>
+          <PeriodoProvider>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <AppRoutes />
+              <PWAInstallBanner />
+            </BrowserRouter>
+          </PeriodoProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

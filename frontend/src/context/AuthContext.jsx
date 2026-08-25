@@ -35,6 +35,9 @@ function clearStoredSession() {
   store.removeItem('usuario');
   store.removeItem(SESSION_ID_KEY);
   store.removeItem(LAST_ACTIVITY_KEY);
+  store.removeItem('siga_periodo_id');
+  store.removeItem('siga_periodo_clave');
+  store.removeItem('siga_periodo_historico');
 }
 
 function getLastActivity() {
