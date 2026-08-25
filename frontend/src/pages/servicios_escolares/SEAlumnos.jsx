@@ -387,7 +387,7 @@ export function ModalCarreras({ onClose }) {
                   <tr key={c.id} className="border-b border-white/5">
                     <td className="px-4 py-3 text-slate-300 font-mono text-xs">{c.clave}</td>
                     <td className="px-4 py-3 text-white">
-                      {c.nombre ? c.nombre.toLowerCase().replace(/(?:^|\s)\S/g, x => x.toUpperCase()) : '—'}
+                      {c.nombre || '—'}
                       <p className="mt-1 text-xs text-slate-500">{[c.nivel, c.division, c.plan_estudios && `Plan ${c.plan_estudios}`].filter(Boolean).join(' · ') || 'Sin clasificación'}</p>
                       {!!c.aliases?.length && <p className="mt-1 text-[11px] text-slate-500">Alias: {c.aliases.join(', ')}</p>}
                     </td>
@@ -518,9 +518,7 @@ export default function SEAlumnos() {
                       {/* 1 — Carrera en formato título; grupo limpio */}
                       <td className="px-4 py-3 text-xs">
                         <p className="text-slate-300">
-                          {a.carrera
-                            ? a.carrera.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())
-                            : '—'}
+                          {a.carrera || '—'}
                         </p>
                         <p className="text-slate-500 mt-0.5">
                           {a.cuatrimestre ? `${a.cuatrimestre}° Cuatrimestre` : ''}
