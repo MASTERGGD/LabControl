@@ -301,6 +301,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
   const [gruposDisponibles, setGruposDisponibles] = useState([]);
+  const [diagnosticoGrupos, setDiagnosticoGrupos] = useState(null);
   const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
@@ -324,10 +325,11 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
     let vigente = true;
     if (!form.carrera || !form.cuatrimestre_materia) {
       setGruposDisponibles([]);
+      setDiagnosticoGrupos(null);
       return undefined;
     }
     setCargandoGrupos(true);
-    api.get('/catalogo/grupos/disponibles', {
+    api.get('/catalogo/grupos/diagnostico', {
       params: {
         carrera: form.carrera,
         cuatrimestre: form.cuatrimestre_materia,
@@ -335,10 +337,12 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
       },
     }).then(({ data }) => {
       if (!vigente) return;
-      setGruposDisponibles(data);
-      if (data.length === 1) setForm(f => ({ ...f, grupo: data[0].grupo }));
+      const compatibles = data.compatibles || [];
+      setGruposDisponibles(compatibles);
+      setDiagnosticoGrupos(data);
+      if (compatibles.length === 1) setForm(f => ({ ...f, grupo: compatibles[0].grupo }));
     }).catch(() => {
-      if (vigente) setGruposDisponibles([]);
+      if (vigente) { setGruposDisponibles([]); setDiagnosticoGrupos(null); }
     }).finally(() => {
       if (vigente) setCargandoGrupos(false);
     });
@@ -427,6 +431,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                   setMateriaQuery(txt);
                   setMateriaInfo(null);
                   setGruposDisponibles([]);
+                  setDiagnosticoGrupos(null);
                   setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '', grupo: '' }));
                 }}
                 onSelect={seleccionarMateria}
@@ -495,7 +500,12 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
               ))}
             </select>
             {materiaInfo && !cargandoGrupos && !gruposDisponibles.length && (
-              <p className="mt-1 text-xs text-amber-500">No existe un grupo activo para esta carrera, cuatrimestre y periodo.</p>
+              <div className="mt-1 text-xs text-amber-500">
+                <p>{diagnosticoGrupos?.mensaje || 'No existe un grupo activo compatible.'}</p>
+                {!!diagnosticoGrupos?.grupos_similares?.length && (
+                  <p className="mt-1 opacity-90">Grupos encontrados: {diagnosticoGrupos.grupos_similares.map(g => `${g.carrera} · ${g.cuatrimestre}° ${g.grupo}`).join('; ')}</p>
+                )}
+              </div>
             )}
           </div>}
 
@@ -822,6 +832,7 @@ function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
   const [materiaQuery, setMateriaQuery] = useState('');
   const [materiaInfo, setMateriaInfo]   = useState(null);
   const [gruposDisponibles, setGruposDisponibles] = useState([]);
+  const [diagnosticoGrupos, setDiagnosticoGrupos] = useState(null);
   const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -842,10 +853,11 @@ function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
     let vigente = true;
     if (!form.carrera || !form.cuatrimestre_materia) {
       setGruposDisponibles([]);
+      setDiagnosticoGrupos(null);
       return undefined;
     }
     setCargandoGrupos(true);
-    api.get('/catalogo/grupos/disponibles', {
+    api.get('/catalogo/grupos/diagnostico', {
       params: {
         carrera: form.carrera,
         cuatrimestre: form.cuatrimestre_materia,
@@ -853,11 +865,14 @@ function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
       },
     }).then(({ data }) => {
       if (!vigente) return;
-      setGruposDisponibles(data);
-      setForm(f => ({ ...f, grupo: data.length === 1 ? data[0].grupo : '' }));
+      const compatibles = data.compatibles || [];
+      setGruposDisponibles(compatibles);
+      setDiagnosticoGrupos(data);
+      setForm(f => ({ ...f, grupo: compatibles.length === 1 ? compatibles[0].grupo : '' }));
     }).catch(() => {
       if (vigente) {
         setGruposDisponibles([]);
+        setDiagnosticoGrupos(null);
         setForm(f => ({ ...f, grupo: '' }));
       }
     }).finally(() => {
@@ -914,6 +929,7 @@ function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
                     setMateriaQuery(txt);
                     setMateriaInfo(null);
                     setGruposDisponibles([]);
+                    setDiagnosticoGrupos(null);
                     setForm(f => ({ ...f, materia: txt, carrera: '', cuatrimestre_materia: '', grupo: '' }));
                   }}
                   onSelect={seleccionarMateria}
@@ -965,7 +981,12 @@ function ModalSolicitar({ slot, cuatrimestre, onClose, onSolicitado }) {
                 <p className="mt-1 text-xs text-emerald-400">✓ Grupo asignado automáticamente: {form.cuatrimestre_materia}° {form.grupo}</p>
               )}
               {materiaInfo && !cargandoGrupos && !gruposDisponibles.length && (
-                <p className="mt-1 text-xs text-amber-400">No existe un grupo activo para esta carrera, cuatrimestre y periodo.</p>
+                <div className="mt-1 text-xs text-amber-400">
+                  <p>{diagnosticoGrupos?.mensaje || 'No existe un grupo activo compatible.'}</p>
+                  {!!diagnosticoGrupos?.grupos_similares?.length && (
+                    <p className="mt-1 opacity-90">Grupos encontrados: {diagnosticoGrupos.grupos_similares.map(g => `${g.carrera} · ${g.cuatrimestre}° ${g.grupo}`).join('; ')}</p>
+                  )}
+                </div>
               )}
             </div>
             <div>

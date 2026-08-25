@@ -14,7 +14,7 @@ from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
-from models.catalogo import GrupoAcademico, PeriodoEscolar
+from models.catalogo import CatalogoCarrera, CatalogoCarreraAlias, GrupoAcademico, PeriodoEscolar
 
 
 # ─────────────────────────── helpers ────────────────────────────────────────
@@ -281,6 +281,41 @@ class TestReservaciones:
             "cuatrimestre": "ENE-ABR-2026",
         }, headers=auth_headers(tok))
         assert reservacion.status_code == 201, reservacion.text
+
+    def test_diagnostico_resuelve_alias_y_explica_cuatrimestre(self, client, db):
+        tok, _, _, _ = self._setup(client, db)
+        carrera = CatalogoCarrera(
+            clave="LPCYE", nombre="Lic. en Protección Civil y Emergencias", activo=True,
+        )
+        db.add(carrera)
+        db.flush()
+        db.add(CatalogoCarreraAlias(carrera_id=carrera.id, nombre="Lic. en Protección Civil"))
+        periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+        db.add(periodo)
+        db.flush()
+        db.add(GrupoAcademico(
+            periodo_id=periodo.id, carrera="Lic. en Protección Civil",
+            cuatrimestre=5, grupo="A", activo=True,
+        ))
+        db.commit()
+
+        respuesta = client.get("/catalogo/grupos/diagnostico", params={
+            "carrera": "Lic. en Protección Civil y Emergencias",
+            "cuatrimestre": 5,
+            "periodo": "MAY-AGO-2026",
+        }, headers=auth_headers(tok))
+        assert respuesta.status_code == 200
+        assert [g["grupo"] for g in respuesta.json()["compatibles"]] == ["A"]
+        assert respuesta.json()["carrera_oficial"] == "Lic. en Protección Civil y Emergencias"
+
+        sin_cuatrimestre = client.get("/catalogo/grupos/diagnostico", params={
+            "carrera": "Lic. en Protección Civil",
+            "cuatrimestre": 3,
+            "periodo": "MAY-AGO 2026",
+        }, headers=auth_headers(tok))
+        assert sin_cuatrimestre.status_code == 200
+        assert sin_cuatrimestre.json()["motivo"] == "SIN_GRUPOS_CUATRIMESTRE"
+        assert sin_cuatrimestre.json()["grupos_similares"][0]["grupo"] == "A"
 
     def test_listar_reservaciones(self, client, db):
         tok, lab, docente, h_id = self._setup(client, db)

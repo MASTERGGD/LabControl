@@ -78,6 +78,22 @@ def _resolver_carrera_catalogo(db: Session, valor: str) -> str | None:
         carrera = alias.carrera if alias else None
     return carrera.nombre if carrera else None
 
+def _catalogo_carreras_configurado(db: Session) -> bool:
+    return db.query(CatalogoCarrera).filter(CatalogoCarrera.activo == True).first() is not None
+
+def _carrera_oficial_o_error(db: Session, valor: str | None) -> str | None:
+    """Normaliza una carrera y evita guardar nombres que no existen en el catálogo oficial."""
+    if not _norm(valor):
+        return None
+    carrera = _resolver_carrera_catalogo(db, valor)
+    if carrera:
+        return carrera
+    raise HTTPException(
+        422,
+        f"La carrera '{_norm(valor)}' no está registrada en el catálogo oficial de SIGA. "
+        "Selecciona una carrera de la lista institucional o registra su alias.",
+    )
+
 def _norm_periodo(val) -> str:
     """Iguala MAY-AGO 2026, MAY-AGO-2026 y variantes de separación."""
     return "".join(ch for ch in _norm(val).upper() if ch.isalnum())
@@ -598,6 +614,22 @@ def grupos_disponibles(
     current_user: Usuario = Depends(get_current_user),
 ):
     """Devuelve únicamente grupos reales compatibles con materia y periodo."""
+    return _diagnosticar_grupos(db, carrera, cuatrimestre, periodo)["compatibles"]
+
+
+def _serializar_grupo(grupo, periodo_escolar):
+    return {
+        "id": grupo.id,
+        "grupo": grupo.grupo,
+        "carrera": grupo.carrera,
+        "cuatrimestre": grupo.cuatrimestre,
+        "periodo": periodo_escolar.clave,
+        "turno": grupo.turno,
+        "total_alumnos": sum(1 for i in grupo.inscripciones if i.estado == "ACTIVO"),
+    }
+
+
+def _diagnosticar_grupos(db: Session, carrera: str, cuatrimestre: int, periodo: Optional[str]):
     periodo_query = db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True)
     if periodo and periodo.strip():
         periodo_normalizado = _norm_periodo(periodo)
@@ -611,23 +643,60 @@ def grupos_disponibles(
             PeriodoEscolar.es_actual == True,
         ).order_by(PeriodoEscolar.id.desc()).first()
     if not periodo_escolar:
-        return []
+        return {
+            "compatibles": [], "carrera_oficial": _resolver_carrera_catalogo(db, carrera),
+            "motivo": "SIN_PERIODO",
+            "mensaje": "No existe un periodo escolar activo que coincida con la solicitud.",
+            "grupos_similares": [],
+        }
 
-    grupos = db.query(GrupoAcademico).filter(
+    carrera_oficial = _resolver_carrera_catalogo(db, carrera)
+    if _catalogo_carreras_configurado(db) and not carrera_oficial:
+        return {
+            "compatibles": [], "carrera_oficial": None,
+            "motivo": "CARRERA_NO_RECONOCIDA",
+            "mensaje": f"La carrera '{_norm(carrera)}' no coincide con el catálogo oficial de SIGA. Revisa el nombre o registra un alias.",
+            "grupos_similares": [],
+        }
+    carrera_objetivo = carrera_oficial or _norm(carrera)
+    grupos_periodo = db.query(GrupoAcademico).filter(
         GrupoAcademico.periodo_id == periodo_escolar.id,
-        GrupoAcademico.carrera == carrera.strip(),
-        GrupoAcademico.cuatrimestre == cuatrimestre,
         GrupoAcademico.activo == True,
     ).order_by(GrupoAcademico.grupo).all()
-    return [{
-        "id": grupo.id,
-        "grupo": grupo.grupo,
-        "carrera": grupo.carrera,
-        "cuatrimestre": grupo.cuatrimestre,
-        "periodo": periodo_escolar.clave,
-        "turno": grupo.turno,
-        "total_alumnos": sum(1 for i in grupo.inscripciones if i.estado == "ACTIVO"),
-    } for grupo in grupos]
+    grupos_carrera = [g for g in grupos_periodo
+                      if (_resolver_carrera_catalogo(db, g.carrera) or _norm(g.carrera)).casefold()
+                      == carrera_objetivo.casefold()]
+    compatibles = [g for g in grupos_carrera if g.cuatrimestre == cuatrimestre]
+    if compatibles:
+        motivo, mensaje, similares = None, None, []
+    elif grupos_carrera:
+        motivo = "SIN_GRUPOS_CUATRIMESTRE"
+        mensaje = (f"La carrera sí tiene grupos en {periodo_escolar.clave}, pero ninguno de "
+                   f"{cuatrimestre}° cuatrimestre. Revisa el cuatrimestre asignado a la materia.")
+        similares = grupos_carrera
+    else:
+        motivo = "SIN_GRUPOS_CARRERA"
+        mensaje = (f"No hay grupos activos de {carrera_objetivo} en {periodo_escolar.clave}. "
+                   "Revisa la creación del grupo o su periodo escolar.")
+        similares = [g for g in grupos_periodo if g.cuatrimestre == cuatrimestre]
+    return {
+        "compatibles": [_serializar_grupo(g, periodo_escolar) for g in compatibles],
+        "carrera_oficial": carrera_objetivo,
+        "motivo": motivo,
+        "mensaje": mensaje,
+        "grupos_similares": [_serializar_grupo(g, periodo_escolar) for g in similares[:8]],
+    }
+
+
+@router.get("/grupos/diagnostico", summary="Diagnosticar compatibilidad de grupos")
+def diagnostico_grupos(
+    carrera: str,
+    cuatrimestre: int,
+    periodo: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    return _diagnosticar_grupos(db, carrera, cuatrimestre, periodo)
 
 
 @router.get("/materias/buscar", summary="Autocomplete de materias para Reservaciones")
@@ -690,14 +759,15 @@ def crear_materia(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
-    identidad = _identidad_materia(data.nombre, data.carrera, data.cuatrimestre_oficial)
+    carrera = _carrera_oficial_o_error(db, data.carrera)
+    identidad = _identidad_materia(data.nombre, carrera, data.cuatrimestre_oficial)
     existente = next((m for m in db.query(CatalogoMateria).all()
                       if _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial) == identidad), None)
     if existente:
         raise HTTPException(409, "La materia ya existe en el plan de estudios. Puedes editarla o reactivarla.")
     m = CatalogoMateria(
         nombre               = _norm(data.nombre),
-        carrera              = _norm(data.carrera) if data.carrera else None,
+        carrera              = carrera,
         cuatrimestre_oficial = data.cuatrimestre_oficial,
         periodo              = None,
     )
@@ -721,6 +791,8 @@ def actualizar_materia(
                     if _identidad_materia(item.nombre, item.carrera, item.cuatrimestre_oficial)
                     == _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial)]
     cambios = data.dict(exclude_none=True, exclude={"periodo"})
+    if "carrera" in cambios:
+        cambios["carrera"] = _carrera_oficial_o_error(db, cambios["carrera"])
     identidad_destino = _identidad_materia(
         cambios.get("nombre", m.nombre), cambios.get("carrera", m.carrera),
         cambios.get("cuatrimestre_oficial", m.cuatrimestre_oficial),
@@ -824,6 +896,17 @@ async def importar_materias(
         if not nombre:
             continue
 
+        carrera_resuelta = _resolver_carrera_catalogo(db, carrera) if carrera else None
+        if carrera and _catalogo_carreras_configurado(db) and not carrera_resuelta:
+            errores.append({
+                "fila": row_idx,
+                "campo": "carrera",
+                "valor": carrera,
+                "error": "No coincide con una carrera oficial ni con un alias registrado.",
+            })
+            continue
+        carrera = carrera_resuelta or carrera
+
         identidad = _identidad_materia(nombre, carrera, cuat)
         existente = next((m for m in db.query(CatalogoMateria).all()
                           if _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial) == identidad), None)
@@ -899,6 +982,11 @@ def listar_carreras(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    oficiales = db.query(CatalogoCarrera).filter(
+        CatalogoCarrera.activo == True,
+    ).order_by(CatalogoCarrera.nombre).all()
+    if oficiales:
+        return [c.nombre for c in oficiales]
     carreras = set()
     for (c,) in db.query(CatalogoAlumno.carrera).distinct().all():
         if c: carreras.add(c)
