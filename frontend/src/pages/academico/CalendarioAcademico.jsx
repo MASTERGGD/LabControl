@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import { usePeriodo } from '../../context/PeriodoContext';
 
 const TIPOS = [
   ['RECESO_CLASES', 'Receso de clases', '#e11d48', false, 'Pausa', '⏸'],
@@ -85,8 +86,8 @@ function Agenda({ eventos, onEvent }) {
 }
 
 export default function CalendarioAcademico() {
-  const [periodos, setPeriodos] = useState([]);
-  const [periodoId, setPeriodoId] = useState('');
+  const { periodo } = usePeriodo();
+  const periodoId = periodo?.id ? String(periodo.id) : '';
   const [calendario, setCalendario] = useState(null);
   const [cierre, setCierre] = useState(null);
   const [cursor, setCursor] = useState(new Date());
@@ -116,16 +117,13 @@ export default function CalendarioAcademico() {
   }, []);
 
   useEffect(() => {
-    api.get('/calendario-academico/periodos').then(({ data }) => {
-      setPeriodos(data);
-      const actual = data.find(p => p.es_actual) || data[0];
-      if (actual) { setPeriodoId(String(actual.id)); cargar(actual.id); }
-    }).catch(() => setError('No se pudieron cargar los periodos escolares.'));
-  }, [cargar]);
+    if (!periodoId) return;
+    setError('');
+    cargar(periodoId);
+  }, [cargar, periodoId]);
 
   const eventos = useMemo(() => calendario?.eventos || [], [calendario]);
   const eventosVisibles = useMemo(() => eventos.filter(e => tiposVisibles.has(e.tipo)).sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio)), [eventos, tiposVisibles]);
-  const periodo = periodos.find(p => String(p.id) === String(periodoId));
   const puedeAdministrar = Boolean(periodo?.puede_administrar);
 
   const crearCalendario = async () => {
@@ -215,9 +213,6 @@ export default function CalendarioAcademico() {
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><h1 className="text-2xl font-bold text-white">Calendario académico</h1><p className="mt-1 text-sm text-slate-400">Fuente oficial para asistencias, alertas y operación docente.</p></div>
-          <select value={periodoId} onChange={e => { setPeriodoId(e.target.value); cargar(e.target.value); }} className="input-dark max-w-xs">
-            {periodos.map(p => <option key={p.id} value={p.id}>{p.clave}{p.es_actual ? ' · Actual' : ''}</option>)}
-          </select>
         </div>
         {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
