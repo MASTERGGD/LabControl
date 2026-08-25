@@ -51,9 +51,14 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     assert racha["desde"] == "2026-08-03"
     assert racha["hasta"] == "2026-08-07"
 
-    estado, razones = _clasificar_panorama(95.0, 9.0, racha, 0, 0)
+    estado, razones = _clasificar_panorama(95.0, 9.0, racha, 0, 0, 4)
     assert estado == "RIESGO"
     assert "3 faltas consecutivas en Matemáticas" in razones
+    preliminar, razones_preliminares = _clasificar_panorama(
+        0.0, None, {"cantidad": 1, "materia": "Matemáticas"}, 0, 0, 1,
+    )
+    assert preliminar == "BASE_INSUFICIENT"
+    assert "1 de 3 clases" in razones_preliminares[0]
 
     assert _estado_materia(79.9, 9.0) == "RIESGO_ALTO"
     assert _estado_materia(80.0, 7.0) == "RIESGO_MEDIO"

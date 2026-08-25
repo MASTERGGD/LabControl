@@ -44,6 +44,7 @@ UMBRAL_PROMEDIO_ATENCION = 8.0
 UMBRAL_RACHA_RIESGO = 3
 UMBRAL_RACHA_ATENCION = 2
 UMBRAL_MATERIAS_ALTAS_ROJO = 2
+MINIMO_CLASES_SEMAFORO = 3
 
 
 class EliminarAcuerdoPruebaInput(BaseModel):
@@ -158,6 +159,7 @@ def _clasificar_panorama(
     racha: dict,
     acuerdos_pendientes: int,
     reportes_abiertos: int,
+    registros_asistencia: int = 0,
 ) -> tuple[str, list[str]]:
     razones_riesgo = []
     razones_atencion = []
@@ -177,6 +179,16 @@ def _clasificar_panorama(
         razones_atencion.append(f"{acuerdos_pendientes} acuerdo(s) pendiente(s)")
     if reportes_abiertos:
         razones_atencion.append(f"{reportes_abiertos} reporte(s) abierto(s)")
+
+    # Los acuerdos y reportes conservan su valor preventivo desde el primer
+    # registro. Los porcentajes académicos necesitan una base mínima para no
+    # convertir una sola clase en un semáforo definitivo.
+    if registros_asistencia < MINIMO_CLASES_SEMAFORO and not acuerdos_pendientes and not reportes_abiertos:
+        if registros_asistencia == 0 and promedio is None:
+            return "SIN_DATOS", ["Sin asistencias ni evidencias registradas"]
+        return "BASE_INSUFICIENT", [
+            f"Base preliminar: {registros_asistencia} de {MINIMO_CLASES_SEMAFORO} clases mínimas"
+        ]
 
     if razones_riesgo:
         return "RIESGO", razones_riesgo + razones_atencion
@@ -854,7 +866,7 @@ def panorama_alumnos_grupo(
     grupo_id: int,
     materia_clave: Optional[str] = Query(default=None, max_length=250),
     q: str = Query(default="", max_length=100),
-    estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|SIN_DATOS)$"),
+    estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|BASE_INSUFICIENT|SIN_DATOS)$"),
     pagina: int = Query(default=1, ge=1),
     limite: int = Query(default=25, ge=10, le=100),
     db: Session = Depends(get_db),
@@ -981,6 +993,7 @@ def panorama_alumnos_grupo(
         )
         semaforo, razones_estado = _clasificar_panorama(
             porcentaje, promedio, racha, acuerdos_pendientes, reportes_abiertos,
+            total_asistencia,
         )
         filas.append({
             "id": alumno.id,
@@ -1008,7 +1021,7 @@ def panorama_alumnos_grupo(
         ]
     if estado != "TODOS":
         filas = [fila for fila in filas if fila["estado"] == estado]
-    prioridad = {"RIESGO": 0, "ATENCION": 1, "SIN_DATOS": 2, "REGULAR": 3}
+    prioridad = {"RIESGO": 0, "ATENCION": 1, "BASE_INSUFICIENT": 2, "SIN_DATOS": 3, "REGULAR": 4}
     filas.sort(key=lambda fila: (prioridad[fila["estado"]], fila["nombre"]))
 
     total_filtrado = len(filas)
@@ -1050,6 +1063,7 @@ def panorama_alumnos_grupo(
             "alumnos_riesgo": sum(1 for fila in todas_filas if fila["estado"] == "RIESGO"),
             "alumnos_atencion": sum(1 for fila in todas_filas if fila["estado"] == "ATENCION"),
             "sin_datos": sum(1 for fila in todas_filas if fila["estado"] == "SIN_DATOS"),
+            "base_insuficiente": sum(1 for fila in todas_filas if fila["estado"] == "BASE_INSUFICIENT"),
             "faltas_totales": sum(fila["faltas"] for fila in todas_filas),
             "acuerdos_pendientes": sum(fila["acuerdos_pendientes"] for fila in todas_filas),
             "reportes_abiertos": sum(fila["reportes_abiertos"] for fila in todas_filas),
@@ -1070,6 +1084,7 @@ def panorama_alumnos_grupo(
                 "descripcion": "Completitud del pase de lista sobre las clases registradas",
             },
             "cumplimiento_sesiones": cumplimiento_sesiones,
+            "minimo_clases_semaforo": MINIMO_CLASES_SEMAFORO,
         },
         "alumnos": paginadas,
         "paginacion": {
