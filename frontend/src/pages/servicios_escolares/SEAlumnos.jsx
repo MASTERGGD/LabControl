@@ -287,8 +287,11 @@ export function ModalCarreras({ onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="glass rounded-2xl p-6 w-full max-w-3xl max-h-[92vh] overflow-y-auto">
-        <div className="flex items-start justify-between gap-4 mb-5">
+      <div className="glass rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div
+          className="relative z-10 flex shrink-0 items-start justify-between gap-4 border-b px-6 py-5 shadow-sm"
+          style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}
+        >
           <div>
             <h3 className="text-lg font-bold text-white">Catalogo de carreras</h3>
             <p className="text-slate-400 text-sm">Nombre institucional único para alumnos, grupos, materias y Tutoría.</p>
@@ -296,6 +299,7 @@ export function ModalCarreras({ onClose }) {
           <button onClick={onClose} className="btn-ghost px-3">Cerrar</button>
         </div>
 
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-5">
         <div className="mb-5 rounded-xl border border-white/10 bg-slate-900/30 p-4">
           <label className="block text-sm font-semibold text-white mb-2">Buscar carrera registrada</label>
           <input
@@ -415,6 +419,7 @@ export function ModalCarreras({ onClose }) {
               </tbody>
             </table>
           )}
+        </div>
         </div>
       </div>
     </div>
