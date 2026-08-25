@@ -90,21 +90,6 @@ def _orden_periodo(val):
             return (int(clave[len(nombre):]), bloque)
     return None
 
-def _validar_periodo_materias_editable(db: Session, clave: str):
-    """Impide alterar periodos históricos cuando Servicios Escolares ya fijó el actual."""
-    actual = db.query(PeriodoEscolar).filter(
-        PeriodoEscolar.activo == True, PeriodoEscolar.es_actual == True
-    ).order_by(PeriodoEscolar.id.desc()).first()
-    if not actual:  # Compatibilidad con instalaciones aún sin gestión institucional.
-        return
-    periodo = next((p for p in db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).all()
-                    if _norm_periodo(p.clave) == _norm_periodo(clave)), None)
-    if not periodo:
-        raise HTTPException(422, "El periodo no existe o no está activo. Servicios Escolares debe crearlo primero.")
-    orden, orden_actual = _orden_periodo(periodo.clave), _orden_periodo(actual.clave)
-    if orden and orden_actual and orden < orden_actual:
-        raise HTTPException(409, "El periodo es histórico y está disponible únicamente para consulta.")
-
 def _sincronizar_inscripcion(db, alumno):
     clave = _norm(alumno.periodo).upper()
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
@@ -162,9 +147,31 @@ def _serializar_materia(m: CatalogoMateria) -> dict:
         "nombre":               m.nombre,
         "carrera":              m.carrera,
         "cuatrimestre_oficial": m.cuatrimestre_oficial,
-        "periodo":              m.periodo,
+        # El periodo pertenece a la oferta/carga docente, no al plan de estudios.
+        # Se conserva la propiedad por compatibilidad con clientes anteriores.
+        "periodo":              None,
+        "alcance":              "PLAN_ESTUDIOS",
         "activo":               m.activo,
     }
+
+
+def _identidad_materia(nombre, carrera, cuatrimestre) -> tuple:
+    return (
+        " ".join(_norm(nombre).casefold().split()),
+        " ".join(_norm(carrera).casefold().split()),
+        cuatrimestre,
+    )
+
+
+def _materias_unicas(materias):
+    """Colapsa duplicados heredados de importaciones separadas por periodo."""
+    unicas = {}
+    for materia in materias:
+        clave = _identidad_materia(materia.nombre, materia.carrera, materia.cuatrimestre_oficial)
+        actual = unicas.get(clave)
+        if actual is None or (materia.activo and not actual.activo) or materia.id < actual.id:
+            unicas[clave] = materia
+    return list(unicas.values())
 
 _admin_roles = require_roles(
     RolUsuario.SUPER_ADMIN,
@@ -573,12 +580,13 @@ def listar_materias(
     current_user: Usuario = Depends(get_current_user),
 ):
     query = db.query(CatalogoMateria)
-    if periodo is not None: query = query.filter(CatalogoMateria.periodo == periodo)
+    # `periodo` se acepta de forma transitoria para no romper clientes antiguos,
+    # pero el catálogo es permanente y ya no se filtra por ciclo escolar.
     if carrera is not None: query = query.filter(CatalogoMateria.carrera == carrera)
     if activo  is not None: query = query.filter(CatalogoMateria.activo  == activo)
     if q:       query = query.filter(CatalogoMateria.nombre.ilike(f"%{q}%"))
-    return [_serializar_materia(m) for m in
-            query.order_by(CatalogoMateria.nombre).all()]
+    materias = _materias_unicas(query.order_by(CatalogoMateria.nombre, CatalogoMateria.id).all())
+    return [_serializar_materia(m) for m in materias]
 
 
 @router.get("/grupos/disponibles", summary="Grupos disponibles para una reservación")
@@ -639,7 +647,8 @@ def buscar_materias(
     resultados = db.query(CatalogoMateria).filter(
         CatalogoMateria.activo == True,
         CatalogoMateria.nombre.ilike(f"%{q.strip()}%")
-    ).order_by(CatalogoMateria.nombre, CatalogoMateria.carrera).limit(20).all()
+    ).order_by(CatalogoMateria.nombre, CatalogoMateria.carrera, CatalogoMateria.id).limit(200).all()
+    resultados = _materias_unicas(resultados)[:20]
 
     def _ordinal(n) -> str:
         if n is None:
@@ -681,13 +690,16 @@ def crear_materia(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
-    if data.periodo:
-        _validar_periodo_materias_editable(db, data.periodo)
+    identidad = _identidad_materia(data.nombre, data.carrera, data.cuatrimestre_oficial)
+    existente = next((m for m in db.query(CatalogoMateria).all()
+                      if _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial) == identidad), None)
+    if existente:
+        raise HTTPException(409, "La materia ya existe en el plan de estudios. Puedes editarla o reactivarla.")
     m = CatalogoMateria(
         nombre               = _norm(data.nombre),
         carrera              = _norm(data.carrera) if data.carrera else None,
         cuatrimestre_oficial = data.cuatrimestre_oficial,
-        periodo              = _norm(data.periodo) if data.periodo else None,
+        periodo              = None,
     )
     db.add(m)
     db.commit()
@@ -705,9 +717,22 @@ def actualizar_materia(
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
         raise HTTPException(404, "Materia no encontrada")
-    _validar_periodo_materias_editable(db, data.periodo or m.periodo)
-    for field, val in data.dict(exclude_none=True).items():
-        setattr(m, field, val)
+    equivalentes = [item for item in db.query(CatalogoMateria).all()
+                    if _identidad_materia(item.nombre, item.carrera, item.cuatrimestre_oficial)
+                    == _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial)]
+    cambios = data.dict(exclude_none=True, exclude={"periodo"})
+    identidad_destino = _identidad_materia(
+        cambios.get("nombre", m.nombre), cambios.get("carrera", m.carrera),
+        cambios.get("cuatrimestre_oficial", m.cuatrimestre_oficial),
+    )
+    conflicto = next((item for item in db.query(CatalogoMateria).all()
+                      if item not in equivalentes and _identidad_materia(item.nombre, item.carrera, item.cuatrimestre_oficial) == identidad_destino), None)
+    if conflicto:
+        raise HTTPException(409, "Ya existe otra materia con el mismo nombre, carrera y cuatrimestre.")
+    for equivalente in equivalentes:
+        for field, val in cambios.items():
+            setattr(equivalente, field, val)
+        equivalente.periodo = None
     db.commit()
     db.refresh(m)
     return _serializar_materia(m)
@@ -722,8 +747,10 @@ def eliminar_materia(
     m = db.query(CatalogoMateria).filter(CatalogoMateria.id == materia_id).first()
     if not m:
         raise HTTPException(404, "Materia no encontrada")
-    _validar_periodo_materias_editable(db, m.periodo)
-    m.activo = False
+    identidad = _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial)
+    for equivalente in db.query(CatalogoMateria).all():
+        if _identidad_materia(equivalente.nombre, equivalente.carrera, equivalente.cuatrimestre_oficial) == identidad:
+            equivalente.activo = False
     db.commit()
     return {"mensaje": "Materia desactivada"}
 
@@ -773,23 +800,14 @@ async def importar_materias(
         col_periodo = 3
 
     filas = []
-    periodos_archivo = set()
     for row_idx, row in enumerate(ws.iter_rows(min_row=min_row, values_only=True), start=min_row):
         if all(v is None for v in row):
             break
         if str(row[0] or "").strip() == "→":
             continue
         filas.append((row_idx, row))
-        if col_periodo < len(row) and row[col_periodo] is not None:
-            periodos_archivo.add(_norm_periodo(row[col_periodo]))
-    if periodo_objetivo:
-        _validar_periodo_materias_editable(db, periodo_objetivo)
-        distintos = {p for p in periodos_archivo if p != _norm_periodo(periodo_objetivo)}
-        if distintos:
-            raise HTTPException(422, f"El Excel contiene materias de otro periodo. Seleccionaste {periodo_objetivo}; corrige el archivo antes de importarlo.")
-    for clave in periodos_archivo:
-        muestra = next((_norm(r[col_periodo]) for _, r in filas if col_periodo < len(r) and _norm_periodo(r[col_periodo]) == clave), clave)
-        _validar_periodo_materias_editable(db, muestra)
+    # El periodo del archivo se ignora intencionalmente: describe la oferta de
+    # origen, mientras que estas filas alimentan el plan de estudios permanente.
 
     creados     = 0
     actualizados = 0
@@ -798,8 +816,6 @@ async def importar_materias(
     for row_idx, row in filas:
         nombre  = _norm(row[col_nombre])  if col_nombre < len(row) and row[col_nombre]  is not None else ""
         carrera = _norm(row[col_carrera]) if col_carrera < len(row) and row[col_carrera] is not None else None
-        periodo = _norm(row[col_periodo]) if col_periodo < len(row) and row[col_periodo] is not None else None
-
         try:
             cuat = int(row[col_cuat]) if col_cuat < len(row) and row[col_cuat] is not None else None
         except (ValueError, TypeError):
@@ -808,22 +824,20 @@ async def importar_materias(
         if not nombre:
             continue
 
-        existente = db.query(CatalogoMateria).filter(
-            CatalogoMateria.nombre                  == nombre,
-            CatalogoMateria.carrera                 == carrera,
-            CatalogoMateria.cuatrimestre_oficial    == cuat,
-            CatalogoMateria.periodo                 == periodo,
-        ).first()
+        identidad = _identidad_materia(nombre, carrera, cuat)
+        existente = next((m for m in db.query(CatalogoMateria).all()
+                          if _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial) == identidad), None)
 
         if existente:
             existente.activo               = True
+            existente.periodo              = None
             actualizados += 1
         else:
             db.add(CatalogoMateria(
                 nombre               = nombre,
                 carrera              = carrera,
                 cuatrimestre_oficial = cuat,
-                periodo              = periodo,
+                periodo              = None,
             ))
             creados += 1
 

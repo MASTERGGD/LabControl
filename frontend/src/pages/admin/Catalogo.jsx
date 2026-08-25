@@ -548,13 +548,12 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
 
 // ─── Modal: Materia (crear / editar) ─────────────────────────────────────────
 
-function ModalMateria({ materia, periodos, periodoInicial, carreras, onClose, onGuardado }) {
+function ModalMateria({ materia, carreras, onClose, onGuardado }) {
   const esEdicion = !!materia;
   const [form, setForm] = useState({
     nombre:               materia?.nombre               ?? '',
     carrera:              materia?.carrera              ?? '',
     cuatrimestre_oficial: materia?.cuatrimestre_oficial ?? '',
-    periodo:              materia?.periodo              ?? periodoInicial ?? '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -613,25 +612,15 @@ function ModalMateria({ materia, periodos, periodoInicial, carreras, onClose, on
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Cuatrimestre oficial</label>
-              <SelectDark
-                value={form.cuatrimestre_oficial}
-                onChange={v => set('cuatrimestre_oficial', v)}
-                placeholder="—"
-                options={[{ value: '', label: '—' }, ...Array.from({length:12},(_,i)=>i+1).map(n => ({ value: n, label: String(n) }))]}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Periodo</label>
-              <SelectDark
-                value={form.periodo}
-                onChange={v => set('periodo', v)}
-                placeholder="—"
-                options={[{ value: '', label: '—' }, ...periodos.map(p => ({ value: p, label: p }))]}
-              />
-            </div>
+          <div>
+            <label className="block text-xs text-slate-400 mb-1">Cuatrimestre oficial</label>
+            <SelectDark
+              value={form.cuatrimestre_oficial}
+              onChange={v => set('cuatrimestre_oficial', v)}
+              placeholder="—"
+              options={[{ value: '', label: '—' }, ...Array.from({length:12},(_,i)=>i+1).map(n => ({ value: n, label: String(n) }))]}
+            />
+            <p className="mt-2 text-xs text-slate-500">La materia pertenece al plan de estudios y podrá programarse en cualquier periodo académico.</p>
           </div>
 
           {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
@@ -725,8 +714,7 @@ export default function Catalogo({ modo = 'completo' }) {
   const [filtActivo, setFiltActivo]   = useState('true');
   const [filtQ, setFiltQ]             = useState('');
 
-  // Filtros materias — pre-seleccionar el período actual
-  const [filtMPeriodo, setFiltMPeriodo] = useState(periodoActual);
+  // Filtros del plan de estudios permanente
   const [filtMActivo, setFiltMActivo]   = useState('true');
   const [filtMQ, setFiltMQ]             = useState('');
 
@@ -756,18 +744,10 @@ export default function Catalogo({ modo = 'completo' }) {
     }).catch(() => {});
     api.get('/catalogo/periodos/gestion-materias').then(({ data }) => {
       setPeriodosMaterias(data);
-      const elegido = data.find(p => p.es_actual) || data.find(p => p.editable) || data[0];
-      if (elegido) setFiltMPeriodo(elegido.clave);
     }).catch(() => {});
   }, []);
 
-  const periodoMateria = periodosMaterias.find(p => p.clave === filtMPeriodo);
-  const puedeEditarMaterias = periodoMateria?.editable ?? true;
   const periodoInstitucionalActual = periodosMaterias.find(p => p.es_actual)?.clave || periodoActual();
-  const opcionesPeriodosMateria = periodosMaterias.map(p => ({
-    value: p.clave,
-    label: `${p.estado === 'ACTUAL' ? 'Actual' : p.estado === 'PREPARACION' ? 'Preparación' : 'Histórico'} · ${p.clave} · ${p.materias} materias`,
-  }));
 
   // ── Cargar alumnos ──────────────────────────────────────────────────────────
   const cargarAlumnos = useCallback(async () => {
@@ -789,13 +769,12 @@ export default function Catalogo({ modo = 'completo' }) {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filtMPeriodo) params.append('periodo', filtMPeriodo);
       if (filtMActivo)  params.append('activo',  filtMActivo);
       if (filtMQ)       params.append('q',       filtMQ);
       const { data } = await api.get(`/catalogo/materias?${params}`);
       setMaterias(data);
     } finally { setLoading(false); }
-  }, [filtMPeriodo, filtMActivo, filtMQ]);
+  }, [filtMActivo, filtMQ]);
 
   useEffect(() => {
     if (tab === 'alumnos')  cargarAlumnos();
@@ -843,7 +822,7 @@ export default function Catalogo({ modo = 'completo' }) {
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
-            Período actual: <strong>{periodoInstitucionalActual}</strong>
+            {tab === 'materias' ? <strong>Plan de estudios permanente</strong> : <>Período actual: <strong>{periodoInstitucionalActual}</strong></>}
           </span>
         </div>
         <div className="flex gap-2">
@@ -855,8 +834,6 @@ export default function Catalogo({ modo = 'completo' }) {
           )}
           <button
             onClick={() => setModalImportar(tab)}
-            disabled={tab === 'materias' && !puedeEditarMaterias}
-            title={tab === 'materias' && !puedeEditarMaterias ? 'Los periodos históricos son de solo consulta' : ''}
             className="flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
@@ -865,8 +842,6 @@ export default function Catalogo({ modo = 'completo' }) {
           </button>
           <button
             onClick={() => tab === 'alumnos' ? setModalAlumno('nuevo') : setModalMateria('nuevo')}
-            disabled={tab === 'materias' && !puedeEditarMaterias}
-            title={tab === 'materias' && !puedeEditarMaterias ? 'Los periodos históricos son de solo consulta' : ''}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -1041,13 +1016,6 @@ export default function Catalogo({ modo = 'completo' }) {
               placeholder="Buscar materia…"
               className="input-dark text-white text-sm  px-3 py-2  focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"/>
             <SelectDark
-              value={filtMPeriodo}
-              onChange={setFiltMPeriodo}
-              className="min-w-[20rem]"
-              placeholder="Selecciona un periodo institucional"
-              options={opcionesPeriodosMateria}
-            />
-            <SelectDark
               value={filtMActivo}
               onChange={setFiltMActivo}
               className="w-28"
@@ -1057,17 +1025,7 @@ export default function Catalogo({ modo = 'completo' }) {
                 { value: '',      label: 'Todas' },
               ]}
             />
-            {periodoMateria && (
-              <span className={`inline-flex items-center rounded-full border px-3 py-2 text-xs font-semibold ${
-                periodoMateria.estado === 'ACTUAL' ? 'border-green-700/60 bg-green-900/30 text-green-300' :
-                periodoMateria.estado === 'PREPARACION' ? 'border-violet-700/60 bg-violet-900/30 text-violet-300' :
-                'border-slate-600 bg-slate-800 text-slate-300'
-              }`}>
-                {periodoMateria.estado === 'ACTUAL' ? 'Periodo actual · editable' :
-                 periodoMateria.estado === 'PREPARACION' ? 'Periodo en preparación · editable' :
-                 'Periodo histórico · solo consulta'}
-              </span>
-            )}
+            <span className="inline-flex items-center rounded-full border border-blue-700/50 bg-blue-900/30 px-3 py-2 text-xs font-semibold text-blue-300">El periodo se asigna al programar la carga docente</span>
           </div>
 
           {loading ? (
@@ -1091,7 +1049,7 @@ export default function Catalogo({ modo = 'completo' }) {
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Materia</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Carrera</th>
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Cuat.</th>
-                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Periodo</th>
+                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Uso</th>
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Estado</th>
                     <th className="px-4 py-3"/>
                   </tr>
@@ -1104,7 +1062,7 @@ export default function Catalogo({ modo = 'completo' }) {
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs max-w-[200px] truncate">{m.carrera || '—'}</td>
                       <td className="px-3 py-3 text-center text-gray-300 text-xs">{m.cuatrimestre_oficial || '—'}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{m.periodo || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-400">Todos los periodos</td>
                       <td className="px-3 py-3 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           m.activo
@@ -1115,7 +1073,6 @@ export default function Catalogo({ modo = 'completo' }) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2 justify-end">
-                          {puedeEditarMaterias ? <>
                           <button onClick={() => setModalMateria(m)}
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                             Editar
@@ -1131,7 +1088,6 @@ export default function Catalogo({ modo = 'completo' }) {
                               Activar
                             </button>
                           )}
-                          </> : <span className="text-xs text-slate-500">Solo consulta</span>}
                         </div>
                       </td>
                     </tr>
@@ -1186,8 +1142,6 @@ export default function Catalogo({ modo = 'completo' }) {
       {(modalMateria === 'nuevo' || (modalMateria && typeof modalMateria === 'object')) && (
         <ModalMateria
           materia={modalMateria === 'nuevo' ? null : modalMateria}
-          periodos={periodosMaterias.filter(p => p.editable).map(p => p.clave)}
-          periodoInicial={filtMPeriodo}
           carreras={carreras}
           onClose={() => setModalMateria(null)}
           onGuardado={() => { setModalMateria(null); cargarMaterias(); }}
@@ -1202,7 +1156,7 @@ export default function Catalogo({ modo = 'completo' }) {
             : 'Usa el archivo de materias UTECAN (hoja «concentrado»)'}
           endpoint={modalImportar === 'alumnos' ? '/catalogo/alumnos/importar' : '/catalogo/materias/importar'}
           supportsPreview={modalImportar === 'alumnos'}
-          extraParams={modalImportar === 'materias' ? { periodo_objetivo: filtMPeriodo } : {}}
+          extraParams={{}}
           onClose={() => setModalImportar(null)}
           onImportado={(data) => handleReporte(data,
             modalImportar === 'alumnos' ? 'Resultado — Importar alumnos' : 'Resultado — Importar materias'

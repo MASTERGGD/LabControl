@@ -565,6 +565,21 @@ def test_materias_corresponden_a_division_de_carrera(client, db):
         "/catalogo/materias", json=payload, headers=auth_headers(token_division)
     )
     assert creada.status_code == 201, creada.text
+    assert creada.json()["periodo"] is None
+    assert creada.json()["alcance"] == "PLAN_ESTUDIOS"
+    repetida_otro_periodo = client.post(
+        "/catalogo/materias",
+        json={**payload, "periodo": "MAY-AGO 2027"},
+        headers=auth_headers(token_division),
+    )
+    assert repetida_otro_periodo.status_code == 409
+    listado_2027 = client.get(
+        "/catalogo/materias",
+        params={"periodo": "MAY-AGO 2027", "activo": True},
+        headers=auth_headers(token_division),
+    )
+    assert listado_2027.status_code == 200
+    assert [materia["nombre"] for materia in listado_2027.json()] == ["Programación"]
 
     token_escolares = get_token(client, escolares.email, "Escolares123!")
     denegada = client.post(
@@ -587,7 +602,8 @@ def test_materia_grupo_solo_puede_pertenecer_a_un_docente(client, db):
     ) for letra in ("A", "B")]
     materia = CatalogoMateria(
         nombre="Extracción de conocimiento", carrera="TIEID",
-        cuatrimestre_oficial=9, periodo=periodo.clave, activo=True,
+        # Dato legado de alta: no debe limitar la reutilización de la materia.
+        cuatrimestre_oficial=9, periodo="MAY-AGO 2025", activo=True,
     )
     db.add_all([*grupos, materia]); db.commit()
     base = {

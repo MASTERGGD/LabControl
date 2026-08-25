@@ -449,6 +449,23 @@ def _normalizar_identidad(valor):
     return " ".join(str(valor or "").strip().upper().split())
 
 
+def _identidad_materia_catalogo(materia):
+    return (
+        _normalizar_identidad(materia.nombre),
+        _normalizar_identidad(materia.carrera),
+        materia.cuatrimestre_oficial,
+    )
+
+
+def _catalogo_materias_unico(materias):
+    canonicas, alias = {}, {}
+    for materia in sorted(materias, key=lambda item: item.id):
+        clave = _identidad_materia_catalogo(materia)
+        canonica = canonicas.setdefault(clave, materia)
+        alias[materia.id] = canonica.id
+    return list(canonicas.values()), alias
+
+
 def _validar_identidad_academica(db: Session, data: CargaInput):
     if data.tipo_actividad != "CLASE":
         return
@@ -469,21 +486,23 @@ def _validar_identidad_academica(db: Session, data: CargaInput):
         raise HTTPException(422, "La materia y el grupo pertenecen a carreras diferentes")
     if materia.cuatrimestre_oficial is not None and materia.cuatrimestre_oficial != grupo.cuatrimestre:
         raise HTTPException(422, "La materia y el grupo pertenecen a cuatrimestres diferentes")
-    periodo = db.get(PeriodoEscolar, data.periodo_id)
-    if materia.periodo and periodo and _normalizar_periodo(materia.periodo) != _normalizar_periodo(periodo.clave):
-        raise HTTPException(422, "La materia no corresponde al periodo académico seleccionado")
+    # La materia pertenece al plan de estudios permanente. El periodo se define
+    # en CargaDocente junto con el grupo, docente y horario de cada oferta.
 
 
 def _validar_asignacion_materia(db: Session, data: CargaInput, docente_id: int, excluir_id=None):
     """Una materia-grupo pertenece a un solo docente, aunque tenga varios bloques."""
     if data.tipo_actividad != "CLASE":
         return
+    materia = db.get(CatalogoMateria, data.materia_id)
+    ids_equivalentes = [m.id for m in db.query(CatalogoMateria).filter(CatalogoMateria.activo == True).all()
+                        if materia and _identidad_materia_catalogo(m) == _identidad_materia_catalogo(materia)]
     consulta = db.query(CargaDocente).filter(
         CargaDocente.activo == True,
         CargaDocente.tipo_actividad == "CLASE",
         CargaDocente.periodo_id == data.periodo_id,
         CargaDocente.grupo_academico_id == data.grupo_academico_id,
-        CargaDocente.materia_id == data.materia_id,
+        CargaDocente.materia_id.in_(ids_equivalentes or [data.materia_id]),
         CargaDocente.docente_id != docente_id,
     )
     if excluir_id:
@@ -726,16 +745,13 @@ def catalogos_docente(
         )
     grupos_q = db.query(GrupoAcademico).filter(GrupoAcademico.activo == True)
     materias_q = db.query(CatalogoMateria).filter(CatalogoMateria.activo == True)
+    periodo = db.get(PeriodoEscolar, elegido) if elegido else None
     if elegido:
         grupos_q = grupos_q.filter(GrupoAcademico.periodo_id == elegido)
-        periodo = db.query(PeriodoEscolar).get(elegido)
-        if periodo:
-            materias_q = materias_q.filter(
-                (CatalogoMateria.periodo == periodo.clave) | (CatalogoMateria.periodo == None)
-            )
     grupos = grupos_q.order_by(
         GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo
     ).all()
+    materias_catalogo, alias_materias = _catalogo_materias_unico(materias_q.all())
     asignaciones = {}
     if elegido:
         cargas_asignadas = db.query(CargaDocente).filter(
@@ -746,9 +762,10 @@ def catalogos_docente(
             CargaDocente.grupo_academico_id.isnot(None),
         ).all()
         for carga in cargas_asignadas:
-            clave = (carga.materia_id, carga.grupo_academico_id)
+            materia_canonica_id = alias_materias.get(carga.materia_id, carga.materia_id)
+            clave = (materia_canonica_id, carga.grupo_academico_id)
             asignaciones.setdefault(clave, {
-                "materia_id": carga.materia_id,
+                "materia_id": materia_canonica_id,
                 "grupo_academico_id": carga.grupo_academico_id,
                 "docente_id": carga.docente_id,
                 "docente": carga.docente.nombre if carga.docente else "Docente",
@@ -776,7 +793,7 @@ def catalogos_docente(
         "materias": [{
             "id": m.id, "nombre": m.nombre, "carrera": m.carrera,
             "cuatrimestre_oficial": m.cuatrimestre_oficial,
-        } for m in materias_q.all()],
+        } for m in materias_catalogo],
         "asignaciones_materias": list(asignaciones.values()),
         "grupos_tutorados": [{
             "id": g.id, "carrera": g.carrera, "cuatrimestre": g.cuatrimestre,
