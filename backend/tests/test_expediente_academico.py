@@ -6,7 +6,7 @@ from models.docencia import (
 )
 from models.auditoria import AuditLog
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
-from models.catalogo import GrupoAcademico, PeriodoEscolar
+from models.catalogo import GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
 from tests.test_reportes_tutor import _escenario
@@ -349,6 +349,35 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert auditoria is not None
     assert auditoria.detalle["alumno_id"] == alumno.id
 
+
+def test_trayectoria_agrupa_inscripciones_equivalentes_y_conserva_movimientos(client, db, admin_user):
+    _, _, alumno, carga, _ = _escenario(db)
+    grupo_vigente = carga.grupo_academico
+    grupo_anterior = GrupoAcademico(
+        periodo_id=grupo_vigente.periodo_id,
+        carrera="TIEID (catálogo anterior)",
+        cuatrimestre=grupo_vigente.cuatrimestre,
+        grupo=grupo_vigente.grupo,
+        activo=False,
+    )
+    db.add(grupo_anterior)
+    db.flush()
+    db.add(InscripcionAlumno(
+        alumno_id=alumno.id,
+        grupo_academico_id=grupo_anterior.id,
+        estado="INACTIVO",
+        inscrito_en=datetime.datetime(2026, 5, 1, 8, 0),
+    ))
+    db.commit()
+
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    respuesta = client.get(f"/expediente-academico/alumnos/{alumno.id}", headers=headers)
+    assert respuesta.status_code == 200, respuesta.text
+    trayectoria = respuesta.json()["trayectoria_academica"]
+    assert len(trayectoria) == 1
+    assert trayectoria[0]["estado_inscripcion"] == "ACTIVO"
+    assert len(trayectoria[0]["cambios_inscripcion"]) == 1
+    assert trayectoria[0]["cambios_inscripcion"][0]["estado"] == "INACTIVO"
 
 def test_solo_tutor_asignado_consulta_expediente(client, db):
     reportante, tutor, alumno, carga, _ = _escenario(db)

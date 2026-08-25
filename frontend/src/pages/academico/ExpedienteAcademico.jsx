@@ -66,6 +66,31 @@ function Kpi({ label, value, hint, tone = 'text-blue-400' }) {
   );
 }
 
+function Trayectoria({ trayectoria = [] }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const [mostrarCambios, setMostrarCambios] = useState(false);
+  const cambios = trayectoria.flatMap(t => (t.cambios_inscripcion || []).map(cambio => ({ ...cambio, curso: t })));
+  const etiquetaInscripcion = estado => estado === 'ACTIVO' ? 'Inscripción vigente' : estado === 'CONCLUIDA' ? 'Periodo concluido' : 'Inscripción anterior';
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 py-4">
+        <div><h2 className="font-semibold">Trayectoria por cuatrimestre</h2><p className="text-xs text-slate-500">Una fila representa cada cuatrimestre cursado. Los ajustes administrativos equivalentes se conservan por separado.</p></div>
+        {!!cambios.length && <button type="button" onClick={() => setMostrarCambios(valor => !valor)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/5">{mostrarCambios ? 'Ocultar cambios de inscripción' : `Ver cambios de inscripción (${cambios.length})`}</button>}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead className={`border-y text-xs uppercase ${isDay ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-white/10 bg-white/[0.025] text-slate-500'}`}><tr><th className="px-5 py-3">Periodo</th><th>Cuatrimestre</th><th>Grupo</th><th>Situación académica</th><th>Resolución</th></tr></thead>
+          <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>{trayectoria.map(t => <tr key={t.inscripcion_id}><td className="px-5 py-3 font-semibold">{t.periodo}</td><td>{t.cuatrimestre}°</td><td>{t.grupo}</td><td><Badge className={t.estado_inscripcion === 'ACTIVO' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600' : 'border-slate-500/30 bg-slate-500/10 text-slate-500'}>{etiquetaInscripcion(t.estado_inscripcion)}</Badge></td><td><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-500">{t.resolucion?.replaceAll('_',' ') || (t.estado_inscripcion === 'ACTIVO' ? 'EN CURSO' : 'SIN RESOLUCIÓN')}</span>{t.periodo_destino && <span className="ml-2 text-xs text-slate-500">→ {t.periodo_destino}</span>}</td></tr>)}</tbody>
+        </table>
+        {!trayectoria.length && <p className="p-8 text-center text-sm text-slate-500">Sin trayectoria registrada.</p>}
+      </div>
+      {mostrarCambios && <div className={`border-t px-5 py-4 ${isDay ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-white/[0.025]'}`}><h3 className="text-sm font-semibold">Historial de movimientos administrativos</h3><p className="mt-1 text-xs text-slate-500">Estos movimientos no representan cuatrimestres adicionales cursados.</p><div className="mt-3 space-y-2">{cambios.map(cambio => <div key={cambio.inscripcion_id} className={`rounded-lg border p-3 text-xs ${isDay ? 'border-slate-200 bg-white' : 'border-white/10 bg-slate-900/60'}`}><span className="font-semibold">{cambio.curso.periodo} · {cambio.curso.cuatrimestre}° {cambio.curso.grupo}</span><span className="mx-2 text-slate-400">—</span><span>Inscripción anterior</span><span className="ml-2 text-slate-500">Registrada: {fmtFechaHora(cambio.inscrito_en)}</span>{cambio.carrera && cambio.carrera !== cambio.curso.carrera && <p className="mt-1 text-slate-500">Catálogo anterior: {cambio.carrera}</p>}</div>)}</div></div>}
+    </Panel>
+  );
+}
+
 function MateriasTable({ materias, compact = false }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -975,7 +1000,7 @@ export default function ExpedienteAcademico() {
                 </div>
 
                 {tab === 'resumen' && <Resumen data={data} setTab={setTab} />}
-                {tab === 'trayectoria' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Trayectoria por cuatrimestre</h2><p className="text-xs text-slate-500">Cada inscripción conserva el periodo, grupo y resolución emitida por Servicios Escolares.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-y border-white/10 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Periodo</th><th>Cuatrimestre</th><th>Grupo</th><th>Inscripción</th><th>Resolución</th></tr></thead><tbody className="divide-y divide-white/5">{(data.trayectoria_academica || []).map(t => <tr key={t.inscripcion_id}><td className="px-5 py-3 font-semibold">{t.periodo}</td><td>{t.cuatrimestre}°</td><td>{t.grupo}</td><td>{t.estado_inscripcion}</td><td><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-400">{t.resolucion?.replaceAll('_',' ') || 'EN CURSO'}</span>{t.periodo_destino && <span className="ml-2 text-xs text-slate-500">→ {t.periodo_destino}</span>}</td></tr>)}</tbody></table>{!data.trayectoria_academica?.length && <p className="p-8 text-center text-sm text-slate-500">Sin trayectoria registrada.</p>}</div></Panel>}
+                {tab === 'trayectoria' && <Trayectoria trayectoria={data.trayectoria_academica} />}
                 {tab === 'materias' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Materias del cuatrimestre</h2><p className="text-xs text-slate-500">Resultados calculados a partir de registros disponibles en SIGA.</p></div><MateriasTable materias={data.materias} /></Panel>}
                 {tab === 'asistencia' && <Asistencia data={data} />}
                 {tab === 'evaluaciones' && <Evaluaciones data={data} />}

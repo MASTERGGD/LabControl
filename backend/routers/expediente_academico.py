@@ -1460,20 +1460,54 @@ def expediente_alumno(
     promociones_historial = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
         PromocionAcademicaAlumno.alumno_id == alumno.id,
     ).all()}
-    trayectoria = []
+    trayectoria_por_curso = {}
     for inscripcion_h in inscripciones_historial:
         grupo_h = inscripcion_h.grupo_academico
         promo_h = promociones_historial.get(inscripcion_h.id)
-        trayectoria.append({
+        fila_trayectoria = {
             "inscripcion_id": inscripcion_h.id, "periodo_id": grupo_h.periodo_id,
             "periodo": grupo_h.periodo.clave, "carrera": grupo_h.carrera,
             "cuatrimestre": grupo_h.cuatrimestre, "grupo": grupo_h.grupo,
             "estado_inscripcion": inscripcion_h.estado,
+            "inscrito_en": inscripcion_h.inscrito_en.isoformat() if inscripcion_h.inscrito_en else None,
             "resolucion": promo_h.resolucion if promo_h else None,
             "estado_promocion": promo_h.estado if promo_h else None,
             "periodo_destino": promo_h.periodo_destino.clave if promo_h else None,
             "observaciones": promo_h.observaciones if promo_h else None,
-        })
+        }
+        # Una corrección de catálogo puede crear otro grupo interno que se ve
+        # idéntico para el usuario. La trayectoria académica muestra una sola
+        # fila por periodo/cuatrimestre/grupo y conserva esos movimientos como
+        # historial técnico, sin confundirlos con cuatrimestres cursados.
+        clave_curso = (
+            (grupo_h.periodo.clave or "").strip().upper(),
+            grupo_h.cuatrimestre,
+            (grupo_h.grupo or "").strip().upper(),
+        )
+        trayectoria_por_curso.setdefault(clave_curso, []).append(fila_trayectoria)
+    trayectoria = []
+    for filas_curso in trayectoria_por_curso.values():
+        filas_ordenadas = sorted(
+            filas_curso,
+            key=lambda fila: (
+                fila["estado_inscripcion"] == "ACTIVO",
+                fila.get("inscrito_en") or "",
+                fila["inscripcion_id"],
+            ),
+            reverse=True,
+        )
+        vigente = dict(filas_ordenadas[0])
+        vigente["cambios_inscripcion"] = [
+            {
+                "inscripcion_id": anterior["inscripcion_id"],
+                "estado": anterior["estado_inscripcion"],
+                "inscrito_en": anterior.get("inscrito_en"),
+                "carrera": anterior.get("carrera"),
+            }
+            for anterior in filas_ordenadas[1:]
+        ]
+        trayectoria.append(vigente)
+    trayectoria.sort(key=lambda fila: (fila["periodo_id"], fila["cuatrimestre"], fila.get("inscrito_en") or ""))
     return {
         "alumno": {
             "id": alumno.id, "matricula": alumno.matricula,
@@ -1699,8 +1733,12 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
     if opciones.get("trayectoria"):
         trayectoria = data.get("trayectoria_academica") or []
         if trayectoria or not opciones.get("omitir_vacias", True):
-            filas = [["Periodo", "Cuatrimestre", "Grupo", "Inscripción", "Resolución"]]
-            filas.extend([[t.get("periodo") or "—", f"{t.get('cuatrimestre') or '—'}°", t.get("grupo") or "—", t.get("estado_inscripcion") or "—", (t.get("resolucion") or "En curso").replace("_", " ")] for t in trayectoria])
+            filas = [["Periodo", "Cuatrimestre", "Grupo", "Situación académica", "Resolución"]]
+            filas.extend([[
+                t.get("periodo") or "—", f"{t.get('cuatrimestre') or '—'}°", t.get("grupo") or "—",
+                "Inscripción vigente" if t.get("estado_inscripcion") == "ACTIVO" else "Periodo concluido" if t.get("estado_inscripcion") == "CONCLUIDA" else "Inscripción anterior",
+                (t.get("resolucion") or ("En curso" if t.get("estado_inscripcion") == "ACTIVO" else "Sin resolución")).replace("_", " "),
+            ] for t in trayectoria])
             tabla = Table(filas, repeatRows=1, colWidths=[4.0 * cm, 3.0 * cm, 2.5 * cm, 4.0 * cm, 5.1 * cm])
             tabla.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("FONTSIZE", (0, 0), (-1, -1), 7), ("PADDING", (0, 0), (-1, -1), 4)]))
             contenido.append(KeepTogether([
