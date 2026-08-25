@@ -410,6 +410,41 @@ def listar_carreras(
     return [_serializar_carrera(c, db) for c in q.order_by(CatalogoCarrera.nombre).all()]
 
 
+@router.get("/carreras/pendientes", summary="Carreras en uso pendientes de normalizar")
+def listar_carreras_pendientes(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Detecta nombres heredados que se usan en alumnos, grupos o materias y no son nombre ni alias oficial."""
+    _require_carreras_reader(db, current_user)
+    reconocidas = {
+        _norm_text(valor).casefold()
+        for (valor,) in db.query(CatalogoCarrera.nombre).all()
+        if _norm_text(valor)
+    }
+    reconocidas.update(
+        _norm_text(valor).casefold()
+        for (valor,) in db.query(CatalogoCarreraAlias.nombre).all()
+        if _norm_text(valor)
+    )
+    usos = {}
+    fuentes = (
+        ("alumnos", db.query(CatalogoAlumno.carrera, func.count(CatalogoAlumno.id)).group_by(CatalogoAlumno.carrera).all()),
+        ("grupos", db.query(GrupoAcademico.carrera, func.count(GrupoAcademico.id)).group_by(GrupoAcademico.carrera).all()),
+        ("materias", db.query(CatalogoMateria.carrera, func.count(CatalogoMateria.id)).group_by(CatalogoMateria.carrera).all()),
+    )
+    for fuente, filas in fuentes:
+        for nombre_raw, cantidad in filas:
+            nombre = _norm_text(nombre_raw)
+            if not nombre or nombre.casefold() in reconocidas:
+                continue
+            item = usos.setdefault(nombre.casefold(), {
+                "nombre": nombre, "alumnos": 0, "grupos": 0, "materias": 0,
+            })
+            item[fuente] += int(cantidad or 0)
+    return sorted(usos.values(), key=lambda item: item["nombre"].casefold())
+
+
 @router.post("/carreras", summary="Registrar carrera")
 def crear_carrera(
     body: CarreraBody,

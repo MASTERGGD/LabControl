@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { formatApiError } from '../../components/AutocompleteInput';
@@ -192,6 +192,8 @@ function ModalActivarFicha({ alumno, onClose, onOk }) {
 
 export function ModalCarreras({ onClose }) {
   const [carreras, setCarreras] = useState([]);
+  const [pendientes, setPendientes] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
   const [form, setForm] = useState({ clave: '', nombre: '', nivel: '', division: '', plan_estudios: '', aliases: '', activo: true });
   const [editando, setEditando] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -200,8 +202,12 @@ export function ModalCarreras({ onClose }) {
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/servicios-escolares/carreras?incluir_inactivas=true');
+      const [{ data }, pendientesRes] = await Promise.all([
+        api.get('/servicios-escolares/carreras?incluir_inactivas=true'),
+        api.get('/servicios-escolares/carreras/pendientes'),
+      ]);
       setCarreras(Array.isArray(data) ? data : []);
+      setPendientes(Array.isArray(pendientesRes.data) ? pendientesRes.data : []);
     } catch (e) {
       setError(formatApiError(e, 'Error al cargar carreras'));
     } finally {
@@ -210,6 +216,18 @@ export function ModalCarreras({ onClose }) {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  const carrerasFiltradas = useMemo(() => {
+    const termino = busqueda.trim().toLocaleLowerCase('es');
+    if (!termino) return carreras;
+    return carreras.filter(c => [c.clave, c.nombre, ...(c.aliases || [])]
+      .some(valor => String(valor || '').toLocaleLowerCase('es').includes(termino)));
+  }, [busqueda, carreras]);
+  const resumen = useMemo(() => ({
+    total: carreras.length,
+    activas: carreras.filter(c => c.activo).length,
+    inactivas: carreras.filter(c => !c.activo).length,
+  }), [carreras]);
 
   const limpiar = () => {
     setForm({ clave: '', nombre: '', nivel: '', division: '', plan_estudios: '', aliases: '', activo: true });
@@ -251,6 +269,11 @@ export function ModalCarreras({ onClose }) {
     setError('');
   };
 
+  const registrarPendiente = pendiente => {
+    limpiar();
+    setForm(f => ({ ...f, nombre: pendiente.nombre }));
+  };
+
   const desactivar = async carrera => {
     setError('');
     try {
@@ -264,7 +287,7 @@ export function ModalCarreras({ onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="glass rounded-2xl p-6 w-full max-w-3xl">
+      <div className="glass rounded-2xl p-6 w-full max-w-3xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-start justify-between gap-4 mb-5">
           <div>
             <h3 className="text-lg font-bold text-white">Catalogo de carreras</h3>
@@ -273,6 +296,28 @@ export function ModalCarreras({ onClose }) {
           <button onClick={onClose} className="btn-ghost px-3">Cerrar</button>
         </div>
 
+        <div className="mb-5 rounded-xl border border-white/10 bg-slate-900/30 p-4">
+          <label className="block text-sm font-semibold text-white mb-2">Buscar carrera registrada</label>
+          <input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Escribe nombre, clave o alias; por ejemplo: Inteligencia Artificial"
+            className="input-dark w-full"
+            autoFocus
+          />
+          <p className="mt-2 text-xs text-slate-400">
+            {resumen.total} registradas · {resumen.activas} activas · {resumen.inactivas} inactivas
+            {busqueda.trim() ? ` · ${carrerasFiltradas.length} coincidencias` : ''}
+          </p>
+        </div>
+
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h4 className="font-semibold text-white">{editando ? 'Editar carrera' : 'Agregar nueva carrera'}</h4>
+            <p className="text-xs text-slate-400">Estos campos crean o modifican el registro institucional.</p>
+          </div>
+          {editando && <button onClick={limpiar} className="btn-ghost text-xs">Cancelar edición</button>}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <select value={form.nivel} onChange={e => setForm(f => ({ ...f, nivel: e.target.value }))} className="input-dark">
             <option value="">Nivel educativo</option><option value="TSU">TSU</option><option value="LICENCIATURA">Licenciatura</option><option value="INGENIERIA">Ingeniería</option>
@@ -280,7 +325,7 @@ export function ModalCarreras({ onClose }) {
           <input value={form.division} onChange={e => setForm(f => ({ ...f, division: e.target.value }))} placeholder="División académica" className="input-dark" />
           <input value={form.plan_estudios} onChange={e => setForm(f => ({ ...f, plan_estudios: e.target.value }))} placeholder="Plan de estudios, ej. 2024" className="input-dark" />
         </div>
-        <input value={form.aliases} onChange={e => setForm(f => ({ ...f, aliases: e.target.value }))} placeholder="Alias aceptados en Excel, separados por coma" className="input-dark w-full mb-3" />
+        <input value={form.aliases} onChange={e => setForm(f => ({ ...f, aliases: e.target.value }))} placeholder="Alias o nombres alternativos, separados por coma" className="input-dark w-full mb-3" />
         {editando && form.nombre.trim() && form.nombre.trim() !== editando.nombre && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-semibold">El nuevo nombre se aplicará institucionalmente.</p>
@@ -302,21 +347,31 @@ export function ModalCarreras({ onClose }) {
             className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors whitespace-nowrap">
             + {editando ? 'Actualizar' : 'Agregar'}
           </button>
-          {editando && (
-            <button onClick={limpiar}
-              className="shrink-0 px-3 py-2 rounded-lg border border-slate-300 text-slate-600 text-sm hover:bg-slate-50 transition-colors">
-              Nuevo
-            </button>
-          )}
         </div>
 
         {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
 
+        {!!pendientes.length && !busqueda.trim() && (
+          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <h4 className="text-sm font-semibold text-amber-300">Usadas en SIGA, pendientes de registrar ({pendientes.length})</h4>
+            <p className="mt-1 text-xs text-amber-200/70">Estos nombres existen en datos anteriores, pero aún no son una carrera oficial ni un alias.</p>
+            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+              {pendientes.map(p => (
+                <div key={p.nombre} className="flex items-center justify-between gap-3 text-xs">
+                  <div><span className="font-medium text-white">{p.nombre}</span><span className="ml-2 text-slate-400">{p.alumnos} alumnos · {p.grupos} grupos · {p.materias} materias</span></div>
+                  <button onClick={() => registrarPendiente(p)} className="shrink-0 text-emerald-300 hover:text-emerald-200">Registrar →</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <h4 className="mb-2 text-sm font-semibold text-white">Carreras registradas</h4>
         <div className="rounded-xl border border-white/10 overflow-hidden max-h-[420px] overflow-y-auto">
           {loading ? (
             <div className="p-6 text-center text-slate-500 animate-pulse">Cargando...</div>
-          ) : carreras.length === 0 ? (
-            <div className="p-6 text-center text-slate-500">Sin carreras registradas</div>
+          ) : carrerasFiltradas.length === 0 ? (
+            <div className="p-6 text-center text-slate-500">No hay carreras que coincidan con “{busqueda}”</div>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -328,7 +383,7 @@ export function ModalCarreras({ onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {carreras.map(c => (
+                {carrerasFiltradas.map(c => (
                   <tr key={c.id} className="border-b border-white/5">
                     <td className="px-4 py-3 text-slate-300 font-mono text-xs">{c.clave}</td>
                     <td className="px-4 py-3 text-white">

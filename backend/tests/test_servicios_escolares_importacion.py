@@ -5,7 +5,7 @@ import openpyxl
 
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
+from models.catalogo import CatalogoAlumno, CatalogoCarrera, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.ficha_socioeconomica import FichaSocioeconomica
 from tests.conftest import auth_headers, get_token
 
@@ -147,3 +147,30 @@ def test_renombrar_carrera_actualiza_catalogos_y_alias_resuelve_excel(client, db
         files={"file": ("alumnos.xlsx", contenido.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
     assert preview.status_code == 200, preview.text
     assert preview.json()["total_errores"] == 0
+
+
+def test_carreras_pendientes_detecta_nombres_heredados(client, db):
+    admin = Usuario(nombre="Admin Pendientes", email="pendientes@test.mx",
+                    password_hash=hashear_password("Test1234!"),
+                    rol=RolUsuario.SUPER_ADMIN, activo=True)
+    oficial = CatalogoCarrera(clave="DGS", nombre="TSU en Desarrollo y Gestión de Software", activo=True)
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([admin, oficial, periodo]); db.flush()
+    db.add_all([
+        CatalogoAlumno(matricula="UTC-PEND-1", apellido_paterno="PEREZ", apellido_materno="",
+            nombres="ANA", carrera="TSU en Inteligencia Artificial", cuatrimestre=3,
+            grupo="A", periodo=periodo.clave, activo=True),
+        GrupoAcademico(periodo_id=periodo.id, carrera="TSU en Inteligencia Artificial",
+            cuatrimestre=3, grupo="A", activo=True),
+        CatalogoMateria(nombre="Bases de Datos", carrera="TSU en Inteligencia Artificial",
+            cuatrimestre_oficial=3, activo=True),
+    ])
+    db.commit()
+    headers = auth_headers(get_token(client, admin.email, "Test1234!"))
+
+    respuesta = client.get("/servicios-escolares/carreras/pendientes", headers=headers)
+    assert respuesta.status_code == 200, respuesta.text
+    pendiente = next(item for item in respuesta.json() if item["nombre"] == "TSU en Inteligencia Artificial")
+    assert pendiente == {
+        "nombre": "TSU en Inteligencia Artificial", "alumnos": 1, "grupos": 1, "materias": 1,
+    }
