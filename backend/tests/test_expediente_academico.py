@@ -12,7 +12,7 @@ from tests.conftest import auth_headers, get_token
 from tests.test_reportes_tutor import _escenario
 from routers.expediente_academico import (
     _clasificar_panorama, _estado_materia, _racha_reciente_por_materia,
-    _tendencias_asistencia, _cumplimiento_sesiones,
+    _tendencias_asistencia, _cumplimiento_sesiones, _semaforo,
 )
 
 
@@ -63,6 +63,16 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     assert _estado_materia(79.9, 9.0) == "RIESGO_ALTO"
     assert _estado_materia(80.0, 7.0) == "RIESGO_MEDIO"
     assert _estado_materia(90.0, 8.0) == "REGULAR"
+    assert _estado_materia(100.0, None, 1, 0) == "BASE_INSUFICIENT"
+    assert _estado_materia(None, None, 0, 0) == "SIN_DATOS"
+    nivel_preliminar, razones_preliminar, asistencia_preliminar = _semaforo([{
+        "asistencias_registradas": 1, "presente": 1, "retardo": 0,
+        "justificada": 0, "evaluaciones_registradas": 0,
+        "estado": "BASE_INSUFICIENT",
+    }], [], [])
+    assert asistencia_preliminar == 100.0
+    assert nivel_preliminar == "GRIS"
+    assert "1 de 3 clases" in razones_preliminar[0]
 
 
 def test_tendencias_usan_la_ultima_clase_como_fecha_de_referencia():

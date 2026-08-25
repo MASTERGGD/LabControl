@@ -45,6 +45,7 @@ UMBRAL_RACHA_RIESGO = 3
 UMBRAL_RACHA_ATENCION = 2
 UMBRAL_MATERIAS_ALTAS_ROJO = 2
 MINIMO_CLASES_SEMAFORO = 3
+MINIMO_REGISTROS_TENDENCIA = 5
 
 
 class EliminarAcuerdoPruebaInput(BaseModel):
@@ -84,7 +85,15 @@ def _clave_materia(carga: CargaDocente) -> str:
     )
 
 
-def _estado_materia(porcentaje: float | None, promedio: float | None) -> str:
+def _estado_materia(
+    porcentaje: float | None, promedio: float | None,
+    clases_registradas: int = MINIMO_CLASES_SEMAFORO,
+    evidencias_registradas: int = 0,
+) -> str:
+    if clases_registradas == 0 and evidencias_registradas == 0:
+        return "SIN_DATOS"
+    if clases_registradas < MINIMO_CLASES_SEMAFORO and evidencias_registradas == 0:
+        return "BASE_INSUFICIENT"
     if ((porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO)
             or (promedio is not None and promedio < UMBRAL_PROMEDIO_RIESGO)):
         return "RIESGO_ALTO"
@@ -200,9 +209,9 @@ def _clasificar_panorama(
 
 
 def _alerta_inmediata(racha: dict) -> dict:
-    if not racha.get("registros_analizados"):
+    if racha.get("registros_analizados", 0) < MINIMO_CLASES_SEMAFORO:
         nivel = "GRIS"
-        razones = ["Sin asistencias suficientes para calcular rachas por materia"]
+        razones = [f"Base preliminar: {racha.get('registros_analizados', 0)} de {MINIMO_CLASES_SEMAFORO} clases mínimas"]
     elif racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
         nivel = "ROJO"
         razones = [f"{racha['cantidad']} faltas consecutivas en {racha['materia']}"]
@@ -574,7 +583,12 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             if calificaciones else None
         )
         acuerdos = [r for r in registros if r.tipo == "ACUERDO"]
-        estado = _estado_materia(porcentaje, promedio)
+        estado = _estado_materia(porcentaje, promedio, len(clases), len(calificaciones))
+        racha = _racha_reciente_por_materia(
+            asistencias,
+            {clase.id: clase for clase in clases},
+            {carga.id: carga for carga in cargas if carga.id in carga_ids},
+        )
 
         materias.append({
             **item,
@@ -585,6 +599,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             "promedio_evidencias": promedio,
             "evaluaciones_registradas": len(calificaciones),
             "acuerdos_pendientes": sum(1 for r in acuerdos if r.estado == "PENDIENTE"),
+            "faltas_consecutivas": racha["cantidad"],
             "estado": estado,
             "evaluaciones": [{
                 "id": r.id, "titulo": r.titulo, "detalle": r.detalle,
@@ -613,8 +628,10 @@ def _semaforo(materias, acuerdos, reportes):
     reportes_altos = sum(
         1 for r in reportes if r.estado in ESTADOS_ABIERTOS and r.prioridad == "ALTA"
     )
+    total_evaluaciones = sum(m["evaluaciones_registradas"] for m in materias)
+    base_suficiente = total_regs >= MINIMO_CLASES_SEMAFORO or total_evaluaciones > 0
 
-    if asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
+    if base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
         razones.append(f"Asistencia global crítica de {asistencia_global}%")
     if riesgos_altos:
         razones.append(f"{riesgos_altos} materia(s) en riesgo alto")
@@ -626,23 +643,23 @@ def _semaforo(materias, acuerdos, reportes):
         razones.append(f"{reportes_altos} reporte(s) de prioridad alta abierto(s)")
     elif reportes_abiertos:
         razones.append(f"{reportes_abiertos} reporte(s) abierto(s)")
-    if (asistencia_global is not None
+    if (base_suficiente and asistencia_global is not None
             and UMBRAL_ASISTENCIA_RIESGO <= asistencia_global < UMBRAL_ASISTENCIA_ATENCION):
         razones.append(f"Asistencia global preventiva de {asistencia_global}%")
 
     if riesgos_altos >= UMBRAL_MATERIAS_ALTAS_ROJO or reportes_altos or (
-        asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO
+        base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO
     ):
         nivel = "ROJO"
     elif riesgos_altos or riesgos_medios or acuerdos_vencidos or reportes_abiertos or (
-        asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_ATENCION
+        base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_ATENCION
     ):
         nivel = "AMARILLO"
         if not razones:
             razones.append("Existen indicadores académicos que requieren observación")
-    elif total_regs == 0 and not any(m["evaluaciones_registradas"] for m in materias):
+    elif not base_suficiente:
         nivel = "GRIS"
-        razones.append("Todavía no hay información académica suficiente")
+        razones.append(f"Base preliminar: {total_regs} de {MINIMO_CLASES_SEMAFORO} clases mínimas y sin evidencias")
     else:
         nivel = "VERDE"
         razones.append("Sin indicadores críticos en los registros disponibles")
@@ -1372,6 +1389,9 @@ def expediente_alumno(
     tendencias_asistencia = _tendencias_asistencia(
         asistencias_patron, clases_patron, asistencia_global,
     )
+    tendencias_asistencia["calculable"] = len(asistencias_patron) >= MINIMO_REGISTROS_TENDENCIA
+    tendencias_asistencia["registros_total"] = len(asistencias_patron)
+    tendencias_asistencia["minimo_registros"] = MINIMO_REGISTROS_TENDENCIA
     calidad_datos = _calidad_datos(
         materias, clases_patron, asistencias_patron,
     )
@@ -1436,6 +1456,9 @@ def expediente_alumno(
             "reportes_abiertos": sum(1 for r in reportes if r.estado in ESTADOS_ABIERTOS),
             "canalizaciones_activas": sum(1 for c in canalizaciones if c.estado in {"PENDIENTE", "EN_SEGUIMIENTO"}),
             "semaforo": nivel, "razones_semaforo": razones,
+            "base_suficiente": len(asistencias_patron) >= MINIMO_CLASES_SEMAFORO or total_evaluaciones > 0,
+            "clases_con_asistencia": len(asistencias_patron),
+            "minimo_clases_semaforo": MINIMO_CLASES_SEMAFORO,
             "alerta_inmediata": alerta_inmediata,
             "tendencias_asistencia": tendencias_asistencia,
             "calidad_datos": calidad_datos,

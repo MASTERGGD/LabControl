@@ -28,8 +28,10 @@ const ESTADO_MATERIA = {
   RIESGO_ALTO: 'bg-red-500/15 text-red-400 border-red-500/30',
   RIESGO_MEDIO: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   REGULAR: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+  BASE_INSUFICIENT: 'bg-slate-500/5 text-slate-500 border-slate-400/40 border-dashed',
   SIN_DATOS: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
 };
+const ICONO_ESTADO_MATERIA = { RIESGO_ALTO: '▲', RIESGO_MEDIO: '●', REGULAR: '✓', BASE_INSUFICIENT: '◌', SIN_DATOS: '○' };
 
 const fmt = value => value
   ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value)
@@ -69,15 +71,17 @@ function MateriasTable({ materias, compact = false }) {
   const isDay = themeKey === 'day';
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[850px] text-left text-sm">
+      <table className="w-full min-w-[1000px] text-left text-sm">
         <thead className={`text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-white/[0.035] text-slate-400'}`}>
           <tr>
             <th className="px-4 py-3">Materia</th>
             <th className="px-4 py-3">Docente</th>
             <th className="px-4 py-3 text-center">Evidencias</th>
+            <th className="px-4 py-3 text-center">Clases</th>
             <th className="px-4 py-3 text-center">Promedio</th>
             <th className="px-4 py-3 text-center">Asistencia</th>
             <th className="px-4 py-3 text-center">Faltas</th>
+            <th className="px-4 py-3 text-center">Consecutivas</th>
             <th className="px-4 py-3">Estado</th>
           </tr>
         </thead>
@@ -87,10 +91,12 @@ function MateriasTable({ materias, compact = false }) {
               <td className={`px-4 py-3 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{m.materia}</td>
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
               <td className="px-4 py-3 text-center">{m.evaluaciones_registradas}</td>
+              <td className="px-4 py-3 text-center">{m.clases_registradas}</td>
               <td className="px-4 py-3 text-center font-semibold">{m.promedio_evidencias ?? '—'}</td>
               <td className="px-4 py-3 text-center">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
               <td className="px-4 py-3 text-center text-red-400">{m.falta}</td>
-              <td className="px-4 py-3"><Badge className={ESTADO_MATERIA[m.estado]}>{labelEstado(m.estado)}</Badge></td>
+              <td className="px-4 py-3 text-center">{m.faltas_consecutivas || '—'}</td>
+              <td className="px-4 py-3"><Badge className={ESTADO_MATERIA[m.estado]}>{ICONO_ESTADO_MATERIA[m.estado]} {labelEstado(m.estado)}</Badge></td>
             </tr>
           ))}
         </tbody>
@@ -109,15 +115,12 @@ function Resumen({ data, setTab }) {
   const tonoVariacion = valor => valor == null ? 'text-slate-500' : valor < 0 ? 'text-red-400' : valor > 0 ? 'text-emerald-400' : 'text-slate-400';
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-        <Kpi label="Materias" value={r.materias_inscritas} tone="text-blue-400" />
-        <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} tone={r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
+      <div className="grid gap-3 md:grid-cols-3">
+        <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_con_asistencia} de ${r.minimo_clases_semaforo} clases mínimas para emitir semáforo`} tone={!r.base_suficiente ? 'text-slate-500' : r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
         <Kpi label="Prom. evidencias" value={r.promedio_evidencias} hint="No oficial" tone="text-violet-400" />
-        <Kpi label="Materias en riesgo" value={r.materias_riesgo} tone={r.materias_riesgo ? 'text-red-400' : 'text-emerald-400'} />
-        <Kpi label="Acuerdos pendientes" value={r.acuerdos_pendientes} tone="text-amber-400" />
-        <Kpi label="Reportes abiertos" value={r.reportes_abiertos} tone="text-orange-400" />
-        <Kpi label="Canalizaciones" value={r.canalizaciones_activas} tone="text-cyan-400" />
+        <Kpi label="Materias en riesgo" value={r.materias_riesgo} hint={!r.base_suficiente ? 'Clasificación académica preliminar' : 'Según asistencia y evidencias disponibles'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
       </div>
+      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.materias_inscritas} {r.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</span> · <span className={r.acuerdos_pendientes ? 'text-amber-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span> · {r.canalizaciones_activas} canalizaciones activas</Panel>
 
       {(tendencias || calidad) && (
         <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
@@ -126,16 +129,16 @@ function Resumen({ data, setTab }) {
               <div><h2 className="font-semibold">Tendencia reciente de asistencia</h2><p className="mt-1 text-xs text-slate-500">Ventanas calculadas hasta la última clase registrada: {fmt(tendencias.fecha_referencia)}.</p></div>
               <button onClick={() => setTab('asistencia')} className="text-xs font-semibold text-blue-400">Ver análisis completo →</button>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {!tendencias.calculable ? <div className="mt-4 rounded-xl border border-slate-500/20 bg-slate-500/[0.05] p-4"><p className="font-semibold text-slate-500">Aún no hay suficientes clases para calcular una tendencia</p><p className="mt-1 text-xs text-slate-500">Hay {tendencias.registros_total} {tendencias.registros_total === 1 ? 'registro' : 'registros'}; se requieren al menos {tendencias.minimo_registros}. La asistencia actual se conserva como dato preliminar.</p></div> : <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {[
                 ['Últimos 7 días', tendencias.ultimos_7_dias, tendencias.variacion_7_dias_vs_global],
                 ['Últimos 30 días', tendencias.ultimos_30_dias, tendencias.variacion_30_dias_vs_global],
               ].map(([label, periodo, variacion]) => <div key={label} className="rounded-xl border border-slate-500/15 p-4">
                 <p className="text-xs font-semibold text-slate-500">{label}</p>
                 <div className="mt-1 flex items-end justify-between gap-3"><p className="text-2xl font-bold">{periodo?.porcentaje != null ? `${periodo.porcentaje}%` : 'Sin datos'}</p><p className={`text-xs font-semibold ${tonoVariacion(variacion)}`}>{variacion == null ? 'Sin comparación' : `${variacion > 0 ? '+' : ''}${variacion} pp vs. global`}</p></div>
-                <p className="mt-2 text-[10px] text-slate-500">{periodo?.registros || 0} registros · {periodo?.falta || 0} faltas · {periodo?.retardo || 0} retardos</p>
+                <p className="mt-2 text-[10px] text-slate-500">{periodo?.registros || 0} {periodo?.registros === 1 ? 'registro' : 'registros'} · {periodo?.falta || 0} faltas · {periodo?.retardo || 0} retardos</p>
               </div>)}
-            </div>
+            </div>}
           </Panel>}
           {calidad && <Panel className="p-5">
             <h2 className="font-semibold">Vigencia y calidad de datos</h2>
@@ -153,7 +156,7 @@ function Resumen({ data, setTab }) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className={`h-3 w-3 rounded-full ${sem.dot}`} />
+              <span className={`text-base ${sem.text}`}>{r.semaforo === 'ROJO' ? '▲' : r.semaforo === 'AMARILLO' ? '●' : r.semaforo === 'VERDE' ? '✓' : '◌'}</span>
               <h2 className={`text-lg font-bold ${sem.text}`}>{sem.label}</h2>
             </div>
             <ul className="mt-3 space-y-1 text-sm text-slate-400">
@@ -834,11 +837,11 @@ export default function ExpedienteAcademico() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">Seguimiento institucional</p>
-            <h1 className="mt-1 text-2xl font-bold">Panorama académico</h1>
-            <p className="mt-1 text-sm text-slate-500">Seguimiento por grupo y acceso al expediente individual de cada alumno.</p>
+            <h1 className="mt-1 text-2xl font-bold">{alumnoId ? 'Expediente del alumno' : 'Panorama académico'}</h1>
+            <p className="mt-1 text-sm text-slate-500">{alumnoId ? (data?.alumno?.nombre || 'Consulta académica individual') : 'Seguimiento por grupo y acceso al expediente individual de cada alumno.'}</p>
           </div>
           <div className="relative w-full max-w-md">
-            <label className="text-xs font-semibold text-slate-500">Búsqueda directa de alumno</label>
+            <label className="text-xs font-semibold text-slate-500">{alumnoId ? 'Buscar otro alumno en la institución' : 'Búsqueda directa de alumno'}</label>
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark mt-1" placeholder="Escribe nombre o matrícula…" />
             {busqueda.trim().length >= 2 && (
               <Panel className="absolute right-0 top-full z-30 mt-2 max-h-80 w-full overflow-y-auto shadow-2xl">
@@ -925,16 +928,16 @@ export default function ExpedienteAcademico() {
               <div className="space-y-5">
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div><h2 className="text-2xl font-bold">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p></div>
+                    <div><h2 className="text-2xl font-bold normal-case">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('acuerdos')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Revisar acuerdos</button><button onClick={() => setTab('tutoria')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Seguimiento tutorial</button><button onClick={() => window.print()} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Imprimir o guardar PDF</button></div></div>
                     <div className="flex flex-wrap gap-3">
                       <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Riesgo integral</p>
-                        <div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full ${SEMAFORO[data.resumen.semaforo]?.dot}`} /><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{SEMAFORO[data.resumen.semaforo]?.label}</span></div>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Riesgo integral · periodo</p>
+                        <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.semaforo]?.text}>{data.resumen.semaforo === 'ROJO' ? '▲' : data.resumen.semaforo === 'AMARILLO' ? '●' : data.resumen.semaforo === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{SEMAFORO[data.resumen.semaforo]?.label}</span></div>
                       </div>
                       {data.resumen.alerta_inmediata && (
                         <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.box}`}>
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Alerta inmediata</p>
-                          <div className="flex items-center gap-2"><span className={`h-3 w-3 rounded-full ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.dot}`} /><span className={`text-sm font-bold ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}`}>{SEMAFORO[data.resumen.alerta_inmediata.nivel]?.label}</span></div>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Alerta inmediata · registros recientes</p>
+                          <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}>{data.resumen.alerta_inmediata.nivel === 'ROJO' ? '▲' : data.resumen.alerta_inmediata.nivel === 'AMARILLO' ? '●' : data.resumen.alerta_inmediata.nivel === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}`}>{SEMAFORO[data.resumen.alerta_inmediata.nivel]?.label}</span></div>
                           <p className="mt-1 max-w-xs text-[10px] text-slate-500">{data.resumen.alerta_inmediata.razones?.[0]}</p>
                         </div>
                       )}
