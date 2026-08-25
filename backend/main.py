@@ -157,6 +157,10 @@ app = FastAPI(
 _APP_ENV      = os.getenv("APP_ENV", "development").lower()
 _FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 _CORS_ENV     = os.getenv("CORS_ORIGINS", "")
+PRODUCTION_CORS_HEADERS = [
+    "Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With",
+    "X-SIGA-Periodo-Id", "X-SIGA-Periodo",
+]
 
 if _APP_ENV in ("production", "prod"):
     _CORS_ORIGINS = [o.strip() for o in _CORS_ENV.split(",") if o.strip()]
@@ -174,7 +178,7 @@ app.add_middleware(
     allow_origins=_CORS_ORIGINS,
     allow_credentials=not _CORS_ALL,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"] if _CORS_ALL else ["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=["*"] if _CORS_ALL else PRODUCTION_CORS_HEADERS,
     expose_headers=["Content-Disposition", "X-Request-ID"],
     max_age=600,
 )

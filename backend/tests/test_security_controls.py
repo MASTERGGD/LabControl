@@ -22,6 +22,13 @@ from fastapi.testclient import TestClient
 from tests.conftest import get_token, auth_headers
 from services.rate_limit import RateLimitMiddleware
 from middleware.security import SecurityHeadersMiddleware
+from main import PRODUCTION_CORS_HEADERS
+
+
+def test_cors_produccion_permite_contexto_de_periodo():
+    """El selector global no debe provocar que el navegador bloquee la API."""
+    assert "X-SIGA-Periodo-Id" in PRODUCTION_CORS_HEADERS
+    assert "X-SIGA-Periodo" in PRODUCTION_CORS_HEADERS
 
 
 # ─── 1. Guard de cambio de contraseña obligatorio ──────────────────────────────
