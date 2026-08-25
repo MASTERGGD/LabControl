@@ -94,9 +94,9 @@ function MateriasTable({ materias, compact = false }) {
               <td className="px-4 py-3 text-center">{m.clases_registradas}</td>
               <td className="px-4 py-3 text-center font-semibold">{m.promedio_evidencias ?? '—'}</td>
               <td className="px-4 py-3 text-center">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
-              <td className="px-4 py-3 text-center text-red-400">{m.falta}</td>
+              <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas || '—'}</td>
-              <td className="px-4 py-3"><Badge className={ESTADO_MATERIA[m.estado]}>{ICONO_ESTADO_MATERIA[m.estado]} {labelEstado(m.estado)}</Badge></td>
+              <td className="px-4 py-3"><Badge className={`${ESTADO_MATERIA[m.estado]} whitespace-nowrap`}>{ICONO_ESTADO_MATERIA[m.estado]} {m.estado === 'BASE_INSUFICIENT' ? 'SIN BASE' : labelEstado(m.estado)}</Badge></td>
             </tr>
           ))}
         </tbody>
@@ -739,6 +739,9 @@ export default function ExpedienteAcademico() {
   const [tab, setTab] = useState('resumen');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [modalPdf, setModalPdf] = useState(false);
+  const [opcionesPdf, setOpcionesPdf] = useState({ acuerdos: false, tutoria: false });
+  const [generandoPdf, setGenerandoPdf] = useState(false);
 
   const buscar = useCallback(async (texto = '') => {
     if (texto.trim().length < 2) {
@@ -807,6 +810,21 @@ export default function ExpedienteAcademico() {
     params.delete('alumno');
     setSearchParams(params, { replace: true });
   }, [grupoId, setSearchParams]);
+  const descargarPdf = async () => {
+    if (!alumnoId || generandoPdf) return;
+    setGenerandoPdf(true); setError('');
+    try {
+      const { data: archivo, headers } = await api.get(`/expediente-academico/alumnos/${alumnoId}/exportar.pdf`, {
+        params: { incluir_acuerdos: opcionesPdf.acuerdos, incluir_tutoria: opcionesPdf.tutoria },
+        responseType: 'blob',
+      });
+      const enlace = document.createElement('a');
+      enlace.href = URL.createObjectURL(archivo);
+      enlace.download = headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1] || `Expediente_${data?.alumno?.matricula || alumnoId}.pdf`;
+      enlace.click(); URL.revokeObjectURL(enlace.href); setModalPdf(false);
+    } catch (err) { setError(err.response?.data?.detail || 'No se pudo generar el expediente PDF.'); }
+    finally { setGenerandoPdf(false); }
+  };
 
   const cuatrimestres = useMemo(() => [...new Set(grupos.map(grupo => grupo.cuatrimestre))].sort((a, b) => a - b), [grupos]);
   const resumenGrupos = useMemo(() => ({
@@ -928,7 +946,7 @@ export default function ExpedienteAcademico() {
               <div className="space-y-5">
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div><h2 className="text-2xl font-bold normal-case">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('acuerdos')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Revisar acuerdos</button><button onClick={() => setTab('tutoria')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Seguimiento tutorial</button><button onClick={() => window.print()} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Imprimir o guardar PDF</button></div></div>
+                    <div><h2 className="text-2xl font-bold normal-case">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('acuerdos')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Revisar acuerdos</button><button onClick={() => setTab('tutoria')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Seguimiento tutorial</button><button onClick={() => setModalPdf(true)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Generar PDF</button></div></div>
                     <div className="flex flex-wrap gap-3">
                       <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Riesgo integral · periodo</p>
@@ -959,6 +977,20 @@ export default function ExpedienteAcademico() {
                 {tab === 'timeline' && <Timeline alumnoId={data.alumno.id} materias={data.materias} />}
               </div>
             )}
+          </div>
+        )}
+        {modalPdf && data && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+            <Panel className="w-full max-w-lg p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">Generar expediente PDF</h2><p className="mt-1 text-sm text-slate-500">El resumen, la calidad de datos y el panorama por materia siempre se incluyen.</p></div><button onClick={() => setModalPdf(false)} className="text-2xl text-slate-500">×</button></div>
+              <div className="mt-5 space-y-3">
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked readOnly disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Resumen y panorama por materia</b><span className="text-xs text-slate-500">Obligatorio para conservar el contexto del documento.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.acuerdos} onChange={e => setOpcionesPdf(actual => ({ ...actual, acuerdos: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Acuerdos de seguimiento</b><span className="text-xs text-slate-500">Incluye compromisos, estado y fecha de revisión.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.tutoria} onChange={e => setOpcionesPdf(actual => ({ ...actual, tutoria: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Seguimiento tutorial</b><span className="text-xs text-slate-500">Incluye conteos y sesiones tutoriales disponibles.</span></span></label>
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-600"><b>La leyenda de no oficialidad es obligatoria.</b> El documento contiene información académica personal y debe compartirse únicamente por medios institucionales.</div>
+              </div>
+              <div className="mt-6 flex justify-end gap-2"><button onClick={() => setModalPdf(false)} className="rounded-xl border border-slate-500/20 px-4 py-2.5 text-sm font-semibold text-slate-500">Cancelar</button><button disabled={generandoPdf} onClick={descargarPdf} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{generandoPdf ? 'Generando…' : 'Descargar PDF institucional'}</button></div>
+            </Panel>
           </div>
         )}
       </div>

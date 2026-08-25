@@ -291,6 +291,19 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     ]
     assert data["timeline_paginada"] is True
     assert "timeline" not in data
+    pdf = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}/exportar.pdf",
+        params={"incluir_acuerdos": True, "incluir_tutoria": True},
+        headers=admin_headers,
+    )
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.headers["content-type"].startswith("application/pdf")
+    assert pdf.content.startswith(b"%PDF-")
+    assert pdf.headers["x-expediente-folio"].startswith(f"EXP-{alumno.matricula}-")
+    assert db.query(AuditLog).filter(
+        AuditLog.accion == "EXPORTAR_EXPEDIENTE_PDF",
+        AuditLog.recurso_id == alumno.id,
+    ).count() == 1
     timeline = client.get(
         f"/expediente-academico/alumnos/{alumno.id}/timeline",
         params={"pagina": 1, "limite": 10}, headers=admin_headers,
