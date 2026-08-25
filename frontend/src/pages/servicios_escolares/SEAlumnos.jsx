@@ -352,14 +352,14 @@ export function ModalCarreras({ onClose }) {
         {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
 
         {!!pendientes.length && !busqueda.trim() && (
-          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <h4 className="text-sm font-semibold text-amber-300">Usadas en SIGA, pendientes de registrar ({pendientes.length})</h4>
-            <p className="mt-1 text-xs text-amber-200/70">Estos nombres existen en datos anteriores, pero aún no son una carrera oficial ni un alias.</p>
-            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <h4 className="text-sm font-bold text-slate-900">Usadas en SIGA, pendientes de registrar ({pendientes.length})</h4>
+            <p className="mt-1 text-xs leading-relaxed text-amber-900">Estos nombres existen en datos anteriores, pero aún no son una carrera oficial ni un alias.</p>
+            <div className="mt-3 space-y-2 max-h-32 overflow-y-auto pr-2" style={{ scrollbarColor: '#64748b #fde68a', scrollbarWidth: 'thin' }}>
               {pendientes.map(p => (
                 <div key={p.nombre} className="flex items-center justify-between gap-3 text-xs">
-                  <div><span className="font-medium text-white">{p.nombre}</span><span className="ml-2 text-slate-400">{p.alumnos} alumnos · {p.grupos} grupos · {p.materias} materias</span></div>
-                  <button onClick={() => registrarPendiente(p)} className="shrink-0 text-emerald-300 hover:text-emerald-200">Registrar →</button>
+                  <div><span className="font-semibold text-slate-900">{p.nombre}</span><span className="ml-2 text-slate-600">{p.alumnos} alumnos · {p.grupos} grupos · {p.materias} materias</span></div>
+                  <button onClick={() => registrarPendiente(p)} className="shrink-0 font-semibold text-emerald-800 hover:text-emerald-950 hover:underline">Registrar →</button>
                 </div>
               ))}
             </div>
