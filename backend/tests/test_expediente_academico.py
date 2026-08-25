@@ -293,13 +293,14 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert "timeline" not in data
     pdf = client.get(
         f"/expediente-academico/alumnos/{alumno.id}/exportar.pdf",
-        params={"incluir_acuerdos": True, "incluir_tutoria": True},
+        params={"incluir_acuerdos": True, "incluir_tutoria": True, "incluir_asistencia": True, "incluir_trayectoria": True, "incluir_observaciones": True},
         headers=admin_headers,
     )
     assert pdf.status_code == 200, pdf.text
     assert pdf.headers["content-type"].startswith("application/pdf")
     assert pdf.content.startswith(b"%PDF-")
     assert pdf.headers["x-expediente-folio"].startswith(f"EXP-{alumno.matricula}-")
+    assert f"Expediente_{alumno.matricula}_" in pdf.headers["content-disposition"]
     assert db.query(AuditLog).filter(
         AuditLog.accion == "EXPORTAR_EXPEDIENTE_PDF",
         AuditLog.recurso_id == alumno.id,

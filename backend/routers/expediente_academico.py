@@ -18,8 +18,9 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
-    Image as RLImage, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    Image as RLImage, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 from database import get_db
@@ -58,6 +59,50 @@ UMBRAL_RACHA_ATENCION = 2
 UMBRAL_MATERIAS_ALTAS_ROJO = 2
 MINIMO_CLASES_SEMAFORO = 3
 MINIMO_REGISTROS_TENDENCIA = 5
+
+
+def _numero_pdf(valor) -> str:
+    if valor is None:
+        return "—"
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor)
+
+
+class _CanvasExpediente(pdfcanvas.Canvas):
+    """Segunda pasada para total de páginas y encabezado mínimo repetido."""
+    def __init__(self, *args, folio: str, matricula: str, alumno: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._paginas_guardadas = []
+        self._folio = folio
+        self._matricula = matricula
+        self._alumno = alumno
+
+    def showPage(self):
+        self._paginas_guardadas.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        total = len(self._paginas_guardadas)
+        for estado in self._paginas_guardadas:
+            self.__dict__.update(estado)
+            self._dibujar_identificacion(total)
+            super().showPage()
+        super().save()
+
+    def _dibujar_identificacion(self, total: int):
+        self.saveState()
+        gris = colors.HexColor("#475569")
+        borde = colors.HexColor("#CBD5E1")
+        self.setFillColor(gris)
+        self.setStrokeColor(borde)
+        self.setFont("Helvetica", 6.8)
+        if self._pageNumber > 1:
+            self.drawString(1.35 * cm, letter[1] - 0.72 * cm, f"UTECAN · {self._matricula} · {self._alumno}")
+            self.drawRightString(letter[0] - 1.35 * cm, letter[1] - 0.72 * cm, self._folio)
+            self.line(1.35 * cm, letter[1] - 0.9 * cm, letter[0] - 1.35 * cm, letter[1] - 0.9 * cm)
+        self.drawRightString(letter[0] - 1.35 * cm, 0.67 * cm, f"Página {self._pageNumber} de {total}")
+        self.restoreState()
 
 
 class EliminarAcuerdoPruebaInput(BaseModel):
@@ -1547,6 +1592,7 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
         title=f"Expediente de seguimiento - {alumno['matricula']}",
         author="SIGA UTECAN",
         subject="Documento de seguimiento preventivo no oficial",
+        keywords=f"{folio}, {alumno['matricula']}, {alumno.get('periodo') or ''}, seguimiento preventivo",
     )
 
     def encabezado_pie(canvas, documento):
@@ -1556,7 +1602,6 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
         canvas.setFont("Helvetica", 6.8)
         canvas.setFillColor(gris)
         canvas.drawString(doc.leftMargin, 0.67 * cm, f"{alumno['matricula']} · Documento preventivo · {folio}")
-        canvas.drawRightString(letter[0] - doc.rightMargin, 0.67 * cm, f"Página {documento.page}")
         canvas.restoreState()
 
     contenido = []
@@ -1575,15 +1620,19 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
     tabla_identidad = Table(identidad, colWidths=[2.2 * cm, 7.0 * cm, 2.5 * cm, 6.9 * cm])
     tabla_identidad.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.35, borde), ("BACKGROUND", (0, 0), (0, -1), claro), ("BACKGROUND", (2, 0), (2, -1), claro), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 5)]))
     contenido.extend([tabla_identidad, Spacer(1, 0.25 * cm)])
-    leyenda = Table([[Paragraph("<b>DOCUMENTO NO OFICIAL.</b> Documento de seguimiento preventivo. No constituye constancia oficial de calificaciones, historial académico ni certificación de estudios. Los indicadores son auxiliares para la toma de decisiones y pueden variar conforme se registre nueva información.", estilos["pequeno"])]], colWidths=[18.6 * cm])
+    leyenda = Table([[Paragraph("<b>DOCUMENTO NO OFICIAL.</b> Documento de seguimiento preventivo. No constituye constancia oficial de calificaciones, historial académico ni certificación de estudios. Los indicadores son auxiliares para la toma de decisiones y pueden variar conforme se registre nueva información. <b>Contiene datos personales y académicos del alumno; su distribución se limita a personal autorizado y medios institucionales.</b>", estilos["pequeno"])]], colWidths=[18.6 * cm])
     leyenda.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), ambar_claro), ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#F59E0B")), ("PADDING", (0, 0), (-1, -1), 7)]))
-    contenido.extend([leyenda, Spacer(1, 0.22 * cm), Paragraph(f"Generado por: <b>{escape(generado_por)}</b> · Fecha de generación: {datetime.datetime.now(MX_TIMEZONE).strftime('%d/%m/%Y %H:%M')} · Información consultada al momento de generar el documento.", estilos["pequeno"])])
+    calidad_general = resumen.get("calidad_datos") or {}
+    vigencia = f"Última clase: {calidad_general.get('ultima_clase') or 'sin registro'}"
+    if calidad_general.get("ultima_actualizacion_asistencia"):
+        vigencia += f" · Asistencia actualizada: {calidad_general['ultima_actualizacion_asistencia'][:16].replace('T', ' ')}"
+    contenido.extend([leyenda, Spacer(1, 0.22 * cm), Paragraph(f"Generado por: <b>{escape(generado_por)}</b> · Fecha de generación: {datetime.datetime.now(MX_TIMEZONE).strftime('%d/%m/%Y %H:%M')} · {escape(vigencia)}.", estilos["pequeno"])])
 
     if opciones.get("resumen", True):
         contenido.append(Paragraph("Resumen preventivo", estilos["seccion"]))
-        estado = {"ROJO": "[!] RIESGO ALTO", "AMARILLO": "[i] REQUIERE ATENCIÓN", "VERDE": "[OK] SEGUIMIENTO REGULAR", "GRIS": "[?] INFORMACIÓN INSUFICIENT"}.get(resumen["semaforo"], resumen["semaforo"])
+        estado = {"ROJO": "RIESGO ALTO", "AMARILLO": "REQUIERE ATENCIÓN", "VERDE": "SEGUIMIENTO REGULAR", "GRIS": "INFORMACIÓN INSUFICIENT"}.get(resumen["semaforo"], resumen["semaforo"])
         kpis = [
-            ["Estado integral", estado, "Asistencia", f"{resumen['asistencia_global']}%" if resumen["asistencia_global"] is not None else "—"],
+            ["Estado integral", Paragraph(estado, estilos["normal"]), "Asistencia", f"{_numero_pdf(resumen['asistencia_global'])}%" if resumen["asistencia_global"] is not None else "—"],
             ["Promedio de evidencias", resumen["promedio_evidencias"] if resumen["promedio_evidencias"] is not None else "—", "Materias en riesgo", resumen["materias_riesgo"] if resumen.get("base_suficiente") else "—"],
             ["Acuerdos pendientes", resumen["acuerdos_pendientes"], "Reportes abiertos", resumen["reportes_abiertos"]],
         ]
@@ -1597,38 +1646,79 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
     if opciones.get("materias", True):
         contenido.append(Paragraph("Panorama por materia", estilos["seccion"]))
         filas = [["Materia", "Docente", "Clases", "Evid.", "Prom.", "Asist.", "Faltas", "Consec.", "Estado"]]
-        etiquetas_estado = {"RIESGO_ALTO": "[!] Riesgo alto", "RIESGO_MEDIO": "[i] Atención", "REGULAR": "[OK] Regular", "BASE_INSUFICIENT": "[?] Sin base", "SIN_DATOS": "[?] Sin datos"}
+        etiquetas_estado = {"RIESGO_ALTO": "Riesgo alto", "RIESGO_MEDIO": "Requiere atención", "REGULAR": "Regular", "BASE_INSUFICIENT": "Base insuficiente", "SIN_DATOS": "Sin información"}
         for materia in data.get("materias", []):
             filas.append([
                 Paragraph(escape(materia["materia"]), estilos["pequeno"]), Paragraph(escape(materia.get("docente") or "—"), estilos["pequeno"]),
                 materia["clases_registradas"], materia["evaluaciones_registradas"], materia["promedio_evidencias"] if materia["promedio_evidencias"] is not None else "—",
-                f"{materia['porcentaje_asistencia']}%" if materia["porcentaje_asistencia"] is not None else "—", materia["falta"], materia.get("faltas_consecutivas") or 0,
-                etiquetas_estado.get(materia["estado"], materia["estado"]),
+                f"{_numero_pdf(materia['porcentaje_asistencia'])}%" if materia["porcentaje_asistencia"] is not None else "—", materia["falta"], materia.get("faltas_consecutivas") if materia.get("faltas_consecutivas") is not None else "—",
+                Paragraph(etiquetas_estado.get(materia["estado"], materia["estado"]), estilos["pequeno"]),
             ])
         tabla_materias = Table(filas, repeatRows=1, colWidths=[4.0 * cm, 3.25 * cm, 1.25 * cm, 1.15 * cm, 1.15 * cm, 1.3 * cm, 1.05 * cm, 1.15 * cm, 2.3 * cm])
         tabla_materias.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 6.7), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, claro]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (2, 1), (-1, -1), "CENTER"), ("PADDING", (0, 0), (-1, -1), 4)]))
         contenido.append(tabla_materias)
 
+    if opciones.get("asistencia"):
+        filas = [["Materia", "Clases", "Presentes", "Faltas", "Retardos", "Justificadas", "Asistencia"]]
+        for materia in data.get("materias", []):
+            filas.append([
+                Paragraph(escape(materia["materia"]), estilos["pequeno"]), materia["clases_registradas"],
+                materia.get("presente", 0), materia.get("falta", 0), materia.get("retardo", 0), materia.get("justificada", 0),
+                f"{_numero_pdf(materia['porcentaje_asistencia'])}%" if materia["porcentaje_asistencia"] is not None else "—",
+            ])
+        if len(filas) > 1 or not opciones.get("omitir_vacias", True):
+            contenido.append(Paragraph("Asistencia detallada", estilos["seccion"]))
+            tabla = Table(filas, repeatRows=1, colWidths=[6.0 * cm, 2.0 * cm, 2.2 * cm, 2.0 * cm, 2.1 * cm, 2.4 * cm, 1.9 * cm])
+            tabla.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("FONTSIZE", (0, 0), (-1, -1), 7), ("ALIGN", (1, 1), (-1, -1), "CENTER"), ("PADDING", (0, 0), (-1, -1), 4)]))
+            contenido.append(tabla)
+
     if opciones.get("acuerdos"):
-        contenido.extend([PageBreak(), Paragraph("Acuerdos de seguimiento", estilos["seccion"])])
+        bloque_acuerdos = [Paragraph("Acuerdos de seguimiento", estilos["seccion"])]
         filas = [["Fecha", "Materia/contexto", "Acuerdo", "Estado", "Revisión"]]
         for acuerdo in data.get("acuerdos", []):
             filas.append([acuerdo["creado_en"][:10], acuerdo.get("materia") or "General", Paragraph(escape(acuerdo["titulo"]), estilos["pequeno"]), acuerdo["estado"], acuerdo.get("fecha_revision") or "—"])
         if len(filas) == 1:
-            contenido.append(Paragraph("No hay acuerdos registrados.", estilos["normal"]))
+            if not opciones.get("omitir_vacias", True):
+                bloque_acuerdos.append(Paragraph("No hay acuerdos registrados.", estilos["normal"]))
         else:
             tabla = Table(filas, repeatRows=1, colWidths=[2.2 * cm, 4.0 * cm, 7.0 * cm, 2.4 * cm, 2.4 * cm])
             tabla.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("FONTSIZE", (0, 0), (-1, -1), 7), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("PADDING", (0, 0), (-1, -1), 4)]))
-            contenido.append(tabla)
+            bloque_acuerdos.append(tabla)
+        if len(bloque_acuerdos) > 1:
+            contenido.append(KeepTogether(bloque_acuerdos))
 
     if opciones.get("tutoria"):
-        contenido.append(Paragraph("Seguimiento tutorial", estilos["seccion"]))
         tutoria = data.get("tutoria", {})
-        contenido.append(Paragraph(f"<b>Tutor:</b> {escape(tutoria.get('tutor_nombre') or 'Sin tutor asignado')} · <b>Sesiones:</b> {len(tutoria.get('sesiones') or [])} · <b>Reportes:</b> {len(tutoria.get('reportes') or [])} · <b>Canalizaciones:</b> {len(tutoria.get('canalizaciones') or [])}", estilos["normal"]))
-        for sesion in (tutoria.get("sesiones") or [])[:30]:
-            contenido.append(Paragraph(f"{escape(sesion['fecha'])} · {escape(sesion.get('tipo') or 'Sesión')} · {'Asistió' if sesion.get('asistio') else 'No asistió'} · {escape(sesion.get('tema') or sesion.get('comentarios') or 'Sin notas')}", estilos["pequeno"]))
+        tiene_tutoria = bool(tutoria.get("sesiones") or tutoria.get("reportes") or tutoria.get("canalizaciones"))
+        if tiene_tutoria or not opciones.get("omitir_vacias", True):
+            contenido.append(Paragraph("Seguimiento tutorial", estilos["seccion"]))
+            contenido.append(Paragraph(f"<b>Tutor:</b> {escape(tutoria.get('tutor_nombre') or 'Sin tutor asignado')} · <b>Sesiones:</b> {len(tutoria.get('sesiones') or [])} · <b>Reportes:</b> {len(tutoria.get('reportes') or [])} · <b>Canalizaciones:</b> {len(tutoria.get('canalizaciones') or [])}", estilos["normal"]))
+            for sesion in (tutoria.get("sesiones") or [])[:30]:
+                contenido.append(Paragraph(f"{escape(sesion['fecha'])} · {escape(sesion.get('tipo') or 'Sesión')} · {'Asistió' if sesion.get('asistio') else 'No asistió'} · {escape(sesion.get('tema') or sesion.get('comentarios') or 'Sin notas')}", estilos["pequeno"]))
 
-    doc.build(contenido, onFirstPage=encabezado_pie, onLaterPages=encabezado_pie)
+    if opciones.get("trayectoria"):
+        trayectoria = data.get("trayectoria_academica") or []
+        if trayectoria or not opciones.get("omitir_vacias", True):
+            filas = [["Periodo", "Cuatrimestre", "Grupo", "Inscripción", "Resolución"]]
+            filas.extend([[t.get("periodo") or "—", f"{t.get('cuatrimestre') or '—'}°", t.get("grupo") or "—", t.get("estado_inscripcion") or "—", (t.get("resolucion") or "En curso").replace("_", " ")] for t in trayectoria])
+            tabla = Table(filas, repeatRows=1, colWidths=[4.0 * cm, 3.0 * cm, 2.5 * cm, 4.0 * cm, 5.1 * cm])
+            tabla.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("FONTSIZE", (0, 0), (-1, -1), 7), ("PADDING", (0, 0), (-1, -1), 4)]))
+            contenido.append(KeepTogether([
+                Paragraph("Trayectoria académica", estilos["seccion"]),
+                tabla,
+            ]))
+
+    if opciones.get("observaciones"):
+        bloque_observaciones = [Paragraph("Observaciones de la revisión", estilos["seccion"]), Spacer(1, 0.25 * cm)]
+        for _ in range(3):
+            bloque_observaciones.append(Paragraph("________________________________________________________________________________________________", estilos["normal"]))
+        bloque_observaciones.extend([Spacer(1, 0.35 * cm), Paragraph("Revisó: ____________________________________     Enterado (tutor): ____________________________________", estilos["normal"]), Spacer(1, 0.2 * cm), Paragraph("Fecha: ____________________", estilos["normal"]), Paragraph("Las firmas registran conocimiento del seguimiento y no convierten este documento en constancia oficial.", estilos["pequeno"])])
+        contenido.append(KeepTogether(bloque_observaciones))
+
+    doc.build(
+        contenido, onFirstPage=encabezado_pie, onLaterPages=encabezado_pie,
+        canvasmaker=lambda *args, **kwargs: _CanvasExpediente(*args, folio=folio, matricula=alumno["matricula"], alumno=alumno["nombre"], **kwargs),
+    )
     salida.seek(0)
     return salida
 
@@ -1639,6 +1729,10 @@ def exportar_expediente_alumno_pdf(
     request: Request,
     incluir_acuerdos: bool = Query(default=False),
     incluir_tutoria: bool = Query(default=False),
+    incluir_asistencia: bool = Query(default=False),
+    incluir_trayectoria: bool = Query(default=False),
+    incluir_observaciones: bool = Query(default=False),
+    omitir_secciones_vacias: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -1648,14 +1742,17 @@ def exportar_expediente_alumno_pdf(
     salida = _crear_pdf_expediente(data, current_user.nombre, folio, {
         "resumen": True, "materias": True,
         "acuerdos": incluir_acuerdos, "tutoria": incluir_tutoria,
+        "asistencia": incluir_asistencia,
+        "trayectoria": incluir_trayectoria, "observaciones": incluir_observaciones,
+        "omitir_vacias": omitir_secciones_vacias,
     })
     registrar(
         db, accion=Accion.EXPORTAR_EXPEDIENTE_PDF, recurso=Recurso.ALUMNO,
         usuario=current_user, recurso_id=alumno_id,
-        detalle={"folio": folio, "acuerdos": incluir_acuerdos, "tutoria": incluir_tutoria},
+        detalle={"folio": folio, "acuerdos": incluir_acuerdos, "tutoria": incluir_tutoria, "asistencia": incluir_asistencia, "trayectoria": incluir_trayectoria, "observaciones": incluir_observaciones},
         request=request,
     )
     return StreamingResponse(
         salida, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{folio}.pdf"', "X-Expediente-Folio": folio},
+        headers={"Content-Disposition": f'attachment; filename="Expediente_{data["alumno"]["matricula"]}_{ahora.strftime("%Y-%m-%d")}.pdf"', "X-Expediente-Folio": folio},
     )

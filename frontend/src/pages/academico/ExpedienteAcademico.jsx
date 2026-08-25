@@ -95,7 +95,7 @@ function MateriasTable({ materias, compact = false }) {
               <td className="px-4 py-3 text-center font-semibold">{m.promedio_evidencias ?? '—'}</td>
               <td className="px-4 py-3 text-center">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
               <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
-              <td className="px-4 py-3 text-center">{m.faltas_consecutivas || '—'}</td>
+              <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>
               <td className="px-4 py-3"><Badge className={`${ESTADO_MATERIA[m.estado]} whitespace-nowrap`}>{ICONO_ESTADO_MATERIA[m.estado]} {m.estado === 'BASE_INSUFICIENT' ? 'SIN BASE' : labelEstado(m.estado)}</Badge></td>
             </tr>
           ))}
@@ -740,7 +740,7 @@ export default function ExpedienteAcademico() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalPdf, setModalPdf] = useState(false);
-  const [opcionesPdf, setOpcionesPdf] = useState({ acuerdos: false, tutoria: false });
+  const [opcionesPdf, setOpcionesPdf] = useState({ acuerdos: false, tutoria: false, asistencia: false, trayectoria: false, observaciones: false, omitirVacias: true });
   const [generandoPdf, setGenerandoPdf] = useState(false);
 
   const buscar = useCallback(async (texto = '') => {
@@ -815,7 +815,14 @@ export default function ExpedienteAcademico() {
     setGenerandoPdf(true); setError('');
     try {
       const { data: archivo, headers } = await api.get(`/expediente-academico/alumnos/${alumnoId}/exportar.pdf`, {
-        params: { incluir_acuerdos: opcionesPdf.acuerdos, incluir_tutoria: opcionesPdf.tutoria },
+        params: {
+          incluir_acuerdos: opcionesPdf.acuerdos,
+          incluir_tutoria: opcionesPdf.tutoria,
+          incluir_asistencia: opcionesPdf.asistencia,
+          incluir_trayectoria: opcionesPdf.trayectoria,
+          incluir_observaciones: opcionesPdf.observaciones,
+          omitir_secciones_vacias: opcionesPdf.omitirVacias,
+        },
         responseType: 'blob',
       });
       const enlace = document.createElement('a');
@@ -987,9 +994,14 @@ export default function ExpedienteAcademico() {
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked readOnly disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Resumen y panorama por materia</b><span className="text-xs text-slate-500">Obligatorio para conservar el contexto del documento.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.acuerdos} onChange={e => setOpcionesPdf(actual => ({ ...actual, acuerdos: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Acuerdos de seguimiento</b><span className="text-xs text-slate-500">Incluye compromisos, estado y fecha de revisión.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.tutoria} onChange={e => setOpcionesPdf(actual => ({ ...actual, tutoria: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Seguimiento tutorial</b><span className="text-xs text-slate-500">Incluye conteos y sesiones tutoriales disponibles.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.asistencia} onChange={e => setOpcionesPdf(actual => ({ ...actual, asistencia: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Asistencia detallada</b><span className="text-xs text-slate-500">Desglosa presentes, faltas, retardos y justificadas por materia.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.trayectoria} onChange={e => setOpcionesPdf(actual => ({ ...actual, trayectoria: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Trayectoria académica</b><span className="text-xs text-slate-500">Incluye periodos, inscripciones y resoluciones disponibles.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.observaciones} onChange={e => setOpcionesPdf(actual => ({ ...actual, observaciones: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Espacio para revisión y firmas</b><span className="text-xs text-slate-500">Agrega observaciones, revisó, enterado por tutor y fecha.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3 opacity-60"><input type="checkbox" disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Línea de tiempo</b><span className="text-xs text-slate-500">Disponible para consulta interactiva; la exportación completa se incorporará posteriormente.</span></span></label>
+                <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.omitirVacias} onChange={e => setOpcionesPdf(actual => ({ ...actual, omitirVacias: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Omitir secciones vacías</b><span className="text-xs text-slate-500">Evita páginas que solamente indiquen que no existen registros.</span></span></label>
                 <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-600"><b>La leyenda de no oficialidad es obligatoria.</b> El documento contiene información académica personal y debe compartirse únicamente por medios institucionales.</div>
               </div>
-              <div className="mt-6 flex justify-end gap-2"><button onClick={() => setModalPdf(false)} className="rounded-xl border border-slate-500/20 px-4 py-2.5 text-sm font-semibold text-slate-500">Cancelar</button><button disabled={generandoPdf} onClick={descargarPdf} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{generandoPdf ? 'Generando…' : 'Descargar PDF institucional'}</button></div>
+              <div className="mt-6 flex justify-end gap-2"><button onClick={() => setModalPdf(false)} className="rounded-xl border border-slate-500/20 px-4 py-2.5 text-sm font-semibold text-slate-500">Cancelar</button><button disabled={generandoPdf} onClick={descargarPdf} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{generandoPdf ? 'Generando…' : 'Generar expediente (PDF)'}</button></div>
             </Panel>
           </div>
         )}
