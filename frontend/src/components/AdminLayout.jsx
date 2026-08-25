@@ -472,11 +472,11 @@ const NAV_ITEMS = [
   // Grupo: Comunicados
   { divider: true, label: 'Comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE'] },
   {
-    label: 'Mis comunicados', path: '/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE'], inGroup: true, badge: true,
+    label: 'Comunicados', path: '/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB','ADMINISTRATIVO','TUTORIA_ADMIN','DOCENTE'], inGroup: true, badge: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>,
   },
   {
-    label: 'Gestión comunicados', path: '/admin/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], permiso: 'comunicados:write', inGroup: true,
+    label: 'Emitir y gestionar', path: '/admin/comunicados', roles: ['SUPER_ADMIN','LAB_ADMIN','TUTORIA_ADMIN'], permiso: 'comunicados:write', inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>,
   },
 
@@ -577,17 +577,36 @@ const BREADCRUMB_MAP = {
   '/admin/consulta-persona':  [{ label: 'Adeudos y préstamos' }],
   '/admin/historial-alumno':  [{ label: 'Historial de laboratorio' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
-  '/division-carrera/materias': [{ label: 'Dirección de División de Carrera' }, { label: 'Materias' }],
-  '/calendario-academico': [{ label: 'Calendario académico' }, { label: 'Calendario oficial' }],
-  '/expediente-academico':   [{ label: 'Seguimiento académico' }, { label: 'Expediente integral' }],
+  '/division-carrera/materias': [{ label: 'Académico' }, { label: 'Materias' }],
+  '/calendario-academico': [{ label: 'Académico' }, { label: 'Calendario oficial' }],
+  '/expediente-academico':   [{ label: 'Académico' }, { label: 'Expediente académico' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
-  '/comunicados':             [{ label: 'Mis Comunicados' }],
-  '/admin/comunicados':       [{ label: 'Gestión de Comunicados' }],
+  '/comunicados':             [{ label: 'Comunicados' }],
+  '/admin/comunicados':       [{ label: 'Emitir y gestionar comunicados' }],
   '/admin/reportes':          [{ label: 'Reportes' }],
   '/admin/tutoria':           [{ label: 'Panel de Tutoría' }],
   '/docente/mis-tutorados':   [{ label: 'Mis Tutorados' }],
   '/medico/consultorio':      [{ label: 'Consultorio Médico' }],
 };
+
+const SIDEBAR_DOMAINS = [
+  {
+    key: 'academico', label: 'Académico',
+    matches: path => ['/division-carrera', '/calendario-academico', '/expediente-academico', '/servicios-escolares', '/docente', '/admin/tutoria', '/medico']
+      .some(prefix => path === prefix || path.startsWith(`${prefix}/`)),
+  },
+  {
+    key: 'espacios-equipo', label: 'Espacios y equipo',
+    matches: path => ['/lab', '/espacios', '/admin/laboratorios', '/admin/horarios', '/admin/reservaciones', '/admin/reportes', '/admin/espacios', '/admin/inventario', '/admin/prestamos', '/admin/mantenimiento']
+      .some(prefix => path === prefix || path.startsWith(`${prefix}/`)),
+  },
+  {
+    key: 'comunicacion', label: 'Comunicación',
+    matches: path => path === '/comunicados' || path.startsWith('/comunicados/')
+      || path === '/admin/comunicados' || path.startsWith('/admin/comunicados/'),
+  },
+  { key: 'administracion', label: 'Administración', matches: () => true },
+];
 
 function Breadcrumb({ pathname }) {
   // Match dynamic routes like /admin/laboratorios/5 or /admin/sesion/3
@@ -624,14 +643,6 @@ function Breadcrumb({ pathname }) {
 // Sidebar content (definido fuera de AdminLayout para evitar re-montaje)
 function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
   const homePath = getHomePath(usuario);
-  const storageKey = `labcontrol-sidebar-groups-v2-${usuario?.rol || 'anon'}-${tieneServiciosEscolares(usuario) ? 'escolares' : 'base'}`;
-  const [openGroups, setOpenGroups] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(storageKey) || '{}');
-    } catch {
-      return {};
-    }
-  });
   const navRef = useRef(null);
   const scrollKey = `labcontrol-sidebar-scroll-v1-${usuario?.rol || 'anon'}-${mobile ? 'mobile' : sidebarOpen ? 'open' : 'compact'}`;
   const saveSidebarScroll = useCallback(() => {
@@ -648,39 +659,20 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
     return () => window.cancelAnimationFrame(frame);
   }, [scrollKey, pathname, itemsVisibles.length]);
 
-  const groups = [];
-  let current = { key: 'principal', label: 'Principal', items: [], root: true };
-  itemsVisibles.forEach(item => {
-    if (item.divider) {
-      if (current.items.length) groups.push(current);
-      current = { key: item.label, label: item.label, items: [], root: false };
-    } else {
-      current.items.push(item);
-    }
-  });
-  if (current.items.length) groups.push(current);
-
-  const isItemActive = item =>
-    item.exact ? pathname === item.path : pathname === item.path || pathname.startsWith(`${item.path}/`);
-
-  const isGroupActive = group => group.items.some(isItemActive);
-
-  const isGroupOpen = group => {
-    if (group.root) return true;
-    if (Object.prototype.hasOwnProperty.call(openGroups, group.key)) {
-      return openGroups[group.key] === true;
-    }
-    if (mobile) return isGroupActive(group);
-    return true;
-  };
-
-  const toggleGroup = (key, currentlyOpen = false) => {
-    setOpenGroups(prev => {
-      const next = { ...prev, [key]: !currentlyOpen };
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      return next;
-    });
-  };
+  // Los permisos deciden qué destinos existen; los dominios mantienen el mismo
+  // mapa mental para todos los perfiles y las secciones vacías se omiten.
+  const visibleDestinations = itemsVisibles.filter(item => !item.divider);
+  const rootItems = visibleDestinations.filter(item => item.exact && item.path === homePath);
+  const domainItems = visibleDestinations.filter(item => !rootItems.includes(item));
+  const groups = [
+    { key: 'principal', label: 'Principal', items: rootItems, root: true },
+    ...SIDEBAR_DOMAINS.map(domain => ({
+      key: domain.key,
+      label: domain.label,
+      items: domainItems.filter(item => SIDEBAR_DOMAINS.find(candidate => candidate.matches(item.path))?.key === domain.key),
+      root: false,
+    })),
+  ].filter(group => group.items.length > 0);
 
   const renderNavItem = (item, grouped = false) => {
     const compact = !sidebarOpen && !mobile;
@@ -761,6 +753,15 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
           <div className="min-w-0 overflow-hidden">
             <p className="text-white font-bold text-sm leading-none">SIGA</p>
             <p className="text-[10px] mt-0.5" style={{color:'var(--sidebar-subtitle)'}}>UTECAN</p>
+            {usuario?.departamento_nombre && (
+              <p
+                className="text-[10px] mt-1 truncate"
+                style={{color:'var(--sidebar-subtitle)'}}
+                title={`${usuario.departamento_nombre}${usuario.departamento_clave ? ` · ${usuario.departamento_clave}` : ''}`}
+              >
+                {usuario.departamento_nombre}{usuario.departamento_clave ? ` · ${usuario.departamento_clave}` : ''}
+              </p>
+            )}
           </div>
           )}
         </NavLink>
@@ -795,36 +796,21 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
         {!sidebarOpen && !mobile ? (
           itemsVisibles.filter(item => !item.divider).map(item => renderNavItem(item, false))
         ) : (
-          groups.map(group => {
-            const active = isGroupActive(group);
-            const open = isGroupOpen(group);
-            return (
-              <div key={group.key} className={group.root ? '' : 'mt-2'}>
+          groups.map(group => (
+              <div key={group.key} className={group.root ? '' : 'mt-3'}>
                 {!group.root && (
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.key, open)}
-                    aria-expanded={open}
-                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold tracking-wide transition-colors ${
-                      active ? 'text-emerald-300 bg-emerald-500/10' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
-                    }`}
+                  <p
+                    className="px-2.5 pb-1 text-[11px] font-bold uppercase tracking-[0.14em]"
+                    style={{color:'var(--sidebar-section-label, #64748b)'}}
                   >
-                    <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-slate-700'}`} />
-                    <span className="flex-1 text-left truncate">{group.label}</span>
-                    <svg className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-90' : ''}`}
-                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-                    </svg>
-                  </button>
+                    {group.label}
+                  </p>
                 )}
-                {open && (
-                  <div className={group.root ? 'space-y-1' : 'mt-1 space-y-1'}>
-                    {group.items.map(item => renderNavItem(item, !group.root))}
-                  </div>
-                )}
+                <div className="space-y-1">
+                  {group.items.map(item => renderNavItem(item, false))}
+                </div>
               </div>
-            );
-          })
+          ))
         )}
         {false && itemsVisibles.map((item, idx) => {
           // Encabezado de sección
