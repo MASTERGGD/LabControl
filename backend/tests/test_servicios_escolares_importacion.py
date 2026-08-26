@@ -45,6 +45,38 @@ def test_activacion_masiva_de_fichas_es_idempotente(client, db):
     assert db.query(FichaSocioeconomica).count() == 2
 
 
+def test_activar_acceso_reutiliza_cuenta_alumno_huerfana(client, db):
+    admin = Usuario(nombre="Admin Escolar", email="relink-admin@test.mx",
+                    password_hash=hashear_password("Test1234!"),
+                    rol=RolUsuario.SUPER_ADMIN, activo=True)
+    cuenta = Usuario(nombre="Nombre anterior", email="utc260099@utecan.edu.mx",
+                     password_hash=hashear_password("Anterior123!"),
+                     rol=RolUsuario.ALUMNO, activo=False)
+    alumno = CatalogoAlumno(
+        matricula="UTC260099", apellido_paterno="PEREZ", apellido_materno="LOPEZ",
+        nombres="ANA", carrera="Carrera oficial", cuatrimestre=1, grupo="A",
+        periodo="MAY-AGO 2026", activo=True,
+        correo_institucional="utc260099@utecan.edu.mx",
+    )
+    db.add_all([admin, cuenta, alumno]); db.commit()
+    cuenta_id = cuenta.id
+    headers = auth_headers(get_token(client, admin.email, "Test1234!"))
+
+    response = client.post(
+        f"/servicios-escolares/alumnos/{alumno.id}/activar-acceso",
+        headers=headers,
+        json={"password_temporal": "Nueva1234!"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["usuario_id"] == cuenta_id
+    db.refresh(alumno); db.refresh(cuenta)
+    assert alumno.usuario_id == cuenta_id
+    assert cuenta.activo is True
+    assert cuenta.nombre == "PEREZ LOPEZ ANA"
+    assert db.query(Usuario).filter(Usuario.email == cuenta.email).count() == 1
+
+
 def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):
     admin = Usuario(nombre="Admin Escolar", email="escolar@test.mx",
                     password_hash=hashear_password("Test1234!"),

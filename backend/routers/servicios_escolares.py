@@ -672,23 +672,36 @@ def activar_acceso(
     email = (body.correo_institucional or a.correo_institucional or
              f"{a.matricula}@alumno.utecan.edu.mx").strip()
 
-    # Verificar que ese email no esté en uso
-    if db.query(Usuario).filter(Usuario.email == email).first():
-        raise HTTPException(409, f"El correo {email} ya está registrado en el sistema")
-
     nombre_completo = f"{a.apellido_paterno} {a.apellido_materno or ''} {a.nombres}".strip()
     pwd = body.password_temporal or _gen_password()
 
-    u = Usuario(
-        nombre=nombre_completo,
-        email=email,
-        password_hash=hashear_password(pwd),
-        rol=RolUsuario.ALUMNO,
-        activo=True,
-        debe_cambiar_password=True,  # contraseña temporal: forzar cambio
-    )
-    db.add(u)
-    db.flush()
+    # Durante una recarga académica se conserva la cuenta de acceso, pero se
+    # elimina y vuelve a importar su ficha de alumno. Si el correo pertenece a
+    # una cuenta ALUMNO que ya no está vinculada, la recuperamos en lugar de
+    # crear un duplicado o bloquear la activación.
+    u = db.query(Usuario).filter(Usuario.email == email).first()
+    if u:
+        linked = db.query(CatalogoAlumno).filter(
+            CatalogoAlumno.usuario_id == u.id,
+            CatalogoAlumno.id != a.id,
+        ).first()
+        if u.rol != RolUsuario.ALUMNO or linked:
+            raise HTTPException(409, f"El correo {email} ya está registrado en el sistema")
+        u.nombre = nombre_completo
+        u.password_hash = hashear_password(pwd)
+        u.activo = True
+        u.debe_cambiar_password = True
+    else:
+        u = Usuario(
+            nombre=nombre_completo,
+            email=email,
+            password_hash=hashear_password(pwd),
+            rol=RolUsuario.ALUMNO,
+            activo=True,
+            debe_cambiar_password=True,  # contraseña temporal: forzar cambio
+        )
+        db.add(u)
+        db.flush()
 
     a.usuario_id = u.id
     if body.correo_institucional:

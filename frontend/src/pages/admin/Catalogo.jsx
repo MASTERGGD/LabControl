@@ -26,19 +26,6 @@ function periodoActual() {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-const CARRERAS_DEFAULT = [
-  'Ing. en Desarrollo y Gestión de Software',
-  'Ing. en Agricultura Sustentable y Protegida',
-  'Lic. en Administración',
-  'Lic. en Contaduría',
-  'Lic. en Protección Civil y Emergencias',
-  'Ing. en Tecnologías de la Información',
-  'TSU en Desarrollo de Software Multiplataforma',
-  'TSU en Agricultura Sustentable y Protegida',
-  'TSU en Contaduría',
-  'TSU en Administración',
-];
-
 const PERIODOS_DEFAULT = [
   'ENE-ABR 2025','MAY-AGO 2025','SEP-DIC 2025',
   'ENE-ABR 2026','MAY-AGO 2026','SEP-DIC 2026',
@@ -706,7 +693,10 @@ export default function Catalogo({ modo = 'completo' }) {
   const [materias, setMaterias] = useState([]);
   const [periodos, setPeriodos] = useState(PERIODOS_DEFAULT);
   const [periodosMaterias, setPeriodosMaterias] = useState([]);
-  const [carreras, setCarreras] = useState(CARRERAS_DEFAULT);
+  // El catalogo institucional es la unica fuente de carreras. No mezclar
+  // valores de demostracion: una carrera inexistente aqui termina propagada
+  // a materias, grupos y alumnos.
+  const [carreras, setCarreras] = useState([]);
   const [loading, setLoading]   = useState(false);
 
   // El periodo se controla globalmente desde el encabezado de SIGA.
@@ -742,7 +732,7 @@ export default function Catalogo({ modo = 'completo' }) {
       if (data.length > 0) setPeriodos([...new Set([...data, ...PERIODOS_DEFAULT])]);
     }).catch(() => {});
     api.get('/catalogo/carreras').then(({ data }) => {
-      if (data.length > 0) setCarreras([...new Set([...data, ...CARRERAS_DEFAULT])]);
+      setCarreras(data);
     }).catch(() => {});
     api.get('/catalogo/periodos/gestion-materias').then(({ data }) => {
       setPeriodosMaterias(data);
