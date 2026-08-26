@@ -23,6 +23,7 @@ export default function ClaseAsistencia() {
   const [texto, setTexto] = useState('');
   const [justificacionActual, setJustificacionActual] = useState(null);
   const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
   const [bitacora, setBitacora] = useState({
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
     tarea_asignada: '', incidencias: '', incidencia_tipo: '',
@@ -179,21 +180,39 @@ export default function ClaseAsistencia() {
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
         {clase.es_extemporanea && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-            <p className="font-semibold">Asistencia capturada de forma extemporánea</p>
-            <p className="mt-1 text-xs text-amber-200">Motivo registrado: {clase.motivo_extemporaneo}</p>
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-900" aria-hidden="true">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold">Asistencia registrada fuera de horario</p>
+              <p className="mt-1 text-sm text-amber-900"><span className="font-semibold">Motivo:</span> {clase.motivo_extemporaneo}</p>
+            </div>
           </div>
         )}
         {!!clase.correcciones_asistencia?.length && (
-          <details className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.05]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+          <section className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.05]">
+            <button
+              type="button"
+              aria-expanded={historialAbierto}
+              aria-controls="historial-correcciones"
+              onClick={() => setHistorialAbierto((abierto) => !abierto)}
+              className="flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-4 text-left"
+            >
               <div>
                 <p className="font-semibold text-blue-300">Historial de correcciones</p>
-                <p className="mt-0.5 text-xs text-slate-400">{clase.correcciones_asistencia.length} movimiento{clase.correcciones_asistencia.length === 1 ? '' : 's'} registrado{clase.correcciones_asistencia.length === 1 ? '' : 's'}; separado de las observaciones de clase.</p>
+                <p className="mt-0.5 text-xs text-slate-400">{clase.correcciones_asistencia.length} movimiento{clase.correcciones_asistencia.length === 1 ? '' : 's'} de auditoría · consulta de cambios, responsables y motivos.</p>
               </div>
-              <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-300">Ver bitácora</span>
-            </summary>
-            <div className="divide-y divide-white/10 border-t border-blue-500/15">
+              <span className="flex shrink-0 items-center gap-2 rounded-full bg-blue-500/15 px-3 py-1.5 text-xs font-semibold text-blue-300">
+                {historialAbierto ? 'Ocultar bitácora' : 'Ver bitácora'}
+                <svg className={`h-3.5 w-3.5 transition-transform ${historialAbierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                </svg>
+              </span>
+            </button>
+            {historialAbierto && <div id="historial-correcciones" className="divide-y divide-white/10 border-t border-blue-500/15">
               {clase.correcciones_asistencia.map((correccion) => (
                 <div key={correccion.id} className="grid gap-1 px-5 py-3 text-xs sm:grid-cols-[145px_minmax(160px,1fr)_150px_minmax(180px,1.2fr)] sm:gap-3">
                   <span className="text-slate-500">{correccion.creado_en ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(`${correccion.creado_en}Z`)) : 'Registro anterior'}</span>
@@ -202,8 +221,8 @@ export default function ClaseAsistencia() {
                   <span className="text-slate-400"><span className="text-slate-500">Motivo:</span> {correccion.motivo}{correccion.docente ? ` · ${correccion.docente}` : ''}</span>
                 </div>
               ))}
-            </div>
-          </details>
+            </div>}
+          </section>
         )}
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="border-b border-white/10 px-5 py-4">
