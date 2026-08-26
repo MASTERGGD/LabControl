@@ -101,8 +101,17 @@ def _counts(db, tables: set[str]) -> dict[str, int]:
     return result
 
 
-def _quote(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+def _delete_order(selected: set[str]) -> list[str]:
+    """Ordena hijas antes que padres para respetar las FK sin usar CASCADE."""
+    ordered = [
+        table.name
+        for table in reversed(Base.metadata.sorted_tables)
+        if table.name in selected
+    ]
+    missing = selected - set(ordered)
+    if missing:
+        raise RuntimeError(f"No se pudo ordenar el borrado de: {sorted(missing)}")
+    return ordered
 
 
 def main() -> int:
@@ -149,13 +158,16 @@ def main() -> int:
     backup = create_backup("TERM", source="ACADEMIC_RESET")
     print(json.dumps({"backup_verified": backup}, ensure_ascii=False, default=str, indent=2))
 
-    table_sql = ", ".join(_quote(name) for name in sorted(selected))
     db = SessionLocal()
     try:
         with db.begin():
             for statement in DETACH_SQL:
                 db.execute(text(statement))
-            db.execute(text(f"TRUNCATE TABLE {table_sql} RESTART IDENTITY"))
+            # TRUNCATE comprueba las FK a nivel de esquema y rechaza incluso
+            # una referencia nullable ya desligada (pacientes/adeudos). DELETE
+            # sí respeta el NULL aplicado arriba y permite preservar esas tablas.
+            for name in _delete_order(selected):
+                db.execute(Base.metadata.tables[name].delete())
         after = _counts(db, selected)
     except Exception:
         db.rollback()
