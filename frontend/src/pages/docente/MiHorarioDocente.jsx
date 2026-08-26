@@ -29,6 +29,13 @@ const TIPO_ESTILO = {
   RECESO: 'border-amber-500/40 bg-amber-500/10',
   OTRA: 'border-slate-500/40 bg-slate-500/10',
 };
+const TIPO_TEXTO = {
+  CLASE: 'text-emerald-300',
+  TUTORIA: 'text-blue-300',
+  DESCARGA: 'text-violet-300',
+  RECESO: 'text-amber-300',
+  OTRA: 'text-slate-300',
+};
 const VACIO = {
   tipo_actividad: 'CLASE', actividad_nombre: '', dia_semana: 0,
   hora_inicio: '08:00', hora_fin: '09:00', grupo_academico_id: '',
@@ -887,7 +894,12 @@ export default function MiHorarioDocente() {
                                 </div>}
                               </article>
                             ) : (
-                              <div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-[11px] text-slate-600">Continuación</div>
+                              <div className={`flex min-h-24 flex-col justify-center rounded-xl border border-dashed p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
+                                <p className={`text-[10px] font-bold uppercase tracking-wide ${TIPO_TEXTO[item.tipo_actividad]}`}>↳ Continúa</p>
+                                <p className="mt-1 line-clamp-2 text-xs font-semibold text-white">{item.actividad_nombre}</p>
+                                <p className="mt-1 font-mono text-[10px] text-slate-400">{periodo.inicio}–{periodo.fin}</p>
+                                <p className="truncate text-[10px] text-slate-500">{item.grupo || item.tipo_actividad}</p>
+                              </div>
                             )
                           ) : (
                             <button
