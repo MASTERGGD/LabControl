@@ -1278,6 +1278,7 @@ export default function ComunicadosAdmin() {
   const [total, setTotal]       = useState(0);
   const [pages, setPages]       = useState(1);
   const blendyRef = useRef(null);
+  const filtrosInicializadosRef = useRef(false);
 
   useEffect(() => {
     blendyRef.current = createBlendy({ animation: 'spring' });
@@ -1305,7 +1306,11 @@ export default function ComunicadosAdmin() {
       if (publicadoHasta) params.set('publicado_hasta', toEndOfDay(publicadoHasta));
       params.set('page', currentPage);
       params.set('page_size', pageSize);
-      const { data } = await api.get(`/comunicados?${params}`);
+      // Comunicados tiene su propio filtro de periodo (YYYY-N). No debe recibir
+      // automáticamente la clave académica global MAY-AGO YYYY.
+      const { data } = await api.get(`/comunicados?${params}`, {
+        params: { sin_contexto_periodo: true },
+      });
       setComunicados(data.items || []);
       setTotal(data.total || 0);
       setPages(data.pages || 1);
@@ -1316,7 +1321,16 @@ export default function ComunicadosAdmin() {
   // Cambio de página o page_size → cargar sin reset
   useEffect(() => { cargar(); }, [page, pageSize]);
   // Cambio de cualquier filtro → volver a página 1
-  useEffect(() => { cargar(true); }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta]);
+  useEffect(() => {
+    // Los dos efectos se ejecutaban juntos al montar la pantalla y duplicaban
+    // tanto la petición como el aviso de error.
+    if (!filtrosInicializadosRef.current) {
+      filtrosInicializadosRef.current = true;
+      return;
+    }
+    if (page !== 1) setPage(1);
+    else cargar();
+  }, [filtroEstado, filtroCategoria, busqueda, filtroPrioridad, requiereConfirmacion, requiereRetro, soloFijados, destTipo, destBusqueda, seguimiento, periodo, publicadoDesde, publicadoHasta]);
 
   useEffect(() => {
     const estado = searchParams.get('estado') || '';
