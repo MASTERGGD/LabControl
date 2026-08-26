@@ -161,7 +161,7 @@ export default function Login() {
               </div>
               <div className="mt-2 text-right">
                 <Link to="/recuperar-password" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline">
-                  ¿Olvidaste tu contraseña?
+                  ¿Necesitas restablecer tu contraseña?
                 </Link>
               </div>
             </div>

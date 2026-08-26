@@ -1,47 +1,29 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import api from '../hooks/useApi';
 
 export default function SolicitarRecuperacion() {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
-
-  const submit = async e => {
-    e.preventDefault(); setLoading(true); setError('');
-    try {
-      await api.post('/auth/password/forgot', { email: email.trim() });
-      setSent(true);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'No fue posible procesar la solicitud. Intenta más tarde.');
-    } finally { setLoading(false); }
-  };
-
   return <AuthShell>
-    {sent ? (
-      <div className="text-center">
-        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">✉️</div>
-        <h1 className="text-2xl font-bold text-slate-950">Revisa tu correo</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">Si <strong>{email}</strong> pertenece a una cuenta activa, recibirás un enlace de recuperación. También revisa la carpeta de correo no deseado.</p>
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-xs leading-5 text-amber-800">El enlace funciona una sola vez y caduca en 30 minutos. Nunca te pediremos tu contraseña por correo.</div>
-        <Link to="/login" className="mt-6 inline-flex font-semibold text-emerald-700 hover:text-emerald-800">Volver a iniciar sesión</Link>
+    <div className="text-center">
+      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+        <svg className="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+        </svg>
       </div>
-    ) : (
-      <>
-        <h1 className="text-2xl font-bold text-slate-950">Recupera tu cuenta</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">Escribe tu correo institucional. Te enviaremos un enlace seguro para crear una contraseña nueva.</p>
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="recovery-email" className="mb-1.5 block text-sm font-medium text-slate-700">Correo institucional</label>
-            <input id="recovery-email" type="email" required autoFocus autoComplete="email" value={email} onChange={e => { setEmail(e.target.value); setError(''); }} placeholder="usuario@utecan.edu.mx" className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-950 outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100" />
-          </div>
-          {error && <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-          <button disabled={loading} className="w-full rounded-xl bg-emerald-700 px-4 py-3 font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">{loading ? 'Enviando enlace…' : 'Enviar enlace de recuperación'}</button>
-        </form>
-        <Link to="/login" className="mt-5 block text-center text-sm font-semibold text-emerald-700 hover:text-emerald-800">← Volver al inicio de sesión</Link>
-      </>
-    )}
+      <h1 className="text-2xl font-bold text-slate-950">Restablecimiento asistido</h1>
+      <p className="mt-3 text-sm leading-6 text-slate-600">
+        Durante la etapa piloto, el restablecimiento de contraseña es atendido por el administrador de SIGA.
+      </p>
+      <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left text-sm leading-6 text-amber-900">
+        <p className="font-semibold">¿Qué debes hacer?</p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>Contacta al administrador de SIGA o al responsable de tu área.</li>
+          <li>Indica tu nombre y correo institucional.</li>
+          <li>El administrador generará una contraseña temporal para tu cuenta.</li>
+        </ol>
+      </div>
+      <p className="mt-4 text-xs leading-5 text-slate-500">Por seguridad, nunca envíes tu contraseña actual por correo o mensajería.</p>
+      <Link to="/login" className="mt-6 inline-flex rounded-xl bg-emerald-700 px-5 py-3 font-semibold text-white hover:bg-emerald-800">Volver a iniciar sesión</Link>
+    </div>
   </AuthShell>;
 }
 
