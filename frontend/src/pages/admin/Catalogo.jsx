@@ -3,6 +3,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
 import { useTheme } from '../../context/ThemeContext';
+import { usePeriodo } from '../../context/PeriodoContext';
 import { ModalCarreras } from '../servicios_escolares/SEAlumnos';
 
 // ─── Utilidad: período escolar actual ────────────────────────────────────────
@@ -697,6 +698,7 @@ function ModalAccesoAlumno({ alumno, onClose, onOk }) {
 }
 
 export default function Catalogo({ modo = 'completo' }) {
+  const { periodo: periodoGlobal } = usePeriodo();
   const [tab, setTab] = useState(modo === 'materias' ? 'materias' : 'alumnos');
 
   // Datos
@@ -707,8 +709,8 @@ export default function Catalogo({ modo = 'completo' }) {
   const [carreras, setCarreras] = useState(CARRERAS_DEFAULT);
   const [loading, setLoading]   = useState(false);
 
-  // Filtros alumnos — pre-seleccionar el período actual
-  const [filtPeriodo, setFiltPeriodo] = useState(periodoActual);
+  // El periodo se controla globalmente desde el encabezado de SIGA.
+  const filtPeriodo = periodoGlobal?.clave || periodoActual();
   const [filtCarrera, setFiltCarrera] = useState('');
   const [filtGrupo, setFiltGrupo]     = useState('');
   const [filtActivo, setFiltActivo]   = useState('true');
@@ -818,12 +820,12 @@ export default function Catalogo({ modo = 'completo' }) {
           <p className="text-slate-400 text-sm mt-0.5">
             {modo === 'alumnos' ? 'Altas, importación e inscripciones por periodo y grupo' : 'Catálogo académico administrado por Dirección de División de Carrera'}
           </p>
-          <span className="inline-flex items-center gap-1.5 mt-1.5 bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium px-2.5 py-1 rounded-full">
+          {tab === 'materias' && <span className="inline-flex items-center gap-1.5 mt-1.5 bg-blue-900/40 border border-blue-700/50 text-blue-300 text-xs font-medium px-2.5 py-1 rounded-full">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
-            {tab === 'materias' ? <strong>Plan de estudios permanente</strong> : <>Período actual: <strong>{periodoInstitucionalActual}</strong></>}
-          </span>
+            <strong>Plan de estudios permanente</strong>
+          </span>}
         </div>
         <div className="flex gap-2">
           {tab === 'alumnos' && (
@@ -877,35 +879,29 @@ export default function Catalogo({ modo = 'completo' }) {
           {mensaje && <div className="mb-4 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">{mensaje}</div>}
           {seleccionados.size > 0 && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-4 py-3"><p className="text-sm text-emerald-200"><b>{seleccionados.size}</b> alumno(s) seleccionado(s)</p><div className="flex gap-2"><button onClick={() => setSeleccionados(new Set())} className="rounded-lg px-3 py-2 text-xs text-slate-400">Limpiar</button><button onClick={() => setActivarSeleccionados(true)} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white">Activar estudios seleccionados</button></div></div>}
           {/* Filtros */}
-          <div className="flex flex-wrap gap-3 mb-4 bg-gray-800 border border-gray-700 rounded-xl p-4">
+          <div className="grid grid-cols-1 gap-3 mb-4 bg-gray-800 border border-gray-700 rounded-xl p-4 sm:grid-cols-2 lg:grid-cols-12">
             <input value={filtQ} onChange={e => setFiltQ(e.target.value)}
               placeholder="Buscar nombre o matrícula…"
-              className="input-dark text-white text-sm  px-3 py-2  focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"/>
-            <SelectDark
-              value={filtPeriodo}
-              onChange={setFiltPeriodo}
-              className="w-40"
-              placeholder="Todos los periodos"
-              options={[{ value: '', label: 'Todos los periodos' }, ...periodos.map(p => ({ value: p, label: p }))]}
-            />
+              className="input-dark text-white text-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2 lg:col-span-12"/>
             <SelectDark
               value={filtCarrera}
               onChange={setFiltCarrera}
-              className="max-w-xs"
+              className="w-full sm:col-span-2 lg:col-span-7"
+              menuMinWidth={460}
               placeholder="Todas las carreras"
-              options={[{ value: '', label: 'Todas las carreras' }, ...carreras.map(c => ({ value: c, label: c }))]}
+              options={[{ value: '', label: 'Todas las carreras' }, ...carreras.map(c => ({ value: c, label: c, wrap: true }))]}
             />
             <SelectDark
               value={filtGrupo}
               onChange={setFiltGrupo}
-              className="w-32"
-              placeholder="Todos grupos"
-              options={[{ value: '', label: 'Todos grupos' }, ...GRUPOS.map(g => ({ value: g, label: `Grupo ${g}` }))]}
+              className="w-full lg:col-span-3"
+              placeholder="Todos los grupos"
+              options={[{ value: '', label: 'Todos los grupos' }, ...GRUPOS.map(g => ({ value: g, label: `Grupo ${g}` }))]}
             />
             <SelectDark
               value={filtActivo}
               onChange={setFiltActivo}
-              className="w-28"
+              className="w-full lg:col-span-2"
               options={[
                 { value: 'true',  label: 'Activos' },
                 { value: 'false', label: 'Inactivos' },
@@ -929,8 +925,8 @@ export default function Catalogo({ modo = 'completo' }) {
               <p className="text-sm mt-1">Usa «Importar Excel» con la plantilla oficial o agrega uno manualmente.</p>
             </div>
           ) : (
-            <div className="glass overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="glass overflow-x-auto">
+              <table className="w-full min-w-[1280px] text-sm">
                 <thead className="bg-slate-950/60">
                   <tr>
                     <th className="w-10 px-3 py-3"><input type="checkbox" aria-label="Seleccionar alumnos visibles" checked={alumnos.filter(a => a.activo).length > 0 && alumnos.filter(a => a.activo).every(a => seleccionados.has(a.id))} onChange={e => setSeleccionados(e.target.checked ? new Set(alumnos.filter(a => a.activo).map(a => a.id)) : new Set())} /></th>
@@ -939,10 +935,10 @@ export default function Catalogo({ modo = 'completo' }) {
                     <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Carrera</th>
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Cuat.</th>
                     <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Grupo</th>
-                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Periodo</th>
-                    <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Estado</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-3 py-3">Acceso SIGA</th>
                     <th className="text-left text-slate-400 text-xs font-medium px-3 py-3">Estudio</th>
+                    <th className="text-left text-slate-400 text-xs font-medium px-4 py-3">Periodo</th>
+                    <th className="text-center text-slate-400 text-xs font-medium px-3 py-3">Estado</th>
                     <th className="px-4 py-3"/>
                   </tr>
                 </thead>
@@ -954,7 +950,7 @@ export default function Catalogo({ modo = 'completo' }) {
                       <td className="px-4 py-3">
                         <p className="text-white font-medium">{a.nombre_completo}</p>
                       </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs max-w-[180px] truncate">{a.carrera}</td>
+                      <td className="min-w-[240px] max-w-[320px] px-4 py-3 text-xs leading-snug text-slate-400" title={a.carrera}>{a.carrera}</td>
                       <td className="px-3 py-3 text-center text-gray-300 text-xs">{a.cuatrimestre}</td>
                       <td className="px-3 py-3 text-center">
                         <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full font-medium">
