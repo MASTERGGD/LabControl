@@ -26,8 +26,7 @@ export default function ClaseAsistencia() {
   const [incidenciaGrupo, setIncidenciaGrupo] = useState({ tipo: '', descripcion: '', requiere_seguimiento: false });
   const [bitacora, setBitacora] = useState({
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
-    tarea_asignada: '', incidencias: '', incidencia_tipo: '',
-    incidencia_requiere_seguimiento: false, tema_pendiente: '',
+    tema_pendiente: '',
   });
 
   const cargar = useCallback(async () => {
@@ -65,8 +64,9 @@ export default function ClaseAsistencia() {
     setCerrando(true);
     try {
       const { data } = await api.post(`/docencia/clases/${claseId}/cerrar`, {
-        observacion_general: texto.trim() || null,
         ...bitacora,
+        // Campo anterior: se vacía para que el seguimiento quede en un solo lugar.
+        tarea_asignada: '',
         avance_planeacion: Number(bitacora.avance_planeacion),
       });
       setClase(data);
@@ -82,16 +82,16 @@ export default function ClaseAsistencia() {
   };
   const abrirCierre = () => {
     setAsistenciaRevisada(clase.estado === 'CORRECCION');
-    setTexto(clase.observacion_general || '');
+    setTexto('');
+    const pendientesAnteriores = [
+      clase.bitacora?.tema_pendiente?.trim(),
+      clase.bitacora?.tarea_asignada?.trim(),
+    ].filter(Boolean);
     setBitacora({
       tema_impartido: clase.bitacora?.tema_impartido || '',
       avance_planeacion: clase.bitacora?.avance_planeacion ?? 100,
       actividades_realizadas: clase.bitacora?.actividades_realizadas || '',
-      tarea_asignada: clase.bitacora?.tarea_asignada || '',
-      incidencias: clase.bitacora?.incidencias || '',
-      incidencia_tipo: clase.bitacora?.incidencia_tipo || '',
-      incidencia_requiere_seguimiento: Boolean(clase.bitacora?.incidencia_requiere_seguimiento),
-      tema_pendiente: clase.bitacora?.tema_pendiente || '',
+      tema_pendiente: [...new Set(pendientesAnteriores)].join('\n'),
     });
     setModal('cerrar');
   };
@@ -309,45 +309,10 @@ export default function ClaseAsistencia() {
                   <label className="text-sm font-medium text-slate-300">Actividades realizadas <span className="font-normal text-slate-500">(Opcional)</span>
                     <textarea value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Práctica, ejercicio o dinámica" />
                   </label>
-                  <label className="text-sm font-medium text-slate-300">Trabajo asignado al grupo <span className="font-normal text-slate-500">(Opcional)</span>
-                    <textarea value={bitacora.tarea_asignada} onChange={(e) => setBitacora({ ...bitacora, tarea_asignada: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Describe la actividad y, si aplica, la fecha de entrega" />
-                    <span className="mt-1 block text-xs font-normal text-slate-500">Trabajo que los estudiantes realizarán después de esta clase.</span>
+                  <label className="text-sm font-medium text-slate-300">Pendiente para la siguiente clase <span className="font-normal text-slate-500">(Opcional)</span>
+                    <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Ej. Retomar normalización y revisar el ejercicio pendiente" />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Anota el tema que debe retomarse o el trabajo que conviene revisar al comenzar la próxima sesión.</span>
                   </label>
-                  <details defaultOpen={Boolean(bitacora.tema_pendiente || bitacora.incidencias || texto)} className="rounded-xl border border-white/10 bg-white/[0.02] sm:col-span-2">
-                    <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-300">+ Agregar información adicional <span className="ml-1 font-normal text-slate-500">(Opcional)</span></summary>
-                    <div className="grid gap-4 border-t border-white/10 p-4 sm:grid-cols-2">
-                      <label className="text-sm font-medium text-slate-300">Tema para retomar en la siguiente clase
-                        <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Punto para retomar en la siguiente clase" />
-                        <span className="mt-1 block text-xs font-normal text-slate-500">Contenido que no se alcanzó a impartir; no corresponde a una tarea del grupo.</span>
-                      </label>
-                      <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-3">
-                        <label className="block text-sm font-medium text-slate-300">Tipo de incidencia
-                          <select value={bitacora.incidencia_tipo} onChange={(e) => setBitacora({ ...bitacora, incidencia_tipo: e.target.value })} className="input-dark mt-1">
-                            <option value="">Selecciona el tipo</option>
-                            <option value="ACADEMICA">Académica</option>
-                            <option value="DISCIPLINA">Disciplina</option>
-                            <option value="INFRAESTRUCTURA">Infraestructura o equipo</option>
-                            <option value="SUSPENSION_INSTITUCIONAL">Suspensión o actividad institucional</option>
-                            <option value="OTRA">Otra</option>
-                          </select>
-                        </label>
-                        <label className="block text-sm font-medium text-slate-300">Descripción
-                          <textarea value={bitacora.incidencias} onChange={(e) => setBitacora({ ...bitacora, incidencias: e.target.value, incidencia_tipo: e.target.value && !bitacora.incidencia_tipo ? 'OTRA' : bitacora.incidencia_tipo })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Describe brevemente lo ocurrido" />
-                        </label>
-                        <label className="flex items-start gap-2 text-xs text-slate-300">
-                          <input type="checkbox" checked={bitacora.incidencia_requiere_seguimiento} onChange={(e) => setBitacora({ ...bitacora, incidencia_requiere_seguimiento: e.target.checked })} className="mt-0.5 h-4 w-4 accent-amber-500" />
-                          Requiere seguimiento (se enviará al tutor del grupo)
-                        </label>
-                      </div>
-                      <label className="text-sm font-medium text-slate-300 sm:col-span-2">Observación general
-                        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Notas adicionales de la sesión" />
-                      </label>
-                      <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3 text-xs text-blue-200 sm:col-span-2">
-                        <p><b>Visibilidad:</b> la incidencia siempre queda en tu bitácora. Si marcas “Requiere seguimiento”, también se enviará al tutor asignado del grupo.</p>
-                        <p className="mt-1 text-slate-400">Si corresponde a un alumno específico, utiliza su ficha o “Alerta temprana”. No incluyas diagnósticos médicos ni información personal sensible en esta bitácora.</p>
-                      </div>
-                    </div>
-                  </details>
                   {clase.estado !== 'CORRECCION' && (
                     <label className="flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-4 text-sm text-slate-200 sm:col-span-2">
                       <input

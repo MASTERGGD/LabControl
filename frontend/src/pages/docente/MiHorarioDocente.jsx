@@ -738,19 +738,11 @@ export default function MiHorarioDocente() {
                     </p>
                   )}
                   {!esNoLectiva(actividadPrincipal) && recordatorioPrincipal && (
-                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                      {recordatorioPrincipal.bitacora?.tarea_asignada?.trim() && (
-                        <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] px-3 py-2 text-blue-100">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-blue-300">Trabajo asignado en la clase anterior</span>
-                          <span className="mt-1 block">{recordatorioPrincipal.bitacora.tarea_asignada}</span>
-                        </div>
-                      )}
-                      {recordatorioPrincipal.bitacora?.tema_pendiente?.trim() && (
-                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-amber-100">
-                          <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">Tema para retomar</span>
-                          <span className="mt-1 block">{recordatorioPrincipal.bitacora.tema_pendiente}</span>
-                        </div>
-                      )}
+                    <div className="mt-3 text-sm">
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-amber-100">
+                        <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">Pendiente de la sesión anterior</span>
+                        {[recordatorioPrincipal.bitacora?.tema_pendiente?.trim(), recordatorioPrincipal.bitacora?.tarea_asignada?.trim()].filter(Boolean).map((pendiente, indice) => <span key={`${pendiente}-${indice}`} className="mt-1 block">{pendiente}</span>)}
+                      </div>
                     </div>
                   )}
                 </div>

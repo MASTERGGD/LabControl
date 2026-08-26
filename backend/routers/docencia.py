@@ -144,7 +144,7 @@ class CierreInput(BaseModel):
     tarea_asignada: Optional[str] = Field(None, max_length=1500)
     incidencias: Optional[str] = Field(None, max_length=1500)
     incidencia_tipo: Optional[str] = Field(None, max_length=30)
-    incidencia_requiere_seguimiento: bool = False
+    incidencia_requiere_seguimiento: Optional[bool] = None
     tema_pendiente: Optional[str] = Field(None, max_length=1000)
 
     @model_validator(mode="after")
@@ -156,7 +156,7 @@ class CierreInput(BaseModel):
                 "SUSPENSION_INSTITUCIONAL", "OTRA",
             }:
                 raise ValueError("Tipo de incidencia no válido")
-        else:
+        elif self.incidencias is not None:
             self.incidencia_tipo = None
             self.incidencia_requiere_seguimiento = False
         return self
