@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import { usePeriodo } from '../../context/PeriodoContext';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const PERIODOS_UTECAN = [
@@ -397,6 +398,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
 
 export default function MiHorarioDocente() {
   const navigate = useNavigate();
+  const { periodo: periodoGlobal, cargando: cargandoPeriodoGlobal } = usePeriodo();
   const [catalogos, setCatalogos] = useState({ periodos: [], grupos: [], materias: [], laboratorios: [], espacios: [] });
   const [periodoId, setPeriodoId] = useState('');
   const [horario, setHorario] = useState([]);
@@ -466,7 +468,9 @@ export default function MiHorarioDocente() {
     }
   }, []);
 
-  useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    if (!cargandoPeriodoGlobal) cargar(periodoGlobal?.id);
+  }, [cargar, cargandoPeriodoGlobal, periodoGlobal?.id]);
   useEffect(() => {
     const intervalo = window.setInterval(() => setAhora(new Date()), 60000);
     return () => window.clearInterval(intervalo);
@@ -682,9 +686,6 @@ export default function MiHorarioDocente() {
               </button>
             )}
             {esPeriodoActual && reposicionesPendientes.length > 0 && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición ({reposicionesPendientes.length})</button>}
-            <select className="input-dark" value={periodoId} onChange={(e) => cargar(e.target.value)}>
-              {catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}</option>)}
-            </select>
           </div>
         </div>
 

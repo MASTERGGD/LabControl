@@ -112,6 +112,22 @@ def listar_periodos(
     periodos = db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()
     calendarios = {c.periodo_id: c for c in db.query(CalendarioAcademico).all()}
     puede_administrar = _puede_administrar(db, current_user)
+    puede_preparar_periodos = puede_administrar or current_user.rol in {
+        RolUsuario.SUPER_ADMIN,
+        RolUsuario.SERVICIOS_ESCOLARES,
+    }
+    if not puede_preparar_periodos:
+        # Un periodo futuro puede existir para que Servicios Escolares prepare
+        # grupos y promociones, pero no forma parte todavía del contexto de
+        # trabajo de docentes y demás usuarios. Los históricos publicados se
+        # conservan disponibles para consulta.
+        periodos = [
+            p for p in periodos
+            if p.es_actual or (
+                p.id in calendarios
+                and calendarios[p.id].estado in {"PUBLICADO", "CERRADO"}
+            )
+        ]
     return [{
         "id": p.id, "clave": p.clave, "activo": p.activo, "es_actual": p.es_actual,
         "puede_administrar": puede_administrar,
