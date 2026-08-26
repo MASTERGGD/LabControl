@@ -174,6 +174,8 @@ function ModalReporte({ reporte, titulo, onClose }) {
 // ─── Componente: Modal importar archivo (flujo 2 pasos: preview → confirmar) ──
 
 function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, extraParams = {}, onClose, onImportado }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [archivo, setArchivo]     = useState(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
@@ -219,13 +221,13 @@ function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, extraPa
 
     return (
       <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-        <div className="glass w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
-          <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between shrink-0">
+        <div className={`w-full max-w-lg overflow-hidden rounded-2xl border shadow-2xl max-h-[90vh] flex flex-col ${isDay ? 'border-slate-200 bg-white' : 'border-white/10 bg-slate-900'}`}>
+          <div className={`px-6 py-4 border-b flex items-center justify-between shrink-0 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
             <div>
-              <h3 className="font-semibold text-white">Vista previa — ¿aplicar cambios?</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{archivo?.name}</p>
+              <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>Vista previa — ¿aplicar cambios?</h3>
+              <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>{archivo?.name}</p>
             </div>
-            <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <button onClick={onClose} className={isDay ? 'text-slate-600 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -235,26 +237,26 @@ function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, extraPa
           <div className="p-6 overflow-y-auto space-y-4">
             {/* Resumen */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="bg-green-900/40 border border-green-700/50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-green-400">{creados}</p>
-                <p className="text-xs text-green-300 mt-1">Nuevos</p>
+              <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-emerald-50 border-emerald-300' : 'bg-emerald-950/60 border-emerald-700'}`}>
+                <p className={`text-xl font-bold ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>{creados}</p>
+                <p className={`text-xs font-medium mt-1 ${isDay ? 'text-emerald-900' : 'text-emerald-200'}`}>Nuevos</p>
               </div>
-              <div className="bg-blue-900/40 border border-blue-700/50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-blue-400">{actualizados}</p>
-                <p className="text-xs text-blue-300 mt-1">Se actualizan</p>
+              <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-blue-50 border-blue-300' : 'bg-blue-950/60 border-blue-700'}`}>
+                <p className={`text-xl font-bold ${isDay ? 'text-blue-800' : 'text-blue-300'}`}>{actualizados}</p>
+                <p className={`text-xs font-medium mt-1 ${isDay ? 'text-blue-900' : 'text-blue-200'}`}>Se actualizan</p>
               </div>
-              <div className="bg-white/4 border border-gray-600/50 rounded-xl p-3 text-center">
-                <p className="text-xl font-bold text-slate-300">{sin_cambios}</p>
-                <p className="text-xs text-slate-400 mt-1">Sin cambios</p>
+              <div className={`border rounded-xl p-3 text-center ${isDay ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600'}`}>
+                <p className={`text-xl font-bold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>{sin_cambios}</p>
+                <p className={`text-xs font-medium mt-1 ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>Sin cambios</p>
               </div>
               <div className={`rounded-xl p-3 text-center border ${
                 total_errores > 0
-                  ? 'bg-red-900/40 border-red-700/50'
-                  : 'bg-white/4 border-gray-600/50'}`}>
-                <p className={`text-xl font-bold ${total_errores > 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                  ? (isDay ? 'bg-red-50 border-red-300' : 'bg-red-950/60 border-red-700')
+                  : (isDay ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600')}`}>
+                <p className={`text-xl font-bold ${total_errores > 0 ? (isDay ? 'text-red-800' : 'text-red-300') : (isDay ? 'text-slate-800' : 'text-slate-200')}`}>
                   {total_errores}
                 </p>
-                <p className={`text-xs mt-1 ${total_errores > 0 ? 'text-red-300' : 'text-slate-400'}`}>
+                <p className={`text-xs font-medium mt-1 ${total_errores > 0 ? (isDay ? 'text-red-900' : 'text-red-200') : (isDay ? 'text-slate-700' : 'text-slate-300')}`}>
                   Con error
                 </p>
               </div>
@@ -304,9 +306,9 @@ function ModalImportar({ titulo, descripcion, endpoint, supportsPreview, extraPa
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-white/5 shrink-0 flex gap-3">
+          <div className={`px-6 py-4 border-t shrink-0 flex gap-3 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
             <button onClick={() => setPreview(null)}
-              className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
+              className={`flex-1 rounded-lg py-2.5 text-sm font-medium transition-colors ${isDay ? 'bg-slate-100 hover:bg-slate-200 text-slate-900' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}>
               ← Volver
             </button>
             <button
