@@ -1452,6 +1452,11 @@ def cambiar_asistencia(
     estado = data.estado.upper()
     if estado not in ESTADOS_ASISTENCIA:
         raise HTTPException(422, "Estado de asistencia no válido")
+    if estado == "JUSTIFICADA":
+        raise HTTPException(
+            422,
+            "Las faltas se justifican desde Seguimiento de grupos con el documento validado por División de Carrera",
+        )
     asistencia = db.query(AsistenciaDocente).join(ClaseDocente).join(CargaDocente).filter(
         AsistenciaDocente.id == asistencia_id,
         AsistenciaDocente.clase_docente_id == clase_id,

@@ -90,6 +90,7 @@ export default function SeguimientoGrupos() {
       fecha_fin: fechaLocal(hoy),
       motivo: '',
       folio: '',
+      documento_validado: false,
       faltas: [],
       seleccionadas: [],
       consultado: false,
@@ -139,7 +140,7 @@ export default function SeguimientoGrupos() {
   };
 
   const guardarJustificacion = async () => {
-    if (justificacion.motivo.trim().length < 5 || !justificacion.seleccionadas.length) return;
+    if (justificacion.motivo.trim().length < 5 || !justificacion.seleccionadas.length || !justificacion.documento_validado) return;
     setJustificacion((actual) => ({ ...actual, guardando: true, error: '' }));
     try {
       await api.post(
@@ -289,13 +290,14 @@ export default function SeguimientoGrupos() {
                   <p className="mt-1 text-sm text-slate-400">
                     {justificacion.alumno.nombre} · {cargaActual?.actividad_nombre}
                   </p>
+                  <p className="mt-2 text-xs text-blue-300">Aplica únicamente las fechas cubiertas por el justificante que División de Carrera ya validó.</p>
                 </div>
                 <button onClick={() => setJustificacion(null)} className="text-2xl text-slate-400 hover:text-white">×</button>
               </div>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <label className="text-sm font-medium text-slate-300">
-                  Desde
+                  Vigencia del justificante: desde
                   <input type="date" value={justificacion.fecha_inicio} onChange={(e) => setJustificacion({ ...justificacion, fecha_inicio: e.target.value, consultado: false })} className="input-dark mt-1" />
                 </label>
                 <label className="text-sm font-medium text-slate-300">
@@ -329,23 +331,27 @@ export default function SeguimientoGrupos() {
                     <textarea rows={3} value={justificacion.motivo} onChange={(e) => setJustificacion({ ...justificacion, motivo: e.target.value })} className="input-dark mt-1" placeholder="Ej. Incapacidad médica indicada en el justificante." />
                   </label>
                   <label className="text-sm font-medium text-slate-300">
-                    Folio del justificante (opcional)
+                    Folio o referencia del justificante (si aparece)
                     <input value={justificacion.folio} onChange={(e) => setJustificacion({ ...justificacion, folio: e.target.value })} className="input-dark mt-1" placeholder="Ej. DC-2026-0142" />
                   </label>
                   <div className="flex items-end text-sm text-blue-300">
                     Se justificarán {justificacion.seleccionadas.length} falta(s).
                   </div>
+                  <label className="flex items-start gap-3 rounded-xl border border-blue-500/25 bg-blue-500/[0.07] p-3 text-sm text-slate-200 sm:col-span-2">
+                    <input type="checkbox" checked={justificacion.documento_validado} onChange={(e) => setJustificacion({ ...justificacion, documento_validado: e.target.checked })} className="mt-0.5 h-4 w-4 shrink-0 accent-blue-500" />
+                    <span><b className="block text-blue-300">Confirmo que revisé el justificante validado por División de Carrera</b><span className="mt-1 block text-xs text-slate-400">Las fechas seleccionadas están incluidas en el documento presentado por el alumno.</span></span>
+                  </label>
                 </div>
               )}
 
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setJustificacion(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
                 <button
-                  disabled={justificacion.guardando || !justificacion.seleccionadas.length || justificacion.motivo.trim().length < 5}
+                  disabled={justificacion.guardando || !justificacion.seleccionadas.length || justificacion.motivo.trim().length < 5 || !justificacion.documento_validado}
                   onClick={guardarJustificacion}
                   className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {justificacion.guardando ? 'Guardando...' : `Justificar ${justificacion.seleccionadas.length} falta(s)`}
+                  {justificacion.guardando ? 'Guardando...' : `Aplicar justificante a ${justificacion.seleccionadas.length} falta(s)`}
                 </button>
               </div>
             </div>

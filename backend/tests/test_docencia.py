@@ -170,13 +170,25 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
         json={"estado": "JUSTIFICADA"},
         headers=headers,
     )
-    assert corregida.status_code == 200, corregida.text
+    assert corregida.status_code == 422, corregida.text
     recerrada = client.post(
         f"/docencia/clases/{clase['id']}/cerrar",
         json={},
         headers=headers,
     )
     assert recerrada.status_code == 200
+    justificada = client.post(
+        f"/docencia/seguimiento/{carga_id}/alumnos/{clase['alumnos'][0]['alumno_id']}/justificar-faltas",
+        json={
+            "fecha_inicio": clase["fecha"],
+            "fecha_fin": clase["fecha"],
+            "asistencia_ids": [asistencia_id],
+            "motivo": "Justificante validado por División de Carrera",
+            "folio": "DC-2026-0001",
+        },
+        headers=headers,
+    )
+    assert justificada.status_code == 200, justificada.text
     seguimiento = client.get(f"/docencia/seguimiento/{carga_id}", headers=headers)
     assert seguimiento.status_code == 200, seguimiento.text
     assert seguimiento.json()["total_clases"] == 1
