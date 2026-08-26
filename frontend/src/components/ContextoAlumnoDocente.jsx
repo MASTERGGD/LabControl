@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import api from '../hooks/useApi';
 
 const FORM_INICIAL = {
@@ -14,6 +15,12 @@ export default function ContextoAlumnoDocente({
   const [form, setForm] = useState(FORM_INICIAL);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!abierto) return undefined;
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = overflowAnterior; };
+  }, [abierto]);
   if (!contexto) return null;
 
   const enviar = async (e) => {
@@ -61,17 +68,17 @@ export default function ContextoAlumnoDocente({
         </button>
       </div>
 
-      {abierto && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardando && setAbierto(false)}>
-          <form onSubmit={enviar} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
-            <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
+      {abierto && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-slate-950/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={() => !guardando && setAbierto(false)}>
+          <form onSubmit={enviar} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-slate-900 shadow-2xl sm:max-h-[90dvh] sm:max-w-lg sm:rounded-2xl">
+            <header className="flex shrink-0 items-start justify-between border-b border-white/10 bg-slate-900 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-white">Registrar seguimiento</h2>
                 <p className="mt-1 text-xs text-slate-400">{nombre} · Registra hechos y acciones concretas.</p>
               </div>
-              <button type="button" disabled={guardando} onClick={() => setAbierto(false)} className="text-2xl text-slate-400">×</button>
+              <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setAbierto(false)} className="-mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-2xl text-slate-400 hover:bg-white/5 hover:text-white">×</button>
             </header>
-            <div className="space-y-4 p-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 overscroll-contain">
               <label className="block text-sm text-slate-300">Tipo de registro
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
                   <option value="OBSERVACION">Observación o incidencia</option>
@@ -130,12 +137,13 @@ export default function ContextoAlumnoDocente({
               <p className="text-xs text-slate-500">El registro quedará vinculado automáticamente con esta materia, grupo, docente y alumno.</p>
               {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
             </div>
-            <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
+            <footer className="flex shrink-0 gap-3 border-t border-white/10 bg-slate-900 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <button type="button" disabled={guardando} onClick={() => setAbierto(false)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
               <button disabled={guardando || form.titulo.trim().length < 2} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y canalizar' : 'Guardar seguimiento'}</button>
             </footer>
           </form>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
