@@ -263,6 +263,20 @@ class AlertaTempranaInput(BaseModel):
         return self
 
 
+class IncidenciaClaseInput(BaseModel):
+    tipo: str
+    descripcion: str = Field(..., min_length=5, max_length=2000)
+    requiere_seguimiento: bool = False
+
+    @model_validator(mode="after")
+    def validar(self):
+        self.tipo = self.tipo.upper()
+        if self.tipo not in {"ACADEMICA", "DISCIPLINA", "INFRAESTRUCTURA", "SUSPENSION_INSTITUCIONAL", "SEGURIDAD", "OTRA"}:
+            raise ValueError("Tipo de incidencia no válido")
+        self.descripcion = self.descripcion.strip()
+        return self
+
+
 def _docente_objetivo(user: Usuario) -> int:
     return user.id
 
@@ -1600,6 +1614,29 @@ def habilitar_correccion(
         motivo=data.motivo.strip(),
     ))
     clase.estado = "CORRECCION"
+    db.commit()
+    return _serializar_clase(clase)
+
+
+@router.patch("/clases/{clase_id}/incidencia")
+def registrar_incidencia_clase(
+    clase_id: int,
+    data: IncidenciaClaseInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    _validar_carga_actual(db, clase.carga)
+    if clase.estado not in {"ABIERTA", "CORRECCION"}:
+        raise HTTPException(409, "La asistencia debe estar abierta para registrar una incidencia")
+    clase.incidencia_tipo = data.tipo
+    clase.incidencias = data.descripcion
+    clase.incidencia_requiere_seguimiento = data.requiere_seguimiento
     db.commit()
     return _serializar_clase(clase)
 

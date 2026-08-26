@@ -13,7 +13,6 @@ const PESTANAS = [
   ['RESUMEN', 'Resumen'],
   ['PENDIENTES', 'Pendientes'],
   ['OBSERVACION', 'Observaciones'],
-  ['CALIFICACION', 'Calificaciones'],
   ['ACUERDO', 'Acuerdos'],
   ['TUTORIA', 'Tutoría'],
   ['ASISTENCIA', 'Asistencia'],
@@ -503,7 +502,6 @@ export default function FichaAlumnoDocente() {
               <label className="block text-sm text-slate-300">Tipo
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, calificacion: '', fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
                   <option value="OBSERVACION">Observación docente</option>
-                  <option value="CALIFICACION">Calificación parcial</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
                   <option value="TUTORIA">Enviar reporte al tutor del grupo</option>
                 </select>

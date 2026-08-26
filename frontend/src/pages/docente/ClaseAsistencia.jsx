@@ -24,6 +24,8 @@ export default function ClaseAsistencia() {
   const [justificacionActual, setJustificacionActual] = useState(null);
   const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [modalIncidenciaGrupo, setModalIncidenciaGrupo] = useState(false);
+  const [incidenciaGrupo, setIncidenciaGrupo] = useState({ tipo: '', descripcion: '', requiere_seguimiento: false });
   const [bitacora, setBitacora] = useState({
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
     tarea_asignada: '', incidencias: '', incidencia_tipo: '',
@@ -146,6 +148,38 @@ export default function ClaseAsistencia() {
     }
   };
 
+  const abrirIncidenciaGrupo = () => {
+    setIncidenciaGrupo({
+      tipo: clase.incidencia_tipo || '',
+      descripcion: clase.incidencias || '',
+      requiere_seguimiento: Boolean(clase.incidencia_requiere_seguimiento),
+    });
+    setModalIncidenciaGrupo(true);
+  };
+
+  const guardarIncidenciaGrupo = async (e) => {
+    e.preventDefault();
+    if (!incidenciaGrupo.tipo || incidenciaGrupo.descripcion.trim().length < 5) return;
+    setCerrando(true);
+    try {
+      const { data } = await api.patch(`/docencia/clases/${claseId}/incidencia`, {
+        tipo: incidenciaGrupo.tipo,
+        descripcion: incidenciaGrupo.descripcion.trim(),
+        requiere_seguimiento: incidenciaGrupo.requiere_seguimiento,
+      });
+      setClase(data);
+      setModalIncidenciaGrupo(false);
+      setMensaje(incidenciaGrupo.requiere_seguimiento
+        ? 'Incidencia registrada. Se canalizará al tutor al cerrar la clase.'
+        : 'Incidencia del grupo registrada.');
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo registrar la incidencia del grupo.');
+    } finally {
+      setCerrando(false);
+    }
+  };
+
   if (!clase) return <AdminLayout><div className="p-8 text-center text-slate-400">{error || 'Cargando lista de alumnos...'}</div></AdminLayout>;
   const r = clase.resumen;
   const fechaSesion = new Intl.DateTimeFormat('es-MX', {
@@ -225,10 +259,12 @@ export default function ClaseAsistencia() {
           </section>
         )}
         <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
-          <div className="border-b border-white/10 px-5 py-4">
-            <h2 className="font-semibold text-white">Lista del grupo</h2>
-            <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente las excepciones. “Justificada hoy” aplica solo a esta sesión: {fechaSesion}.</p>
+          <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+            <div><h2 className="font-semibold text-white">Lista del grupo</h2>
+            <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente las excepciones. “Justificada hoy” aplica solo a esta sesión: {fechaSesion}.</p></div>
+            {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button type="button" onClick={abrirIncidenciaGrupo} className="shrink-0 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-300">{clase.incidencias ? 'Editar incidencia del grupo' : '+ Incidencia del grupo'}</button>}
           </div>
+          {clase.incidencias && <div className="border-b border-amber-500/15 bg-amber-500/[0.05] px-5 py-3 text-xs text-slate-300"><b className="text-amber-300">Incidencia del grupo:</b> {clase.incidencias}{clase.incidencia_requiere_seguimiento ? ' · Requiere seguimiento' : ''}</div>}
           <div>
             {clase.alumnos.map((alumno, indice) => (
               <div
@@ -383,6 +419,19 @@ export default function ClaseAsistencia() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+        {modalIncidenciaGrupo && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !cerrando && setModalIncidenciaGrupo(false)}>
+            <form onSubmit={guardarIncidenciaGrupo} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+              <header className="flex items-start justify-between border-b border-white/10 px-5 py-4"><div><h2 className="font-semibold text-white">Incidencia del grupo</h2><p className="mt-1 text-xs text-slate-400">Registra una situación general ocurrida durante esta clase.</p></div><button type="button" disabled={cerrando} onClick={() => setModalIncidenciaGrupo(false)} className="text-2xl text-slate-400">×</button></header>
+              <div className="space-y-4 p-5">
+                <label className="block text-sm text-slate-300">Tipo de incidencia *<select required value={incidenciaGrupo.tipo} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, tipo: e.target.value })} className="input-dark mt-1"><option value="">Selecciona el tipo</option><option value="ACADEMICA">Académica</option><option value="DISCIPLINA">Conducta general del grupo</option><option value="INFRAESTRUCTURA">Infraestructura, equipo o internet</option><option value="SUSPENSION_INSTITUCIONAL">Actividad o suspensión institucional</option><option value="SEGURIDAD">Seguridad</option><option value="OTRA">Otra situación</option></select></label>
+                <label className="block text-sm text-slate-300">Descripción *<textarea required minLength={5} maxLength={2000} rows={4} value={incidenciaGrupo.descripcion} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, descripcion: e.target.value })} className="input-dark mt-1" placeholder="Describe qué ocurrió y qué acción inmediata se tomó." /></label>
+                <label className="flex items-start gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3 text-sm text-slate-200"><input type="checkbox" className="mt-1" checked={incidenciaGrupo.requiere_seguimiento} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, requiere_seguimiento: e.target.checked })} /><span><b>Requiere seguimiento</b><span className="mt-1 block text-xs font-normal text-slate-400">Se canalizará al tutor asignado cuando cierres la clase.</span></span></label>
+              </div>
+              <footer className="flex gap-3 border-t border-white/10 px-5 py-4"><button type="button" disabled={cerrando} onClick={() => setModalIncidenciaGrupo(false)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button><button disabled={cerrando || !incidenciaGrupo.tipo || incidenciaGrupo.descripcion.trim().length < 5} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{cerrando ? 'Guardando…' : 'Guardar incidencia'}</button></footer>
+            </form>
           </div>
         )}
       </div>
