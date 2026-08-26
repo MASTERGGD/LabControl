@@ -427,6 +427,45 @@ def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
     assert "48 horas" in fuera_plazo.json()["detail"]
 
 
+def test_clase_en_curso_no_aparece_como_pendiente(client, db, monkeypatch):
+    ahora = datetime.datetime(2026, 8, 26, 9, 34, tzinfo=ZoneInfo("America/Mexico_City"))
+    monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: ahora)
+    docente = Usuario(
+        nombre="Docente Clase En Curso", email="clase.en.curso@test.mx",
+        password_hash=hashear_password("ClaseEnCurso123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    )
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    db.add_all([docente, periodo])
+    db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=3, grupo="A", activo=True,
+    )
+    db.add(grupo)
+    db.flush()
+    carga = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        tipo_actividad="CLASE", actividad_nombre="Bases de Datos",
+        dia_semana=2, hora_inicio="08:00", hora_fin="09:45",
+        estado="ACTIVO", activo=True,
+    )
+    db.add(carga)
+    db.commit()
+    headers = auth_headers(get_token(client, docente.email, "ClaseEnCurso123!"))
+
+    disponibles = client.get("/docencia/capturas-extemporaneas/disponibles", headers=headers)
+    assert disponibles.status_code == 200, disponibles.text
+    assert disponibles.json() == []
+
+    captura = client.post(
+        f"/docencia/horario/{carga.id}/captura-extemporanea",
+        headers=headers,
+        json={"fecha": "2026-08-26", "motivo": "Intento durante la clase."},
+    )
+    assert captura.status_code == 409
+    assert "en curso" in captura.json()["detail"]
+
+
 def test_docente_justifica_varias_faltas_del_mismo_alumno(client, db):
     docente = Usuario(
         nombre="Marco Docente", email="marco.justifica@test.mx",

@@ -652,8 +652,8 @@ export default function MiHorarioDocente() {
       : item.clase_id
         ? 'Continuar clase'
         : item.estado_reserva_laboratorio === 'RESERVADO'
-          ? 'Iniciar clase en laboratorio'
-          : 'Iniciar clase'
+          ? 'Registrar asistencia en laboratorio'
+          : 'Registrar asistencia'
   );
   const abrirClase = async (item) => {
     if (item.es_reposicion && item.clase_estado === 'PROGRAMADA') {
@@ -689,7 +689,7 @@ export default function MiHorarioDocente() {
                 }}
                 className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"
               >
-                Capturar clase anterior ({extemporaneas.length})
+                Clases pendientes ({extemporaneas.length})
               </button>
             )}
             {esPeriodoActual && reposicionesPendientes.length > 0 && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición ({reposicionesPendientes.length})</button>}
@@ -1095,7 +1095,7 @@ export default function MiHorarioDocente() {
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
               <div>
                 <h2 className="font-semibold text-white">Resolver clase pendiente</h2>
-                <p className="mt-1 text-xs text-slate-400">Indica si se impartió o si necesita una reposición.</p>
+                <p className="mt-1 text-xs text-slate-400">Indica si la clase se impartió.</p>
               </div>
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="text-2xl text-slate-400">×</button>
             </header>
@@ -1124,14 +1124,14 @@ export default function MiHorarioDocente() {
                 <p className="mt-1 text-xs text-amber-300">{resolucionPendiente === 'IMPARTIDA' ? 'La asistencia quedará identificada como captura extemporánea.' : 'La clase original quedará registrada como no impartida.'}</p>
               </div>
               <fieldset className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <legend className="mb-2 text-sm font-semibold text-slate-200">¿Qué ocurrió con esta clase?</legend>
+                <legend className="mb-2 text-sm font-semibold text-slate-200">¿La clase se impartió?</legend>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'IMPARTIDA' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-slate-300'}`}>
                   <input type="radio" className="mr-2" checked={resolucionPendiente === 'IMPARTIDA'} onChange={() => { setResolucionPendiente('IMPARTIDA'); setProgramarAlDeclarar(false); }} />
-                  Sí impartí la clase
+                  Sí, se impartió
                 </label>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'NO_IMPARTIDA' ? 'border-amber-500/50 bg-amber-500/10 text-amber-200' : 'border-white/10 text-slate-300'}`}>
                   <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => setResolucionPendiente('NO_IMPARTIDA')} />
-                  No pude impartirla
+                  No se impartió
                 </label>
               </fieldset>
               <label className="block text-sm text-slate-300">{resolucionPendiente === 'IMPARTIDA' ? 'Motivo de la captura tardía' : 'Motivo por el que no se impartió'} *
@@ -1162,7 +1162,7 @@ export default function MiHorarioDocente() {
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={creandoExtemporanea || motivoExtemporaneo.trim().length < 5} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Capturar asistencia' : programarAlDeclarar ? 'Registrar y reprogramar' : 'Registrar sin reposición'}</button>
+              <button disabled={creandoExtemporanea || motivoExtemporaneo.trim().length < 5} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
             </footer>
           </form>
         </div>
