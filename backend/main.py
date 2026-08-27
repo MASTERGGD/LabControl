@@ -56,7 +56,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "a7b8c9d0e1f2"
+_ALEMBIC_HEAD = "c2d3e4f5g6h7"
 
 
 def _current_db_version() -> str | None:

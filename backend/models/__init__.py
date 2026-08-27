@@ -39,3 +39,4 @@ from .calendario_academico import (
 )
 from .cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from .promocion_academica import PromocionAcademicaAlumno
+from .reporte_academico import EmisionReporteAcademico
