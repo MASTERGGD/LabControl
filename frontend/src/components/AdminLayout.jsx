@@ -404,6 +404,10 @@ const NAV_ITEMS = [
     label: 'Materias', path: '/division-carrera/materias', roles: [], permiso: 'materias:manage', inGroup: true, ocultarSuperAdmin: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253"/></svg>,
   },
+  {
+    label: 'Reportes académicos', path: '/division-carrera/reportes-academicos', roles: [], permiso: 'materias:manage', inGroup: true, ocultarSuperAdmin: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m4 6V7m4 10v-3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>,
+  },
   { divider: true, label: 'Calendario académico', roles: ['SUPER_ADMIN','DOCENTE'], permiso: 'materias:manage' },
   {
     label: 'Calendario oficial', path: '/calendario-academico', roles: ['SUPER_ADMIN','DOCENTE'], permiso: 'materias:manage', inGroup: true,
@@ -579,6 +583,7 @@ const BREADCRUMB_MAP = {
   '/admin/historial-alumno':  [{ label: 'Historial de laboratorio' }],
   '/admin/catalogo':          [{ label: 'Catálogos' }],
   '/division-carrera/materias': [{ label: 'Académico' }, { label: 'Materias' }],
+  '/division-carrera/reportes-academicos': [{ label: 'Académico' }, { label: 'Reportes académicos' }],
   '/calendario-academico': [{ label: 'Académico' }, { label: 'Calendario oficial' }],
   '/expediente-academico':   [{ label: 'Académico' }, { label: 'Expediente académico' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
