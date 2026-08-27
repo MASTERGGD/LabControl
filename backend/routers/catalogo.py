@@ -893,16 +893,29 @@ async def importar_materias(
         except (ValueError, TypeError):
             cuat = None
 
+        problemas = []
         if not nombre:
+            problemas.append("Falta el nombre de la materia.")
+        if not carrera:
+            problemas.append("Falta la carrera.")
+        if cuat is None or not 1 <= cuat <= 12:
+            problemas.append("El cuatrimestre debe ser un número entero del 1 al 12.")
+        if problemas:
+            errores.append({
+                "fila": row_idx,
+                "datos": " · ".join(parte for parte in [nombre, carrera] if parte) or "Fila incompleta",
+                "errores": problemas,
+            })
             continue
 
         carrera_resuelta = _resolver_carrera_catalogo(db, carrera) if carrera else None
         if carrera and _catalogo_carreras_configurado(db) and not carrera_resuelta:
             errores.append({
                 "fila": row_idx,
-                "campo": "carrera",
-                "valor": carrera,
-                "error": "No coincide con una carrera oficial ni con un alias registrado.",
+                "datos": f"{nombre} · {carrera}",
+                "errores": [
+                    f'La carrera “{carrera}” no coincide con una carrera oficial ni con un alias registrado.',
+                ],
             })
             continue
         carrera = carrera_resuelta or carrera

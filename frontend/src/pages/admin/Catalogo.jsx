@@ -57,6 +57,11 @@ function ModalReporte({ reporte, titulo, onClose }) {
     cambios_sensibles = [],
   } = reporte;
   const total = creados + actualizados + sin_cambios + total_errores;
+  const mensajesError = (fila) => {
+    if (Array.isArray(fila?.errores)) return fila.errores;
+    if (fila?.error) return [fila.error];
+    return ['No se pudo procesar esta fila.'];
+  };
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
@@ -145,7 +150,7 @@ function ModalReporte({ reporte, titulo, onClose }) {
                       <span className="text-xs text-slate-500 truncate ml-2 max-w-[180px]">{e.datos}</span>
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {e.errores.map((err, j) => (
+                      {mensajesError(e).map((err, j) => (
                         <span key={j} className="text-xs bg-red-900/50 text-red-300 px-2 py-0.5 rounded-full border border-red-800/50">
                           {err}
                         </span>
@@ -1141,7 +1146,7 @@ export default function Catalogo({ modo = 'completo' }) {
           titulo={modalImportar === 'alumnos' ? '📥 Importar alumnos' : '📥 Importar materias'}
           descripcion={modalImportar === 'alumnos'
             ? 'Usa la Plantilla_Alumnos_UTECAN.xlsx'
-            : 'Usa el archivo de materias UTECAN (hoja «concentrado»)'}
+            : 'Usa la plantilla SIGA (hoja «Materias») o el concentrado oficial UTECAN'}
           endpoint={modalImportar === 'alumnos' ? '/catalogo/alumnos/importar' : '/catalogo/materias/importar'}
           supportsPreview={modalImportar === 'alumnos'}
           extraParams={{}}
