@@ -33,8 +33,11 @@ def test_reporte_multigrupo_y_exportaciones(client, db, admin_user):
     assert data["resumen"]["alumnos"] == 2
     assert data["resumen"]["incidencias"] == 1
     assert data["resumen"]["alumnos_atencion"] == 1
+    assert data["resumen"]["sesiones_programadas"] > data["resumen"]["sesiones"]
+    assert data["resumen"]["asistencia"] is None
+    assert data["alumnos_atencion"][0]["nivel"] == "ATENCIÓN"
     assert data["materias"][0]["ultimo_tema"] == "Modelo relacional"
-    assert "confidenciales" in data["privacidad"]
+    assert "Documento de uso interno" in data["privacidad"]
 
     excel = client.get("/reportes-academicos/exportar.xlsx", params=params, headers=headers)
     assert excel.status_code == 200
@@ -42,3 +45,4 @@ def test_reporte_multigrupo_y_exportaciones(client, db, admin_user):
     pdf = client.get("/reportes-academicos/exportar.pdf", params=params, headers=headers)
     assert pdf.status_code == 200
     assert pdf.content.startswith(b"%PDF")
+    assert pdf.headers["x-reporte-folio"].startswith("RA-MAYAGO2026-")

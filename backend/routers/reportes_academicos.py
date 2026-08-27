@@ -6,27 +6,32 @@ from typing import Optional
 from xml.sax.saxutils import escape
 
 import openpyxl
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import landscape, letter
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.pdfgen.canvas import Canvas
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from database import get_db
 from dependencies import get_current_user
 from models.catalogo import GrupoAcademico, InscripcionAlumno, PeriodoEscolar
-from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente
+from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente, CorreccionAsistenciaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario
+from services.calendario_academico import estado_fecha_academica
 from services.user_permissions import puede_gestionar_materias
 
 
 router = APIRouter(prefix="/reportes-academicos", tags=["Reportes académicos"])
 ESTADOS_CERRADOS = {"ATENDIDO", "CUMPLIDO", "CUMPLIDO_PARCIAL", "NO_CUMPLIDO", "CERRADO"}
+MIN_SESIONES_PORCENTAJE = 3
+MIN_SESIONES_PRIORIDAD = 5
 
 
 def _autorizar(db: Session, user: Usuario):
@@ -45,7 +50,88 @@ def _ids_grupos(valor: str) -> list[int]:
 
 
 def _nombre_alumno(alumno) -> str:
-    return f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+    texto = f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
+    return " ".join(parte.capitalize() for parte in texto.split())
+
+
+def _nombre_persona(valor: str) -> str:
+    limpio = re.sub(r"\s*\(demo\)\s*$", "", valor or "", flags=re.IGNORECASE).strip()
+    articulos = {"de", "del", "la", "las", "los", "y"}
+    resultado = []
+    for indice, parte in enumerate(limpio.split()):
+        minuscula = parte.lower()
+        if indice and minuscula in articulos:
+            resultado.append(minuscula)
+        elif parte.isupper() and len(parte) <= 4 and parte not in {"DE", "DEL", "LA", "LAS", "LOS"}:
+            resultado.append(parte)
+        else:
+            resultado.append(parte.capitalize())
+    return " ".join(resultado)
+
+
+def _texto_presentacion(valor: Optional[str]) -> Optional[str]:
+    if not valor:
+        return None
+    texto = re.sub(r"\s+", " ", valor.strip())
+    return texto[:1].upper() + texto[1:] if texto else None
+
+
+def _carrera_corta(valor: str) -> str:
+    alto = (valor or "").upper()
+    conocidos = {
+        "INTELIGENCIA ARTIFICIAL": "TSU IA",
+        "DESARROLLO Y GESTIÓN DE SOFTWARE": "ING. DGS",
+        "DESARROLLO Y GESTION DE SOFTWARE": "ING. DGS",
+        "CONTADURÍA": "CONTADURÍA",
+        "CONTADURIA": "CONTADURÍA",
+        "AGRICULTURA SUSTENTABLE": "AGRICULTURA",
+        "PARAMÉDICO": "TSU PARAMÉDICO",
+        "PARAMEDICO": "TSU PARAMÉDICO",
+    }
+    for clave, corto in conocidos.items():
+        if clave in alto:
+            return corto
+    palabras = [p for p in re.findall(r"[A-ZÁÉÍÓÚÑ]+", alto) if p not in {"DE", "DEL", "EN", "Y", "LA", "EL", "SUPERIOR", "UNIVERSITARIO"}]
+    return " ".join(palabras[:4]) or valor
+
+
+def _limites_periodo(clave: str) -> tuple[datetime.date, datetime.date]:
+    match = re.search(r"(ENE-ABR|MAY-AGO|SEP-DIC)\s+(\d{4})", (clave or "").upper())
+    if not match:
+        hoy = datetime.date.today()
+        return hoy.replace(month=1, day=1), hoy
+    bloque, anio_txt = match.groups(); anio = int(anio_txt)
+    if bloque == "ENE-ABR": return datetime.date(anio, 1, 1), datetime.date(anio, 4, 30)
+    if bloque == "MAY-AGO": return datetime.date(anio, 5, 1), datetime.date(anio, 8, 31)
+    return datetime.date(anio, 9, 1), datetime.date(anio, 12, 31)
+
+
+def _fechas_programadas(
+    db: Session,
+    periodo_id: int,
+    carga: CargaDocente,
+    inicio: datetime.date,
+    fin: datetime.date,
+    lectividad: dict[datetime.date, bool],
+) -> int:
+    if fin < inicio:
+        return 0
+    total = 0; fecha = inicio
+    while fecha <= fin:
+        if fecha not in lectividad:
+            lectividad[fecha] = estado_fecha_academica(db, periodo_id, fecha)["es_lectiva"]
+        if fecha.weekday() == carga.dia_semana and lectividad[fecha]:
+            total += 1
+        fecha += datetime.timedelta(days=1)
+    return total
+
+
+def _mostrar_asistencia(asistio: int, registros: int, sesiones: int) -> dict:
+    porcentaje = round(asistio * 100 / registros, 1) if registros else None
+    publicable = sesiones >= MIN_SESIONES_PORCENTAJE and porcentaje is not None
+    return {"porcentaje": porcentaje if publicable else None, "asistio": asistio, "registros": registros,
+            "sesiones_base": sesiones, "publicable": publicable,
+            "texto": f"{asistio} de {registros}" if registros else "Sin registros"}
 
 
 def _slug(valor: str) -> str:
@@ -61,6 +147,9 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
     ).order_by(GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all()
     if len(grupos) != len(grupo_ids):
         raise HTTPException(422, "Uno o más grupos no pertenecen al periodo seleccionado")
+    periodo_inicio, periodo_fin = _limites_periodo(periodo.clave)
+    inicio_reporte = max(desde or periodo_inicio, periodo_inicio)
+    fin_reporte = min(hasta or periodo_fin, periodo_fin, datetime.date.today())
 
     cargas = db.query(CargaDocente).filter(
         CargaDocente.periodo_id == periodo_id,
@@ -78,6 +167,9 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         clases_q = clases_q.filter(ClaseDocente.fecha <= hasta)
     clases = clases_q.order_by(ClaseDocente.fecha.desc()).all()
     clase_ids = [c.id for c in clases]
+    correcciones = db.query(CorreccionAsistenciaDocente).filter(
+        CorreccionAsistenciaDocente.clase_docente_id.in_(clase_ids),
+    ).all() if clase_ids else []
     asistencias = db.query(AsistenciaDocente).filter(AsistenciaDocente.clase_docente_id.in_(clase_ids)).all() if clase_ids else []
     seguimientos = db.query(SeguimientoAlumnoDocente).filter(
         SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
@@ -88,7 +180,6 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
     ).all()
 
     carga_por_id = {c.id: c for c in cargas}
-    clase_por_id = {c.id: c for c in clases}
     alumno_grupo = {i.alumno_id: i.grupo_academico_id for i in inscripciones}
     alumnos = {i.alumno_id: i.alumno for i in inscripciones}
     asistencias_alumno = defaultdict(list)
@@ -108,23 +199,32 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         materias_map.setdefault(key, {"cargas": [carga], "clases": []})["clases"].append(clase)
 
     materias = []
+    lectividad: dict[datetime.date, bool] = {}
     for bloque in materias_map.values():
         carga = bloque["cargas"][0]
         sesiones = bloque["clases"]
         ids = {c.id for c in sesiones}
         estados = [a.estado for a in asistencias if a.clase_docente_id in ids]
         asistio = sum(1 for e in estados if e in {"PRESENTE", "RETARDO", "JUSTIFICADA"})
+        programadas = sum(
+            _fechas_programadas(db, periodo_id, item, inicio_reporte, fin_reporte, lectividad)
+            for item in bloque["cargas"]
+        )
+        cobertura = round(len(sesiones) * 100 / programadas, 1) if programadas else None
         ultima = max(sesiones, key=lambda c: c.fecha) if sesiones else None
         avances = [c.avance_planeacion for c in sesiones if c.avance_planeacion is not None]
+        asistencia_info = _mostrar_asistencia(asistio, len(estados), len(sesiones))
         materias.append({
             "grupo_id": carga.grupo_academico_id,
             "materia": carga.actividad_nombre,
-            "docente": carga.docente.nombre if carga.docente else "Sin docente",
-            "sesiones": len(sesiones),
-            "asistencia": round(asistio * 100 / len(estados), 1) if estados else None,
-            "avance": round(sum(avances) / len(avances), 1) if avances else None,
-            "ultimo_tema": ultima.tema_impartido if ultima else None,
-            "pendiente": ultima.tema_pendiente if ultima else None,
+            "docente": _nombre_persona(carga.docente.nombre) if carga.docente else "Sin docente",
+            "sesiones": len(sesiones), "sesiones_programadas": programadas, "cobertura": cobertura,
+            "asistencia": asistencia_info["porcentaje"], "asistencia_detalle": asistencia_info,
+            "avance_sesion": round(sum(avances) / len(avances), 1) if avances else None,
+            "ultimo_tema": _texto_presentacion(ultima.tema_impartido) if ultima else None,
+            "pendiente": _texto_presentacion(ultima.tema_pendiente) if ultima else None,
+            "extemporaneas": sum(1 for c in sesiones if c.es_extemporanea),
+            "corregidas": len({r.clase_docente_id for r in correcciones if r.clase_docente_id in ids}),
         })
 
     alumnos_atencion = []
@@ -135,26 +235,36 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         abiertos = [s for s in seguimientos_alumno[alumno_id] if s.estado not in ESTADOS_CERRADOS]
         faltas = estados.count("FALTA")
         if faltas or abiertos:
+            sesiones_base = len(estados)
+            if sesiones_base < MIN_SESIONES_PORCENTAJE and not abiertos:
+                nivel = "DATOS INSUFICIENTES"
+            elif len(abiertos) >= 2 or (sesiones_base >= MIN_SESIONES_PRIORIDAD and porcentaje is not None and porcentaje < 80):
+                nivel = "PRIORITARIO"
+            elif abiertos or (sesiones_base >= MIN_SESIONES_PORCENTAJE and porcentaje is not None and porcentaje < 85):
+                nivel = "ATENCIÓN"
+            else:
+                nivel = "OBSERVACIÓN"
             alumnos_atencion.append({
                 "grupo_id": alumno_grupo.get(alumno_id), "alumno_id": alumno_id,
                 "matricula": alumno.matricula, "nombre": _nombre_alumno(alumno),
-                "asistencia": porcentaje, "faltas": faltas, "seguimientos_abiertos": len(abiertos),
-                "nivel": "PRIORITARIO" if (porcentaje is not None and porcentaje < 80) or len(abiertos) >= 2 else "ATENCIÓN",
+                "asistencia": porcentaje if sesiones_base >= MIN_SESIONES_PORCENTAJE else None,
+                "asistencias_registradas": asistio, "registros": sesiones_base,
+                "faltas": faltas, "seguimientos_abiertos": len(abiertos), "nivel": nivel,
             })
 
     incidencias = [{
         "grupo_id": carga_por_id[c.carga_docente_id].grupo_academico_id,
         "fecha": c.fecha.isoformat(), "materia": carga_por_id[c.carga_docente_id].actividad_nombre,
-        "docente": carga_por_id[c.carga_docente_id].docente.nombre if carga_por_id[c.carga_docente_id].docente else "",
+        "docente": _nombre_persona(carga_por_id[c.carga_docente_id].docente.nombre) if carga_por_id[c.carga_docente_id].docente else "",
         "tipo": (c.incidencia_tipo or "OTRA").replace("_", " ").title(),
-        "descripcion": c.incidencias, "requiere_seguimiento": c.incidencia_requiere_seguimiento,
+        "descripcion": _texto_presentacion(c.incidencias), "requiere_seguimiento": c.incidencia_requiere_seguimiento,
     } for c in clases if c.incidencias]
 
     observaciones = [{
         "grupo_id": carga_por_id[c.carga_docente_id].grupo_academico_id,
         "fecha": c.fecha.isoformat(), "materia": carga_por_id[c.carga_docente_id].actividad_nombre,
-        "docente": carga_por_id[c.carga_docente_id].docente.nombre if carga_por_id[c.carga_docente_id].docente else "",
-        "tema": c.tema_impartido, "actividades": c.actividades_realizadas, "pendiente": c.tema_pendiente,
+        "docente": _nombre_persona(carga_por_id[c.carga_docente_id].docente.nombre) if carga_por_id[c.carga_docente_id].docente else "",
+        "tema": _texto_presentacion(c.tema_impartido), "actividades": _texto_presentacion(c.actividades_realizadas), "pendiente": _texto_presentacion(c.tema_pendiente),
     } for c in clases if c.tema_impartido or c.actividades_realizadas or c.tema_pendiente]
 
     grupos_json = []
@@ -163,27 +273,47 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         mats = [m for m in materias if m["grupo_id"] == grupo.id]
         estados = [a.estado for a in asistencias if alumno_grupo.get(a.alumno_id) == grupo.id]
         asistio = sum(1 for e in estados if e in {"PRESENTE", "RETARDO", "JUSTIFICADA"})
+        sesiones_registradas = sum(m["sesiones"] for m in mats)
+        sesiones_programadas = sum(m["sesiones_programadas"] for m in mats)
+        asistencia_info = _mostrar_asistencia(asistio, len(estados), sesiones_registradas)
         grupos_json.append({
             "id": grupo.id, "nombre": f"{grupo.cuatrimestre}° {grupo.grupo}", "carrera": grupo.carrera,
+            "carrera_corta": _carrera_corta(grupo.carrera),
             "alumnos": len(inscritos), "materias": len(mats),
-            "sesiones": sum(m["sesiones"] for m in mats),
-            "asistencia": round(asistio * 100 / len(estados), 1) if estados else None,
+            "sesiones": sesiones_registradas, "sesiones_programadas": sesiones_programadas,
+            "cobertura": round(sesiones_registradas * 100 / sesiones_programadas, 1) if sesiones_programadas else None,
+            "asistencia": asistencia_info["porcentaje"], "asistencia_detalle": asistencia_info,
             "incidencias": sum(1 for i in incidencias if i["grupo_id"] == grupo.id),
             "alumnos_atencion": sum(1 for a in alumnos_atencion if a["grupo_id"] == grupo.id),
         })
 
     total_estados = [a.estado for a in asistencias]
     total_asistio = sum(1 for e in total_estados if e in {"PRESENTE", "RETARDO", "JUSTIFICADA"})
+    programadas_total = sum(m["sesiones_programadas"] for m in materias)
+    asistencia_general = _mostrar_asistencia(total_asistio, len(total_estados), len(clases))
+    sesiones_especiales = [{
+        "grupo_id": carga_por_id[c.carga_docente_id].grupo_academico_id,
+        "fecha": c.fecha.isoformat(), "materia": carga_por_id[c.carga_docente_id].actividad_nombre,
+        "docente": _nombre_persona(carga_por_id[c.carga_docente_id].docente.nombre) if carga_por_id[c.carga_docente_id].docente else "",
+        "extemporanea": c.es_extemporanea, "motivo_extemporaneo": c.motivo_extemporaneo,
+        "correcciones": sum(1 for r in correcciones if r.clase_docente_id == c.id),
+    } for c in clases if c.es_extemporanea or any(r.clase_docente_id == c.id for r in correcciones)]
     return {
         "periodo": {"id": periodo.id, "clave": periodo.clave},
-        "filtros": {"desde": desde.isoformat() if desde else None, "hasta": hasta.isoformat() if hasta else None},
+        "filtros": {"desde": inicio_reporte.isoformat(), "hasta": fin_reporte.isoformat()},
         "resumen": {"grupos": len(grupos), "alumnos": len(alumnos), "materias": len(materias),
-                    "sesiones": len(clases), "asistencia": round(total_asistio * 100 / len(total_estados), 1) if total_estados else None,
+                    "sesiones": len(clases), "sesiones_programadas": programadas_total,
+                    "cobertura": round(len(clases) * 100 / programadas_total, 1) if programadas_total else None,
+                    "asistencia": asistencia_general["porcentaje"], "asistencia_detalle": asistencia_general,
                     "incidencias": len(incidencias), "alumnos_atencion": len(alumnos_atencion)},
         "grupos": grupos_json, "materias": materias,
         "alumnos_atencion": sorted(alumnos_atencion, key=lambda a: (a["nivel"] != "PRIORITARIO", a["nombre"])),
         "incidencias": incidencias, "observaciones_academicas": observaciones,
-        "privacidad": "No incluye notas privadas, diagnósticos médicos ni detalles confidenciales del expediente.",
+        "sesiones_especiales": sesiones_especiales,
+        "criterios": {"min_sesiones_porcentaje": MIN_SESIONES_PORCENTAJE, "min_sesiones_prioridad": MIN_SESIONES_PRIORIDAD,
+                      "meta_institucional": None,
+                      "niveles": "Datos insuficientes: menos de 3 registros sin seguimiento; Atención: seguimiento abierto o asistencia menor a 85% con 3 sesiones; Prioritario: dos seguimientos abiertos o asistencia menor a 80% con 5 sesiones."},
+        "privacidad": "Documento de uso interno. Contiene datos personales. Incluye únicamente información académica y de asistencia; los seguimientos de carácter personal se consultan en el módulo de Tutoría con los permisos correspondientes.",
     }
 
 
@@ -219,13 +349,14 @@ def _excel(data: dict) -> io.BytesIO:
         for i, col in enumerate(columnas, 1): ws.column_dimensions[get_column_letter(i)].width = min(45, max(13, len(col) + 3))
         return ws
     r = data["resumen"]
-    hoja("Resumen", ["Indicador", "Valor"], [["Periodo", data["periodo"]["clave"]], ["Grupos", r["grupos"]], ["Alumnos", r["alumnos"]], ["Materias", r["materias"]], ["Sesiones", r["sesiones"]], ["Asistencia promedio", r["asistencia"]], ["Incidencias", r["incidencias"]], ["Alumnos en atención", r["alumnos_atencion"]], ["Privacidad", data["privacidad"]]])
-    grupos = {g["id"]: f'{g["nombre"]} · {g["carrera"]}' for g in data["grupos"]}
-    hoja("Grupos", ["Grupo", "Alumnos", "Materias", "Sesiones", "% asistencia", "Incidencias", "Alumnos en atención"], [[grupos[g["id"]], g["alumnos"], g["materias"], g["sesiones"], g["asistencia"], g["incidencias"], g["alumnos_atencion"]] for g in data["grupos"]])
-    hoja("Materias", ["Grupo", "Materia", "Docente", "Sesiones", "% asistencia", "% avance", "Último tema", "Pendiente"], [[grupos[m["grupo_id"]], m["materia"], m["docente"], m["sesiones"], m["asistencia"], m["avance"], m["ultimo_tema"], m["pendiente"]] for m in data["materias"]])
-    hoja("Alumnos en atención", ["Grupo", "Matrícula", "Alumno", "% asistencia", "Faltas", "Seguimientos abiertos", "Nivel"], [[grupos.get(a["grupo_id"], ""), a["matricula"], a["nombre"], a["asistencia"], a["faltas"], a["seguimientos_abiertos"], a["nivel"]] for a in data["alumnos_atencion"]])
+    hoja("Resumen", ["Indicador", "Valor"], [["Periodo", data["periodo"]["clave"]], ["Alcance", f'{r["grupos"]} grupo(s), {r["alumnos"]} alumno(s), {r["materias"]} materia(s)'], ["Sesiones registradas / programadas", f'{r["sesiones"]} / {r["sesiones_programadas"]}'], ["Cobertura del registro (%)", r["cobertura"]], ["Asistencias registradas", r["asistencia_detalle"]["texto"]], ["Porcentaje de asistencia", r["asistencia"] if r["asistencia_detalle"]["publicable"] else "Datos insuficientes"], ["Incidencias", r["incidencias"]], ["Alumnos con indicador de atención", r["alumnos_atencion"]], ["Criterios", data["criterios"]["niveles"]], ["Privacidad", data["privacidad"]]])
+    grupos = {g["id"]: f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
+    hoja("Grupos", ["Grupo", "Alumnos", "Materias", "Sesiones registradas", "Sesiones programadas", "Cobertura (%)", "Asistencia", "Incidencias", "Alumnos con indicador"], [[grupos[g["id"]], g["alumnos"], g["materias"], g["sesiones"], g["sesiones_programadas"], g["cobertura"], g["asistencia"] if g["asistencia_detalle"]["publicable"] else g["asistencia_detalle"]["texto"], g["incidencias"], g["alumnos_atencion"]] for g in data["grupos"]])
+    hoja("Materias", ["Grupo", "Materia", "Docente", "Sesiones registradas", "Sesiones programadas", "Cobertura (%)", "Asistencia", "Cumplimiento de sesión (%)", "Último tema", "Pendiente", "Extemporáneas", "Corregidas"], [[grupos[m["grupo_id"]], m["materia"], m["docente"], m["sesiones"], m["sesiones_programadas"], m["cobertura"], m["asistencia"] if m["asistencia_detalle"]["publicable"] else m["asistencia_detalle"]["texto"], m["avance_sesion"], m["ultimo_tema"], m["pendiente"], m["extemporaneas"], m["corregidas"]] for m in data["materias"]])
+    hoja("Alumnos con indicador", ["Grupo", "Matrícula", "Alumno", "Asistencias / registros", "% asistencia", "Faltas", "Seguimientos abiertos", "Nivel"], [[grupos.get(a["grupo_id"], ""), a["matricula"], a["nombre"], f'{a["asistencias_registradas"]} / {a["registros"]}', a["asistencia"] if a["asistencia"] is not None else "Datos insuficientes", a["faltas"], a["seguimientos_abiertos"], a["nivel"]] for a in data["alumnos_atencion"]])
     hoja("Incidencias", ["Grupo", "Fecha", "Materia", "Docente", "Tipo", "Descripción", "Seguimiento"], [[grupos.get(i["grupo_id"], ""), i["fecha"], i["materia"], i["docente"], i["tipo"], i["descripcion"], "Sí" if i["requiere_seguimiento"] else "No"] for i in data["incidencias"]])
     hoja("Observaciones académicas", ["Grupo", "Fecha", "Materia", "Docente", "Tema", "Actividades", "Pendiente"], [[grupos.get(o["grupo_id"], ""), o["fecha"], o["materia"], o["docente"], o["tema"], o["actividades"], o["pendiente"]] for o in data["observaciones_academicas"]])
+    hoja("Registros especiales", ["Grupo", "Fecha", "Materia", "Docente", "Extemporánea", "Motivo", "Movimientos de corrección"], [[grupos.get(s["grupo_id"], ""), s["fecha"], s["materia"], s["docente"], "Sí" if s["extemporanea"] else "No", s["motivo_extemporaneo"], s["correcciones"]] for s in data["sesiones_especiales"]])
     salida = io.BytesIO(); wb.save(salida); salida.seek(0); return salida
 
 
@@ -237,31 +368,88 @@ def exportar_excel(periodo_id: int, grupos: str, desde: Optional[datetime.date] 
     return StreamingResponse(_excel(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"'})
 
 
+def _canvas_numerado(pie: str):
+    class CanvasNumerado(Canvas):
+        def __init__(self, *args, **kwargs):
+            Canvas.__init__(self, *args, **kwargs); self._paginas = []
+        def showPage(self):
+            self._paginas.append(dict(self.__dict__)); self._startPage()
+        def save(self):
+            total = len(self._paginas)
+            for estado in self._paginas:
+                self.__dict__.update(estado); self.setStrokeColor(colors.HexColor("#0F766E")); self.setLineWidth(1.2)
+                self.line(1.2*cm, 1.02*cm, landscape(letter)[0]-1.2*cm, 1.02*cm)
+                self.setFillColor(colors.HexColor("#334155")); self.setFont("Helvetica", 6.3)
+                self.drawString(1.2*cm, .70*cm, pie[:145]); self.drawRightString(landscape(letter)[0]-1.2*cm, .70*cm, f"Página {self._pageNumber} de {total}")
+                self.setFont("Helvetica", 5.8); self.drawString(1.2*cm, .43*cm, "Documento de uso interno. Contiene datos personales. Información académica y de asistencia; los seguimientos personales se consultan en Tutoría con los permisos correspondientes.")
+                Canvas.showPage(self)
+            Canvas.save(self)
+    return CanvasNumerado
+
+
+def _pdf(data: dict, usuario: Usuario) -> tuple[io.BytesIO, str]:
+    ahora = datetime.datetime.now()
+    periodo_corto = re.sub(r"[^A-Z0-9]", "", data["periodo"]["clave"].upper())
+    folio = f"RA-{periodo_corto}-{ahora.strftime('%Y%m%d-%H%M%S')}-{usuario.id:04d}"
+    cargo = usuario.departamento.nombre if getattr(usuario, "departamento", None) else "Dirección de División de Carrera"
+    responsable = _nombre_persona(usuario.nombre)
+    pie = f"UTECAN · SIGA · Folio {folio} · Generado {ahora.strftime('%d/%m/%Y %H:%M')} por {responsable}, {cargo}"
+    salida = io.BytesIO(); styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Institucion", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=15, leading=18, textColor=colors.HexColor("#0F172A"), alignment=TA_LEFT, spaceAfter=2))
+    styles.add(ParagraphStyle(name="Division", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=12, textColor=colors.HexColor("#0F766E"), spaceAfter=7))
+    styles.add(ParagraphStyle(name="TituloReporte", parent=styles["Heading1"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0F172A"), spaceAfter=7))
+    styles.add(ParagraphStyle(name="Seccion", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=colors.HexColor("#0F172A"), spaceBefore=8, spaceAfter=4, borderColor=colors.HexColor("#0F766E"), borderWidth=0, borderPadding=0))
+    styles.add(ParagraphStyle(name="Celda", parent=styles["BodyText"], fontName="Helvetica", fontSize=6.7, leading=8.2, textColor=colors.HexColor("#1E293B")))
+    styles.add(ParagraphStyle(name="CeldaBold", parent=styles["Celda"], fontName="Helvetica-Bold"))
+    styles.add(ParagraphStyle(name="Nota", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#475569")))
+    doc = SimpleDocTemplate(salida, pagesize=landscape(letter), rightMargin=1.2*cm, leftMargin=1.2*cm, topMargin=1.05*cm, bottomMargin=1.35*cm, title="Reporte académico de grupos", author=responsable, subject="Seguimiento académico de Dirección de División de Carrera")
+    P=lambda valor, estilo="Celda": Paragraph(escape(str(valor if valor not in (None, "") else "—")), styles[estilo])
+    def tabla(filas, anchos=None, alinear_numeros=False):
+        contenido=[[P(c,"CeldaBold" if ri==0 else "Celda") for c in fila] for ri,fila in enumerate(filas)]
+        t=Table(contenido, repeatRows=1, colWidths=anchos, hAlign="LEFT")
+        comandos=[("TEXTCOLOR",(0,0),(-1,0),colors.HexColor("#0F172A")),("LINEBELOW",(0,0),(-1,0),1.5,colors.HexColor("#0F766E")),("LINEBELOW",(0,1),(-1,-1),.25,colors.HexColor("#E2E8F0")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),4),("BOTTOMPADDING",(0,0),(-1,-1),4)]
+        for fila in range(2,len(filas),2): comandos.append(("BACKGROUND",(0,fila),(-1,fila),colors.HexColor("#F8FAFC")))
+        if alinear_numeros: comandos.append(("ALIGN",(2,1),(-1,-1),"CENTER"))
+        t.setStyle(TableStyle(comandos)); return t
+
+    grupos_n={g["id"]:f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
+    alcance=", ".join(grupos_n[g["id"]] for g in data["grupos"])
+    r=data["resumen"]; asistencia_general = f'{r["asistencia"]}%' if r["asistencia_detalle"]["publicable"] else f'{r["asistencia_detalle"]["texto"]} asistencias registradas (muestra insuficiente para porcentaje)'
+    story=[Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA",styles["Institucion"]),Paragraph("Dirección de División de Carrera",styles["Division"]),Paragraph("Reporte académico de grupos",styles["TituloReporte"]),Table([[P("Folio","CeldaBold"),P(folio),P("Periodo","CeldaBold"),P(data["periodo"]["clave"]),P("Rango","CeldaBold"),P(f'{data["filtros"]["desde"]} al {data["filtros"]["hasta"]}')],[P("Generó","CeldaBold"),P(responsable),P("Cargo","CeldaBold"),P(cargo),P("Alcance","CeldaBold"),P(alcance)]],colWidths=[1.6*cm,5.0*cm,1.6*cm,4.0*cm,1.6*cm,11.2*cm],hAlign="LEFT"),Spacer(1,7)]
+    story += [Paragraph("Resumen ejecutivo",styles["Seccion"]), tabla([["Indicador","Resultado"],["Cobertura del registro",f'{r["sesiones"]} de {r["sesiones_programadas"]} sesiones programadas ({r["cobertura"]}% si existe programación)'],["Asistencia observada",asistencia_general],["Alcance académico",f'{r["grupos"]} grupo(s), {r["alumnos"]} alumno(s) y {r["materias"]} materia(s)'],["Situaciones registradas",f'{r["incidencias"]} incidencia(s) y {r["alumnos_atencion"]} alumno(s) con indicador de seguimiento']], [5.2*cm,20.8*cm]),Paragraph("Referencia institucional: no se encuentra configurada; el reporte no califica el resultado contra una meta oficial.",styles["Nota"])]
+    for g in data["grupos"]:
+        filas=[["Materia","Docente","Sesiones reg./prog.","Cobertura","Asistencia","Cumplimiento de la sesión","Último tema","Pendiente"]]
+        for m in data["materias"]:
+            if m["grupo_id"] != g["id"]: continue
+            asistencia = f'{m["asistencia"]}%' if m["asistencia_detalle"]["publicable"] else f'{m["asistencia_detalle"]["texto"]} (muestra insuficiente)'
+            filas.append([m["materia"],m["docente"],f'{m["sesiones"]}/{m["sesiones_programadas"]}',f'{m["cobertura"]}%' if m["cobertura"] is not None else "—",asistencia,f'{m["avance_sesion"]}%' if m["avance_sesion"] is not None else "—",m["ultimo_tema"],m["pendiente"]])
+        bloque=[Paragraph(f'{escape(g["nombre"])} · {escape(g["carrera_corta"])}',styles["Seccion"]),tabla(filas,[3.5*cm,3.5*cm,2.0*cm,1.8*cm,3.3*cm,2.4*cm,4.8*cm,4.8*cm])]
+        story.append(KeepTogether(bloque) if len(filas)<=3 else bloque[0]);
+        if len(filas)>3: story.append(bloque[1])
+    if data["alumnos_atencion"]:
+        story.append(Paragraph("Alumnos con indicador académico",styles["Seccion"])); filas=[["Grupo","Matrícula","Alumno","Asistencias / registros","Faltas","Seguimientos","Clasificación"]]
+        for a in data["alumnos_atencion"]: filas.append([grupos_n.get(a["grupo_id"],""),a["matricula"],a["nombre"],f'{a["asistencias_registradas"]}/{a["registros"]}',a["faltas"],a["seguimientos_abiertos"],a["nivel"]])
+        story += [tabla(filas,[3.2*cm,2.3*cm,5.2*cm,3.0*cm,1.4*cm,2.2*cm,3.4*cm]),Paragraph(data["criterios"]["niveles"],styles["Nota"])]
+    if data["sesiones_especiales"]:
+        story.append(Paragraph("Sesiones con registro extemporáneo o corregido",styles["Seccion"])); filas=[["Grupo","Fecha","Materia","Docente","Registro","Motivo / movimientos"]]
+        for s in data["sesiones_especiales"]: filas.append([grupos_n.get(s["grupo_id"],""),s["fecha"],s["materia"],s["docente"],"Extemporáneo" if s["extemporanea"] else "Corrección",s["motivo_extemporaneo"] or f'{s["correcciones"]} movimiento(s) de auditoría'])
+        story.append(tabla(filas,[3.2*cm,2.1*cm,4.0*cm,4.0*cm,2.3*cm,9.0*cm]))
+    if data["observaciones_academicas"]:
+        story.append(Paragraph("Registro académico de las sesiones",styles["Seccion"])); filas=[["Grupo / fecha","Materia / docente","Tema y actividades","Pendiente"]]
+        for o in data["observaciones_academicas"]: filas.append([f'{grupos_n.get(o["grupo_id"],"")} · {o["fecha"]}',f'{o["materia"]} · {o["docente"]}'," · ".join(x for x in [o["tema"],o["actividades"]] if x),o["pendiente"]])
+        story.append(tabla(filas,[4.6*cm,5.2*cm,9.0*cm,7.2*cm]))
+    if data["incidencias"]:
+        story.append(Paragraph("Incidencias generales",styles["Seccion"])); filas=[["Grupo / fecha","Materia / docente","Tipo","Descripción","Seguimiento"]]
+        for i in data["incidencias"]: filas.append([f'{grupos_n.get(i["grupo_id"],"")} · {i["fecha"]}',f'{i["materia"]} · {i["docente"]}',i["tipo"],i["descripcion"],"Canalizada" if i["requiere_seguimiento"] else "Solo registro"])
+        story.append(tabla(filas,[4.6*cm,5.2*cm,2.8*cm,10.2*cm,2.5*cm]))
+    story += [Spacer(1,14),Table([["________________________________", "________________________________"],["Elaboró", "Vo.Bo. Dirección de División"]],colWidths=[10*cm,10*cm],hAlign="CENTER",style=TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("FONTSIZE",(0,0),(-1,-1),7),("TEXTCOLOR",(0,0),(-1,-1),colors.HexColor("#475569")),("TOPPADDING",(0,0),(-1,-1),4)]))]
+    doc.build(story,canvasmaker=_canvas_numerado(pie)); salida.seek(0); return salida, folio
+
+
 @router.get("/exportar.pdf")
 def exportar_pdf(periodo_id: int, grupos: str, desde: Optional[datetime.date] = None, hasta: Optional[datetime.date] = None,
                  db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     _autorizar(db, current_user); data = _datos_reporte(db, periodo_id, _ids_grupos(grupos), desde, hasta)
-    salida = io.BytesIO(); styles = getSampleStyleSheet(); doc = SimpleDocTemplate(salida, pagesize=landscape(letter), rightMargin=1.2*cm, leftMargin=1.2*cm, topMargin=1.2*cm, bottomMargin=1.2*cm)
-    story = [Paragraph("SIGA · Reporte académico de grupos", styles["Title"]), Paragraph(f'Periodo: {data["periodo"]["clave"]} · Generado: {datetime.date.today().strftime("%d/%m/%Y")}', styles["Normal"]), Spacer(1, 10)]
-    r=data["resumen"]; resumen=[["Grupos","Alumnos","Materias","Sesiones","Asistencia","Incidencias","En atención"],[r["grupos"],r["alumnos"],r["materias"],r["sesiones"],f'{r["asistencia"]}%' if r["asistencia"] is not None else "—",r["incidencias"],r["alumnos_atencion"]]]
-    tabla=Table(resumen, repeatRows=1); tabla.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#0F766E")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.3,colors.HexColor("#CBD5E1")),("ALIGN",(0,0),(-1,-1),"CENTER"),("PADDING",(0,0),(-1,-1),6)])); story += [tabla, Spacer(1,12)]
-    grupos_n={g["id"]:f'{g["nombre"]} · {g["carrera"]}' for g in data["grupos"]}
-    for g in data["grupos"]:
-        story += [Paragraph(grupos_n[g["id"]], styles["Heading2"])]
-        filas=[["Materia","Docente","Sesiones","Asistencia","Avance","Último tema","Pendiente"]]
-        for m in data["materias"]:
-            if m["grupo_id"]==g["id"]: filas.append([m["materia"],m["docente"],m["sesiones"],f'{m["asistencia"]}%' if m["asistencia"] is not None else "—",f'{m["avance"]}%' if m["avance"] is not None else "—",m["ultimo_tema"] or "—",m["pendiente"] or "—"])
-        t=Table(filas, repeatRows=1, colWidths=[4*cm,4*cm,1.5*cm,1.8*cm,1.5*cm,5*cm,5*cm]); t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#0F766E")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.25,colors.HexColor("#CBD5E1")),("VALIGN",(0,0),(-1,-1),"TOP"),("FONTSIZE",(0,0),(-1,-1),7),("PADDING",(0,0),(-1,-1),4)])); story += [t, Spacer(1,10)]
-    story += [PageBreak(), Paragraph("Alumnos que requieren atención", styles["Heading2"])]
-    filas=[["Grupo","Matrícula","Alumno","Asistencia","Faltas","Seguimientos","Nivel"]]+[[grupos_n.get(a["grupo_id"],""),a["matricula"],a["nombre"],f'{a["asistencia"]}%' if a["asistencia"] is not None else "—",a["faltas"],a["seguimientos_abiertos"],a["nivel"]] for a in data["alumnos_atencion"]]
-    t=Table(filas,repeatRows=1); t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#0F766E")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.25,colors.HexColor("#CBD5E1")),("FONTSIZE",(0,0),(-1,-1),8),("PADDING",(0,0),(-1,-1),4)])); story += [t,Spacer(1,10),Paragraph(data["privacidad"],styles["Italic"])]
-    story += [PageBreak(), Paragraph("Observaciones académicas e incidencias", styles["Heading2"])]
-    for o in data["observaciones_academicas"]:
-        detalle = " · ".join(parte for parte in [f'Tema: {o["tema"]}' if o["tema"] else None, f'Actividades: {o["actividades"]}' if o["actividades"] else None, f'Pendiente: {o["pendiente"]}' if o["pendiente"] else None] if parte)
-        story += [Paragraph(f'<b>{escape(o["fecha"])} · {escape(grupos_n.get(o["grupo_id"], ""))} · {escape(o["materia"])}</b> — {escape(o["docente"])}', styles["BodyText"]), Paragraph(escape(detalle), styles["BodyText"]), Spacer(1, 5)]
-    if data["incidencias"]:
-        story += [Spacer(1, 8), Paragraph("Incidencias generales", styles["Heading3"])]
-        for i in data["incidencias"]:
-            story += [Paragraph(f'<b>{escape(i["fecha"])} · {escape(grupos_n.get(i["grupo_id"], ""))} · {escape(i["tipo"])}</b> — {escape(i["materia"])} / {escape(i["docente"])}', styles["BodyText"]), Paragraph(escape(i["descripcion"]), styles["BodyText"]), Spacer(1, 5)]
-    doc.build(story); salida.seek(0); nombre=_slug(f'Reporte_academico_{data["periodo"]["clave"]}')
-    return StreamingResponse(salida,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{nombre}.pdf"'})
+    salida, folio = _pdf(data, current_user)
+    nombre = _slug(f'Reporte_academico_{data["periodo"]["clave"]}_{datetime.date.today().isoformat()}')
+    return StreamingResponse(salida,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{nombre}.pdf"', "X-Reporte-Folio": folio})
