@@ -1,8 +1,18 @@
 import datetime
 
+from routers.reportes_academicos import _cantidad, _nivel_presentacion, _porcentaje, _rango_fecha_es
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente
 from tests.conftest import auth_headers, get_token
+
+
+def test_presentacion_institucional_del_reporte():
+    assert _cantidad(1, "grupo") == "1 grupo"
+    assert _cantidad(18, "alumno") == "18 alumnos"
+    assert _porcentaje(100.0) == "100%"
+    assert _porcentaje(94.4) == "94.4%"
+    assert _nivel_presentacion("DATOS INSUFICIENTES") == "Datos insuficientes"
+    assert _rango_fecha_es("2026-05-01", "2026-08-27") == "1 de mayo al 27 de agosto de 2026"
 
 
 def test_reporte_multigrupo_y_exportaciones(client, db, admin_user):

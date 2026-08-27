@@ -2,6 +2,7 @@ import datetime
 import io
 import re
 from collections import defaultdict
+from pathlib import Path
 from typing import Optional
 from xml.sax.saxutils import escape
 
@@ -16,7 +17,7 @@ from reportlab.lib.pagesizes import landscape, letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.pdfgen.canvas import Canvas
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -25,6 +26,7 @@ from models.catalogo import GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente, CorreccionAsistenciaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario
 from services.calendario_academico import estado_fecha_academica
+from services.timezone import format_fecha_corta_mx, now_mx, today_mx
 from services.user_permissions import puede_gestionar_materias
 
 
@@ -32,6 +34,7 @@ router = APIRouter(prefix="/reportes-academicos", tags=["Reportes académicos"])
 ESTADOS_CERRADOS = {"ATENDIDO", "CUMPLIDO", "CUMPLIDO_PARCIAL", "NO_CUMPLIDO", "CERRADO"}
 MIN_SESIONES_PORCENTAJE = 3
 MIN_SESIONES_PRIORIDAD = 5
+LOGO_UTECAN = Path(__file__).resolve().parent.parent / "assets" / "tutoria" / "utecan_logo.jpg"
 
 
 def _autorizar(db: Session, user: Usuario):
@@ -74,6 +77,33 @@ def _texto_presentacion(valor: Optional[str]) -> Optional[str]:
         return None
     texto = re.sub(r"\s+", " ", valor.strip())
     return texto[:1].upper() + texto[1:] if texto else None
+
+
+def _cantidad(cantidad: int, singular: str, plural: Optional[str] = None) -> str:
+    return f"{cantidad} {singular if cantidad == 1 else (plural or singular + 's')}"
+
+
+def _porcentaje(valor: Optional[float]) -> str:
+    if valor is None:
+        return "—"
+    numero = float(valor)
+    return f"{int(numero)}%" if numero.is_integer() else f"{numero:.1f}%"
+
+
+def _fecha_iso(valor: str) -> datetime.date:
+    return datetime.date.fromisoformat(valor)
+
+
+def _rango_fecha_es(desde: str, hasta: str) -> str:
+    inicio, fin = _fecha_iso(desde), _fecha_iso(hasta)
+    meses = ("", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+    if inicio.year == fin.year:
+        return f"{inicio.day} de {meses[inicio.month]} al {fin.day} de {meses[fin.month]} de {fin.year}"
+    return f"{inicio.day} de {meses[inicio.month]} de {inicio.year} al {fin.day} de {meses[fin.month]} de {fin.year}"
+
+
+def _nivel_presentacion(valor: str) -> str:
+    return (valor or "").lower().capitalize()
 
 
 def _carrera_corta(valor: str) -> str:
@@ -349,14 +379,14 @@ def _excel(data: dict) -> io.BytesIO:
         for i, col in enumerate(columnas, 1): ws.column_dimensions[get_column_letter(i)].width = min(45, max(13, len(col) + 3))
         return ws
     r = data["resumen"]
-    hoja("Resumen", ["Indicador", "Valor"], [["Periodo", data["periodo"]["clave"]], ["Alcance", f'{r["grupos"]} grupo(s), {r["alumnos"]} alumno(s), {r["materias"]} materia(s)'], ["Sesiones registradas / programadas", f'{r["sesiones"]} / {r["sesiones_programadas"]}'], ["Cobertura del registro (%)", r["cobertura"]], ["Asistencias registradas", r["asistencia_detalle"]["texto"]], ["Porcentaje de asistencia", r["asistencia"] if r["asistencia_detalle"]["publicable"] else "Datos insuficientes"], ["Incidencias", r["incidencias"]], ["Alumnos con indicador de atención", r["alumnos_atencion"]], ["Criterios", data["criterios"]["niveles"]], ["Privacidad", data["privacidad"]]])
+    hoja("Resumen", ["Indicador", "Valor"], [["Periodo", data["periodo"]["clave"]], ["Alcance", f'{_cantidad(r["grupos"], "grupo")}, {_cantidad(r["alumnos"], "alumno")} y {_cantidad(r["materias"], "materia")}'], ["Sesiones registradas / programadas", f'{r["sesiones"]} / {r["sesiones_programadas"]}' if r["sesiones_programadas"] else "Programación no disponible"], ["Cobertura del registro (%)", r["cobertura"] if r["sesiones_programadas"] else "Programación no disponible"], ["Asistencias registradas", r["asistencia_detalle"]["texto"]], ["Porcentaje de asistencia", r["asistencia"] if r["asistencia_detalle"]["publicable"] else "Datos insuficientes"], ["Incidencias", r["incidencias"]], ["Alumnos con indicador de atención", r["alumnos_atencion"]], ["Criterios", data["criterios"]["niveles"]], ["Privacidad", data["privacidad"]]])
     grupos = {g["id"]: f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
     hoja("Grupos", ["Grupo", "Alumnos", "Materias", "Sesiones registradas", "Sesiones programadas", "Cobertura (%)", "Asistencia", "Incidencias", "Alumnos con indicador"], [[grupos[g["id"]], g["alumnos"], g["materias"], g["sesiones"], g["sesiones_programadas"], g["cobertura"], g["asistencia"] if g["asistencia_detalle"]["publicable"] else g["asistencia_detalle"]["texto"], g["incidencias"], g["alumnos_atencion"]] for g in data["grupos"]])
-    hoja("Materias", ["Grupo", "Materia", "Docente", "Sesiones registradas", "Sesiones programadas", "Cobertura (%)", "Asistencia", "Cumplimiento de sesión (%)", "Último tema", "Pendiente", "Extemporáneas", "Corregidas"], [[grupos[m["grupo_id"]], m["materia"], m["docente"], m["sesiones"], m["sesiones_programadas"], m["cobertura"], m["asistencia"] if m["asistencia_detalle"]["publicable"] else m["asistencia_detalle"]["texto"], m["avance_sesion"], m["ultimo_tema"], m["pendiente"], m["extemporaneas"], m["corregidas"]] for m in data["materias"]])
-    hoja("Alumnos con indicador", ["Grupo", "Matrícula", "Alumno", "Asistencias / registros", "% asistencia", "Faltas", "Seguimientos abiertos", "Nivel"], [[grupos.get(a["grupo_id"], ""), a["matricula"], a["nombre"], f'{a["asistencias_registradas"]} / {a["registros"]}', a["asistencia"] if a["asistencia"] is not None else "Datos insuficientes", a["faltas"], a["seguimientos_abiertos"], a["nivel"]] for a in data["alumnos_atencion"]])
-    hoja("Incidencias", ["Grupo", "Fecha", "Materia", "Docente", "Tipo", "Descripción", "Seguimiento"], [[grupos.get(i["grupo_id"], ""), i["fecha"], i["materia"], i["docente"], i["tipo"], i["descripcion"], "Sí" if i["requiere_seguimiento"] else "No"] for i in data["incidencias"]])
-    hoja("Observaciones académicas", ["Grupo", "Fecha", "Materia", "Docente", "Tema", "Actividades", "Pendiente"], [[grupos.get(o["grupo_id"], ""), o["fecha"], o["materia"], o["docente"], o["tema"], o["actividades"], o["pendiente"]] for o in data["observaciones_academicas"]])
-    hoja("Registros especiales", ["Grupo", "Fecha", "Materia", "Docente", "Extemporánea", "Motivo", "Movimientos de corrección"], [[grupos.get(s["grupo_id"], ""), s["fecha"], s["materia"], s["docente"], "Sí" if s["extemporanea"] else "No", s["motivo_extemporaneo"], s["correcciones"]] for s in data["sesiones_especiales"]])
+    hoja("Materias", ["Grupo", "Materia", "Docente", "Sesiones registradas", "Sesiones programadas", "Cobertura (%)", "Asistencia", "Cumplimiento declarado por el docente (%)", "Último tema", "Pendiente", "Extemporáneas", "Corregidas"], [[grupos[m["grupo_id"]], m["materia"], m["docente"], m["sesiones"], m["sesiones_programadas"], m["cobertura"], m["asistencia"] if m["asistencia_detalle"]["publicable"] else m["asistencia_detalle"]["texto"], m["avance_sesion"], m["ultimo_tema"], m["pendiente"], m["extemporaneas"], m["corregidas"]] for m in data["materias"]])
+    hoja("Alumnos con indicador", ["Grupo", "Matrícula", "Alumno", "Asistencias / registros", "% asistencia", "Faltas", "Seguimientos abiertos", "Nivel"], [[grupos.get(a["grupo_id"], ""), a["matricula"], a["nombre"], f'{a["asistencias_registradas"]} / {a["registros"]}', a["asistencia"] if a["asistencia"] is not None else "Datos insuficientes", a["faltas"], a["seguimientos_abiertos"], _nivel_presentacion(a["nivel"])] for a in data["alumnos_atencion"]])
+    hoja("Incidencias", ["Grupo", "Fecha", "Materia", "Docente", "Tipo", "Descripción", "Seguimiento"], [[grupos.get(i["grupo_id"], ""), format_fecha_corta_mx(_fecha_iso(i["fecha"])), i["materia"], i["docente"], i["tipo"], i["descripcion"], "Sí" if i["requiere_seguimiento"] else "No"] for i in data["incidencias"]])
+    hoja("Observaciones académicas", ["Grupo", "Fecha", "Materia", "Docente", "Tema", "Actividades", "Pendiente"], [[grupos.get(o["grupo_id"], ""), format_fecha_corta_mx(_fecha_iso(o["fecha"])), o["materia"], o["docente"], o["tema"], o["actividades"], o["pendiente"]] for o in data["observaciones_academicas"]])
+    hoja("Registros especiales", ["Grupo", "Fecha", "Materia", "Docente", "Extemporánea", "Motivo", "Movimientos de corrección"], [[grupos.get(s["grupo_id"], ""), format_fecha_corta_mx(_fecha_iso(s["fecha"])), s["materia"], s["docente"], "Sí" if s["extemporanea"] else "No", s["motivo_extemporaneo"], s["correcciones"]] for s in data["sesiones_especiales"]])
     salida = io.BytesIO(); wb.save(salida); salida.seek(0); return salida
 
 
@@ -368,7 +398,7 @@ def exportar_excel(periodo_id: int, grupos: str, desde: Optional[datetime.date] 
     return StreamingResponse(_excel(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="{nombre}.xlsx"'})
 
 
-def _canvas_numerado(pie: str):
+def _canvas_numerado(folio: str, generado: str):
     class CanvasNumerado(Canvas):
         def __init__(self, *args, **kwargs):
             Canvas.__init__(self, *args, **kwargs); self._paginas = []
@@ -380,7 +410,9 @@ def _canvas_numerado(pie: str):
                 self.__dict__.update(estado); self.setStrokeColor(colors.HexColor("#0F766E")); self.setLineWidth(1.2)
                 self.line(1.2*cm, 1.02*cm, landscape(letter)[0]-1.2*cm, 1.02*cm)
                 self.setFillColor(colors.HexColor("#334155")); self.setFont("Helvetica", 6.3)
-                self.drawString(1.2*cm, .70*cm, pie[:145]); self.drawRightString(landscape(letter)[0]-1.2*cm, .70*cm, f"Página {self._pageNumber} de {total}")
+                self.drawString(1.2*cm, .70*cm, f"UTECAN · SIGA · Folio {folio}")
+                self.drawCentredString(landscape(letter)[0]/2, .70*cm, generado)
+                self.drawRightString(landscape(letter)[0]-1.2*cm, .70*cm, f"Página {self._pageNumber} de {total}")
                 self.setFont("Helvetica", 5.8); self.drawString(1.2*cm, .43*cm, "Documento de uso interno. Contiene datos personales. Información académica y de asistencia; los seguimientos personales se consultan en Tutoría con los permisos correspondientes.")
                 Canvas.showPage(self)
             Canvas.save(self)
@@ -388,12 +420,12 @@ def _canvas_numerado(pie: str):
 
 
 def _pdf(data: dict, usuario: Usuario) -> tuple[io.BytesIO, str]:
-    ahora = datetime.datetime.now()
+    ahora = now_mx()
     periodo_corto = re.sub(r"[^A-Z0-9]", "", data["periodo"]["clave"].upper())
     folio = f"RA-{periodo_corto}-{ahora.strftime('%Y%m%d-%H%M%S')}-{usuario.id:04d}"
     cargo = usuario.departamento.nombre if getattr(usuario, "departamento", None) else "Dirección de División de Carrera"
     responsable = _nombre_persona(usuario.nombre)
-    pie = f"UTECAN · SIGA · Folio {folio} · Generado {ahora.strftime('%d/%m/%Y %H:%M')} por {responsable}, {cargo}"
+    generado = f"Generado {ahora.strftime('%d/%m/%Y %H:%M')} (hora de Campeche) por {responsable}"
     salida = io.BytesIO(); styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="Institucion", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=15, leading=18, textColor=colors.HexColor("#0F172A"), alignment=TA_LEFT, spaceAfter=2))
     styles.add(ParagraphStyle(name="Division", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=12, textColor=colors.HexColor("#0F766E"), spaceAfter=7))
@@ -414,36 +446,46 @@ def _pdf(data: dict, usuario: Usuario) -> tuple[io.BytesIO, str]:
 
     grupos_n={g["id"]:f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
     alcance=", ".join(grupos_n[g["id"]] for g in data["grupos"])
-    r=data["resumen"]; asistencia_general = f'{r["asistencia"]}%' if r["asistencia_detalle"]["publicable"] else f'{r["asistencia_detalle"]["texto"]} asistencias registradas (muestra insuficiente para porcentaje)'
-    story=[Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA",styles["Institucion"]),Paragraph("Dirección de División de Carrera",styles["Division"]),Paragraph("Reporte académico de grupos",styles["TituloReporte"]),Table([[P("Folio","CeldaBold"),P(folio),P("Periodo","CeldaBold"),P(data["periodo"]["clave"]),P("Rango","CeldaBold"),P(f'{data["filtros"]["desde"]} al {data["filtros"]["hasta"]}')],[P("Generó","CeldaBold"),P(responsable),P("Cargo","CeldaBold"),P(cargo),P("Alcance","CeldaBold"),P(alcance)]],colWidths=[1.6*cm,5.0*cm,1.6*cm,4.0*cm,1.6*cm,11.2*cm],hAlign="LEFT"),Spacer(1,7)]
-    story += [Paragraph("Resumen ejecutivo",styles["Seccion"]), tabla([["Indicador","Resultado"],["Cobertura del registro",f'{r["sesiones"]} de {r["sesiones_programadas"]} sesiones programadas ({r["cobertura"]}% si existe programación)'],["Asistencia observada",asistencia_general],["Alcance académico",f'{r["grupos"]} grupo(s), {r["alumnos"]} alumno(s) y {r["materias"]} materia(s)'],["Situaciones registradas",f'{r["incidencias"]} incidencia(s) y {r["alumnos_atencion"]} alumno(s) con indicador de seguimiento']], [5.2*cm,20.8*cm]),Paragraph("Referencia institucional: no se encuentra configurada; el reporte no califica el resultado contra una meta oficial.",styles["Nota"])]
+    r=data["resumen"]; asistencia_general = _porcentaje(r["asistencia"]) if r["asistencia_detalle"]["publicable"] else f'{r["asistencia_detalle"]["texto"]} asistencias registradas (muestra insuficiente para porcentaje)'
+    membrete_texto = [Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA",styles["Institucion"]),Paragraph("Dirección de División de Carrera",styles["Division"]),Paragraph("Reporte académico de grupos",styles["TituloReporte"])]
+    if LOGO_UTECAN.exists():
+        logo = Image(str(LOGO_UTECAN), width=5.4*cm, height=1.71*cm)
+        membrete = Table([[logo, membrete_texto]], colWidths=[5.8*cm, 20.2*cm], style=TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE"),("LEFTPADDING",(0,0),(-1,-1),0),("RIGHTPADDING",(0,0),(-1,-1),0),("TOPPADDING",(0,0),(-1,-1),0),("BOTTOMPADDING",(0,0),(-1,-1),0)]))
+    else:
+        membrete = Table([[membrete_texto]], colWidths=[26*cm])
+    story=[membrete,Spacer(1,5),Table([[P("Folio","CeldaBold"),P(folio),P("Periodo","CeldaBold"),P(data["periodo"]["clave"]),P("Rango","CeldaBold"),P(_rango_fecha_es(data["filtros"]["desde"], data["filtros"]["hasta"]))],[P("Generó","CeldaBold"),P(responsable),P("Cargo","CeldaBold"),P(cargo),P("Alcance","CeldaBold"),P(alcance)]],colWidths=[1.6*cm,5.0*cm,1.6*cm,4.0*cm,1.6*cm,11.2*cm],hAlign="LEFT"),Spacer(1,7)]
+    cobertura = (f'{r["sesiones"]} de {r["sesiones_programadas"]} sesiones programadas ({_porcentaje(r["cobertura"])})' if r["sesiones_programadas"] else "Programación no disponible; no se calcula cobertura")
+    story += [Paragraph("Resumen ejecutivo",styles["Seccion"]), tabla([["Indicador","Resultado"],["Cobertura del registro",cobertura],["Asistencia observada",asistencia_general],["Alcance académico",f'{_cantidad(r["grupos"], "grupo")}, {_cantidad(r["alumnos"], "alumno")} y {_cantidad(r["materias"], "materia")}'],["Situaciones registradas",f'{_cantidad(r["incidencias"], "incidencia")} y {_cantidad(r["alumnos_atencion"], "alumno")} con indicador de seguimiento']], [5.2*cm,20.8*cm]),Paragraph("Referencia institucional: no se encuentra configurada; el reporte no califica el resultado contra una meta oficial.",styles["Nota"])]
     for g in data["grupos"]:
-        filas=[["Materia","Docente","Sesiones reg./prog.","Cobertura","Asistencia","Cumplimiento de la sesión","Último tema","Pendiente"]]
+        filas=[["Materia","Docente","Sesiones reg./prog.","Cobertura","Asistencia","Cumplimiento declarado por el docente","Último tema","Pendiente"]]
         for m in data["materias"]:
             if m["grupo_id"] != g["id"]: continue
-            asistencia = f'{m["asistencia"]}%' if m["asistencia_detalle"]["publicable"] else f'{m["asistencia_detalle"]["texto"]} (muestra insuficiente)'
-            filas.append([m["materia"],m["docente"],f'{m["sesiones"]}/{m["sesiones_programadas"]}',f'{m["cobertura"]}%' if m["cobertura"] is not None else "—",asistencia,f'{m["avance_sesion"]}%' if m["avance_sesion"] is not None else "—",m["ultimo_tema"],m["pendiente"]])
+            asistencia = _porcentaje(m["asistencia"]) if m["asistencia_detalle"]["publicable"] else f'{m["asistencia_detalle"]["texto"]} (muestra insuficiente)'
+            sesiones = f'{m["sesiones"]}/{m["sesiones_programadas"]}' if m["sesiones_programadas"] else f'{m["sesiones"]}/—'
+            filas.append([m["materia"],m["docente"],sesiones,_porcentaje(m["cobertura"]),asistencia,_porcentaje(m["avance_sesion"]),m["ultimo_tema"],m["pendiente"]])
         bloque=[Paragraph(f'{escape(g["nombre"])} · {escape(g["carrera_corta"])}',styles["Seccion"]),tabla(filas,[3.5*cm,3.5*cm,2.0*cm,1.8*cm,3.3*cm,2.4*cm,4.8*cm,4.8*cm])]
         story.append(KeepTogether(bloque) if len(filas)<=3 else bloque[0]);
         if len(filas)>3: story.append(bloque[1])
     if data["alumnos_atencion"]:
         story.append(Paragraph("Alumnos con indicador académico",styles["Seccion"])); filas=[["Grupo","Matrícula","Alumno","Asistencias / registros","Faltas","Seguimientos","Clasificación"]]
-        for a in data["alumnos_atencion"]: filas.append([grupos_n.get(a["grupo_id"],""),a["matricula"],a["nombre"],f'{a["asistencias_registradas"]}/{a["registros"]}',a["faltas"],a["seguimientos_abiertos"],a["nivel"]])
-        story += [tabla(filas,[3.2*cm,2.3*cm,5.2*cm,3.0*cm,1.4*cm,2.2*cm,3.4*cm]),Paragraph(data["criterios"]["niveles"],styles["Nota"])]
+        for a in data["alumnos_atencion"]: filas.append([grupos_n.get(a["grupo_id"],""),a["matricula"],a["nombre"],f'{a["asistencias_registradas"]}/{a["registros"]}',a["faltas"],a["seguimientos_abiertos"],_nivel_presentacion(a["nivel"])])
+        criterios = ["1. Datos insuficientes: menos de 3 registros y sin seguimiento abierto.", "2. Atención: seguimiento abierto o asistencia menor a 85% con al menos 3 sesiones.", "3. Prioritario: dos seguimientos abiertos o asistencia menor a 80% con al menos 5 sesiones."]
+        notas_criterios = Table([[Paragraph(texto,styles["Nota"])] for texto in criterios],colWidths=[22*cm],style=TableStyle([("TOPPADDING",(0,0),(-1,-1),1),("BOTTOMPADDING",(0,0),(-1,-1),1),("LEFTPADDING",(0,0),(-1,-1),0)]))
+        story += [tabla(filas,[3.2*cm,2.3*cm,5.2*cm,3.0*cm,1.4*cm,2.2*cm,3.4*cm]),KeepTogether([notas_criterios])]
     if data["sesiones_especiales"]:
         story.append(Paragraph("Sesiones con registro extemporáneo o corregido",styles["Seccion"])); filas=[["Grupo","Fecha","Materia","Docente","Registro","Motivo / movimientos"]]
-        for s in data["sesiones_especiales"]: filas.append([grupos_n.get(s["grupo_id"],""),s["fecha"],s["materia"],s["docente"],"Extemporáneo" if s["extemporanea"] else "Corrección",s["motivo_extemporaneo"] or f'{s["correcciones"]} movimiento(s) de auditoría'])
+        for s in data["sesiones_especiales"]: filas.append([grupos_n.get(s["grupo_id"],""),format_fecha_corta_mx(_fecha_iso(s["fecha"])),s["materia"],s["docente"],"Extemporáneo" if s["extemporanea"] else "Corrección",s["motivo_extemporaneo"] or f'{_cantidad(s["correcciones"], "movimiento")} de auditoría'])
         story.append(tabla(filas,[3.2*cm,2.1*cm,4.0*cm,4.0*cm,2.3*cm,9.0*cm]))
     if data["observaciones_academicas"]:
         story.append(Paragraph("Registro académico de las sesiones",styles["Seccion"])); filas=[["Grupo / fecha","Materia / docente","Tema y actividades","Pendiente"]]
-        for o in data["observaciones_academicas"]: filas.append([f'{grupos_n.get(o["grupo_id"],"")} · {o["fecha"]}',f'{o["materia"]} · {o["docente"]}'," · ".join(x for x in [o["tema"],o["actividades"]] if x),o["pendiente"]])
+        for o in data["observaciones_academicas"]: filas.append([f'{grupos_n.get(o["grupo_id"],"")} · {format_fecha_corta_mx(_fecha_iso(o["fecha"]))}',f'{o["materia"]} · {o["docente"]}'," · ".join(x for x in [o["tema"],o["actividades"]] if x),o["pendiente"]])
         story.append(tabla(filas,[4.6*cm,5.2*cm,9.0*cm,7.2*cm]))
     if data["incidencias"]:
         story.append(Paragraph("Incidencias generales",styles["Seccion"])); filas=[["Grupo / fecha","Materia / docente","Tipo","Descripción","Seguimiento"]]
-        for i in data["incidencias"]: filas.append([f'{grupos_n.get(i["grupo_id"],"")} · {i["fecha"]}',f'{i["materia"]} · {i["docente"]}',i["tipo"],i["descripcion"],"Canalizada" if i["requiere_seguimiento"] else "Solo registro"])
+        for i in data["incidencias"]: filas.append([f'{grupos_n.get(i["grupo_id"],"")} · {format_fecha_corta_mx(_fecha_iso(i["fecha"]))}',f'{i["materia"]} · {i["docente"]}',_nivel_presentacion(i["tipo"]),i["descripcion"],"Canalizada" if i["requiere_seguimiento"] else "Solo registro"])
         story.append(tabla(filas,[4.6*cm,5.2*cm,2.8*cm,10.2*cm,2.5*cm]))
-    story += [Spacer(1,14),Table([["________________________________", "________________________________"],["Elaboró", "Vo.Bo. Dirección de División"]],colWidths=[10*cm,10*cm],hAlign="CENTER",style=TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("FONTSIZE",(0,0),(-1,-1),7),("TEXTCOLOR",(0,0),(-1,-1),colors.HexColor("#475569")),("TOPPADDING",(0,0),(-1,-1),4)]))]
-    doc.build(story,canvasmaker=_canvas_numerado(pie)); salida.seek(0); return salida, folio
+    story += [Spacer(1,14),Table([["________________________________", "________________________________"],["Elaboró", "Vo.Bo."],[responsable, "Dirección Académica"],[cargo, ""]],colWidths=[10*cm,10*cm],hAlign="CENTER",style=TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("FONTSIZE",(0,0),(-1,-1),7),("TEXTCOLOR",(0,0),(-1,-1),colors.HexColor("#475569")),("TOPPADDING",(0,0),(-1,-1),3)]))]
+    doc.build(story,canvasmaker=_canvas_numerado(folio, generado)); salida.seek(0); return salida, folio
 
 
 @router.get("/exportar.pdf")
@@ -451,5 +493,5 @@ def exportar_pdf(periodo_id: int, grupos: str, desde: Optional[datetime.date] = 
                  db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     _autorizar(db, current_user); data = _datos_reporte(db, periodo_id, _ids_grupos(grupos), desde, hasta)
     salida, folio = _pdf(data, current_user)
-    nombre = _slug(f'Reporte_academico_{data["periodo"]["clave"]}_{datetime.date.today().isoformat()}')
+    nombre = _slug(f'Reporte_academico_{data["periodo"]["clave"]}_{today_mx().isoformat()}')
     return StreamingResponse(salida,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{nombre}.pdf"', "X-Reporte-Folio": folio})
