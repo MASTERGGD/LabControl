@@ -42,6 +42,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
     email:               usuario?.email               || '',
     numero_empleado:     usuario?.numero_empleado     || '',
     rol:                 usaRolEscolaresLegacy ? 'ADMINISTRATIVO' : (usuario?.rol || 'DOCENTE'),
+    roles_adicionales:   usuario?.roles_disponibles?.filter(rol => rol !== (usuario?.rol_principal || usuario?.rol)) || [],
     laboratorio_id:      usuario?.laboratorio_id      ?? '',
     departamento_id:     usuario?.departamento_id     ?? '',
     password:            '',
@@ -83,7 +84,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
     }
   };
 
-  const necesitaLab = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(form.rol);
+  const necesitaLab = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(form.rol) || form.roles_adicionales.includes('LAB_ADMIN');
   const necesitaDepartamento = form.rol === 'ADMINISTRATIVO';
 
   return (
@@ -134,7 +135,8 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                   onChange={v => setForm({
                     ...form,
                     rol: v,
-                    laboratorio_id: ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(v) ? form.laboratorio_id : '',
+                    roles_adicionales: form.roles_adicionales.filter(rol => rol !== v),
+                    laboratorio_id: ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(v) || form.roles_adicionales.includes('LAB_ADMIN') ? form.laboratorio_id : '',
                     departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : '',
                   })}
                   options={ROLES.map(r => ({ value: r, label: r }))}
@@ -161,6 +163,25 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                     ...labs.map(l => ({ value: l.id, label: l.nombre })),
                   ]}
                 />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
+              <p className="text-sm font-semibold text-white">Funciones adicionales</p>
+              <p className="mt-1 text-xs text-slate-400">La persona conserva una sola cuenta y podrá cambiar de modo desde la barra superior.</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {form.rol !== 'DOCENTE' && (
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 p-3 text-sm text-slate-300">
+                    <input type="checkbox" checked={form.roles_adicionales.includes('DOCENTE')} onChange={e => setForm(actual => ({ ...actual, roles_adicionales: e.target.checked ? [...actual.roles_adicionales, 'DOCENTE'] : actual.roles_adicionales.filter(rol => rol !== 'DOCENTE') }))} className="h-4 w-4 accent-emerald-600" />
+                    También trabaja como docente
+                  </label>
+                )}
+                {form.rol !== 'LAB_ADMIN' && (
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 p-3 text-sm text-slate-300">
+                    <input type="checkbox" checked={form.roles_adicionales.includes('LAB_ADMIN')} onChange={e => setForm(actual => ({ ...actual, roles_adicionales: e.target.checked ? [...actual.roles_adicionales, 'LAB_ADMIN'] : actual.roles_adicionales.filter(rol => rol !== 'LAB_ADMIN') }))} className="h-4 w-4 accent-violet-600" />
+                    También es responsable de laboratorio
+                  </label>
+                )}
               </div>
             </div>
 
@@ -942,9 +963,13 @@ export default function Usuarios() {
 
                     {/* Rol */}
                     <td className="px-4 py-4">
-                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ROL_COLOR[u.rol] || 'bg-gray-700 text-gray-300'}`}>
-                        {ROL_LABEL[u.rol] || u.rol}
-                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(u.roles_disponibles?.length ? u.roles_disponibles : [u.rol]).map((rol, index) => (
+                          <span key={rol} className={`text-xs px-2.5 py-1 rounded-full font-medium ${ROL_COLOR[rol] || 'bg-gray-700 text-gray-300'}`}>
+                            {ROL_LABEL[rol] || rol}{index === 0 ? '' : ' · adicional'}
+                          </span>
+                        ))}
+                      </div>
                     </td>
 
                     {/* Laboratorio */}

@@ -12,6 +12,8 @@ Casos cubiertos:
 """
 import pytest
 from tests.conftest import get_token, auth_headers
+from dependencies import hashear_password
+from models.usuario import Usuario, RolUsuario
 
 
 class TestLogin:
@@ -115,6 +117,61 @@ class TestMe:
         """GET /auth/me sin Authorization header devuelve 401."""
         resp = client.get("/auth/me")
         assert resp.status_code == 401
+
+
+class TestCambioFuncion:
+
+    def _usuario_doble_funcion(self, db):
+        usuario = Usuario(
+            nombre="Responsable Docente",
+            email="doble@test.com",
+            password_hash=hashear_password("DoblePass123!"),
+            rol=RolUsuario.LAB_ADMIN,
+            roles_adicionales='["DOCENTE"]',
+            laboratorio_id=1,
+            activo=True,
+        )
+        db.add(usuario)
+        db.commit()
+        db.refresh(usuario)
+        return usuario
+
+    def test_cambia_funcion_sin_cambiar_rol_principal(self, client, db):
+        usuario = self._usuario_doble_funcion(db)
+        token = get_token(client, "doble@test.com", "DoblePass123!")
+
+        cambio = client.post(
+            "/auth/cambiar-funcion",
+            json={"rol": "DOCENTE"},
+            headers=auth_headers(token),
+        )
+
+        assert cambio.status_code == 200
+        body = cambio.json()
+        assert body["usuario"]["rol"] == "DOCENTE"
+        assert body["usuario"]["rol_principal"] == "LAB_ADMIN"
+        assert body["usuario"]["roles_disponibles"] == ["LAB_ADMIN", "DOCENTE"]
+
+        token_docente = f'Bearer {body["access_token"]}'
+        me = client.get("/auth/me", headers=auth_headers(token_docente))
+        assert me.status_code == 200
+        assert me.json()["rol"] == "DOCENTE"
+
+        db.expire_all()
+        persistido = db.query(Usuario).filter(Usuario.id == usuario.id).one()
+        assert persistido.rol == RolUsuario.LAB_ADMIN
+
+    def test_rechaza_funcion_no_asignada(self, client, db):
+        self._usuario_doble_funcion(db)
+        token = get_token(client, "doble@test.com", "DoblePass123!")
+
+        cambio = client.post(
+            "/auth/cambiar-funcion",
+            json={"rol": "SUPER_ADMIN"},
+            headers=auth_headers(token),
+        )
+
+        assert cambio.status_code == 403
 
     def test_me_token_malformado(self, client):
         """Token completamente inválido devuelve 401."""

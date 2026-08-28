@@ -939,7 +939,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 
 // Layout principal
 export default function AdminLayout({ children }) {
-  const { usuario, logout, sessionInfo } = useAuth();
+  const { usuario, logout, cambiarFuncion, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const homePath = getHomePath(usuario);
@@ -952,6 +952,7 @@ export default function AdminLayout({ children }) {
   const [modalLibre,   setModalLibre]   = useState(false);
   const [pendientesComunicados, setPendientesComunicados] = useState(0);
   const [espaciosResponsable, setEspaciosResponsable] = useState([]);
+  const [cambiandoFuncion, setCambiandoFuncion] = useState(false);
 
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
@@ -998,6 +999,18 @@ export default function AdminLayout({ children }) {
   }, [usuario?.rol]);
 
   const handleLogout = useCallback(() => { logout(); navigate('/login'); }, [logout, navigate]);
+  const handleCambiarFuncion = async (rol) => {
+    if (!rol || rol === usuario?.rol) return;
+    setCambiandoFuncion(true);
+    try {
+      const actualizado = await cambiarFuncion(rol);
+      navigate(getHomePath(actualizado), { replace: true });
+    } catch (err) {
+      window.alert(err.response?.data?.detail || 'No se pudo cambiar la función activa.');
+    } finally {
+      setCambiandoFuncion(false);
+    }
+  };
   const puedeGestionarEspacios = usuario?.rol === 'SUPER_ADMIN'
     || usuario?.rol === 'LAB_ADMIN'
     || espaciosResponsable.length > 0;
@@ -1127,6 +1140,15 @@ export default function AdminLayout({ children }) {
             {/* Campana */}
             <NotificacionesBell comunicadosPendientes={pendientesComunicados} />
             <ThemeSwitcher />
+
+            {usuario?.roles_disponibles?.length > 1 && (
+              <label className="flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
+                <span className="hidden text-[10px] font-bold uppercase tracking-wide text-slate-500 xl:block">Modo</span>
+                <select value={usuario.rol} disabled={cambiandoFuncion} onChange={e => handleCambiarFuncion(e.target.value)} className="bg-transparent text-xs font-semibold outline-none" style={{color:'var(--main-text)'}} aria-label="Función activa">
+                  {usuario.roles_disponibles.map(rol => <option key={rol} value={rol}>{rol === 'DOCENTE' ? 'Docente' : rol === 'LAB_ADMIN' ? 'Responsable de laboratorio' : rol.replaceAll('_', ' ')}</option>)}
+                </select>
+              </label>
+            )}
 
             {/* Nombre y rol, solo desktop */}
             <div className="hidden md:flex items-center gap-2 pl-1 ml-1" style={{borderLeft:'1px solid var(--user-sep)'}}>

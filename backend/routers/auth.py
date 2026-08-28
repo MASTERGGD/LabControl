@@ -14,6 +14,7 @@ from services.rate_limit import clear_login_failures, ensure_login_not_locked, r
 from services.user_permissions import permisos_efectivos
 from services.email import enviar_recuperacion_password
 from services.password_policy import password_policy_error
+from services.user_roles import rol_principal, roles_disponibles
 import hashlib
 import datetime
 import os
@@ -41,6 +42,8 @@ class UsuarioResponse(BaseModel):
     nombre: str
     email: str
     rol: str
+    rol_principal: str
+    roles_disponibles: list[str] = Field(default_factory=list)
     laboratorio_id: int | None
     departamento_id: int | None = None
     departamento_nombre: str | None = None
@@ -65,6 +68,9 @@ class ForgotPasswordIn(BaseModel):
 class ResetPasswordIn(BaseModel):
     token: str = Field(..., min_length=32, max_length=256)
     password: str = Field(..., min_length=10, max_length=128)
+
+class CambiarFuncionIn(BaseModel):
+    rol: RolUsuario
 
 
 def _reset_minutes() -> int:
@@ -100,6 +106,8 @@ def _serializar_usuario(usuario: Usuario, db: Session) -> dict:
         "nombre": usuario.nombre,
         "email": usuario.email,
         "rol": usuario.rol.value,
+        "rol_principal": rol_principal(usuario).value,
+        "roles_disponibles": [rol.value for rol in roles_disponibles(usuario)],
         "laboratorio_id": usuario.laboratorio_id,
         "departamento_id": usuario.departamento_id,
         "departamento_nombre": dep.nombre if dep else None,
@@ -158,6 +166,7 @@ def login(
         "sub": str(usuario.id),
         "email": usuario.email,
         "rol": usuario.rol.value,
+        "rol_activo": usuario.rol.value,
         "lab_id": usuario.laboratorio_id,
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
     }
@@ -172,6 +181,39 @@ def login(
         "token_type": "bearer",
         "usuario": _serializar_usuario(usuario, db),
     }
+
+
+@router.post("/cambiar-funcion", response_model=TokenResponse, summary="Cambiar la función activa de la sesión")
+def cambiar_funcion(
+    data: CambiarFuncionIn,
+    request: Request,
+    current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    disponibles = roles_disponibles(current_user)
+    if data.rol not in disponibles:
+        raise HTTPException(status_code=403, detail="Esa función no está asignada a tu cuenta")
+    principal = rol_principal(current_user)
+    current_user._rol_principal = principal
+    current_user._roles_disponibles = disponibles
+    from sqlalchemy.orm.attributes import set_committed_value
+    set_committed_value(current_user, "rol", data.rol)
+    token = crear_access_token({
+        "sub": str(current_user.id),
+        "email": current_user.email,
+        "rol": data.rol.value,
+        "rol_activo": data.rol.value,
+        "lab_id": current_user.laboratorio_id,
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
+    })
+    usuario_serializado = _serializar_usuario(current_user, db)
+    registrar(
+        db, accion=Accion.CAMBIAR_FUNCION, recurso=Recurso.SISTEMA,
+        usuario=current_user,
+        detalle={"funcion_anterior": principal.value, "funcion_nueva": data.rol.value},
+        request=request,
+    )
+    return {"access_token": token, "token_type": "bearer", "usuario": usuario_serializado}
 
 
 @router.post("/password/forgot", summary="Solicitar recuperación de contraseña")

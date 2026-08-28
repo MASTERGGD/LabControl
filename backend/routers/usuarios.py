@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional, List
 from database import get_db
@@ -11,6 +12,7 @@ from rls import usuario_lab_filter, resolve_lab_id
 import secrets
 from services.auditoria import registrar, Accion, Recurso
 from services.password_policy import password_policy_error
+from services.user_roles import guardar_roles_adicionales, rol_principal, roles_disponibles
 import string
 import io
 
@@ -25,6 +27,7 @@ class UsuarioCreate(BaseModel):
     numero_empleado: Optional[str] = None
     password: str = Field(..., min_length=10, max_length=128)
     rol: RolUsuario = RolUsuario.DOCENTE
+    roles_adicionales: List[RolUsuario] = Field(default_factory=list)
     laboratorio_id: Optional[int] = None
     departamento_id: Optional[int] = None
 
@@ -33,6 +36,7 @@ class UsuarioUpdate(BaseModel):
     email: Optional[EmailStr] = None
     numero_empleado: Optional[str] = None
     rol: Optional[RolUsuario] = None
+    roles_adicionales: Optional[List[RolUsuario]] = None
     laboratorio_id: Optional[int] = None
     departamento_id: Optional[int] = None
     activo: Optional[bool] = None
@@ -44,6 +48,8 @@ class UsuarioResponse(BaseModel):
     email: str
     numero_empleado: Optional[str]
     rol: str
+    rol_principal: str
+    roles_disponibles: List[str] = Field(default_factory=list)
     laboratorio_id: Optional[int]
     laboratorio_nombre: Optional[str] = None
     departamento_id: Optional[int] = None
@@ -79,6 +85,8 @@ def _serializar(u: Usuario, db: Session) -> dict:
         "email": u.email,
         "numero_empleado": u.numero_empleado,
         "rol": u.rol.value,
+        "rol_principal": rol_principal(u).value,
+        "roles_disponibles": [rol.value for rol in roles_disponibles(u)],
         "laboratorio_id": u.laboratorio_id,
         "laboratorio_nombre": lab_nombre,
         "departamento_id": u.departamento_id,
@@ -131,6 +139,14 @@ def _validar_rol_asignable(rol: RolUsuario, usuario_actual: Optional[Usuario] = 
     )
 
 
+def _validar_funciones(rol: RolUsuario, adicionales: List[RolUsuario], laboratorio_id: Optional[int], db: Session):
+    funciones = list(dict.fromkeys([rol, *adicionales]))
+    for funcion in funciones:
+        _validar_rol_asignable(funcion)
+    if RolUsuario.LAB_ADMIN in funciones:
+        _validar_laboratorio(laboratorio_id, RolUsuario.LAB_ADMIN, db)
+
+
 # ─── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("", summary="Listar usuarios")
@@ -159,7 +175,11 @@ def listar_usuarios(
 
     if rol:
         try:
-            query = query.filter(Usuario.rol == RolUsuario(rol))
+            rol_enum = RolUsuario(rol)
+            query = query.filter(or_(
+                Usuario.rol == rol_enum,
+                Usuario.roles_adicionales.contains(f'"{rol_enum.value}"'),
+            ))
         except ValueError:
             raise HTTPException(status_code=422, detail=f"Rol inválido: {rol}")
     if activo is not None:
@@ -192,7 +212,7 @@ def crear_usuario(
         raise HTTPException(status_code=409, detail="Ya existe un usuario con ese número de empleado")
 
     _validar_rol_asignable(data.rol)
-    _validar_laboratorio(data.laboratorio_id, data.rol, db)
+    _validar_funciones(data.rol, data.roles_adicionales, data.laboratorio_id, db)
     _validar_departamento(data.departamento_id, data.rol, db)
 
     usuario = Usuario(
@@ -206,6 +226,7 @@ def crear_usuario(
         activo=True,
     )
     db.add(usuario)
+    guardar_roles_adicionales(usuario, data.roles_adicionales)
     db.commit()
     db.refresh(usuario)
     registrar(db, accion=Accion.CREAR_USUARIO, recurso=Recurso.USUARIO,
@@ -266,12 +287,17 @@ def editar_usuario(
     nuevo_rol = RolUsuario(campos["rol"]) if "rol" in campos else u.rol
     nuevo_lab = campos.get("laboratorio_id", u.laboratorio_id)
     nuevo_dep = campos.get("departamento_id", u.departamento_id)
+    nuevas_funciones = campos.pop("roles_adicionales", None)
     _validar_rol_asignable(nuevo_rol, u)
-    _validar_laboratorio(nuevo_lab, nuevo_rol, db)
+    _validar_funciones(nuevo_rol, nuevas_funciones if nuevas_funciones is not None else roles_disponibles(u)[1:], nuevo_lab, db)
     _validar_departamento(nuevo_dep, nuevo_rol, db)
 
     for campo, valor in campos.items():
         setattr(u, campo, valor)
+    if nuevas_funciones is not None:
+        # Si cambia el rol principal, eliminar duplicados frente al nuevo valor.
+        u._rol_principal = nuevo_rol
+        guardar_roles_adicionales(u, nuevas_funciones)
 
     db.commit()
     db.refresh(u)

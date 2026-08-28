@@ -33,6 +33,7 @@ class Accion:
     LOGIN_OK        = "LOGIN_OK"
     LOGIN_FALLIDO   = "LOGIN_FALLIDO"
     LOGOUT          = "LOGOUT"
+    CAMBIAR_FUNCION = "CAMBIAR_FUNCION"
 
     # Usuarios
     CREAR_USUARIO   = "CREAR_USUARIO"
@@ -184,6 +185,11 @@ def registrar(
             uid    = getattr(usuario, "id",     None)
             email  = getattr(usuario, "email",  None)
             nombre = getattr(usuario, "nombre", None)
+            detalle = dict(detalle or {})
+            rol_activo = getattr(usuario, "rol", None)
+            rol_principal = getattr(usuario, "_rol_principal", None) or rol_activo
+            detalle.setdefault("rol_activo", getattr(rol_activo, "value", rol_activo))
+            detalle.setdefault("rol_principal", getattr(rol_principal, "value", rol_principal))
 
         log = AuditLog(
             usuario_id     = uid,

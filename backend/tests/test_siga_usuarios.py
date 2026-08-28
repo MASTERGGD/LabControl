@@ -27,12 +27,13 @@ def _lab(db, nombre="Lab Test"):
     return lab
 
 
-def _usuario(db, nombre, email, rol, password="Test1234!", lab_id=None, activo=True):
+def _usuario(db, nombre, email, rol, password="Test1234!", lab_id=None, activo=True, roles_adicionales=None):
     u = Usuario(
         nombre=nombre, email=email,
         password_hash=hashear_password(password),
         rol=rol, activo=activo,
         laboratorio_id=lab_id,
+        roles_adicionales=roles_adicionales,
     )
     db.add(u)
     db.commit()
@@ -130,6 +131,38 @@ class TestCrudUsuarios:
         assert r.status_code == 200
         for u in r.json():
             assert u["rol"] == "DOCENTE"
+
+    def test_filtrar_incluye_funcion_adicional(self, client, db):
+        _admin(db)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        doble = _usuario(
+            db, "Responsable Docente", "doble@test.mx", RolUsuario.LAB_ADMIN,
+            lab_id=_lab(db).id, roles_adicionales='["DOCENTE"]',
+        )
+
+        r = client.get("/usuarios?rol=DOCENTE", headers=auth_headers(tok))
+
+        assert r.status_code == 200
+        encontrado = next(u for u in r.json() if u["id"] == doble.id)
+        assert encontrado["rol_principal"] == "LAB_ADMIN"
+        assert "DOCENTE" in encontrado["roles_disponibles"]
+
+    def test_crear_usuario_con_doble_funcion(self, client, db):
+        _admin(db)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        lab = _lab(db)
+
+        r = client.post("/usuarios", json={
+            "nombre": "Responsable Docente",
+            "email": "doble@test.mx",
+            "password": "PassDoble123!",
+            "rol": "DOCENTE",
+            "roles_adicionales": ["LAB_ADMIN"],
+            "laboratorio_id": lab.id,
+        }, headers=auth_headers(tok))
+
+        assert r.status_code == 201
+        assert r.json()["roles_disponibles"] == ["DOCENTE", "LAB_ADMIN"]
 
     def test_editar_usuario(self, client, db):
         _admin(db)

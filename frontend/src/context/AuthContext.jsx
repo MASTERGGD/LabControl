@@ -193,10 +193,19 @@ export function AuthProvider({ children }) {
     finishLocalSession();
   };
 
+  const cambiarFuncion = async (rol) => {
+    const { data } = await api.post('/auth/cambiar-funcion', { rol });
+    store.setItem('token', data.access_token);
+    store.setItem('usuario', JSON.stringify(data.usuario));
+    setUsuario(data.usuario);
+    markActivity(true);
+    return data.usuario;
+  };
+
   if (!authListo) return null;
 
   return (
-    <AuthContext.Provider value={{ usuario, login, logout, sessionInfo }}>
+    <AuthContext.Provider value={{ usuario, login, logout, cambiarFuncion, sessionInfo }}>
       {children}
       {idleWarning && usuario && (
         <div className="fixed inset-x-0 bottom-5 z-[9999] flex justify-center px-4 pointer-events-none">

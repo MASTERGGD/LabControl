@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Enum, Text
 from sqlalchemy.orm import relationship
 from database import Base
 import enum
@@ -23,6 +23,7 @@ class Usuario(Base):
     numero_empleado = Column(String, unique=True, nullable=True)
     password_hash = Column(String, nullable=False)
     rol = Column(Enum(RolUsuario), nullable=False, default=RolUsuario.DOCENTE)
+    roles_adicionales = Column(Text, nullable=True)  # JSON con funciones adicionales autorizadas
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=True)
     departamento_id = Column(Integer, ForeignKey("departamentos.id"), nullable=True)
     activo               = Column(Boolean, default=True)

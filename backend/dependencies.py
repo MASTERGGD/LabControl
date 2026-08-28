@@ -1,10 +1,12 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from database import get_db
 from models.usuario import Usuario, RolUsuario
+from services.user_roles import roles_disponibles
 import os
 
 # ─── Configuración ─────────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ _OPERACIONES_PERMITIDAS_CAMBIO_PENDIENTE = frozenset({
     ("POST", "/auth/sessions/heartbeat"),
     ("POST", "/auth/sessions/logout"),
     ("GET", "/auth/sessions"),
+    ("POST", "/auth/cambiar-funcion"),
 })
 
 
@@ -90,6 +93,20 @@ def get_current_user(
 
     if usuario is None:
         raise credencial_exception
+
+    # La identidad es única; el JWT define únicamente la función activa de esta
+    # sesión. El rol principal persiste en BD y nunca se modifica al alternar.
+    roles = roles_disponibles(usuario)
+    rol_activo_valor = payload.get("rol_activo") or payload.get("rol") or usuario.rol.value
+    try:
+        rol_activo = RolUsuario(rol_activo_valor)
+    except ValueError:
+        raise credencial_exception
+    if rol_activo not in roles:
+        raise HTTPException(status_code=403, detail="La función activa ya no está asignada a tu cuenta")
+    usuario._rol_principal = usuario.rol
+    usuario._roles_disponibles = roles
+    set_committed_value(usuario, "rol", rol_activo)
 
     # Cambio de contraseña obligatorio: bloquear todo excepto la allowlist.
     if bool(getattr(usuario, "debe_cambiar_password", False)):
