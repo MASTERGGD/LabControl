@@ -21,6 +21,11 @@ const asistenciaClase = (clase) => {
   const asistieron = (r.presente || 0) + (r.retardo || 0) + (r.justificada || 0);
   return r.total ? Math.round((asistieron / r.total) * 100) : null;
 };
+const identidadAcademica = (valor) => String(valor || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .toLocaleLowerCase('es-MX');
+const textoCantidad = (cantidad, singular, plural) => `${cantidad} ${cantidad === 1 ? singular : plural}`;
 
 function Kpi({ valor, etiqueta, detalle, tono = 'text-white' }) {
   return <article className="glass rounded-2xl p-4"><p className={`text-2xl font-bold ${tono}`}>{valor}</p><p className="mt-1 text-sm font-semibold text-slate-300">{etiqueta}</p><p className="mt-1 text-xs text-slate-500">{detalle}</p></article>;
@@ -127,7 +132,7 @@ export default function HistorialClasesDocente() {
   useEffect(() => {
     api.get('/docencia/historial').then(({ data }) => setClases(data)).catch((err) => setError(err.response?.data?.detail || 'No se pudo cargar el historial de clases.')).finally(() => setCargando(false));
   }, []);
-  useEffect(() => { setPagina(1); setAbiertaId(null); }, [busqueda, periodo, estado, filtroEspecial, desde, hasta, vista]);
+  useEffect(() => { setPagina(1); setAbiertaId(null); setGrupoAbierto(null); }, [busqueda, periodo, estado, filtroEspecial, desde, hasta, vista]);
 
   const periodos = useMemo(() => [...new Set(clases.map((c) => c.carga.periodo).filter(Boolean))], [clases]);
   const filtradas = useMemo(() => {
@@ -152,10 +157,24 @@ export default function HistorialClasesDocente() {
     return { impartidas, noImpartidas, pendientes: filtradas.length - impartidas - noImpartidas, asistencia: alumnos ? Math.round((presentes / alumnos) * 100) : null };
   }, [filtradas]);
   const grupos = useMemo(() => Object.values(filtradas.reduce((acc, clase) => {
-    const key = `${clase.carga.id}`;
-    if (!acc[key]) acc[key] = { key, nombre: clase.carga.actividad_nombre, grupo: clase.carga.grupo, periodo: clase.carga.periodo, clases: [] };
-    acc[key].clases.push(clase); return acc;
-  }, {})), [filtradas]);
+    // Una materia puede tener varias cargas u horarios internos. Para el docente
+    // deben formar un solo bloque cuando la identidad académica visible coincide.
+    const key = [clase.carga.actividad_nombre, clase.carga.grupo, clase.carga.periodo]
+      .map(identidadAcademica)
+      .join('::');
+    if (!acc[key]) acc[key] = {
+      key,
+      nombre: clase.carga.actividad_nombre,
+      grupo: clase.carga.grupo,
+      periodo: clase.carga.periodo,
+      clases: [],
+    };
+    acc[key].clases.push(clase);
+    return acc;
+  }, {})).map((grupo) => ({
+    ...grupo,
+    clases: [...grupo.clases].sort((a, b) => `${b.fecha} ${b.carga.hora_inicio || ''}`.localeCompare(`${a.fecha} ${a.carga.hora_inicio || ''}`)),
+  })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es-MX') || (a.grupo || '').localeCompare(b.grupo || '', 'es-MX')), [filtradas]);
   const fuente = vista === 'CRONOLOGICA' ? filtradas : grupos;
   const visibles = fuente.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
 
@@ -169,8 +188,12 @@ export default function HistorialClasesDocente() {
       </section>
       {error && <p className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">{error}</p>}
       {cargando ? <div className="glass rounded-2xl p-12 text-center text-sm text-slate-400">Cargando historial…</div> : !fuente.length ? <div className="glass rounded-2xl p-12 text-center"><p className="font-semibold text-white">No hay clases con estos filtros</p><p className="mt-1 text-sm text-slate-500">Ajusta los filtros o consulta otro cuatrimestre.</p></div> : vista === 'CRONOLOGICA' ? <section className="glass overflow-hidden rounded-2xl"><div className="hidden grid-cols-[130px_minmax(210px,1.25fr)_minmax(180px,1fr)_120px_125px_28px] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 md:grid"><span>Fecha</span><span>Materia y grupo</span><span>Tema</span><span>Asistencia</span><span>Estado</span><span/></div>{visibles.map((clase) => <FilaClase key={clase.id} clase={clase} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</section> : <section className="space-y-3">{visibles.map((grupo) => {
-        const cerradas = grupo.clases.filter((c) => c.estado === 'CERRADA').length; const promedio = grupo.clases.map(asistenciaClase).filter((v) => v != null); const asistencia = promedio.length ? Math.round(promedio.reduce((a, b) => a + b, 0) / promedio.length) : null; const abierto = grupoAbierto === grupo.key;
-        return <article key={grupo.key} className="glass overflow-hidden rounded-2xl"><button onClick={() => setGrupoAbierto(abierto ? null : grupo.key)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">{grupo.nombre}</h2><p className="mt-1 text-xs text-slate-500">{grupo.grupo || 'Sin grupo'} · {grupo.periodo}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-lg bg-white/5 px-3 py-2 text-slate-300">{grupo.clases.length} sesiones</span><span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-emerald-400">{cerradas} cerradas</span><span className="rounded-lg bg-cyan-500/10 px-3 py-2 text-cyan-400">{asistencia == null ? '—' : `${asistencia}%`} asistencia</span><svg className={`h-4 w-4 text-slate-500 transition ${abierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg></div></button>{abierto && <div className="border-t border-white/10">{grupo.clases.map((clase) => <FilaClase key={clase.id} clase={clase} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</div>}</article>;
+        const cerradas = grupo.clases.filter((c) => c.estado === 'CERRADA').length;
+        const registros = grupo.clases.reduce((total, c) => total + (c.resumen?.total || 0), 0);
+        const asistieron = grupo.clases.reduce((total, c) => total + (c.resumen?.presente || 0) + (c.resumen?.retardo || 0) + (c.resumen?.justificada || 0), 0);
+        const asistencia = registros ? Math.round((asistieron / registros) * 100) : null;
+        const abierto = grupoAbierto === grupo.key;
+        return <article key={grupo.key} className="glass overflow-hidden rounded-2xl"><button onClick={() => setGrupoAbierto(abierto ? null : grupo.key)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">{grupo.nombre}</h2><p className="mt-1 text-xs text-slate-500">{grupo.grupo || 'Sin grupo'} · {grupo.periodo}</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-lg bg-white/5 px-3 py-2 text-slate-300">{textoCantidad(grupo.clases.length, 'clase', 'clases')}</span><span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-emerald-400">{textoCantidad(cerradas, 'cerrada', 'cerradas')}</span><span className="rounded-lg bg-cyan-500/10 px-3 py-2 text-cyan-400">{asistencia == null ? '—' : `${asistencia}%`} asistencia</span><span className="text-[11px] font-semibold text-slate-500">{abierto ? 'Ocultar clases' : 'Ver clases'}</span><svg className={`h-4 w-4 text-slate-500 transition ${abierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg></div></button>{abierto && <div className="border-t border-white/10">{grupo.clases.map((clase) => <FilaClase key={clase.id} clase={clase} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</div>}</article>;
       })}</section>}
       <Paginacion pagina={pagina} total={fuente.length} porPagina={POR_PAGINA} onChange={(p) => { setPagina(p); setAbiertaId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}/>
     </main></AdminLayout>
