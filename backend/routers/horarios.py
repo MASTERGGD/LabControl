@@ -99,6 +99,14 @@ class RequerimientoItemResolverSchema(BaseModel):
     estado: str
     nota_admin: Optional[str] = Field(None, max_length=500)
 
+class RequerimientoItemLote(BaseModel):
+    requerimiento_id: int
+    item_index: int = Field(..., ge=0)
+
+class RequerimientoLoteResolverSchema(BaseModel):
+    items: list[RequerimientoItemLote] = Field(..., min_length=1, max_length=200)
+    estado: str
+
 class BloqueoCreate(BaseModel):
     motivo: str = Field(..., min_length=3, max_length=200,
                         description="Motivo del bloqueo: Reunión de academia, Mantenimiento, etc.")
@@ -1709,6 +1717,65 @@ def mis_requerimientos(
             "hora_inicio":        horario.hora_inicio if horario else None,
         })
     return resultado
+
+
+@router.put("/requerimientos/items/resolver-lote", summary="Resolver recursos de clase en lote — admins")
+def resolver_items_requerimiento_lote(
+    data: RequerimientoLoteResolverSchema,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)),
+):
+    import json
+    estado = data.estado.strip().upper()
+    if estado not in {"CONFIRMADO", "DOCENTE_PROVEE"}:
+        raise HTTPException(status_code=422, detail="La acción en lote debe ser CONFIRMADO o DOCENTE_PROVEE")
+    ids = {item.requerimiento_id for item in data.items}
+    requerimientos = db.query(RequerimientoClase).filter(RequerimientoClase.id.in_(ids)).all()
+    por_id = {req.id: req for req in requerimientos}
+    if len(por_id) != len(ids):
+        raise HTTPException(status_code=404, detail="Uno o más requerimientos no existen")
+
+    indices_por_req: dict[int, set[int]] = {}
+    for item in data.items:
+        indices_por_req.setdefault(item.requerimiento_id, set()).add(item.item_index)
+
+    actualizados = []
+    notificaciones = []
+    for req_id, indices in indices_por_req.items():
+        req = por_id[req_id]
+        if req.reservacion:
+            assert_lab_write(req.reservacion.laboratorio_id, current_user)
+        detalle = _serializar_requerimiento(req)["items_detalle"]
+        if any(index >= len(detalle) for index in indices):
+            raise HTTPException(status_code=404, detail="Uno o más recursos solicitados no existen")
+        nombres = []
+        for index in indices:
+            detalle[index] = {**detalle[index], "estado": estado, "nota_admin": None}
+            nombres.append(detalle[index]["item"])
+        req.items_estado = json.dumps(detalle, ensure_ascii=False)
+        pendientes = [item for item in detalle if item["estado"] == "PENDIENTE"]
+        if pendientes:
+            req.estado = "PENDIENTE"
+            req.resuelto_en = None
+            req.resuelto_por_id = None
+        else:
+            estados = {item["estado"] for item in detalle}
+            req.estado = next(iter(estados)) if len(estados) == 1 else "RESUELTO_PARCIAL"
+            req.resuelto_en = _utcnow()
+            req.resuelto_por_id = current_user.id
+        actualizados.append(req)
+        if req.reservacion:
+            notificaciones.append((req.reservacion.docente_id, req.reservacion.materia, nombres))
+    db.commit()
+
+    for docente_id, materia, nombres in notificaciones:
+        crear_notificacion(
+            db, docente_id, "requerimiento",
+            "📋 Recursos de clase actualizados",
+            f"{', '.join(nombres)} para '{materia}': {ESTADO_REQ_LABEL.get(estado, estado).lower()}.",
+        )
+    db.commit()
+    return {"actualizados": len(data.items), "requerimientos": [_serializar_requerimiento(req) for req in actualizados]}
 
 
 @router.put("/requerimientos/{req_id}/resolver", summary="Resolver requerimiento — admins")

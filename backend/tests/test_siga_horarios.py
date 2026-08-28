@@ -477,6 +477,22 @@ class TestBandejaRequerimientos:
         assert historial.json()[0]["items_detalle"][0]["nota_admin"] == "Micrófonos apartados"
         assert historial.json()[0]["items_detalle"][1]["nota_admin"] == "Proyector en mantenimiento"
 
+        lote = client.put(
+            "/horarios/requerimientos/items/resolver-lote",
+            json={
+                "estado": "CONFIRMADO",
+                "items": [
+                    {"requerimiento_id": requerimiento.id, "item_index": 0},
+                    {"requerimiento_id": requerimiento.id, "item_index": 1},
+                ],
+            },
+            headers=auth_headers(tok),
+        )
+        assert lote.status_code == 200
+        assert lote.json()["actualizados"] == 2
+        assert lote.json()["requerimientos"][0]["estado"] == "CONFIRMADO"
+        assert all(item["estado"] == "CONFIRMADO" for item in lote.json()["requerimientos"][0]["items_detalle"])
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Permisos

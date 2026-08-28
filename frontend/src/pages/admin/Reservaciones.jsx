@@ -95,7 +95,7 @@ function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
         </span>
       </div>
       {items.length > 0 && (
-        <div className="space-y-2">
+        <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
           {items.map((item, index) => {
             const estadoItem = REQ_ESTADO_STYLE[item.estado] || REQ_ESTADO_STYLE.PENDIENTE;
             return (
@@ -144,7 +144,9 @@ function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
 function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onAbrirReservacion, isDay }) {
   const [requerimientos, setRequerimientos] = useState([]);
   const [vista, setVista] = useState('PENDIENTE');
+  const [expandida, setExpandida] = useState(false);
   const [notas, setNotas] = useState({});
+  const [notaVisible, setNotaVisible] = useState(null);
   const [resolviendo, setResolviendo] = useState(null);
   const [cargando, setCargando] = useState(false);
 
@@ -168,76 +170,147 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  const resolver = async (req, estado) => {
-    setResolviendo(req.id);
+  const filas = requerimientos.flatMap(req => {
+    const items = req.items_detalle?.length
+      ? req.items_detalle
+      : (!req.items?.length && req.descripcion ? [{ item: 'Detalle adicional', estado: req.estado, nota_admin: req.nota_admin, esDescripcion: true }] : []);
+    return items.map((item, itemIndex) => ({
+      ...item,
+      itemIndex,
+      key: `${req.id}-${itemIndex}`,
+      req,
+    }));
+  });
+  const pendientes = filas
+    .filter(fila => fila.estado === 'PENDIENTE')
+    .sort((a, b) => Number(b.req.urgente) - Number(a.req.urgente)
+      || (a.req.dias_anticipacion ?? 999) - (b.req.dias_anticipacion ?? 999)
+      || String(a.req.hora_inicio || '').localeCompare(String(b.req.hora_inicio || '')));
+  const historial = filas.filter(fila => fila.estado !== 'PENDIENTE');
+
+  const resolverFila = async (fila, estado, nota = null) => {
+    setResolviendo(fila.key);
     try {
-      await api.put(`/horarios/requerimientos/${req.id}/resolver`, {
+      const endpoint = fila.esDescripcion
+        ? `/horarios/requerimientos/${fila.req.id}/resolver`
+        : `/horarios/requerimientos/${fila.req.id}/items/${fila.itemIndex}/resolver`;
+      await api.put(endpoint, {
         estado,
-        nota_admin: notas[req.id]?.trim() || null,
+        nota_admin: nota?.trim() || null,
       });
+      setNotaVisible(null);
       await cargar();
       onActualizado?.();
     } catch (err) {
-      alert(err.response?.data?.detail || 'No se pudo actualizar el requerimiento.');
+      alert(err.response?.data?.detail || 'No se pudo actualizar el recurso.');
     } finally {
       setResolviendo(null);
     }
   };
 
-  const pendientes = requerimientos.filter(req => req.estado === 'PENDIENTE');
-  const historial = requerimientos.filter(req => req.estado !== 'PENDIENTE');
-  const visibles = vista === 'PENDIENTE' ? pendientes : historial;
+  const resolverLote = async (grupo, estado) => {
+    const seleccion = grupo.filter(fila => !fila.esDescripcion);
+    if (!seleccion.length) return;
+    setResolviendo(`lote-${grupo[0].item}`);
+    try {
+      await api.put('/horarios/requerimientos/items/resolver-lote', {
+        estado,
+        items: seleccion.map(fila => ({ requerimiento_id: fila.req.id, item_index: fila.itemIndex })),
+      });
+      await cargar();
+      onActualizado?.();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'No se pudieron actualizar los recursos en lote.');
+    } finally {
+      setResolviendo(null);
+    }
+  };
+
+  const gruposPendientes = Object.entries(pendientes.reduce((grupos, fila) => {
+    (grupos[fila.item] ||= []).push(fila);
+    return grupos;
+  }, {}));
+
+  const filaCompacta = fila => {
+    const urgente = fila.req.urgente;
+    const dias = fila.req.dias_anticipacion;
+    const rechazando = notaVisible === fila.key;
+    const estadoClase = REQ_ESTADO_CLASS[fila.estado] || REQ_ESTADO_CLASS.PENDIENTE;
+    return (
+      <div key={fila.key} className={`border-t px-3 py-2.5 first:border-t-0 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
+        <div className="grid items-center gap-2 lg:grid-cols-[minmax(170px,1.1fr)_minmax(260px,2fr)_110px_auto]">
+          <div className="min-w-0">
+            <p className={`truncate text-xs font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>{fila.item}</p>
+            {fila.nota_admin && <p className="truncate text-[10px] text-slate-500" title={fila.nota_admin}>{fila.nota_admin}</p>}
+          </div>
+          <button type="button" onClick={() => onAbrirReservacion?.(fila.req.reservacion_id)} className="min-w-0 text-left">
+            <p className={`truncate text-xs ${isDay ? 'text-slate-700' : 'text-slate-200'}`}>{fila.req.materia} · Grupo {fila.req.grupo || '—'}</p>
+            <p className="truncate text-[10px] text-slate-500">{fila.req.docente_nombre} · {fila.req.dia_nombre} {fila.req.hora_inicio}–{fila.req.hora_fin}</p>
+          </button>
+          <div>
+            {fila.estado === 'PENDIENTE' ? (
+              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${urgente ? 'bg-red-500/15 text-red-600 dark:text-red-300' : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'}`}>
+                {urgente ? `Urgente · ${dias ?? 0} días` : dias != null ? `${dias} días` : 'Pendiente'}
+              </span>
+            ) : <span className={`text-[10px] font-semibold ${estadoClase}`}>{REQ_ESTADO_STYLE[fila.estado]?.label || fila.estado}</span>}
+          </div>
+          {fila.estado === 'PENDIENTE' && (
+            <div className="flex flex-wrap justify-start gap-1 lg:justify-end">
+              <button disabled={resolviendo === fila.key} onClick={() => resolverFila(fila, 'CONFIRMADO')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-emerald-500 hover:text-emerald-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Confirmar</button>
+              <button disabled={resolviendo === fila.key} onClick={() => resolverFila(fila, 'DOCENTE_PROVEE')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Docente provee</button>
+              <button disabled={resolviendo === fila.key} onClick={() => setNotaVisible(rechazando ? null : fila.key)} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-red-500 hover:text-red-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">No disponible</button>
+            </div>
+          )}
+        </div>
+        {rechazando && (
+          <div className="mt-2 flex flex-col gap-2 rounded-lg bg-red-500/[0.06] p-2 sm:flex-row">
+            <input autoFocus value={notas[fila.key] || ''} onChange={e => setNotas(actual => ({ ...actual, [fila.key]: e.target.value }))} className="input-dark min-w-0 flex-1 text-xs" placeholder="Explica al docente por qué no está disponible" />
+            <button disabled={!notas[fila.key]?.trim() || resolviendo === fila.key} onClick={() => resolverFila(fila, 'RECHAZADO', notas[fila.key])} className="rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar no disponible</button>
+            <button onClick={() => setNotaVisible(null)} className="px-2 text-xs text-slate-500">Cancelar</button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <section className="overflow-hidden rounded-2xl" style={{ background: isDay ? '#fff' : 'rgba(255,255,255,0.04)', border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.09)'}` }}>
-      <header className="flex flex-col gap-3 border-b border-slate-200/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <header className={`flex cursor-pointer flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${expandida ? 'border-b border-slate-200/20' : ''}`} onClick={() => setExpandida(value => !value)}>
         <div>
           <div className="flex items-center gap-2">
             <h2 className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>📋 Requerimientos de clase</h2>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${pendientes.length ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'}`}>{pendientes.length} pendientes</span>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${pendientes.length ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'}`}>{pendientes.length} recursos pendientes</span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">Bandeja operativa permanente; no depende de las notificaciones de la campana.</p>
+          <p className="mt-1 text-xs text-slate-500">{pendientes.filter(fila => fila.req.urgente).length} urgentes · abre la bandeja para gestionar excepciones.</p>
         </div>
-        <div className="flex gap-1 rounded-lg bg-slate-500/10 p-1">
-          {[['PENDIENTE', `Pendientes (${pendientes.length})`], ['HISTORIAL', `Historial (${historial.length})`]].map(([value, label]) => (
-            <button key={value} type="button" onClick={() => setVista(value)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${vista === value ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>{label}</button>
-          ))}
-        </div>
+        <button type="button" className="self-start rounded-lg border border-slate-500/20 px-3 py-1.5 text-xs font-semibold text-slate-500 sm:self-center">{expandida ? 'Ocultar' : 'Gestionar'} {expandida ? '▴' : '▾'}</button>
       </header>
 
-      <div className="grid gap-3 p-4 lg:grid-cols-2">
-        {visibles.map(req => (
-          <article key={req.id} className={`rounded-xl border p-4 ${req.urgente && req.estado === 'PENDIENTE' ? 'border-red-400/40 bg-red-500/[0.06]' : 'border-slate-500/20 bg-slate-500/[0.04]'}`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>{req.materia || 'Clase'}</p>
-                  {req.grupo && <span className="rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-500">Grupo {req.grupo}</span>}
-                  {req.urgente && req.estado === 'PENDIENTE' && <span className="rounded bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-500">URGENTE</span>}
-                </div>
-                <p className="mt-1 text-xs text-slate-500">{req.docente_nombre || 'Docente'} · {req.dia_nombre} {req.hora_inicio}–{req.hora_fin}</p>
+      {expandida && (
+        <div>
+          <div className="flex gap-1 border-b border-slate-500/15 px-3 py-2">
+            {[['PENDIENTE', `Pendientes (${pendientes.length})`], ['HISTORIAL', `Historial (${historial.length})`]].map(([value, label]) => (
+              <button key={value} type="button" onClick={() => setVista(value)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${vista === value ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}>{label}</button>
+            ))}
+          </div>
+          {vista === 'PENDIENTE' ? gruposPendientes.map(([nombre, grupo]) => (
+            <div key={nombre} className="border-b border-slate-500/15 last:border-b-0">
+              <div className={`flex flex-wrap items-center justify-between gap-2 px-3 py-2 ${isDay ? 'bg-slate-50' : 'bg-white/[0.025]'}`}>
+                <p className={`text-xs font-bold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>{nombre} · {grupo.length} solicitud{grupo.length === 1 ? '' : 'es'}</p>
+                {grupo.length > 1 && !grupo.some(fila => fila.esDescripcion) && (
+                  <div className="flex gap-1.5">
+                    <button disabled={resolviendo === `lote-${nombre}`} onClick={() => resolverLote(grupo, 'CONFIRMADO')} className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">Confirmar todas</button>
+                    <button disabled={resolviendo === `lote-${nombre}`} onClick={() => resolverLote(grupo, 'DOCENTE_PROVEE')} className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">Docente provee todas</button>
+                  </div>
+                )}
               </div>
-              <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${req.estado === 'PENDIENTE' ? 'bg-amber-500/15 text-amber-500' : req.estado === 'CONFIRMADO' ? 'bg-emerald-500/15 text-emerald-500' : req.estado === 'RECHAZADO' ? 'bg-red-500/15 text-red-500' : 'bg-indigo-500/15 text-indigo-500'}`}>{req.estado_label}</span>
+              {grupo.map(filaCompacta)}
             </div>
-
-            <div className="mt-3"><RequerimientoPanel req={req} esAdmin={req.estado === 'PENDIENTE'} onActualizado={cargar} /></div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-500/15 pt-3">
-              <button type="button" onClick={() => onAbrirReservacion?.(req.reservacion_id)} className="text-xs font-semibold text-blue-500">Ver reservación</button>
-              {req.estado === 'PENDIENTE' && !req.items?.length && (
-                <>
-                  <input value={notas[req.id] || ''} onChange={e => setNotas(actual => ({ ...actual, [req.id]: e.target.value }))} className="input-dark min-w-[180px] flex-1 text-xs" placeholder="Nota para el docente (opcional)" />
-                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'CONFIRMADO')} className="rounded-lg bg-emerald-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar</button>
-                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'DOCENTE_PROVEE')} className="rounded-lg bg-indigo-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">Docente provee</button>
-                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'RECHAZADO')} className="rounded-lg bg-red-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">No disponible</button>
-                </>
-              )}
-            </div>
-          </article>
-        ))}
-        {!cargando && !visibles.length && <p className="py-6 text-center text-sm text-slate-500 lg:col-span-2">{vista === 'PENDIENTE' ? 'No hay requerimientos pendientes para este laboratorio y periodo.' : 'Todavía no hay requerimientos resueltos.'}</p>}
-        {cargando && <p className="py-6 text-center text-sm text-slate-500 lg:col-span-2">Cargando requerimientos…</p>}
-      </div>
+          )) : historial.map(filaCompacta)}
+          {!cargando && !(vista === 'PENDIENTE' ? pendientes : historial).length && <p className="py-8 text-center text-sm text-slate-500">{vista === 'PENDIENTE' ? 'No hay recursos pendientes para este laboratorio y periodo.' : 'Todavía no hay recursos resueltos.'}</p>}
+          {cargando && <p className="py-8 text-center text-sm text-slate-500">Cargando requerimientos…</p>}
+        </div>
+      )}
     </section>
   );
 }
@@ -520,15 +593,15 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-sm rounded-2xl overflow-hidden shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
-        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
+      <div className="glass flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
+        <div className="flex shrink-0 items-center justify-between px-5 py-4" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h2 className="font-semibold text-white">{esAdmin ? 'Detalle de la reservación' : 'Mi reservación'}</h2>
             <p className="text-sm text-slate-400">{DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none transition-colors">×</button>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="space-y-3 overflow-y-auto p-5">
           <div className="glass-sm rounded-xl p-4 space-y-2 text-sm" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>
             <p><span className="text-slate-400">Tipo:</span> <span className="font-semibold text-white ml-2">{(r.tipo_actividad || 'CLASE').replaceAll('_', ' ')}</span></p>
             <p><span className="text-slate-400">Docente:</span> <span className="font-semibold text-white ml-2">{r.docente_nombre || '—'}</span></p>
