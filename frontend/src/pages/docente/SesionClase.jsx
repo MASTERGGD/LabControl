@@ -1253,6 +1253,7 @@ function detectarGruposConsecutivos(slots) {
 
 // ─── Gradientes para celdas del docente ───────────────────────────────────────
 const GRAD_DOC = {
+  EN_USO:      'linear-gradient(135deg, rgba(190,24,93,0.52) 0%, rgba(225,29,72,0.30) 100%)',
   LIBRE:       'linear-gradient(135deg, rgba(16,185,129,0.16) 0%, rgba(5,150,105,0.09) 100%)',
   MIO:         'linear-gradient(135deg, rgba(79,70,229,0.55) 0%, rgba(99,102,241,0.35) 100%)',
   OCUPADO:     'linear-gradient(135deg, rgba(30,64,175,0.35) 0%, rgba(37,99,235,0.18) 100%)',
@@ -1293,6 +1294,7 @@ function GridSemanal({ slots, onSlotClick }) {
 
     // Borde color por estado
     const borderColor = {
+      EN_USO:      'rgba(251,113,133,0.75)',
       LIBRE:       'rgba(16,185,129,0.30)',
       MIO:         'rgba(99,102,241,0.55)',
       OCUPADO:     'rgba(37,99,235,0.30)',
@@ -1303,6 +1305,7 @@ function GridSemanal({ slots, onSlotClick }) {
 
     // Color de texto principal por estado
     const txtColor = {
+      EN_USO:      '#ffe4e6',
       LIBRE:       '#6ee7b7',
       MIO:         '#e0e7ff',
       OCUPADO:     '#bfdbfe',   // azul claro legible sobre fondo azul oscuro
@@ -1343,7 +1346,19 @@ function GridSemanal({ slots, onSlotClick }) {
           onMouseEnter={e => { if (isClickable) e.currentTarget.style.filter = 'brightness(1.15)'; }}
           onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
         >
-          {slot.estado_vista === 'LIBRE' ? (
+          {slot.estado_vista === 'EN_USO' ? (
+            <>
+              <span style={{ display: 'inline-flex', fontSize: '9px', fontWeight: 800, color: '#ffe4e6', background: 'rgba(159,18,57,0.7)', borderRadius: '4px', padding: '2px 6px', marginBottom: '3px' }}>
+                ● EN USO AHORA
+              </span>
+              <p style={{ fontSize: '11px', fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>
+                {slot.ocupacion_actual?.materia || 'Sesión de laboratorio'}
+              </p>
+              <p style={{ fontSize: '9px', color: '#fecdd3', marginTop: '2px' }}>
+                {slot.ocupacion_actual?.sin_reservacion ? 'Sin reservación' : 'Con reservación'} · desde {slot.ocupacion_actual?.hora_inicio || '—'}
+              </p>
+            </>
+          ) : slot.estado_vista === 'LIBRE' ? (
             <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>+ Disponible</span>
           ) : slot.estado_vista === 'BLOQUEADO' ? (
             <>
@@ -1459,6 +1474,7 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
     .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
 
   const COLOR = isDay ? {
+    EN_USO:      { bg: '#ffe4e6', border: '#fb7185', txt: '#881337', hour: '#be123c', meta: '#9f1239' },
     LIBRE:       { bg: '#dcfce7', border: '#86efac', txt: '#047857', hour: '#166534', meta: '#065f46' },
     MIO:         { bg: '#e0e7ff', border: '#818cf8', txt: '#1e1b4b', hour: '#1d4ed8', meta: '#4338ca' },
     OCUPADO:     { bg: '#dbeafe', border: '#93c5fd', txt: '#1e3a8a', hour: '#1d4ed8', meta: '#1e40af' },
@@ -1466,6 +1482,7 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
     YO_SOLICITE: { bg: '#ffedd5', border: '#fb923c', txt: '#7c2d12', hour: '#c2410c', meta: '#c2410c' },
     BLOQUEADO:   { bg: '#f3e8ff', border: '#c084fc', txt: '#581c87', hour: '#7e22ce', meta: '#6b21a8' },
   } : {
+    EN_USO:      { bg: 'rgba(190,24,93,0.38)', border: 'rgba(251,113,133,0.70)', txt: '#ffe4e6', hour: '#fda4af', meta: '#fecdd3' },
     LIBRE:       { bg: 'rgba(16,185,129,0.12)',  border: 'rgba(16,185,129,0.30)',  txt: '#6ee7b7', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
     MIO:         { bg: 'rgba(79,70,229,0.40)',    border: 'rgba(99,102,241,0.60)',  txt: '#e0e7ff', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
     OCUPADO:     { bg: 'rgba(30,64,175,0.30)',    border: 'rgba(37,99,235,0.35)',   txt: '#93c5fd', hour: '#60a5fa', meta: 'rgba(147,197,253,0.65)' },
@@ -1590,6 +1607,9 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                   {slot.estado_vista === 'BLOQUEADO' && (
                     <span style={{ fontSize: '11px', color: c.meta, opacity: 1, fontWeight: isDay ? 700 : 400 }}>🚫 Bloqueado</span>
                   )}
+                  {slot.estado_vista === 'EN_USO' && (
+                    <span style={{ fontSize: '11px', background: '#be123c', color: '#fff1f2', borderRadius: '999px', padding: '2px 9px', fontWeight: 800 }}>● En uso ahora</span>
+                  )}
                 </div>
               </div>
 
@@ -1599,7 +1619,14 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                   ★ MI RESERVA
                 </p>
               )}
-              {slot.reservacion?.materia ? (
+              {slot.estado_vista === 'EN_USO' ? (
+                <div>
+                  <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: c.txt }}>{slot.ocupacion_actual?.materia || 'Sesión de laboratorio'}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '11px', color: c.meta }}>
+                    {slot.ocupacion_actual?.sin_reservacion ? 'Sesión sin reservación' : 'Sesión con reservación'} · desde {slot.ocupacion_actual?.hora_inicio || '—'}
+                  </p>
+                </div>
+              ) : slot.reservacion?.materia ? (
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '6px' }}>
                   <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: c.txt, lineHeight: 1.3, flex: 1 }}>
                     {slot.reservacion.materia}
@@ -1652,6 +1679,7 @@ function useEsMobil() {
 
 function Leyenda() {
   const items = [
+    { color: '#e11d48', label: 'En uso ahora' },
     { color: '#10b981', label: 'Disponible' },
     { color: '#6366f1', label: 'Mi reserva' },
     { color: '#3b82f6', label: 'Ocupado' },
@@ -2001,6 +2029,7 @@ export default function SesionClase() {
   const [slots, setSlots]                     = useState([]);
   const [loading, setLoading]                 = useState(false);
   const [sesionActiva, setSesionActiva]       = useState(null);
+  const [ocupacionActual, setOcupacionActual] = useState(null);
   const [modalSlot, setModalSlot]             = useState(null);
   const [modalLibre, setModalLibre]           = useState(false);
   const [solicRecibidas, setSolicRecibidas]   = useState([]);
@@ -2038,7 +2067,8 @@ export default function SesionClase() {
     try {
       const { data } = await api.get(`/horarios/disponibilidad?laboratorio_id=${labId}&cuatrimestre=${cuatrimestre}`);
       setSlots(data.slots || []);
-    } catch { setSlots([]); }
+      setOcupacionActual(data.ocupacion_actual || null);
+    } catch { setSlots([]); setOcupacionActual(null); }
     finally { setLoading(false); }
   }, [labId, cuatrimestre]);
 
@@ -2052,6 +2082,10 @@ export default function SesionClase() {
 
   useEffect(() => { cargarSesionActiva(); }, [cargarSesionActiva]);
   useEffect(() => { cargarGrid(); }, [cargarGrid]);
+  useEffect(() => {
+    const timer = setInterval(cargarGrid, 30_000);
+    return () => clearInterval(timer);
+  }, [cargarGrid]);
   useEffect(() => { cargarSolicRecibidas(); }, [cargarSolicRecibidas]);
   // Resetear scroll al cambiar de laboratorio (evita espacio vacío arriba con labs más cortos)
   useEffect(() => { window.scrollTo(0, 0); }, [labId]);
@@ -2229,6 +2263,19 @@ export default function SesionClase() {
           Actualizar
         </button>
       </div>
+
+      {ocupacionActual && (
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-rose-400/60 bg-rose-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-rose-700 dark:text-rose-200">● Este laboratorio está en uso ahora</p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+              {ocupacionActual.materia || 'Sesión de laboratorio'}{ocupacionActual.grupo ? ` · Grupo ${ocupacionActual.grupo}` : ''} · {ocupacionActual.sin_reservacion ? 'sin reservación' : 'con reservación'} · inició a las {ocupacionActual.hora_inicio || '—'}.
+              {ocupacionActual.uso_extendido ? ' La sesión superó su hora estimada.' : ocupacionActual.hora_fin_estimada ? ` Fin estimado: ${ocupacionActual.hora_fin_estimada}.` : ' Permanecerá ocupado hasta que se cierre la sesión.'}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-rose-600 px-3 py-1 text-xs font-bold text-white">No disponible</span>
+        </div>
+      )}
 
       {/* Leyenda + Grid */}
       {errorLaboratorios ? (

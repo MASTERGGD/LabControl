@@ -9,12 +9,17 @@ Cubre:
 - Disponibilidad semanal
 - Acceso por rol
 """
+import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from models.catalogo import CatalogoCarrera, CatalogoCarreraAlias, GrupoAcademico, PeriodoEscolar
+from models.horario import HorarioDisponible
+from models.sesion import SesionClase
 
 
 # ─────────────────────────── helpers ────────────────────────────────────────
@@ -364,6 +369,49 @@ class TestDisponibilidad:
             f"/horarios/disponibilidad?laboratorio_id={lab.id}&cuatrimestre=ENE-ABR-2026",
             headers=auth_headers(tok))
         assert r.status_code == 200
+
+    def test_sesion_abierta_se_superpone_como_uso_actual(self, client, db, monkeypatch):
+        admin = _usuario(db, "Admin", "admin@test.mx", RolUsuario.SUPER_ADMIN)
+        docente = _usuario(db, "Docente en laboratorio", "docente@test.mx", RolUsuario.DOCENTE)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        lab = _lab(db)
+        ahora = datetime.datetime(2026, 8, 27, 8, 30, tzinfo=ZoneInfo("America/Mexico_City"))
+        monkeypatch.setattr("routers.horarios.now_mx", lambda: ahora)
+        horario = HorarioDisponible(
+            laboratorio_id=lab.id,
+            dia_semana=ahora.weekday(),
+            hora_inicio="08:00",
+            hora_fin="09:00",
+            cuatrimestre="MAY-AGO-2026",
+            activo=True,
+        )
+        db.add(horario)
+        db.flush()
+        sesion = SesionClase(
+            laboratorio_id=lab.id,
+            docente_id=docente.id,
+            tipo_sesion="CLASE",
+            materia="Bases de Datos",
+            grupo="3-A",
+            codigo_sesion="SES-PRUEBA-USO-ACTUAL",
+            inicio=datetime.datetime(2026, 8, 27, 14, 10),
+            estado="ABIERTA",
+        )
+        db.add(sesion)
+        db.commit()
+
+        r = client.get(
+            f"/horarios/disponibilidad?laboratorio_id={lab.id}&cuatrimestre=MAY-AGO-2026",
+            headers=auth_headers(tok),
+        )
+
+        assert r.status_code == 200
+        data = r.json()
+        assert data["ocupacion_actual"]["sin_reservacion"] is True
+        assert data["ocupacion_actual"]["hora_inicio"] == "08:10"
+        assert data["slots"][0]["estado_base"] == "LIBRE"
+        assert data["slots"][0]["estado_vista"] == "EN_USO"
+        assert data["slots"][0]["ocupacion_actual"]["materia"] == "Bases de Datos"
 
 
 # ════════════════════════════════════════════════════════════════════════════

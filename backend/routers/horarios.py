@@ -9,11 +9,12 @@ from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from models.catalogo import GrupoAcademico, PeriodoEscolar
 from models.calendario_academico import CalendarioAcademico
+from models.sesion import SesionClase
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
 from services.calendario_academico import estado_fecha_academica
-from services.timezone import now_mx
+from services.timezone import as_mx, now_mx
 from rls import assert_lab_write, lab_filter
 import datetime
 
@@ -661,6 +662,30 @@ def disponibilidad(
         HorarioDisponible.activo == True,
     ).order_by(HorarioDisponible.dia_semana, HorarioDisponible.hora_inicio).all()
 
+    ahora_mx = now_mx()
+    sesion_activa = db.query(SesionClase).filter(
+        SesionClase.laboratorio_id == laboratorio_id,
+        SesionClase.estado == "ABIERTA",
+    ).order_by(SesionClase.inicio.desc()).first()
+    ocupacion_actual = None
+    if sesion_activa:
+        docente_sesion = db.query(Usuario).filter(Usuario.id == sesion_activa.docente_id).first()
+        inicio_local = as_mx(sesion_activa.inicio)
+        fin_estimado_local = as_mx(sesion_activa.fin_estimado)
+        ocupacion_actual = {
+            "sesion_id": sesion_activa.id,
+            "codigo_sesion": sesion_activa.codigo_sesion,
+            "docente_nombre": docente_sesion.nombre if docente_sesion else "Docente",
+            "materia": sesion_activa.materia,
+            "grupo": sesion_activa.grupo,
+            "inicio": inicio_local.isoformat() if inicio_local else None,
+            "hora_inicio": inicio_local.strftime("%H:%M") if inicio_local else None,
+            "fin_estimado": fin_estimado_local.isoformat() if fin_estimado_local else None,
+            "hora_fin_estimada": fin_estimado_local.strftime("%H:%M") if fin_estimado_local else None,
+            "sin_reservacion": sesion_activa.reservacion_id is None,
+            "uso_extendido": bool(fin_estimado_local and ahora_mx > fin_estimado_local),
+        }
+
     slots = []
     for h in horarios:
         reservacion = db.query(Reservacion).filter(
@@ -701,6 +726,19 @@ def disponibilidad(
         else:
             estado_vista = "OCUPADO"
 
+        estado_base = estado_vista
+        en_uso_ahora = False
+        if sesion_activa and h.dia_semana == ahora_mx.weekday():
+            try:
+                hora_actual = ahora_mx.time().replace(tzinfo=None)
+                inicio_slot = datetime.time.fromisoformat(h.hora_inicio)
+                fin_slot = datetime.time.fromisoformat(h.hora_fin)
+                en_uso_ahora = inicio_slot <= hora_actual < fin_slot
+            except (TypeError, ValueError):
+                en_uso_ahora = False
+        if en_uso_ahora:
+            estado_vista = "EN_USO"
+
         slot = {
             "horario_id":     h.id,
             "dia_semana":     h.dia_semana,
@@ -708,10 +746,12 @@ def disponibilidad(
             "hora_inicio":    h.hora_inicio,
             "hora_fin":       h.hora_fin,
             "estado_vista":   estado_vista,
+            "estado_base":    estado_base,
             "solicitudes_n":  solicitudes_n,
             "mi_solicitud":   mi_solicitud,
             "reservacion":    None,
             "bloqueo":        None,
+            "ocupacion_actual": ocupacion_actual if en_uso_ahora else None,
         }
 
         if bloqueo:
@@ -739,7 +779,12 @@ def disponibilidad(
 
         slots.append(slot)
 
-    return {"laboratorio_id": laboratorio_id, "cuatrimestre": cuatrimestre, "slots": slots}
+    return {
+        "laboratorio_id": laboratorio_id,
+        "cuatrimestre": cuatrimestre,
+        "ocupacion_actual": ocupacion_actual,
+        "slots": slots,
+    }
 
 
 # ─── Solicitudes recibidas (para el docente dueño) ────────────────────────────
