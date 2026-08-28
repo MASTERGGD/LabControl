@@ -11,6 +11,31 @@ from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
 
 
+def test_selector_docente_muestra_actual_y_solo_historial_propio(client, db):
+    docente = Usuario(
+        nombre="Docente periodos", email="periodos.docente@test.mx",
+        password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True,
+    )
+    actual = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    historico = PeriodoEscolar(clave="ENE-ABR 2020", activo=True, es_actual=False)
+    futuro = PeriodoEscolar(clave="SEP-DIC 2099", activo=True, es_actual=False)
+    ajeno = PeriodoEscolar(clave="SEP-DIC 2019", activo=True, es_actual=False)
+    db.add_all([docente, actual, historico, futuro, ajeno]); db.flush()
+    for periodo, nombre in ((historico, "Materia histórica"), (futuro, "Materia futura")):
+        db.add(CargaDocente(
+            docente_id=docente.id, periodo_id=periodo.id,
+            tipo_actividad="CLASE", actividad_nombre=nombre, dia_semana=0,
+            hora_inicio="08:00", hora_fin="09:00", estado="ACTIVO", activo=True,
+        ))
+    db.commit()
+
+    headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    respuesta = client.get("/calendario-academico/periodos", headers=headers)
+
+    assert respuesta.status_code == 200, respuesta.text
+    assert [periodo["clave"] for periodo in respuesta.json()] == ["MAY-AGO 2026", "ENE-ABR 2020"]
+
+
 def test_calendario_publicado_suprime_pendientes_y_bloquea_inicio(client, db, monkeypatch):
     ahora = datetime.datetime(2026, 8, 11, 12, 0, tzinfo=ZoneInfo("America/Mexico_City"))
     monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: ahora)

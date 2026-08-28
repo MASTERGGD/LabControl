@@ -1,4 +1,5 @@
 import datetime
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from models.calendario_academico import (
     CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico,
 )
 from models.catalogo import PeriodoEscolar
+from models.docencia import CargaDocente
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import estado_fecha_academica
 from services.user_permissions import puede_gestionar_materias
@@ -23,6 +25,20 @@ TIPOS_EVENTO = {
     "EVALUACION", "INSCRIPCIONES", "ACTIVIDAD_INSTITUCIONAL", "REPOSICION", "OTRO",
 }
 ESTADOS = {"BORRADOR", "PUBLICADO", "CERRADO"}
+
+
+def _limite_periodo(clave: str) -> Optional[datetime.date]:
+    """Devuelve el último día académico para impedir contextos docentes futuros."""
+    match = re.search(r"(ENE[- ]?ABR|MAY[- ]?AGO|SEP[- ]?DIC)\s*[- ]?\s*(\d{4})", (clave or "").upper())
+    if not match:
+        return None
+    bloque = match.group(1).replace(" ", "-")
+    anio = int(match.group(2))
+    if bloque == "ENE-ABR":
+        return datetime.date(anio, 4, 30)
+    if bloque == "MAY-AGO":
+        return datetime.date(anio, 8, 31)
+    return datetime.date(anio, 12, 31)
 
 
 class CalendarioIn(BaseModel):
@@ -116,7 +132,24 @@ def listar_periodos(
         RolUsuario.SUPER_ADMIN,
         RolUsuario.SERVICIOS_ESCOLARES,
     }
-    if not puede_preparar_periodos:
+    if current_user.rol == RolUsuario.DOCENTE:
+        # El selector global del docente no es un catálogo institucional: es su
+        # historial de trabajo. Conserva siempre el actual y solo agrega periodos
+        # anteriores donde tuvo una carga, evitando periodos futuros preparados.
+        periodo_ids_docente = {
+            periodo_id for (periodo_id,) in db.query(CargaDocente.periodo_id).filter(
+                CargaDocente.docente_id == current_user.id,
+            ).distinct().all()
+        }
+        hoy = datetime.date.today()
+        periodos = [
+            p for p in periodos
+            if p.es_actual or (
+                p.id in periodo_ids_docente
+                and (_limite_periodo(p.clave) is None or _limite_periodo(p.clave) < hoy)
+            )
+        ]
+    elif not puede_preparar_periodos:
         # Un periodo futuro puede existir para que Servicios Escolares prepare
         # grupos y promociones, pero no forma parte todavía del contexto de
         # trabajo de docentes y demás usuarios. Los históricos publicados se
@@ -128,6 +161,10 @@ def listar_periodos(
                 and calendarios[p.id].estado in {"PUBLICADO", "CERRADO"}
             )
         ]
+    periodos.sort(key=lambda p: (
+        0 if p.es_actual else 1,
+        -(_limite_periodo(p.clave) or datetime.date.min).toordinal(),
+    ))
     return [{
         "id": p.id, "clave": p.clave, "activo": p.activo, "es_actual": p.es_actual,
         "puede_administrar": puede_administrar,
