@@ -31,6 +31,11 @@ def test_cors_produccion_permite_contexto_de_periodo():
     assert "X-SIGA-Periodo" in PRODUCTION_CORS_HEADERS
 
 
+def test_cors_produccion_permite_identificador_de_sesion():
+    """El control de sesiones no debe bloquear el login durante el preflight."""
+    assert "X-SIGA-Session-ID" in PRODUCTION_CORS_HEADERS
+
+
 # ─── 1. Guard de cambio de contraseña obligatorio ──────────────────────────────
 
 class TestPasswordChangeGuard:
