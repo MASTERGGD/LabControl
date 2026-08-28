@@ -35,7 +35,7 @@ from models.tutoria import GrupoTutorado
 from models.ficha_socioeconomica import FichaSocioeconomica
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from models.cierre_academico import CierreAcademicoPeriodo
-from models.promocion_academica import PromocionAcademicaAlumno
+from models.promocion_academica import ContinuidadPrograma, PromocionAcademicaAlumno
 from services.auditoria import registrar, Accion, Recurso
 from services.user_permissions import puede_gestionar_servicios_escolares
 
@@ -105,12 +105,33 @@ class ResolucionPromocionIn(BaseModel):
     resolucion: str
     cuatrimestre_destino: Optional[int] = Field(None, ge=1, le=12)
     grupo_destino: Optional[str] = Field(None, max_length=10)
+    carrera_destino_id: Optional[int] = None
     observaciones: Optional[str] = Field(None, max_length=1000)
 
 
 class ResolucionPromocionMasivaIn(ResolucionPromocionIn):
     inscripcion_ids: List[int] = Field(..., min_length=1, max_length=1000)
     solo_pendientes: bool = True
+
+
+class ContinuidadProgramaIn(BaseModel):
+    carrera_origen_id: int
+    carrera_destino_id: int
+    cuatrimestre_origen: int = Field(6, ge=1, le=12)
+    cuatrimestre_destino: int = Field(7, ge=1, le=12)
+
+
+class GrupoContinuidadIn(BaseModel):
+    grupo: str = Field(..., min_length=1, max_length=10)
+    capacidad: int = Field(..., ge=1, le=100)
+
+
+class ConformacionContinuidadIn(BaseModel):
+    periodo_destino_id: int
+    carrera_destino_id: int
+    inscripcion_ids: List[int] = Field(..., min_length=1, max_length=1000)
+    grupos: List[GrupoContinuidadIn] = Field(..., min_length=1, max_length=20)
+    observaciones: Optional[str] = Field(None, max_length=1000)
 
 
 class PeriodoEscolarIn(BaseModel):
@@ -1347,7 +1368,82 @@ def alumnos_de_grupo(
     return [_serializar_alumno(i.alumno) for i in grupo.inscripciones if i.estado == "ACTIVO"]
 
 
-def _fila_promocion(inscripcion, promocion=None):
+def _carrera_catalogo_por_nombre(db: Session, nombre: str) -> CatalogoCarrera | None:
+    carrera = db.query(CatalogoCarrera).filter(func.lower(CatalogoCarrera.nombre) == nombre.lower()).first()
+    if carrera:
+        return carrera
+    alias = db.query(CatalogoCarreraAlias).filter(func.lower(CatalogoCarreraAlias.nombre) == nombre.lower()).first()
+    return alias.carrera if alias else None
+
+
+def _serializar_continuidad(item: ContinuidadPrograma) -> dict:
+    return {
+        "id": item.id,
+        "carrera_origen_id": item.carrera_origen_id,
+        "carrera_origen": item.carrera_origen.nombre,
+        "carrera_destino_id": item.carrera_destino_id,
+        "carrera_destino": item.carrera_destino.nombre,
+        "cuatrimestre_origen": item.cuatrimestre_origen,
+        "cuatrimestre_destino": item.cuatrimestre_destino,
+        "activo": item.activo,
+    }
+
+
+@router.get("/promociones/continuidades", summary="Listar rutas TSU a licenciatura o ingeniería")
+def listar_continuidades(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    return [_serializar_continuidad(item) for item in db.query(ContinuidadPrograma).filter(
+        ContinuidadPrograma.activo == True,
+    ).order_by(ContinuidadPrograma.carrera_destino_id, ContinuidadPrograma.carrera_origen_id).all()]
+
+
+@router.post("/promociones/continuidades", status_code=201, summary="Configurar una ruta de continuidad")
+def crear_continuidad(data: ContinuidadProgramaIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    if data.carrera_origen_id == data.carrera_destino_id:
+        raise HTTPException(422, "El programa de origen y el programa destino deben ser diferentes")
+    origen = db.get(CatalogoCarrera, data.carrera_origen_id)
+    destino = db.get(CatalogoCarrera, data.carrera_destino_id)
+    if not origen or not destino or not origen.activo or not destino.activo:
+        raise HTTPException(404, "Programa de origen o destino no encontrado")
+    item = db.query(ContinuidadPrograma).filter(
+        ContinuidadPrograma.carrera_origen_id == origen.id,
+        ContinuidadPrograma.carrera_destino_id == destino.id,
+    ).first()
+    if not item:
+        item = ContinuidadPrograma(carrera_origen_id=origen.id, carrera_destino_id=destino.id, creado_por_id=current_user.id)
+        db.add(item)
+    db.query(ContinuidadPrograma).filter(
+        ContinuidadPrograma.carrera_origen_id == origen.id,
+        ContinuidadPrograma.id != (item.id or -1),
+        ContinuidadPrograma.activo == True,
+    ).update({"activo": False}, synchronize_session=False)
+    item.cuatrimestre_origen = data.cuatrimestre_origen
+    item.cuatrimestre_destino = data.cuatrimestre_destino
+    item.activo = True
+    db.commit(); db.refresh(item)
+    registrar(db, accion="CONFIGURAR_CONTINUIDAD", recurso="CARRERA", usuario=current_user,
+              recurso_id=item.id, detalle={"origen": origen.nombre, "destino": destino.nombre,
+                                            "nivel_origen": item.cuatrimestre_origen,
+                                            "nivel_destino": item.cuatrimestre_destino})
+    return _serializar_continuidad(item)
+
+
+@router.delete("/promociones/continuidades/{continuidad_id}", summary="Desactivar una ruta de continuidad")
+def desactivar_continuidad(continuidad_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    item = db.get(ContinuidadPrograma, continuidad_id)
+    if not item:
+        raise HTTPException(404, "Ruta de continuidad no encontrada")
+    item.activo = False
+    db.commit()
+    registrar(db, accion="DESACTIVAR_CONTINUIDAD", recurso="CARRERA", usuario=current_user,
+              recurso_id=item.id, detalle={"origen": item.carrera_origen.nombre,
+                                            "destino": item.carrera_destino.nombre})
+    return {"ok": True}
+
+
+def _fila_promocion(inscripcion, promocion=None, continuidad=None):
     alumno, grupo = inscripcion.alumno, inscripcion.grupo_academico
     resolucion = promocion.resolucion if promocion else "PENDIENTE"
     return {
@@ -1358,8 +1454,11 @@ def _fila_promocion(inscripcion, promocion=None):
         "cuatrimestre_origen": grupo.cuatrimestre, "grupo_origen": grupo.grupo,
         "origen": f"{grupo.cuatrimestre}° {grupo.grupo}",
         "resolucion": resolucion,
-        "cuatrimestre_destino": promocion.cuatrimestre_destino if promocion else min(grupo.cuatrimestre + 1, 12),
+        "cuatrimestre_destino": promocion.cuatrimestre_destino if promocion else (continuidad.cuatrimestre_destino if continuidad else min(grupo.cuatrimestre + 1, 12)),
         "grupo_destino": promocion.grupo_destino if promocion else grupo.grupo,
+        "carrera_destino_id": promocion.carrera_destino_id if promocion else (continuidad.carrera_destino_id if continuidad else None),
+        "carrera_destino": promocion.carrera_destino.nombre if promocion and promocion.carrera_destino else (continuidad.carrera_destino.nombre if continuidad else grupo.carrera),
+        "es_continuidad": bool(continuidad or (promocion and promocion.carrera_destino_id)),
         "observaciones": promocion.observaciones if promocion else None,
         "estado": promocion.estado if promocion else "SIN_REVISAR",
     }
@@ -1380,14 +1479,98 @@ def listar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Sess
     promociones = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
         PromocionAcademicaAlumno.inscripcion_origen_id.in_(ids), PromocionAcademicaAlumno.periodo_destino_id == destino.id,
     ).all()} if ids else {}
-    filas = [_fila_promocion(i, promociones.get(i.id)) for i in inscripciones]
+    continuidades = db.query(ContinuidadPrograma).filter(ContinuidadPrograma.activo == True).all()
+    por_origen = {item.carrera_origen_id: item for item in continuidades}
+    filas = []
+    for inscripcion in inscripciones:
+        carrera = _carrera_catalogo_por_nombre(db, inscripcion.grupo_academico.carrera)
+        continuidad = por_origen.get(carrera.id) if carrera else None
+        if continuidad and inscripcion.grupo_academico.cuatrimestre != continuidad.cuatrimestre_origen:
+            continuidad = None
+        filas.append(_fila_promocion(inscripcion, promociones.get(inscripcion.id), continuidad))
+    bolsas = {}
+    for fila in filas:
+        if not fila["es_continuidad"] or fila["estado"] == "APLICADA":
+            continue
+        clave = str(fila["carrera_destino_id"])
+        bolsa = bolsas.setdefault(clave, {
+            "carrera_destino_id": fila["carrera_destino_id"], "carrera_destino": fila["carrera_destino"],
+            "cuatrimestre_destino": fila["cuatrimestre_destino"], "alumnos": [], "origenes": {},
+        })
+        bolsa["alumnos"].append(fila)
+        bolsa["origenes"][fila["carrera"]] = bolsa["origenes"].get(fila["carrera"], 0) + 1
+    for bolsa in bolsas.values():
+        bolsa["origenes"] = [{"carrera": nombre, "alumnos": total} for nombre, total in bolsa["origenes"].items()]
     return {
         "periodo_origen": origen.clave, "periodo_destino": destino.clave,
         "cierre_academico": cierre.estado if cierre else "SIN_CONFIGURAR",
         "puede_aplicar": bool(cierre and cierre.estado == "CERRADO"),
         "total": len(filas), "revisados": sum(f["resolucion"] != "PENDIENTE" for f in filas),
         "aplicados": sum(f["estado"] == "APLICADA" for f in filas), "alumnos": filas,
+        "bolsas_continuidad": list(bolsas.values()),
     }
+
+
+@router.post("/promociones/continuidad/conformar", summary="Distribuir candidatos de continuidad en grupos destino")
+def conformar_grupos_continuidad(data: ConformacionContinuidadIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    destino = db.get(PeriodoEscolar, data.periodo_destino_id)
+    carrera_destino = db.get(CatalogoCarrera, data.carrera_destino_id)
+    if not destino or not carrera_destino or not carrera_destino.activo:
+        raise HTTPException(404, "Periodo o programa destino no encontrado")
+    nombres = [grupo.grupo.strip().upper() for grupo in data.grupos]
+    if len(nombres) != len(set(nombres)):
+        raise HTTPException(422, "Los nombres de los grupos destino no pueden repetirse")
+    if sum(grupo.capacidad for grupo in data.grupos) < len(data.inscripcion_ids):
+        raise HTTPException(422, "La capacidad total es menor que la cantidad de alumnos seleccionados")
+    inscripciones = db.query(InscripcionAlumno).filter(InscripcionAlumno.id.in_(set(data.inscripcion_ids))).all()
+    if len(inscripciones) != len(set(data.inscripcion_ids)):
+        raise HTTPException(404, "Una o más inscripciones no existen")
+    nivel_destino = None
+    for inscripcion in inscripciones:
+        carrera_origen = _carrera_catalogo_por_nombre(db, inscripcion.grupo_academico.carrera)
+        ruta = db.query(ContinuidadPrograma).filter(
+            ContinuidadPrograma.carrera_origen_id == (carrera_origen.id if carrera_origen else -1),
+            ContinuidadPrograma.carrera_destino_id == carrera_destino.id,
+            ContinuidadPrograma.cuatrimestre_origen == inscripcion.grupo_academico.cuatrimestre,
+            ContinuidadPrograma.activo == True,
+        ).first()
+        if not ruta:
+            raise HTTPException(422, f"{inscripcion.grupo_academico.carrera} no tiene continuidad configurada hacia {carrera_destino.nombre}")
+        if nivel_destino is not None and nivel_destino != ruta.cuatrimestre_destino:
+            raise HTTPException(422, "Las rutas seleccionadas no llegan al mismo cuatrimestre")
+        nivel_destino = ruta.cuatrimestre_destino
+    asignaciones = []
+    indice = 0
+    espacios = [grupo.capacidad for grupo in data.grupos]
+    for inscripcion in sorted(inscripciones, key=lambda item: (item.grupo_academico.carrera, item.alumno.apellido_paterno, item.alumno.nombres)):
+        while espacios[indice] == 0:
+            indice = (indice + 1) % len(data.grupos)
+        grupo_nombre = nombres[indice]
+        espacios[indice] -= 1
+        indice = (indice + 1) % len(data.grupos)
+        promo = db.query(PromocionAcademicaAlumno).filter(PromocionAcademicaAlumno.inscripcion_origen_id == inscripcion.id).first()
+        if promo and promo.estado == "APLICADA":
+            raise HTTPException(409, "Una de las promociones ya fue aplicada")
+        if not promo:
+            promo = PromocionAcademicaAlumno(alumno_id=inscripcion.alumno_id, inscripcion_origen_id=inscripcion.id, periodo_destino_id=destino.id)
+            db.add(promo)
+        promo.periodo_destino_id = destino.id
+        promo.carrera_destino_id = carrera_destino.id
+        promo.resolucion = "PROMOVIDO"
+        promo.cuatrimestre_destino = nivel_destino
+        promo.grupo_destino = grupo_nombre
+        promo.observaciones = data.observaciones
+        promo.estado = "RESUELTA"
+        promo.resuelto_por_id = current_user.id
+        promo.resuelto_en = _now()
+        asignaciones.append({"inscripcion_id": inscripcion.id, "grupo": grupo_nombre})
+    db.commit()
+    registrar(db, accion="CONFORMAR_GRUPOS_CONTINUIDAD", recurso="GRUPO", usuario=current_user,
+              detalle={"periodo_destino": destino.clave, "carrera_destino": carrera_destino.nombre,
+                       "grupos": nombres, "alumnos": len(asignaciones)})
+    return {"asignados": len(asignaciones), "grupos": nombres, "asignaciones": asignaciones,
+            "mensaje": f"Se conformaron {len(nombres)} grupo(s) de {carrera_destino.nombre} con {len(asignaciones)} alumnos."}
 
 
 @router.put("/promociones/{inscripcion_id}", summary="Resolver promoción de un alumno")
@@ -1409,6 +1592,12 @@ def resolver_promocion(inscripcion_id: int, data: ResolucionPromocionIn, db: Ses
     promo.periodo_destino_id = destino.id; promo.resolucion = resolucion
     promo.cuatrimestre_destino = data.cuatrimestre_destino if requiere_grupo else None
     promo.grupo_destino = data.grupo_destino.strip().upper() if requiere_grupo else None
+    if data.carrera_destino_id and resolucion == "PROMOVIDO":
+        if not db.get(CatalogoCarrera, data.carrera_destino_id):
+            raise HTTPException(404, "Programa destino no encontrado")
+        promo.carrera_destino_id = data.carrera_destino_id
+    elif resolucion != "PROMOVIDO":
+        promo.carrera_destino_id = None
     promo.observaciones = data.observaciones; promo.estado = "RESUELTA" if resolucion != "PENDIENTE" else "PROPUESTA"
     promo.resuelto_por_id = current_user.id; promo.resuelto_en = _now()
     db.commit(); db.refresh(promo)
@@ -1463,6 +1652,9 @@ def resolver_promociones_masivas(
         promo.resolucion = resolucion
         promo.cuatrimestre_destino = data.cuatrimestre_destino if requiere_grupo else None
         promo.grupo_destino = data.grupo_destino.strip().upper() if requiere_grupo else None
+        if data.carrera_destino_id and not db.get(CatalogoCarrera, data.carrera_destino_id):
+            raise HTTPException(404, "Programa destino no encontrado")
+        promo.carrera_destino_id = data.carrera_destino_id if resolucion == "PROMOVIDO" else None
         promo.observaciones = data.observaciones
         promo.estado = "RESUELTA"
         promo.resuelto_por_id = current_user.id
@@ -1491,12 +1683,13 @@ def aplicar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Ses
         if promo.resolucion in {"PROMOVIDO", "REPITE", "ESTADIA"}:
             cuatrimestre_destino = promo.cuatrimestre_destino or inscripcion.grupo_academico.cuatrimestre
             grupo_destino = promo.grupo_destino or "ESTADIA"
+            carrera_destino = promo.carrera_destino.nombre if promo.carrera_destino else inscripcion.grupo_academico.carrera
             grupo = db.query(GrupoAcademico).filter(
-                GrupoAcademico.periodo_id == periodo_destino_id, GrupoAcademico.carrera == inscripcion.grupo_academico.carrera,
+                GrupoAcademico.periodo_id == periodo_destino_id, GrupoAcademico.carrera == carrera_destino,
                 GrupoAcademico.cuatrimestre == cuatrimestre_destino, GrupoAcademico.grupo == grupo_destino,
             ).first()
             if not grupo:
-                grupo = GrupoAcademico(periodo_id=periodo_destino_id, carrera=inscripcion.grupo_academico.carrera, cuatrimestre=cuatrimestre_destino, grupo=grupo_destino, activo=True)
+                grupo = GrupoAcademico(periodo_id=periodo_destino_id, carrera=carrera_destino, cuatrimestre=cuatrimestre_destino, grupo=grupo_destino, activo=True)
                 db.add(grupo); db.flush()
             nueva = db.query(InscripcionAlumno).filter(InscripcionAlumno.alumno_id == alumno.id, InscripcionAlumno.grupo_academico_id == grupo.id).first()
             if not nueva: db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))

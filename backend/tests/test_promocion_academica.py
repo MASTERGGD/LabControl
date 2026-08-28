@@ -1,6 +1,6 @@
 import datetime
 
-from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
+from models.catalogo import CatalogoAlumno, CatalogoCarrera, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.cierre_academico import CierreAcademicoPeriodo
 from models.promocion_academica import PromocionAcademicaAlumno
 from tests.conftest import auth_headers, get_token
@@ -139,3 +139,64 @@ def test_promocion_masiva_requiere_destino_para_promovidos(client, db, admin_use
         "periodo_destino_id": destino.id, "inscripcion_ids": [999], "resolucion": "PROMOVIDO",
     })
     assert respuesta.status_code == 422
+
+
+def test_continuidad_reune_varios_tsu_y_conforma_dos_grupos(client, db, admin_user):
+    origen = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    destino = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    tsu_ia = CatalogoCarrera(clave="TSUIA", nombre="TSU en Inteligencia Artificial", nivel="TSU", activo=True)
+    tsu_ds = CatalogoCarrera(clave="TSUDS", nombre="TSU en Desarrollo de Software", nivel="TSU", activo=True)
+    ingenieria = CatalogoCarrera(clave="ITI", nombre="Ingeniería en Tecnologías de la Información e Innovación Digital", nivel="INGENIERIA", activo=True)
+    db.add_all([origen, destino, tsu_ia, tsu_ds, ingenieria]); db.flush()
+    inscripciones = []
+    for carrera, letra in ((tsu_ia, "A"), (tsu_ds, "B")):
+        grupo = GrupoAcademico(periodo_id=origen.id, carrera=carrera.nombre, cuatrimestre=6, grupo=letra, activo=True)
+        db.add(grupo); db.flush()
+        for indice in range(2):
+            alumno = CatalogoAlumno(
+                matricula=f"{carrera.clave}{indice}", apellido_paterno=carrera.clave,
+                apellido_materno="Prueba", nombres=str(indice), carrera=carrera.nombre,
+                cuatrimestre=6, grupo=letra, periodo=origen.clave, activo=True,
+            )
+            db.add(alumno); db.flush()
+            inscripcion = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO")
+            db.add(inscripcion); db.flush(); inscripciones.append(inscripcion)
+    db.add(CierreAcademicoPeriodo(
+        periodo_id=origen.id, estado="CERRADO", configurado_por_id=admin_user.id,
+        cerrado_por_id=admin_user.id, cerrado_en=datetime.datetime.utcnow(),
+    )); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+
+    for carrera in (tsu_ia, tsu_ds):
+        ruta = client.post("/servicios-escolares/promociones/continuidades", headers=headers, json={
+            "carrera_origen_id": carrera.id, "carrera_destino_id": ingenieria.id,
+            "cuatrimestre_origen": 6, "cuatrimestre_destino": 7,
+        })
+        assert ruta.status_code == 201, ruta.text
+
+    bandeja = client.get("/servicios-escolares/promociones", headers=headers, params={
+        "periodo_origen_id": origen.id, "periodo_destino_id": destino.id,
+    })
+    assert bandeja.status_code == 200, bandeja.text
+    bolsa = bandeja.json()["bolsas_continuidad"][0]
+    assert len(bolsa["alumnos"]) == 4
+    assert len(bolsa["origenes"]) == 2
+
+    conformar = client.post("/servicios-escolares/promociones/continuidad/conformar", headers=headers, json={
+        "periodo_destino_id": destino.id, "carrera_destino_id": ingenieria.id,
+        "inscripcion_ids": [item.id for item in inscripciones],
+        "grupos": [{"grupo": "A", "capacidad": 2}, {"grupo": "B", "capacidad": 2}],
+    })
+    assert conformar.status_code == 200, conformar.text
+    assert conformar.json()["asignados"] == 4
+
+    aplicar = client.post("/servicios-escolares/promociones/aplicar", headers=headers, params={
+        "periodo_origen_id": origen.id, "periodo_destino_id": destino.id,
+    })
+    assert aplicar.status_code == 200, aplicar.text
+    db.expire_all()
+    grupos_destino = db.query(GrupoAcademico).filter(GrupoAcademico.periodo_id == destino.id).all()
+    assert {(grupo.carrera, grupo.cuatrimestre, grupo.grupo) for grupo in grupos_destino} == {
+        (ingenieria.nombre, 7, "A"), (ingenieria.nombre, 7, "B"),
+    }
+    assert all(db.get(CatalogoAlumno, item.alumno_id).carrera == ingenieria.nombre for item in inscripciones)
