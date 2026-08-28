@@ -94,6 +94,110 @@ function RequerimientoPanel({ req }) {
   );
 }
 
+function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onAbrirReservacion, isDay }) {
+  const [requerimientos, setRequerimientos] = useState([]);
+  const [vista, setVista] = useState('PENDIENTE');
+  const [notas, setNotas] = useState({});
+  const [resolviendo, setResolviendo] = useState(null);
+  const [cargando, setCargando] = useState(false);
+
+  const cargar = useCallback(async () => {
+    if (!laboratorioId || !cuatrimestre) return;
+    setCargando(true);
+    try {
+      const params = new URLSearchParams({
+        laboratorio_id: String(laboratorioId),
+        cuatrimestre,
+        estado: 'TODOS',
+      });
+      const { data } = await api.get(`/horarios/requerimientos/pendientes?${params}`);
+      setRequerimientos(Array.isArray(data) ? data : []);
+    } catch {
+      setRequerimientos([]);
+    } finally {
+      setCargando(false);
+    }
+  }, [laboratorioId, cuatrimestre]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const resolver = async (req, estado) => {
+    setResolviendo(req.id);
+    try {
+      await api.put(`/horarios/requerimientos/${req.id}/resolver`, {
+        estado,
+        nota_admin: notas[req.id]?.trim() || null,
+      });
+      await cargar();
+      onActualizado?.();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'No se pudo actualizar el requerimiento.');
+    } finally {
+      setResolviendo(null);
+    }
+  };
+
+  const pendientes = requerimientos.filter(req => req.estado === 'PENDIENTE');
+  const historial = requerimientos.filter(req => req.estado !== 'PENDIENTE');
+  const visibles = vista === 'PENDIENTE' ? pendientes : historial;
+
+  return (
+    <section className="overflow-hidden rounded-2xl" style={{ background: isDay ? '#fff' : 'rgba(255,255,255,0.04)', border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(255,255,255,0.09)'}` }}>
+      <header className="flex flex-col gap-3 border-b border-slate-200/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>📋 Requerimientos de clase</h2>
+            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${pendientes.length ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'}`}>{pendientes.length} pendientes</span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Bandeja operativa permanente; no depende de las notificaciones de la campana.</p>
+        </div>
+        <div className="flex gap-1 rounded-lg bg-slate-500/10 p-1">
+          {[['PENDIENTE', `Pendientes (${pendientes.length})`], ['HISTORIAL', `Historial (${historial.length})`]].map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setVista(value)} className={`rounded-md px-3 py-1.5 text-xs font-semibold ${vista === value ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>{label}</button>
+          ))}
+        </div>
+      </header>
+
+      <div className="grid gap-3 p-4 lg:grid-cols-2">
+        {visibles.map(req => (
+          <article key={req.id} className={`rounded-xl border p-4 ${req.urgente && req.estado === 'PENDIENTE' ? 'border-red-400/40 bg-red-500/[0.06]' : 'border-slate-500/20 bg-slate-500/[0.04]'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>{req.materia || 'Clase'}</p>
+                  {req.grupo && <span className="rounded bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-500">Grupo {req.grupo}</span>}
+                  {req.urgente && req.estado === 'PENDIENTE' && <span className="rounded bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-500">URGENTE</span>}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{req.docente_nombre || 'Docente'} · {req.dia_nombre} {req.hora_inicio}–{req.hora_fin}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${req.estado === 'PENDIENTE' ? 'bg-amber-500/15 text-amber-500' : req.estado === 'CONFIRMADO' ? 'bg-emerald-500/15 text-emerald-500' : req.estado === 'RECHAZADO' ? 'bg-red-500/15 text-red-500' : 'bg-indigo-500/15 text-indigo-500'}`}>{req.estado_label}</span>
+            </div>
+
+            {!!req.items?.length && <div className="mt-3 flex flex-wrap gap-1.5">{req.items.map(item => <span key={item} className="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-500">{item}</span>)}</div>}
+            {req.descripcion && <p className={`mt-3 rounded-lg p-2 text-xs ${isDay ? 'bg-slate-50 text-slate-700' : 'bg-black/20 text-slate-300'}`}>{req.descripcion}</p>}
+            {req.tiene_instalador && <p className="mt-2 text-xs font-medium text-indigo-500">💾 El docente cuenta con el instalador.</p>}
+            {req.nota_admin && <p className="mt-2 text-xs text-slate-500"><b>Respuesta:</b> {req.nota_admin}</p>}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-500/15 pt-3">
+              <button type="button" onClick={() => onAbrirReservacion?.(req.reservacion_id)} className="text-xs font-semibold text-blue-500">Ver reservación</button>
+              {req.estado === 'PENDIENTE' && (
+                <>
+                  <input value={notas[req.id] || ''} onChange={e => setNotas(actual => ({ ...actual, [req.id]: e.target.value }))} className="input-dark min-w-[180px] flex-1 text-xs" placeholder="Nota para el docente (opcional)" />
+                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'CONFIRMADO')} className="rounded-lg bg-emerald-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar</button>
+                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'DOCENTE_PROVEE')} className="rounded-lg bg-indigo-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">Docente provee</button>
+                  <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'RECHAZADO')} className="rounded-lg bg-red-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">No disponible</button>
+                </>
+              )}
+            </div>
+          </article>
+        ))}
+        {!cargando && !visibles.length && <p className="py-6 text-center text-sm text-slate-500 lg:col-span-2">{vista === 'PENDIENTE' ? 'No hay requerimientos pendientes para este laboratorio y periodo.' : 'Todavía no hay requerimientos resueltos.'}</p>}
+        {cargando && <p className="py-6 text-center text-sm text-slate-500 lg:col-span-2">Cargando requerimientos…</p>}
+      </div>
+    </section>
+  );
+}
+
 // ─── Modal: Reservar un slot libre ───────────────────────────────────────────
 
 // Checkboxes de requerimientos rápidos
@@ -896,6 +1000,9 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
                 {slot.solicitudes_n}↑
               </span>
             )}
+            {slot.reservacion?.requerimiento && (
+              <span className="absolute bottom-1 right-1 rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white" title="Esta reservación tiene requerimientos de clase">📋 Req.</span>
+            )}
           </div>
         );
       }}
@@ -1084,6 +1191,9 @@ function GridMobileAdmin({ slots, onSlotClick, isDay = false }) {
                     {slot.solicitudes_n} solicitud(es) esperando revision.
                   </p>
                 )}
+                {slot.reservacion?.requerimiento && (
+                  <p className="mt-3 text-xs font-semibold text-violet-500">📋 Esta reservación tiene requerimientos de clase.</p>
+                )}
               </button>
             );
           })}
@@ -1190,6 +1300,11 @@ export default function Reservaciones() {
 
   const cerrarModal = () => setModalSlot(null);
   const recargar    = () => { cargarGrid(); cargarConflictos(); };
+  const abrirReservacionPorId = (reservacionId) => {
+    const slot = slots.find(item => String(item.reservacion?.id) === String(reservacionId));
+    if (slot) setModalSlot({ tipo: 'mi_reserva', slot });
+    else alert('La reservación no está visible en el horario seleccionado.');
+  };
 
   const conflictosPendientes = slots.filter(s => s.estado_vista === 'EN_DISPUTA').length;
 
@@ -1267,6 +1382,16 @@ export default function Reservaciones() {
             </button>
           </div>
         </div>
+
+        {esAdmin && (
+          <BandejaRequerimientos
+            laboratorioId={labId}
+            cuatrimestre={cuatrimestre}
+            isDay={isDay}
+            onActualizado={recargar}
+            onAbrirReservacion={abrirReservacionPorId}
+          />
+        )}
 
         {/* Layout: Grid + Panel conflictos */}
         <div className={`flex flex-col lg:flex-row gap-5 ${verConflictos ? 'items-start' : ''}`}>

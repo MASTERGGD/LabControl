@@ -775,6 +775,7 @@ def disponibilidad(
                 "estado":             reservacion.estado,
                 "laboratorio_id":     reservacion.laboratorio_id,
                 "laboratorio_nombre": lab_res.nombre if lab_res else "—",
+                "requerimiento":      _serializar_requerimiento(reservacion.requerimiento) if reservacion.requerimiento else None,
             }
 
         slots.append(slot)
@@ -1612,16 +1613,25 @@ def desbloquear_slot(
 @router.get("/requerimientos/pendientes", summary="Listar requerimientos pendientes — admins")
 def listar_requerimientos_pendientes(
     laboratorio_id: Optional[int] = None,
+    cuatrimestre: Optional[str] = None,
+    estado: str = "PENDIENTE",
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
-    q = db.query(RequerimientoClase).filter(RequerimientoClase.estado == "PENDIENTE")
+    estado = estado.strip().upper()
+    if estado not in {"PENDIENTE", "CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE", "TODOS"}:
+        raise HTTPException(status_code=422, detail="Estado de requerimiento inválido")
+    q = db.query(RequerimientoClase).join(Reservacion)
+    if estado != "TODOS":
+        q = q.filter(RequerimientoClase.estado == estado)
     if laboratorio_id:
-        q = q.join(Reservacion).filter(Reservacion.laboratorio_id == laboratorio_id)
+        q = q.filter(Reservacion.laboratorio_id == laboratorio_id)
     elif current_user.rol == RolUsuario.LAB_ADMIN and current_user.laboratorio_id:
-        q = q.join(Reservacion).filter(Reservacion.laboratorio_id == current_user.laboratorio_id)
+        q = q.filter(Reservacion.laboratorio_id == current_user.laboratorio_id)
+    if cuatrimestre:
+        q = q.filter(Reservacion.cuatrimestre == cuatrimestre)
 
-    reqs = q.order_by(RequerimientoClase.urgente.desc(), RequerimientoClase.creado_en).all()
+    reqs = q.order_by(RequerimientoClase.urgente.desc(), RequerimientoClase.creado_en.desc()).all()
 
     resultado = []
     for req in reqs:

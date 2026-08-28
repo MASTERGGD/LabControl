@@ -18,7 +18,7 @@ from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.laboratorio import Laboratorio
 from models.catalogo import CatalogoCarrera, CatalogoCarreraAlias, GrupoAcademico, PeriodoEscolar
-from models.horario import HorarioDisponible
+from models.horario import HorarioDisponible, RequerimientoClase, Reservacion
 from models.sesion import SesionClase
 
 
@@ -412,6 +412,58 @@ class TestDisponibilidad:
         assert data["slots"][0]["estado_base"] == "LIBRE"
         assert data["slots"][0]["estado_vista"] == "EN_USO"
         assert data["slots"][0]["ocupacion_actual"]["materia"] == "Bases de Datos"
+
+
+class TestBandejaRequerimientos:
+
+    def test_requerimiento_resuelto_permanece_en_historial(self, client, db):
+        admin = _usuario(db, "Admin", "admin@test.mx", RolUsuario.SUPER_ADMIN)
+        docente = _usuario(db, "Docente", "docente@test.mx", RolUsuario.DOCENTE)
+        tok = get_token(client, "admin@test.mx", "Test1234!")
+        lab = _lab(db)
+        horario = HorarioDisponible(
+            laboratorio_id=lab.id, dia_semana=2, hora_inicio="10:00", hora_fin="11:00",
+            cuatrimestre="MAY-AGO-2026", activo=True,
+        )
+        db.add(horario)
+        db.flush()
+        reservacion = Reservacion(
+            horario_id=horario.id, laboratorio_id=lab.id, docente_id=docente.id,
+            creado_por=docente.id, materia="Minería de Texto", grupo="3-A",
+            cuatrimestre="MAY-AGO-2026", estado="PROGRAMADA",
+        )
+        db.add(reservacion)
+        db.flush()
+        requerimiento = RequerimientoClase(
+            reservacion_id=reservacion.id,
+            items='["Micrófono / bocinas"]',
+            descripcion="Dos micrófonos inalámbricos",
+            estado="PENDIENTE",
+        )
+        db.add(requerimiento)
+        db.commit()
+
+        pendientes = client.get(
+            f"/horarios/requerimientos/pendientes?laboratorio_id={lab.id}&cuatrimestre=MAY-AGO-2026&estado=PENDIENTE",
+            headers=auth_headers(tok),
+        )
+        assert pendientes.status_code == 200
+        assert pendientes.json()[0]["descripcion"] == "Dos micrófonos inalámbricos"
+
+        resuelto = client.put(
+            f"/horarios/requerimientos/{requerimiento.id}/resolver",
+            json={"estado": "CONFIRMADO", "nota_admin": "Equipo apartado"},
+            headers=auth_headers(tok),
+        )
+        assert resuelto.status_code == 200
+
+        historial = client.get(
+            f"/horarios/requerimientos/pendientes?laboratorio_id={lab.id}&cuatrimestre=MAY-AGO-2026&estado=TODOS",
+            headers=auth_headers(tok),
+        )
+        assert historial.status_code == 200
+        assert historial.json()[0]["estado"] == "CONFIRMADO"
+        assert historial.json()[0]["nota_admin"] == "Equipo apartado"
 
 
 # ════════════════════════════════════════════════════════════════════════════
