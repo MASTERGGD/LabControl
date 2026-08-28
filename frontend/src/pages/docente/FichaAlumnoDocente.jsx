@@ -11,7 +11,7 @@ const FORM_INICIAL = {
 };
 const PESTANAS = [
   ['RESUMEN', 'Resumen'],
-  ['PENDIENTES', 'Pendientes'],
+  ['PENDIENTES', 'Por atender'],
   ['OBSERVACION', 'Observaciones'],
   ['ACUERDO', 'Acuerdos'],
   ['TUTORIA', 'Tutoría'],
@@ -153,6 +153,8 @@ export default function FichaAlumnoDocente() {
     : '—';
   const estadosActivos = ['PENDIENTE', 'REPROGRAMADO'];
   const pendientes = datos?.registros.filter((r) => ['ACUERDO', 'TUTORIA'].includes(r.tipo) && estadosActivos.includes(r.estado)) || [];
+  const acuerdosPorRevisar = pendientes.filter((r) => r.tipo === 'ACUERDO');
+  const reportesEnTutoria = pendientes.filter((r) => r.tipo === 'TUTORIA');
   const pendientesFiltrados = registrosFiltrados.filter((r) => (
     ['ACUERDO', 'TUTORIA'].includes(r.tipo) && estadosActivos.includes(r.estado)
   ));
@@ -249,8 +251,12 @@ export default function FichaAlumnoDocente() {
                 ['Faltas', datos.resumen.falta],
                 ['Retardos', datos.resumen.retardo],
                 ['Promedio', promedio],
-                ['Pendientes', pendientes.length],
               ].map(([label, value]) => <div key={label} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{value}</p><p className="text-xs text-slate-400">{label}</p></div>)}
+              <button type="button" onClick={() => setPestana('PENDIENTES')} className="glass rounded-xl p-4 text-left transition hover:border-emerald-500/30 hover:bg-emerald-500/[0.04]">
+                <p className="text-2xl font-bold text-white">{pendientes.length}</p>
+                <p className="text-xs text-slate-400">Seguimientos abiertos</p>
+                <p className="mt-1 text-[11px] text-slate-500">{acuerdosPorRevisar.length} acuerdo{acuerdosPorRevisar.length === 1 ? '' : 's'} · {reportesEnTutoria.length} en Tutoría</p>
+              </button>
             </div>
 
             <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -330,8 +336,8 @@ export default function FichaAlumnoDocente() {
                     <section>
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <h2 className="font-semibold text-white">Requiere atención</h2>
-                          <p className="mt-0.5 text-xs text-slate-500">Lo más importante para dar continuidad al estudiante.</p>
+                          <h2 className="font-semibold text-white">Seguimientos abiertos</h2>
+                          <p className="mt-0.5 text-xs text-slate-500">Acuerdos que debes revisar y reportes que están en manos de Tutoría.</p>
                         </div>
                         {!!pendientes.length && <button onClick={() => setPestana('PENDIENTES')} className="text-xs font-semibold text-emerald-400">Ver todos ({pendientes.length}) →</button>}
                       </div>
@@ -339,12 +345,13 @@ export default function FichaAlumnoDocente() {
                         <div className="mb-3 flex flex-wrap gap-2 text-xs">
                           {!!pendientesVencidos.length && <span className="rounded-full bg-red-500/15 px-3 py-1.5 font-semibold text-red-300">{pendientesVencidos.length} vencido{pendientesVencidos.length === 1 ? '' : 's'}</span>}
                           {!!pendientesHoy.length && <span className="rounded-full bg-amber-500/15 px-3 py-1.5 font-semibold text-amber-300">{pendientesHoy.length} para hoy</span>}
-                          <span className="rounded-full bg-white/5 px-3 py-1.5 text-slate-400">{pendientes.length} abierto{pendientes.length === 1 ? '' : 's'}</span>
+                          <span className="rounded-full bg-white/5 px-3 py-1.5 text-slate-400">Tú revisas {acuerdosPorRevisar.length}</span>
+                          <span className="rounded-full bg-blue-500/10 px-3 py-1.5 text-blue-300">Tutoría atiende {reportesEnTutoria.length}</span>
                         </div>
                       )}
                       <div className="grid gap-3 lg:grid-cols-3">
                         {pendientesOrdenados.slice(0, 3).map(tarjetaPendiente)}
-                        {!pendientes.length && <p className="rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-400 lg:col-span-3">No hay acuerdos ni tutorías pendientes.</p>}
+                        {!pendientes.length && <p className="rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-400 lg:col-span-3">No hay seguimientos abiertos: no tienes acuerdos por revisar ni reportes esperando atención de Tutoría.</p>}
                       </div>
                     </section>
 
@@ -421,8 +428,20 @@ export default function FichaAlumnoDocente() {
                 )}
                 {!['RESUMEN', 'ASISTENCIA'].includes(pestana) && (
                   <div className="space-y-3">
+                    {pestana === 'PENDIENTES' && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
+                          <p className="text-sm font-semibold text-amber-200">Mis acuerdos por revisar · {acuerdosPorRevisar.length}</p>
+                          <p className="mt-1 text-xs text-slate-400">Tú registras el resultado cuando llegue la fecha de revisión.</p>
+                        </div>
+                        <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
+                          <p className="text-sm font-semibold text-blue-200">Reportes en Tutoría · {reportesEnTutoria.length}</p>
+                          <p className="mt-1 text-xs text-slate-400">El tutor asignado los atiende y cierra; aquí puedes consultar su estado.</p>
+                        </div>
+                      </div>
+                    )}
                     {pestana === 'PENDIENTES' ? registrosPestana.map(tarjetaPendiente) : registrosPestana.map(tarjetaRegistro)}
-                    {!registrosPestana.length && <p className="py-10 text-center text-sm text-slate-400">No hay registros en esta categoría y rango de fechas.</p>}
+                    {!registrosPestana.length && <p className="py-10 text-center text-sm text-slate-400">{pestana === 'PENDIENTES' ? 'No hay seguimientos abiertos en este rango de fechas.' : 'No hay registros en esta categoría y rango de fechas.'}</p>}
                   </div>
                 )}
               </div>
