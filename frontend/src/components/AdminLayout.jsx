@@ -448,7 +448,7 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4M9 20H3v-2a4 4 0 014-4h2m7-4a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   },
   {
-    label: 'Promoción de cuatrimestre', path: '/servicios-escolares/promociones', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true, ocultarSuperAdmin: true,
+    label: 'Promoción académica', path: '/servicios-escolares/promociones', roles: ['SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE, inGroup: true, ocultarSuperAdmin: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 17 17 7m0 0H9m8 0v8M5 5v14h14"/></svg>,
   },
   {
@@ -554,7 +554,7 @@ const BREADCRUMB_MAP = {
   '/servicios-escolares':     [{ label: 'Servicios Escolares' }],
   '/servicios-escolares/alumnos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Alumnos' }],
   '/servicios-escolares/grupos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Grupos e inscripciones' }],
-  '/servicios-escolares/promociones': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Promoción de cuatrimestre' }],
+  '/servicios-escolares/promociones': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Promoción académica' }],
   '/servicios-escolares/estudios-socioeconomicos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Estudios socioeconómicos' }],
   '/docente':                 [{ label: 'Inicio Docente' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
