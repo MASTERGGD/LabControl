@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from database import get_db
 from models.usuario import Usuario, RolUsuario
 from services.user_roles import roles_disponibles
+from services.active_sessions import is_session_revoked
 import os
 
 # ─── Configuración ─────────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ _OPERACIONES_PERMITIDAS_CAMBIO_PENDIENTE = frozenset({
     ("PUT", "/usuarios/me/password"),
     ("POST", "/auth/sessions/heartbeat"),
     ("POST", "/auth/sessions/logout"),
+    ("POST", "/auth/sessions/logout-others"),
     ("GET", "/auth/sessions"),
     ("POST", "/auth/cambiar-funcion"),
 })
@@ -93,6 +95,11 @@ def get_current_user(
 
     if usuario is None:
         raise credencial_exception
+
+    session_id = payload.get("sid")
+    if is_session_revoked(usuario.id, session_id):
+        raise HTTPException(status_code=401, detail="Esta sesión fue cerrada desde otro dispositivo")
+    usuario._session_id = session_id
 
     # La identidad es única; el JWT define únicamente la función activa de esta
     # sesión. El rol principal persiste en BD y nunca se modifica al alternar.

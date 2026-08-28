@@ -9,7 +9,7 @@ from models.usuario import Usuario, RolUsuario
 from models.password_reset import PasswordResetToken, utcnow_naive
 from dependencies import get_current_user, crear_access_token, verificar_password, hashear_password
 from services.auditoria import registrar, Accion, Recurso
-from services.active_sessions import end_session, list_user_sessions, register_session
+from services.active_sessions import allow_session, end_other_sessions, end_session, list_user_sessions, register_session
 from services.rate_limit import clear_login_failures, ensure_login_not_locked, register_login_failure
 from services.user_permissions import permisos_efectivos
 from services.email import enviar_recuperacion_password
@@ -167,10 +167,12 @@ def login(
         "email": usuario.email,
         "rol": usuario.rol.value,
         "rol_activo": usuario.rol.value,
+        "sid": request.headers.get("x-siga-session-id"),
         "lab_id": usuario.laboratorio_id,
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
     }
     token = crear_access_token(token_data)
+    allow_session(usuario.id, token_data["sid"])
     clear_login_failures(request, form_data.username)
 
     registrar(db, accion=Accion.LOGIN_OK, recurso=Recurso.SISTEMA,
@@ -203,6 +205,7 @@ def cambiar_funcion(
         "email": current_user.email,
         "rol": data.rol.value,
         "rol_activo": data.rol.value,
+        "sid": getattr(current_user, "_session_id", None),
         "lab_id": current_user.laboratorio_id,
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
     })
@@ -312,9 +315,10 @@ def session_heartbeat(
     request: Request,
     current_user: Usuario = Depends(get_current_user),
 ):
+    session_id = getattr(current_user, "_session_id", None) or data.session_id
     sessions = register_session(
         usuario_id=current_user.id,
-        session_id=data.session_id,
+        session_id=session_id,
         user_agent=request.headers.get("user-agent", ""),
         path=data.path,
     )
@@ -326,8 +330,20 @@ def session_logout(
     data: SessionHeartbeatIn,
     current_user: Usuario = Depends(get_current_user),
 ):
-    end_session(data.session_id)
+    session_id = getattr(current_user, "_session_id", None) or data.session_id
+    end_session(session_id)
     return {"ok": True}
+
+
+@router.post("/sessions/logout-others", summary="Cerrar las demás sesiones del usuario")
+def session_logout_others(
+    data: SessionHeartbeatIn,
+    current_user: Usuario = Depends(get_current_user),
+):
+    session_id = getattr(current_user, "_session_id", None) or data.session_id
+    end_other_sessions(current_user.id, session_id)
+    sessions = list_user_sessions(current_user.id, current_session_id=session_id)
+    return {"ok": True, "active_sessions": sessions, "active_count": len(sessions)}
 
 
 @router.get("/sessions", summary="Listar sesiones activas propias")

@@ -8,6 +8,7 @@ const AuthContext = createContext(null);
 // - Previene que otro usuario del mismo equipo retome la sesion.
 const store = sessionStorage;
 const SESSION_ID_KEY = 'labcontrol_session_id';
+const BROWSER_ID_KEY = 'labcontrol_browser_id';
 const LAST_ACTIVITY_KEY = 'labcontrol_last_activity';
 const LOGOUT_REASON_KEY = 'labcontrol_logout_reason';
 const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
@@ -22,11 +23,14 @@ const rawWarningMs = readMinutesEnv('REACT_APP_IDLE_WARNING_MINUTES', 40) * 60 *
 const IDLE_WARNING_MS = Math.min(rawWarningMs, Math.max(60 * 1000, IDLE_TIMEOUT_MS - 60 * 1000));
 
 function getBrowserSessionId() {
-  let id = store.getItem(SESSION_ID_KEY);
+  // localStorage se comparte entre pestañas del mismo navegador. Así, abrir
+  // SIGA en otra pestaña no se reporta erróneamente como otro dispositivo.
+  let id = localStorage.getItem(BROWSER_ID_KEY) || store.getItem(SESSION_ID_KEY);
   if (!id) {
     id = (crypto?.randomUUID?.() || `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-    store.setItem(SESSION_ID_KEY, id);
   }
+  localStorage.setItem(BROWSER_ID_KEY, id);
+  store.setItem(SESSION_ID_KEY, id);
   return id;
 }
 
@@ -202,10 +206,18 @@ export function AuthProvider({ children }) {
     return data.usuario;
   };
 
+  const cerrarOtrasSesiones = async () => {
+    const { data } = await api.post('/auth/sessions/logout-others', {
+      session_id: getBrowserSessionId(),
+    });
+    setSessionInfo(data);
+    return data;
+  };
+
   if (!authListo) return null;
 
   return (
-    <AuthContext.Provider value={{ usuario, login, logout, cambiarFuncion, sessionInfo }}>
+    <AuthContext.Provider value={{ usuario, login, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo }}>
       {children}
       {idleWarning && usuario && (
         <div className="fixed inset-x-0 bottom-5 z-[9999] flex justify-center px-4 pointer-events-none">

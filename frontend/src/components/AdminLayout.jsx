@@ -939,7 +939,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 
 // Layout principal
 export default function AdminLayout({ children }) {
-  const { usuario, logout, cambiarFuncion, sessionInfo } = useAuth();
+  const { usuario, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const homePath = getHomePath(usuario);
@@ -953,9 +953,35 @@ export default function AdminLayout({ children }) {
   const [pendientesComunicados, setPendientesComunicados] = useState(0);
   const [espaciosResponsable, setEspaciosResponsable] = useState([]);
   const [cambiandoFuncion, setCambiandoFuncion] = useState(false);
+  const [mostrarSesiones, setMostrarSesiones] = useState(false);
+  const [avisoSesiones, setAvisoSesiones] = useState(false);
+  const [cerrandoSesiones, setCerrandoSesiones] = useState(false);
+  const sesionesRef = useRef(null);
+  const conteoSesionesAnterior = useRef(1);
 
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
+
+  useEffect(() => {
+    const conteo = sessionInfo?.active_count || 1;
+    if (conteo > 1 && conteoSesionesAnterior.current <= 1) {
+      setAvisoSesiones(true);
+      const timer = window.setTimeout(() => setAvisoSesiones(false), 9000);
+      conteoSesionesAnterior.current = conteo;
+      return () => window.clearTimeout(timer);
+    }
+    conteoSesionesAnterior.current = conteo;
+    return undefined;
+  }, [sessionInfo?.active_count]);
+
+  useEffect(() => {
+    if (!mostrarSesiones) return undefined;
+    const cerrar = event => {
+      if (!sesionesRef.current?.contains(event.target)) setMostrarSesiones(false);
+    };
+    document.addEventListener('mousedown', cerrar);
+    return () => document.removeEventListener('mousedown', cerrar);
+  }, [mostrarSesiones]);
 
   const fetchPendientesComunicados = useCallback(() => {
     if (!sessionStorage.getItem('token')) {
@@ -1009,6 +1035,18 @@ export default function AdminLayout({ children }) {
       window.alert(err.response?.data?.detail || 'No se pudo cambiar la función activa.');
     } finally {
       setCambiandoFuncion(false);
+    }
+  };
+  const handleCerrarOtrasSesiones = async () => {
+    setCerrandoSesiones(true);
+    try {
+      await cerrarOtrasSesiones();
+      setAvisoSesiones(false);
+      setMostrarSesiones(false);
+    } catch (err) {
+      window.alert(err.response?.data?.detail || 'No se pudieron cerrar las otras sesiones.');
+    } finally {
+      setCerrandoSesiones(false);
     }
   };
   const puedeGestionarEspacios = usuario?.rol === 'SUPER_ADMIN'
@@ -1141,6 +1179,39 @@ export default function AdminLayout({ children }) {
             <NotificacionesBell comunicadosPendientes={pendientesComunicados} />
             <ThemeSwitcher />
 
+            {sessionInfo?.active_count > 1 && (
+              <div className="relative" ref={sesionesRef}>
+                <button
+                  type="button"
+                  onClick={() => setMostrarSesiones(actual => !actual)}
+                  className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold"
+                  style={{borderColor:'var(--topbar-border)', color:'var(--main-text)', background:'var(--topbar-bg)'}}
+                  title="Ver sesiones de esta cuenta"
+                  aria-expanded={mostrarSesiones}
+                >
+                  <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"/><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"/></span>
+                  {sessionInfo.active_count} sesiones
+                </button>
+                {mostrarSesiones && (
+                  <div className="absolute right-0 top-full z-[80] mt-2 w-80 rounded-2xl border p-3 shadow-2xl" style={{background:'var(--topbar-bg)', borderColor:'var(--topbar-border)', color:'var(--main-text)'}}>
+                    <p className="text-sm font-semibold">Sesiones de tu cuenta</p>
+                    <p className="mt-0.5 text-xs text-slate-500">Las pestañas de este navegador se agrupan como una sola sesión.</p>
+                    <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                      {sessionInfo.active_sessions.map(sesion => (
+                        <div key={sesion.session_id} className="rounded-xl border px-3 py-2 text-xs" style={{borderColor:'var(--topbar-border)'}}>
+                          <div className="flex items-center justify-between gap-2"><span className="font-semibold">{sesion.current ? 'Este navegador' : 'Otro navegador o dispositivo'}</span>{sesion.current && <span className="text-emerald-600">Actual</span>}</div>
+                          <p className="mt-1 truncate text-slate-500">{sesion.path || 'SIGA'} · actividad reciente</p>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" disabled={cerrandoSesiones} onClick={handleCerrarOtrasSesiones} className="mt-3 w-full rounded-xl border border-red-300 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+                      {cerrandoSesiones ? 'Cerrando…' : 'Cerrar las otras sesiones'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {usuario?.roles_disponibles?.length > 1 && (
               <label className="flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
                 <span className="hidden text-[10px] font-bold uppercase tracking-wide text-slate-500 xl:block">Modo</span>
@@ -1220,27 +1291,6 @@ export default function AdminLayout({ children }) {
               )}
             </div>
           )}
-          {sessionInfo?.active_count > 1 && (
-            <div
-              className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"
-              style={{
-                background: isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)',
-                border: `1px solid ${isDay ? '#FCD34D' : 'rgba(245,158,11,0.28)'}`,
-                color: isDay ? '#78350F' : '#FDE68A',
-              }}
-            >
-              <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM10.29 3.86L1.82 18a1.75 1.75 0 001.5 2.65h17.36a1.75 1.75 0 001.5-2.65L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              <div>
-                <p className="font-semibold">Tu cuenta está activa en {sessionInfo.active_count} navegadores o pestañas.</p>
-                <p className="text-xs mt-0.5 opacity-80">
-                  Puedes consultar sin problema. Para editar, aprobar, cerrar sesiones o registrar consultas, evita hacerlo en dos ventanas a la vez.
-                </p>
-              </div>
-            </div>
-          )}
           {children}
         </main>
       </div>
@@ -1248,6 +1298,15 @@ export default function AdminLayout({ children }) {
       {/* Modales */}
       {modalPwd   && <ModalCambiarPassword onClose={() => setModalPwd(false)} />}
       {modalLibre && <ModalSesionLibre usuario={usuario} onClose={() => setModalLibre(false)} />}
+      {avisoSesiones && sessionInfo?.active_count > 1 && (
+        <div className="fixed bottom-5 right-5 z-[100] w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl" role="status">
+          <div className="flex items-start gap-3">
+            <svg className="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m0 3.75h.008M10.3 3.9 1.8 18a1.75 1.75 0 0 0 1.5 2.6h17.4a1.75 1.75 0 0 0 1.5-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Detectamos otra sesión activa</p><p className="mt-1 text-xs opacity-80">Puedes consultarla desde el indicador “{sessionInfo.active_count} sesiones” de la barra superior.</p></div>
+            <button type="button" onClick={() => setAvisoSesiones(false)} className="rounded-lg p-1 hover:bg-amber-100" aria-label="Cerrar aviso">×</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

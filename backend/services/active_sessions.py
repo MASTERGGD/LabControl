@@ -19,6 +19,7 @@ class ActiveSession:
 
 _lock = threading.Lock()
 _sessions: dict[str, ActiveSession] = {}
+_revoked_sessions: set[tuple[int, str]] = set()
 
 
 def _now() -> datetime.datetime:
@@ -39,6 +40,8 @@ def register_session(usuario_id: int, session_id: str, user_agent: str = "", pat
     now = _now()
     with _lock:
         _prune(now)
+        if (usuario_id, session_id) in _revoked_sessions:
+            return list_user_sessions(usuario_id, current_session_id=session_id, prune=False)
         existing = _sessions.get(session_id)
         _sessions[session_id] = ActiveSession(
             session_id=session_id,
@@ -54,6 +57,33 @@ def register_session(usuario_id: int, session_id: str, user_agent: str = "", pat
 def end_session(session_id: str) -> None:
     with _lock:
         _sessions.pop(session_id, None)
+
+
+def end_other_sessions(usuario_id: int, current_session_id: str) -> None:
+    """Cierra las demás sesiones del usuario y conserva la sesión actual."""
+    with _lock:
+        other_ids = [
+            sid for sid, session in _sessions.items()
+            if session.usuario_id == usuario_id and sid != current_session_id
+        ]
+        for sid in other_ids:
+            _sessions.pop(sid, None)
+            _revoked_sessions.add((usuario_id, sid))
+
+
+def is_session_revoked(usuario_id: int, session_id: str | None) -> bool:
+    if not session_id:
+        return False
+    with _lock:
+        return (usuario_id, session_id) in _revoked_sessions
+
+
+def allow_session(usuario_id: int, session_id: str | None) -> None:
+    """Un inicio de sesión correcto vuelve a autorizar ese navegador."""
+    if not session_id:
+        return
+    with _lock:
+        _revoked_sessions.discard((usuario_id, session_id))
 
 
 def list_user_sessions(usuario_id: int, current_session_id: str | None = None, prune: bool = True) -> list[dict]:

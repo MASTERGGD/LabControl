@@ -118,6 +118,20 @@ class TestMe:
         resp = client.get("/auth/me")
         assert resp.status_code == 401
 
+    def test_me_token_malformado(self, client):
+        """Token completamente inválido devuelve 401."""
+        resp = client.get(
+            "/auth/me",
+            headers={"Authorization": "Bearer esto.no.es.un.jwt.valido"},
+        )
+        assert resp.status_code == 401
+
+    def test_me_token_sin_bearer(self, client, admin_user):
+        """Enviar el token sin el prefijo 'Bearer' devuelve 401."""
+        token = get_token(client, "admin@test.com", "AdminPass123")
+        resp = client.get("/auth/me", headers={"Authorization": token.replace("Bearer ", "")})
+        assert resp.status_code == 401
+
 
 class TestCambioFuncion:
 
@@ -173,20 +187,38 @@ class TestCambioFuncion:
 
         assert cambio.status_code == 403
 
-    def test_me_token_malformado(self, client):
-        """Token completamente inválido devuelve 401."""
-        resp = client.get(
-            "/auth/me",
-            headers={"Authorization": "Bearer esto.no.es.un.jwt.valido"},
+
+class TestSesionesNavegador:
+
+    def test_cierra_otras_sesiones_y_conserva_la_actual(self, client, admin_user):
+        login = client.post(
+            "/auth/login",
+            data={"username": "admin@test.com", "password": "AdminPass123"},
+            headers={"X-SIGA-Session-ID": "browser-actual"},
         )
-        assert resp.status_code == 401
+        token = f'Bearer {login.json()["access_token"]}'
+        headers = {**auth_headers(token), "X-SIGA-Session-ID": "browser-actual"}
 
-    def test_me_token_sin_bearer(self, client, admin_user):
-        """Enviar el token sin el prefijo 'Bearer' devuelve 401."""
-        token = get_token(client, "admin@test.com", "AdminPass123")
-        resp = client.get("/auth/me", headers={"Authorization": token.replace("Bearer ", "")})
-        assert resp.status_code == 401
+        client.post("/auth/sessions/heartbeat", json={"session_id": "browser-actual", "path": "/admin"}, headers=headers)
+        client.post("/auth/sessions/heartbeat", json={"session_id": "browser-otro", "path": "/usuarios"}, headers=headers)
+        cierre = client.post("/auth/sessions/logout-others", json={"session_id": "browser-actual"}, headers=headers)
 
+        assert cierre.status_code == 200
+        assert cierre.json()["active_count"] == 1
+        assert cierre.json()["active_sessions"][0]["session_id"] == "browser-actual"
+        assert cierre.json()["active_sessions"][0]["current"] is True
+
+        login_otro = client.post(
+            "/auth/login",
+            data={"username": "admin@test.com", "password": "AdminPass123"},
+            headers={"X-SIGA-Session-ID": "browser-otro"},
+        )
+        token_otro = f'Bearer {login_otro.json()["access_token"]}'
+        # Volver a cerrar la sesión remota después de emitir su token.
+        client.post("/auth/sessions/heartbeat", json={"session_id": "browser-otro", "path": "/usuarios"}, headers={**auth_headers(token_otro), "X-SIGA-Session-ID": "browser-otro"})
+        client.post("/auth/sessions/logout-others", json={"session_id": "browser-actual"}, headers=headers)
+        bloqueada = client.get("/auth/me", headers={**auth_headers(token_otro), "X-SIGA-Session-ID": "browser-otro"})
+        assert bloqueada.status_code == 401
 
 class TestCambioPasswordObligatorio:
 

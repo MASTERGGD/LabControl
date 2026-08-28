@@ -18,8 +18,19 @@ const SESSION_KEYS = [
   'siga_periodo_historico',
 ];
 
+function getBrowserId() {
+  let id = localStorage.getItem('labcontrol_browser_id');
+  if (!id) {
+    id = crypto?.randomUUID?.() || `sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem('labcontrol_browser_id', id);
+  }
+  sessionStorage.setItem('labcontrol_session_id', id);
+  return id;
+}
+
 // ── Adjuntar token en cada petición ──────────────────────────────────────────
 api.interceptors.request.use(config => {
+  config.headers['X-SIGA-Session-ID'] = getBrowserId();
   const token = sessionStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   const periodoId = sessionStorage.getItem('siga_periodo_id');
