@@ -543,12 +543,13 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
 
 // ─── Modal: Materia (crear / editar) ─────────────────────────────────────────
 
-function ModalMateria({ materia, carreras, onClose, onGuardado }) {
+function ModalMateria({ materia, carreras, carreraOpciones, contexto, onClose, onGuardado }) {
   const esEdicion = !!materia;
   const [form, setForm] = useState({
     nombre:               materia?.nombre               ?? '',
     carrera:              materia?.carrera              ?? '',
-    cuatrimestre_oficial: materia?.cuatrimestre_oficial ?? '',
+    cuatrimestre_oficial: materia?.cuatrimestre_oficial ?? contexto?.cuatrimestre ?? '',
+    carrera_id:           materia?.carrera_id ?? contexto?.carrera_id ?? '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -561,7 +562,9 @@ function ModalMateria({ materia, carreras, onClose, onGuardado }) {
     setError('');
     const payload = {
       ...form,
+      carrera: carreraOpciones.find(c => String(c.id) === String(form.carrera_id))?.nombre || form.carrera,
       cuatrimestre_oficial: form.cuatrimestre_oficial ? Number(form.cuatrimestre_oficial) : null,
+      carrera_id: form.carrera_id ? Number(form.carrera_id) : null,
     };
     try {
       if (esEdicion) {
@@ -600,10 +603,10 @@ function ModalMateria({ materia, carreras, onClose, onGuardado }) {
           <div>
             <label className="block text-xs text-slate-400 mb-1">Carrera</label>
             <SelectDark
-              value={form.carrera}
-              onChange={v => set('carrera', v)}
-              placeholder="Todas / No especificada"
-              options={[{ value: '', label: 'Todas / No especificada' }, ...carreras.map(c => ({ value: c, label: c }))]}
+              value={form.carrera_id}
+              onChange={v => set('carrera_id', v)}
+              placeholder="Selecciona la carrera oficial"
+              options={carreraOpciones.map(c => ({ value: c.id, label: `${c.clave} · ${c.nombre}` }))}
             />
           </div>
 
@@ -704,6 +707,8 @@ export default function Catalogo({ modo = 'completo' }) {
   // valores de demostracion: una carrera inexistente aqui termina propagada
   // a materias, grupos y alumnos.
   const [carreras, setCarreras] = useState([]);
+  const [carreraOpciones, setCarreraOpciones] = useState([]);
+  const [contextoMateria, setContextoMateria] = useState({ carrera_id: '', cuatrimestre: '' });
   const [loading, setLoading]   = useState(false);
 
   // El periodo se controla globalmente desde el encabezado de SIGA.
@@ -741,6 +746,7 @@ export default function Catalogo({ modo = 'completo' }) {
     api.get('/catalogo/carreras').then(({ data }) => {
       setCarreras(data);
     }).catch(() => {});
+    api.get('/catalogo/carreras-opciones').then(({ data }) => setCarreraOpciones(data)).catch(() => {});
     api.get('/catalogo/periodos/gestion-materias').then(({ data }) => {
       setPeriodosMaterias(data);
     }).catch(() => {});
@@ -833,6 +839,7 @@ export default function Catalogo({ modo = 'completo' }) {
           )}
           <button
             onClick={() => setModalImportar(tab)}
+            disabled={tab === 'materias' && (!contextoMateria.carrera_id || !contextoMateria.cuatrimestre)}
             className="flex items-center gap-2 bg-green-700 hover:bg-green-600 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/>
@@ -841,6 +848,7 @@ export default function Catalogo({ modo = 'completo' }) {
           </button>
           <button
             onClick={() => tab === 'alumnos' ? setModalAlumno('nuevo') : setModalMateria('nuevo')}
+            disabled={tab === 'materias' && (!contextoMateria.carrera_id || !contextoMateria.cuatrimestre)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -1003,6 +1011,18 @@ export default function Catalogo({ modo = 'completo' }) {
       {/* ── TAB MATERIAS ─────────────────────────────────────────────────────── */}
       {tab === 'materias' && (
         <>
+          <div className="mb-4 rounded-xl border border-emerald-600/40 bg-emerald-950/20 p-4">
+            <p className="mb-3 text-sm font-semibold text-emerald-300">Contexto del plan de estudios</p>
+            <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+              <SelectDark value={contextoMateria.carrera_id} onChange={value => setContextoMateria(c => ({ ...c, carrera_id: value }))}
+                placeholder="Selecciona una carrera oficial"
+                options={carreraOpciones.map(c => ({ value: c.id, label: `${c.clave} · ${c.nombre}`, wrap: true }))} />
+              <SelectDark value={contextoMateria.cuatrimestre} onChange={value => setContextoMateria(c => ({ ...c, cuatrimestre: value }))}
+                placeholder="Cuatrimestre"
+                options={Array.from({ length: 12 }, (_, i) => i + 1).map(n => ({ value: n, label: `${n}° cuatrimestre` }))} />
+            </div>
+            <p className="mt-2 text-xs text-slate-400">Primero elige la carrera creada por Servicios Escolares y el cuatrimestre. Las materias importadas quedarán vinculadas a ese catálogo, sin depender del texto del Excel.</p>
+          </div>
           {/* Filtros */}
           <div className="flex flex-wrap gap-3 mb-4 bg-gray-800 border border-gray-700 rounded-xl p-4">
             <input value={filtMQ} onChange={e => setFiltMQ(e.target.value)}
@@ -1136,6 +1156,8 @@ export default function Catalogo({ modo = 'completo' }) {
         <ModalMateria
           materia={modalMateria === 'nuevo' ? null : modalMateria}
           carreras={carreras}
+          carreraOpciones={carreraOpciones}
+          contexto={contextoMateria}
           onClose={() => setModalMateria(null)}
           onGuardado={() => { setModalMateria(null); cargarMaterias(); }}
         />
@@ -1149,7 +1171,10 @@ export default function Catalogo({ modo = 'completo' }) {
             : 'Usa la plantilla SIGA (hoja «Materias») o el concentrado oficial UTECAN'}
           endpoint={modalImportar === 'alumnos' ? '/catalogo/alumnos/importar' : '/catalogo/materias/importar'}
           supportsPreview={modalImportar === 'alumnos'}
-          extraParams={{}}
+          extraParams={modalImportar === 'materias' ? {
+            carrera_id: contextoMateria.carrera_id,
+            cuatrimestre_objetivo: contextoMateria.cuatrimestre,
+          } : {}}
           onClose={() => setModalImportar(null)}
           onImportado={(data) => handleReporte(data,
             modalImportar === 'alumnos' ? 'Resultado — Importar alumnos' : 'Resultado — Importar materias'

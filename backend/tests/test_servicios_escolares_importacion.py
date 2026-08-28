@@ -77,6 +77,48 @@ def test_activar_acceso_reutiliza_cuenta_alumno_huerfana(client, db):
     assert db.query(Usuario).filter(Usuario.email == cuenta.email).count() == 1
 
 
+def test_importar_materias_usa_contexto_oficial_y_no_texto_del_excel(client, db, admin_user):
+    carrera = CatalogoCarrera(clave="IA", nombre="TSU EN INTELIGENCIA ARTIFICIAL", nivel="TSU", activo=True)
+    db.add(carrera); db.commit()
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Materias"
+    ws.append(["titulo"]); ws.append(["leyenda"]); ws.append([])
+    ws.append(["#", "Materia", "Carrera", "Cuat.", "Periodo"])
+    ws.append(["→", "Ejemplo", "Carrera equivocada", 1, "MAY-AGO 2026"])
+    ws.append([1, "Minería de datos", "TEXTO QUE DEBE IGNORARSE", 2, "MAY-AGO 2026"])
+    archivo = io.BytesIO(); wb.save(archivo); archivo.seek(0)
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    response = client.post(
+        f"/catalogo/materias/importar?carrera_id={carrera.id}&cuatrimestre_objetivo=5",
+        headers=headers,
+        files={"file": ("materias.xlsx", archivo.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 200, response.text
+    materia = db.query(CatalogoMateria).one()
+    assert (materia.carrera_id, materia.carrera, materia.cuatrimestre_oficial) == (carrera.id, carrera.nombre, 5)
+
+
+def test_crear_grupo_y_asignar_alumnos_conserva_historial(client, db, admin_user):
+    carrera = CatalogoCarrera(clave="ITI", nombre="INGENIERÍA EN TI", nivel="LICENCIATURA", activo=True)
+    origen = CatalogoAlumno(matricula="UTC260777", apellido_paterno="PEREZ", apellido_materno="LOPEZ",
+        nombres="ANA", carrera="TSU IA", cuatrimestre=6, grupo="A", periodo="MAY-AGO 2026", activo=True)
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True)
+    db.add_all([carrera, origen, periodo]); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    creado = client.post("/servicios-escolares/grupos", headers=headers, json={
+        "periodo_id": periodo.id, "carrera_id": carrera.id, "cuatrimestre": 7,
+        "grupo": "A", "capacidad": 30,
+    })
+    assert creado.status_code == 201, creado.text
+    grupo_id = creado.json()["id"]
+    asignado = client.post(f"/servicios-escolares/grupos/{grupo_id}/alumnos", headers=headers,
+                            json={"alumno_ids": [origen.id]})
+    assert asignado.status_code == 200, asignado.text
+    destino = db.query(CatalogoAlumno).filter_by(matricula=origen.matricula, periodo=periodo.clave).one()
+    assert (destino.carrera_id, destino.cuatrimestre, destino.grupo) == (carrera.id, 7, "A")
+    assert db.query(CatalogoAlumno).filter_by(matricula=origen.matricula).count() == 2
+    assert db.query(InscripcionAlumno).filter_by(alumno_id=destino.id, grupo_academico_id=grupo_id, estado="ACTIVO").count() == 1
+
+
 def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):
     admin = Usuario(nombre="Admin Escolar", email="escolar@test.mx",
                     password_hash=hashear_password("Test1234!"),

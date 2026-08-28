@@ -14,6 +14,7 @@ class CatalogoAlumno(Base):
     apellido_materno = Column(String, nullable=False)
     nombres          = Column(String, nullable=False)
     carrera          = Column(String, nullable=False)
+    carrera_id       = Column(Integer, ForeignKey("catalogo_carreras.id"), nullable=True, index=True)
     cuatrimestre     = Column(Integer, nullable=False)   # 1–12 según plan de estudios
     grupo            = Column(String, nullable=False)    # A, B, C, D
     periodo          = Column(String, nullable=False)    # MAY-AGO 2026, ENE-ABR 2026, …
@@ -25,6 +26,7 @@ class CatalogoAlumno(Base):
 
     # ── Relaciones ──────────────────────────────────────────────────────────
     usuario                = relationship("Usuario", foreign_keys=[usuario_id])
+    carrera_catalogo       = relationship("CatalogoCarrera", foreign_keys=[carrera_id])
     fichas_socioeconomicas = relationship("FichaSocioeconomica", back_populates="alumno", foreign_keys="FichaSocioeconomica.alumno_id")
 
     __table_args__ = (
@@ -50,13 +52,16 @@ class GrupoAcademico(Base):
     id            = Column(Integer, primary_key=True, index=True)
     periodo_id    = Column(Integer, ForeignKey("periodos_escolares.id"), nullable=False, index=True)
     carrera       = Column(String(180), nullable=False, index=True)
+    carrera_id    = Column(Integer, ForeignKey("catalogo_carreras.id"), nullable=True, index=True)
     cuatrimestre  = Column(Integer, nullable=False)
     grupo         = Column(String(10), nullable=False)
     turno         = Column(String(20), nullable=True)
+    capacidad     = Column(Integer, nullable=True)
     activo        = Column(Boolean, default=True, nullable=False)
     creado_en     = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     periodo      = relationship("PeriodoEscolar", back_populates="grupos")
+    carrera_catalogo = relationship("CatalogoCarrera", foreign_keys=[carrera_id])
     inscripciones = relationship("InscripcionAlumno", back_populates="grupo_academico")
 
     __table_args__ = (
@@ -87,9 +92,12 @@ class CatalogoMateria(Base):
     id                   = Column(Integer, primary_key=True, index=True)
     nombre               = Column(String, nullable=False)
     carrera              = Column(String, nullable=True)
+    carrera_id           = Column(Integer, ForeignKey("catalogo_carreras.id"), nullable=True, index=True)
     cuatrimestre_oficial = Column(Integer, nullable=True)   # cuatrimestre del plan (3, 5, 9…)
     periodo              = Column(String, nullable=True)    # periodo de vigencia
     activo               = Column(Boolean, default=True)
+
+    carrera_catalogo     = relationship("CatalogoCarrera", foreign_keys=[carrera_id])
 
 
 class CatalogoCarrera(Base):

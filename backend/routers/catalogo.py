@@ -27,6 +27,7 @@ class AlumnoCreate(BaseModel):
     cuatrimestre:     int = Field(..., ge=1, le=12)
     grupo:            str = Field(..., min_length=1, max_length=5)
     periodo:          str = Field(..., min_length=4, max_length=20)
+    carrera_id:       Optional[int] = None
 
 class AlumnoUpdate(BaseModel):
     matricula:        Optional[str]  = None
@@ -38,12 +39,14 @@ class AlumnoUpdate(BaseModel):
     grupo:            Optional[str]  = None
     periodo:          Optional[str]  = None
     activo:           Optional[bool] = None
+    carrera_id:       Optional[int]  = None
 
 class MateriaCreate(BaseModel):
     nombre:               str          = Field(..., min_length=2, max_length=200)
     carrera:              Optional[str] = None
     cuatrimestre_oficial: Optional[int] = None
     periodo:              Optional[str] = None
+    carrera_id:           Optional[int] = None
 
 class MateriaUpdate(BaseModel):
     nombre:               Optional[str]  = None
@@ -51,6 +54,7 @@ class MateriaUpdate(BaseModel):
     cuatrimestre_oficial: Optional[int]  = None
     periodo:              Optional[str]  = None
     activo:               Optional[bool] = None
+    carrera_id:           Optional[int]  = None
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -77,6 +81,17 @@ def _resolver_carrera_catalogo(db: Session, valor: str) -> str | None:
         ).first()
         carrera = alias.carrera if alias else None
     return carrera.nombre if carrera else None
+
+def _resolver_carrera_objeto(db: Session, valor: str | None = None, carrera_id: int | None = None) -> CatalogoCarrera | None:
+    if carrera_id is not None:
+        carrera = db.get(CatalogoCarrera, carrera_id)
+        if not carrera or not carrera.activo:
+            raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
+        return carrera
+    nombre = _resolver_carrera_catalogo(db, valor or "")
+    if not nombre:
+        return None
+    return db.query(CatalogoCarrera).filter(CatalogoCarrera.nombre == nombre).first()
 
 def _catalogo_carreras_configurado(db: Session) -> bool:
     return db.query(CatalogoCarrera).filter(CatalogoCarrera.activo == True).first() is not None
@@ -120,8 +135,11 @@ def _sincronizar_inscripcion(db, alumno):
     ).first()
     if not grupo:
         grupo = GrupoAcademico(periodo_id=periodo.id, carrera=alumno.carrera,
-            cuatrimestre=alumno.cuatrimestre, grupo=alumno.grupo.upper(), activo=True)
+            carrera_id=alumno.carrera_id, cuatrimestre=alumno.cuatrimestre,
+            grupo=alumno.grupo.upper(), activo=True)
         db.add(grupo); db.flush()
+    elif alumno.carrera_id and not grupo.carrera_id:
+        grupo.carrera_id = alumno.carrera_id
     inscripcion = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.alumno_id == alumno.id,
         InscripcionAlumno.grupo_academico_id == grupo.id,
@@ -148,6 +166,7 @@ def _serializar_alumno(a: CatalogoAlumno, ficha: FichaSocioeconomica | None = No
         "nombres":          a.nombres,
         "nombre_completo":  f"{a.apellido_paterno} {a.apellido_materno} {a.nombres}".strip(),
         "carrera":          a.carrera,
+        "carrera_id":       a.carrera_id,
         "cuatrimestre":     a.cuatrimestre,
         "grupo":            a.grupo,
         "periodo":          a.periodo,
@@ -162,6 +181,7 @@ def _serializar_materia(m: CatalogoMateria) -> dict:
         "id":                   m.id,
         "nombre":               m.nombre,
         "carrera":              m.carrera,
+        "carrera_id":           m.carrera_id,
         "cuatrimestre_oficial": m.cuatrimestre_oficial,
         # El periodo pertenece a la oferta/carga docente, no al plan de estudios.
         # Se conserva la propiedad por compatibilidad con clientes anteriores.
@@ -356,8 +376,8 @@ def crear_alumno(
 ):
     matricula = _norm(data.matricula)
     periodo   = _norm(data.periodo)
-    carrera   = _resolver_carrera_catalogo(db, data.carrera)
-    if not carrera:
+    carrera_obj = _resolver_carrera_objeto(db, data.carrera, data.carrera_id)
+    if not carrera_obj:
         raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
 
     existe = db.query(CatalogoAlumno).filter(
@@ -372,7 +392,8 @@ def crear_alumno(
         apellido_paterno = _norm(data.apellido_paterno),
         apellido_materno = _norm(data.apellido_materno),
         nombres          = _norm(data.nombres),
-        carrera          = carrera,
+        carrera          = carrera_obj.nombre,
+        carrera_id       = carrera_obj.id,
         cuatrimestre     = data.cuatrimestre,
         grupo            = _norm(data.grupo).upper(),
         periodo          = periodo,
@@ -396,11 +417,12 @@ def actualizar_alumno(
     if not a:
         raise HTTPException(404, "Alumno no encontrado")
     cambios = data.dict(exclude_none=True)
-    if "carrera" in cambios:
-        carrera = _resolver_carrera_catalogo(db, cambios["carrera"])
-        if not carrera:
+    if "carrera" in cambios or "carrera_id" in cambios:
+        carrera_obj = _resolver_carrera_objeto(db, cambios.get("carrera", a.carrera), cambios.get("carrera_id"))
+        if not carrera_obj:
             raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
-        cambios["carrera"] = carrera
+        cambios["carrera"] = carrera_obj.nombre
+        cambios["carrera_id"] = carrera_obj.id
     for field, val in cambios.items():
         if field == "grupo" and val:
             val = val.upper()
@@ -470,6 +492,7 @@ async def importar_alumnos(
         nombres          = _norm(row[3]) if row[3] is not None else ""
         carrera_excel    = _norm(row[4]) if row[4] is not None else ""
         carrera          = _resolver_carrera_catalogo(db, carrera_excel)
+        carrera_obj      = _resolver_carrera_objeto(db, carrera) if carrera else None
         cuat_raw         = row[5]
         grupo            = _norm(row[6]).upper() if row[6] is not None else ""
         periodo          = _norm(row[7]) if row[7] is not None else ""
@@ -540,6 +563,7 @@ async def importar_alumnos(
                     existente.apellido_materno = apellido_materno
                     existente.nombres          = nombres
                     existente.carrera          = carrera
+                    existente.carrera_id       = carrera_obj.id if carrera_obj else None
                     existente.cuatrimestre     = cuatrimestre
                     existente.grupo            = grupo
                     existente.periodo          = periodo
@@ -559,6 +583,7 @@ async def importar_alumnos(
                     apellido_materno = apellido_materno,
                     nombres          = nombres,
                     carrera          = carrera,
+                    carrera_id       = carrera_obj.id if carrera_obj else None,
                     cuatrimestre     = cuatrimestre,
                     grupo            = grupo,
                     periodo          = periodo,
@@ -759,7 +784,8 @@ def crear_materia(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
-    carrera = _carrera_oficial_o_error(db, data.carrera)
+    carrera_obj = _resolver_carrera_objeto(db, data.carrera, data.carrera_id)
+    carrera = carrera_obj.nombre if carrera_obj else _carrera_oficial_o_error(db, data.carrera)
     identidad = _identidad_materia(data.nombre, carrera, data.cuatrimestre_oficial)
     existente = next((m for m in db.query(CatalogoMateria).all()
                       if _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial) == identidad), None)
@@ -768,6 +794,7 @@ def crear_materia(
     m = CatalogoMateria(
         nombre               = _norm(data.nombre),
         carrera              = carrera,
+        carrera_id           = carrera_obj.id if carrera_obj else None,
         cuatrimestre_oficial = data.cuatrimestre_oficial,
         periodo              = None,
     )
@@ -791,8 +818,12 @@ def actualizar_materia(
                     if _identidad_materia(item.nombre, item.carrera, item.cuatrimestre_oficial)
                     == _identidad_materia(m.nombre, m.carrera, m.cuatrimestre_oficial)]
     cambios = data.dict(exclude_none=True, exclude={"periodo"})
-    if "carrera" in cambios:
-        cambios["carrera"] = _carrera_oficial_o_error(db, cambios["carrera"])
+    if "carrera" in cambios or "carrera_id" in cambios:
+        carrera_obj = _resolver_carrera_objeto(db, cambios.get("carrera", m.carrera), cambios.get("carrera_id"))
+        if not carrera_obj:
+            raise HTTPException(422, "Selecciona una carrera activa del catálogo institucional")
+        cambios["carrera"] = carrera_obj.nombre
+        cambios["carrera_id"] = carrera_obj.id
     identidad_destino = _identidad_materia(
         cambios.get("nombre", m.nombre), cambios.get("carrera", m.carrera),
         cambios.get("cuatrimestre_oficial", m.cuatrimestre_oficial),
@@ -831,9 +862,16 @@ def eliminar_materia(
 async def importar_materias(
     file: UploadFile = File(...),
     periodo_objetivo: Optional[str] = None,
+    carrera_id: Optional[int] = None,
+    cuatrimestre_objetivo: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_gestor_materias),
 ):
+    if (carrera_id is None) != (cuatrimestre_objetivo is None):
+        raise HTTPException(422, "Selecciona carrera y cuatrimestre para importar materias")
+    carrera_contexto = _resolver_carrera_objeto(db, carrera_id=carrera_id) if carrera_id is not None else None
+    if cuatrimestre_objetivo is not None and not 1 <= cuatrimestre_objetivo <= 12:
+        raise HTTPException(422, "El cuatrimestre debe estar entre 1 y 12")
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
 
@@ -887,9 +925,9 @@ async def importar_materias(
 
     for row_idx, row in filas:
         nombre  = _norm(row[col_nombre])  if col_nombre < len(row) and row[col_nombre]  is not None else ""
-        carrera = _norm(row[col_carrera]) if col_carrera < len(row) and row[col_carrera] is not None else None
+        carrera = carrera_contexto.nombre if carrera_contexto else (_norm(row[col_carrera]) if col_carrera < len(row) and row[col_carrera] is not None else None)
         try:
-            cuat = int(row[col_cuat]) if col_cuat < len(row) and row[col_cuat] is not None else None
+            cuat = cuatrimestre_objetivo if carrera_contexto else (int(row[col_cuat]) if col_cuat < len(row) and row[col_cuat] is not None else None)
         except (ValueError, TypeError):
             cuat = None
 
@@ -919,6 +957,7 @@ async def importar_materias(
             })
             continue
         carrera = carrera_resuelta or carrera
+        carrera_obj = _resolver_carrera_objeto(db, carrera)
 
         identidad = _identidad_materia(nombre, carrera, cuat)
         existente = next((m for m in db.query(CatalogoMateria).all()
@@ -927,11 +966,13 @@ async def importar_materias(
         if existente:
             existente.activo               = True
             existente.periodo              = None
+            existente.carrera_id           = carrera_contexto.id if carrera_contexto else (carrera_obj.id if carrera_obj else existente.carrera_id)
             actualizados += 1
         else:
             db.add(CatalogoMateria(
                 nombre               = nombre,
                 carrera              = carrera,
+                carrera_id           = carrera_contexto.id if carrera_contexto else (carrera_obj.id if carrera_obj else None),
                 cuatrimestre_oficial = cuat,
                 periodo              = None,
             ))
@@ -943,6 +984,8 @@ async def importar_materias(
         "actualizados":  actualizados,
         "total_errores": len(errores),
         "errores":       errores,
+        "contexto": ({"carrera_id": carrera_contexto.id, "carrera": carrera_contexto.nombre,
+                       "cuatrimestre": cuatrimestre_objetivo} if carrera_contexto else None),
     }
 
 
@@ -1006,6 +1049,22 @@ def listar_carreras(
     for (c,) in db.query(CatalogoMateria.carrera).distinct().all():
         if c: carreras.add(c)
     return sorted(carreras)
+
+
+@router.get("/carreras-opciones", summary="Carreras oficiales con identificador estable")
+def listar_carreras_opciones(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    return [{
+        "id": carrera.id,
+        "clave": carrera.clave,
+        "nombre": carrera.nombre,
+        "nivel": carrera.nivel,
+        "plan_estudios": carrera.plan_estudios,
+    } for carrera in db.query(CatalogoCarrera).filter(
+        CatalogoCarrera.activo == True,
+    ).order_by(CatalogoCarrera.nombre).all()]
 
 
 # ─── Periodo actual calculado por fecha ───────────────────────────────────────

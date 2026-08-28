@@ -23,6 +23,14 @@ export default function SEGrupos() {
   const [cargando, setCargando] = useState(true);
   const [activandoPeriodo, setActivandoPeriodo] = useState(false);
   const [confirmandoPeriodo, setConfirmandoPeriodo] = useState(false);
+  const [carreras, setCarreras] = useState([]);
+  const [nuevoGrupo, setNuevoGrupo] = useState(false);
+  const [formGrupo, setFormGrupo] = useState({ carrera_id: '', cuatrimestre: '', grupo: 'A', turno: '', capacidad: '' });
+  const [busqueda, setBusqueda] = useState('');
+  const [candidatos, setCandidatos] = useState([]);
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [matriculas, setMatriculas] = useState('');
+  const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     let vigente = true;
@@ -44,6 +52,7 @@ export default function SEGrupos() {
         setError('No se pudieron cargar los periodos. Intenta nuevamente.');
         setCargando(false);
       });
+    api.get('/catalogo/carreras-opciones').then(({ data }) => setCarreras(data)).catch(() => {});
 
     return () => { vigente = false; };
   }, []);
@@ -87,6 +96,65 @@ export default function SEGrupos() {
     }
   };
 
+  const crearGrupo = async (evento) => {
+    evento.preventDefault();
+    const periodoObj = periodos.find(p => p.clave === periodo);
+    if (!periodoObj) return;
+    setGuardando(true); setError('');
+    try {
+      const { data } = await api.post('/servicios-escolares/grupos', {
+        periodo_id: periodoObj.id, carrera_id: Number(formGrupo.carrera_id),
+        cuatrimestre: Number(formGrupo.cuatrimestre), grupo: formGrupo.grupo,
+        turno: formGrupo.turno || null, capacidad: formGrupo.capacidad ? Number(formGrupo.capacidad) : null,
+      });
+      setGrupos(actual => [...actual, data]); setNuevoGrupo(false);
+      setFormGrupo({ carrera_id: '', cuatrimestre: '', grupo: 'A', turno: '', capacidad: '' });
+      setMensaje('Grupo creado. Ya puedes agregar alumnos individualmente o por matrícula.');
+    } catch (err) { setError(err.response?.data?.detail || 'No se pudo crear el grupo.'); }
+    finally { setGuardando(false); }
+  };
+
+  useEffect(() => {
+    if (!detalle) return undefined;
+    const timer = setTimeout(() => {
+      api.get(`/servicios-escolares/grupos/${detalle.id}/candidatos`, { params: { q: busqueda } })
+        .then(({ data }) => setCandidatos(data)).catch(() => setCandidatos([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [detalle, busqueda]);
+
+  const recargarDetalle = async () => {
+    const { data } = await api.get(`/servicios-escolares/grupos/${detalle.id}/alumnos`);
+    setAlumnos(data); setGrupos(actual => actual.map(g => g.id === detalle.id ? { ...g, total_alumnos: data.length } : g));
+    const respuesta = await api.get(`/servicios-escolares/grupos/${detalle.id}/candidatos`, { params: { q: busqueda } });
+    setCandidatos(respuesta.data);
+  };
+
+  const asignarSeleccionados = async () => {
+    if (!seleccionados.size) return;
+    setGuardando(true); setError('');
+    try { await api.post(`/servicios-escolares/grupos/${detalle.id}/alumnos`, { alumno_ids: [...seleccionados] }); setSeleccionados(new Set()); await recargarDetalle(); }
+    catch (err) { setError(err.response?.data?.detail || 'No se pudieron asignar los alumnos.'); }
+    finally { setGuardando(false); }
+  };
+
+  const asignarMatriculas = async () => {
+    const lista = matriculas.split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
+    if (!lista.length) return;
+    setGuardando(true); setError('');
+    try {
+      const { data } = await api.post(`/servicios-escolares/grupos/${detalle.id}/alumnos/matriculas`, { matriculas: lista });
+      setMatriculas(''); await recargarDetalle();
+      setMensaje(data.no_encontradas?.length ? `Asignados: ${data.asignados}. No encontradas: ${data.no_encontradas.join(', ')}` : `${data.asignados} alumno(s) asignado(s).`);
+    } catch (err) { setError(err.response?.data?.detail || 'No se pudo procesar la lista.'); }
+    finally { setGuardando(false); }
+  };
+
+  const retirar = async (alumno) => {
+    try { await api.delete(`/servicios-escolares/grupos/${detalle.id}/alumnos/${alumno.id}`); await recargarDetalle(); }
+    catch (err) { setError(err.response?.data?.detail || 'No se pudo retirar al alumno.'); }
+  };
+
   const periodoSeleccionado = periodos.find((item) => item.clave === periodo);
 
   const establecerActual = async () => {
@@ -123,9 +191,9 @@ export default function SEGrupos() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-white">Grupos e inscripciones</h1>
-            <p className="text-sm text-slate-400">Organización académica generada desde la carga de alumnos.</p>
+            <p className="text-sm text-slate-400">Crea grupos oficiales y asigna alumnos de forma individual o masiva.</p>
           </div>
-          <select
+          <div className="flex gap-2"><button type="button" onClick={() => setNuevoGrupo(true)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">+ Nuevo grupo</button><select
             className="input-dark"
             value={periodo || ''}
             disabled={periodo === null}
@@ -133,7 +201,7 @@ export default function SEGrupos() {
           >
             {periodo === null && <option value="">Cargando periodos...</option>}
             {periodos.map((p) => <option key={p.id} value={p.clave}>{p.clave}</option>)}
-          </select>
+          </select></div>
         </div>
 
         {periodoSeleccionado && (
@@ -306,7 +374,7 @@ export default function SEGrupos() {
 
         {detalle && (
           <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setDetalle(null)}>
-            <div className="glass w-full max-w-2xl max-h-[80vh] overflow-auto p-5" onClick={(evento) => evento.stopPropagation()}>
+            <div className="glass w-full max-w-4xl max-h-[90vh] overflow-auto p-5" onClick={(evento) => evento.stopPropagation()}>
               <div className="flex justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">{detalle.cuatrimestre}° {detalle.grupo}</h2>
@@ -314,17 +382,27 @@ export default function SEGrupos() {
                 </div>
                 <button type="button" onClick={() => setDetalle(null)} className="text-slate-400">✕</button>
               </div>
-              <div className="mt-4 divide-y divide-white/5">
+              <div className="mt-5 grid gap-5 md:grid-cols-2">
+                <section><h3 className="mb-2 text-sm font-semibold text-white">Alumnos inscritos</h3><div className="max-h-80 divide-y divide-white/5 overflow-auto rounded-xl border border-white/10 p-3">
                 {alumnos.map((alumno) => (
-                  <div key={alumno.id} className="py-2">
-                    <p className="text-white">{alumno.nombre}</p>
-                    <p className="text-xs text-slate-500">{alumno.matricula}</p>
+                  <div key={alumno.id} className="flex items-center justify-between gap-2 py-2">
+                    <div><p className="text-white">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.matricula}</p></div>
+                    <button onClick={() => retirar(alumno)} className="text-xs text-red-400">Retirar</button>
                   </div>
                 ))}
+                {!alumnos.length && <p className="py-6 text-center text-sm text-slate-500">Grupo vacío</p>}</div></section>
+                <section className="space-y-3"><h3 className="text-sm font-semibold text-white">Agregar alumnos</h3>
+                  <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-full" placeholder="Buscar matrícula o nombre" />
+                  <div className="max-h-44 overflow-auto rounded-xl border border-white/10 p-2">{candidatos.map(a => <label key={a.id} className="flex cursor-pointer gap-2 border-b border-white/5 p-2 text-sm text-slate-300"><input type="checkbox" checked={seleccionados.has(a.id)} onChange={() => setSeleccionados(actual => { const next = new Set(actual); next.has(a.id) ? next.delete(a.id) : next.add(a.id); return next; })}/><span>{a.matricula} · {a.nombre}</span></label>)}</div>
+                  <button disabled={!seleccionados.size || guardando} onClick={asignarSeleccionados} className="w-full rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40">Agregar seleccionados ({seleccionados.size})</button>
+                  <div className="border-t border-white/10 pt-3"><p className="mb-1 text-xs text-slate-400">Carga masiva por matrículas (separadas por coma o salto)</p><textarea value={matriculas} onChange={e => setMatriculas(e.target.value)} className="input-dark min-h-20 w-full" placeholder="20260001, 20260002"/><button disabled={!matriculas.trim() || guardando} onClick={asignarMatriculas} className="mt-2 w-full rounded-xl border border-emerald-600 px-3 py-2 text-sm font-semibold text-emerald-400 disabled:opacity-40">Asignar lista</button></div>
+                </section>
               </div>
             </div>
           </div>
         )}
+
+        {nuevoGrupo && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setNuevoGrupo(false)}><form onSubmit={crearGrupo} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg space-y-4 p-6"><div><h2 className="text-lg font-bold text-white">Crear grupo</h2><p className="text-sm text-slate-400">{periodo}</p></div><label className="block text-sm text-slate-300">Carrera oficial<select required value={formGrupo.carrera_id} onChange={e => setFormGrupo(f => ({ ...f, carrera_id: e.target.value }))} className="input-dark mt-1 w-full"><option value="">Selecciona…</option>{carreras.map(c => <option key={c.id} value={c.id}>{c.clave} · {c.nombre}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm text-slate-300">Cuatrimestre<input required type="number" min="1" max="12" value={formGrupo.cuatrimestre} onChange={e => setFormGrupo(f => ({ ...f, cuatrimestre: e.target.value }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Grupo<input required value={formGrupo.grupo} onChange={e => setFormGrupo(f => ({ ...f, grupo: e.target.value.toUpperCase() }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Turno<input value={formGrupo.turno} onChange={e => setFormGrupo(f => ({ ...f, turno: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Matutino"/></label><label className="text-sm text-slate-300">Capacidad<input type="number" min="1" max="100" value={formGrupo.capacidad} onChange={e => setFormGrupo(f => ({ ...f, capacidad: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Opcional"/></label></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setNuevoGrupo(false)} className="rounded-xl border border-white/10 px-4 py-2 text-slate-300">Cancelar</button><button disabled={guardando} className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-40">Crear grupo</button></div></form></div>}
       </div>
     </AdminLayout>
   );

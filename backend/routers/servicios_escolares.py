@@ -148,6 +148,23 @@ class PeriodoEscolarIn(BaseModel):
         return clave
 
 
+class GrupoAcademicoIn(BaseModel):
+    periodo_id: int
+    carrera_id: int
+    cuatrimestre: int = Field(..., ge=1, le=12)
+    grupo: str = Field(..., min_length=1, max_length=10)
+    turno: Optional[str] = Field(None, max_length=20)
+    capacidad: Optional[int] = Field(None, ge=1, le=100)
+
+
+class AsignarAlumnosGrupoIn(BaseModel):
+    alumno_ids: List[int] = Field(..., min_length=1, max_length=1000)
+
+
+class AsignarMatriculasGrupoIn(BaseModel):
+    matriculas: List[str] = Field(..., min_length=1, max_length=1000)
+
+
 def _require_carreras_reader(db: Session, user: Usuario):
     if user.rol == RolUsuario.ALUMNO:
         return
@@ -1335,6 +1352,87 @@ def establecer_periodo_escolar_actual(
     }
 
 
+def _grupo_o_error(db: Session, grupo_id: int) -> GrupoAcademico:
+    grupo = db.get(GrupoAcademico, grupo_id)
+    if not grupo:
+        raise HTTPException(404, "Grupo no encontrado")
+    return grupo
+
+
+def _asignar_fuentes_a_grupo(db: Session, grupo: GrupoAcademico, fuentes: list[CatalogoAlumno]) -> dict:
+    unicas = {fuente.matricula.strip().upper(): fuente for fuente in fuentes}
+    actuales = sum(1 for item in grupo.inscripciones if item.estado == "ACTIVO")
+    nuevas = sum(1 for matricula in unicas if not any(
+        item.estado == "ACTIVO" and item.alumno.matricula.strip().upper() == matricula
+        for item in grupo.inscripciones
+    ))
+    if grupo.capacidad and actuales + nuevas > grupo.capacidad:
+        raise HTTPException(409, f"La asignación supera la capacidad del grupo ({grupo.capacidad})")
+    asignados = 0
+    for fuente in unicas.values():
+        alumno = db.query(CatalogoAlumno).filter(
+            CatalogoAlumno.matricula == fuente.matricula,
+            CatalogoAlumno.periodo == grupo.periodo.clave,
+        ).first()
+        if not alumno:
+            alumno = CatalogoAlumno(
+                matricula=fuente.matricula, apellido_paterno=fuente.apellido_paterno,
+                apellido_materno=fuente.apellido_materno, nombres=fuente.nombres,
+                carrera=grupo.carrera, carrera_id=grupo.carrera_id,
+                cuatrimestre=grupo.cuatrimestre, grupo=grupo.grupo,
+                periodo=grupo.periodo.clave, activo=True,
+                correo_institucional=fuente.correo_institucional, usuario_id=fuente.usuario_id,
+            )
+            db.add(alumno); db.flush()
+        else:
+            alumno.carrera = grupo.carrera
+            alumno.carrera_id = grupo.carrera_id
+            alumno.cuatrimestre = grupo.cuatrimestre
+            alumno.grupo = grupo.grupo
+            alumno.activo = True
+        db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            InscripcionAlumno.grupo_academico_id != grupo.id,
+            InscripcionAlumno.estado == "ACTIVO",
+        ).update({"estado": "INACTIVO"}, synchronize_session=False)
+        inscripcion = db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            InscripcionAlumno.grupo_academico_id == grupo.id,
+        ).first()
+        if not inscripcion:
+            db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
+        else:
+            inscripcion.estado = "ACTIVO"
+        asignados += 1
+    return {"asignados": asignados, "grupo_id": grupo.id}
+
+
+@router.post("/grupos", status_code=201, summary="Crear un grupo académico")
+def crear_grupo_academico(
+    data: GrupoAcademicoIn,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    periodo = db.get(PeriodoEscolar, data.periodo_id)
+    carrera = db.get(CatalogoCarrera, data.carrera_id)
+    if not periodo or not carrera or not carrera.activo:
+        raise HTTPException(404, "Periodo o carrera oficial no encontrado")
+    letra = data.grupo.strip().upper()
+    existente = db.query(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo.id, GrupoAcademico.carrera == carrera.nombre,
+        GrupoAcademico.cuatrimestre == data.cuatrimestre, GrupoAcademico.grupo == letra,
+    ).first()
+    if existente:
+        raise HTTPException(409, "Ese grupo ya existe para la carrera, cuatrimestre y periodo")
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera=carrera.nombre, carrera_id=carrera.id,
+        cuatrimestre=data.cuatrimestre, grupo=letra, turno=data.turno, capacidad=data.capacidad, activo=True)
+    db.add(grupo); db.commit(); db.refresh(grupo)
+    return {"id": grupo.id, "periodo": periodo.clave, "carrera": carrera.nombre,
+            "carrera_id": carrera.id, "cuatrimestre": grupo.cuatrimestre, "grupo": grupo.grupo,
+            "turno": grupo.turno, "capacidad": grupo.capacidad, "total_alumnos": 0, "activo": True}
+
+
 @router.get("/grupos", summary="Listar grupos académicos")
 def listar_grupos_academicos(
     periodo: str = Query(""),
@@ -1350,8 +1448,9 @@ def listar_grupos_academicos(
     for g in q.order_by(PeriodoEscolar.id.desc(), GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all():
         total = sum(1 for i in g.inscripciones if i.estado == "ACTIVO")
         result.append({"id": g.id, "periodo": g.periodo.clave, "carrera": g.carrera,
+            "carrera_id": g.carrera_id,
             "cuatrimestre": g.cuatrimestre, "grupo": g.grupo, "turno": g.turno,
-            "activo": g.activo, "total_alumnos": total})
+            "capacidad": g.capacidad, "activo": g.activo, "total_alumnos": total})
     return result
 
 
@@ -1366,6 +1465,84 @@ def alumnos_de_grupo(
     if not grupo:
         raise HTTPException(404, "Grupo no encontrado")
     return [_serializar_alumno(i.alumno) for i in grupo.inscripciones if i.estado == "ACTIVO"]
+
+
+@router.get("/grupos/{grupo_id}/candidatos", summary="Buscar alumnos para asignar a un grupo")
+def candidatos_de_grupo(
+    grupo_id: int, q: str = Query(""),
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    grupo = _grupo_o_error(db, grupo_id)
+    inscritos = {item.alumno.matricula.upper() for item in grupo.inscripciones if item.estado == "ACTIVO"}
+    consulta = db.query(CatalogoAlumno).filter(CatalogoAlumno.activo == True)
+    if q.strip():
+        patron = f"%{q.strip()}%"
+        consulta = consulta.filter(
+            CatalogoAlumno.matricula.ilike(patron) | CatalogoAlumno.nombres.ilike(patron) |
+            CatalogoAlumno.apellido_paterno.ilike(patron) | CatalogoAlumno.apellido_materno.ilike(patron)
+        )
+    resultado, vistas = [], set()
+    for alumno in consulta.order_by(CatalogoAlumno.id.desc()).limit(500).all():
+        matricula = alumno.matricula.upper()
+        if matricula in vistas or matricula in inscritos:
+            continue
+        vistas.add(matricula)
+        resultado.append(_serializar_alumno(alumno))
+        if len(resultado) >= 50:
+            break
+    return resultado
+
+
+@router.post("/grupos/{grupo_id}/alumnos", summary="Asignar alumnos seleccionados a un grupo")
+def asignar_alumnos_grupo(
+    grupo_id: int, data: AsignarAlumnosGrupoIn,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    grupo = _grupo_o_error(db, grupo_id)
+    fuentes = db.query(CatalogoAlumno).filter(CatalogoAlumno.id.in_(data.alumno_ids)).all()
+    if len(fuentes) != len(set(data.alumno_ids)):
+        raise HTTPException(404, "Uno o más alumnos no existen")
+    resultado = _asignar_fuentes_a_grupo(db, grupo, fuentes)
+    db.commit()
+    return resultado
+
+
+@router.post("/grupos/{grupo_id}/alumnos/matriculas", summary="Asignar alumnos por lista de matrículas")
+def asignar_matriculas_grupo(
+    grupo_id: int, data: AsignarMatriculasGrupoIn,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    grupo = _grupo_o_error(db, grupo_id)
+    solicitadas = list(dict.fromkeys(item.strip().upper() for item in data.matriculas if item.strip()))
+    fuentes, faltantes = [], []
+    for matricula in solicitadas:
+        fuente = db.query(CatalogoAlumno).filter(func.upper(CatalogoAlumno.matricula) == matricula).order_by(CatalogoAlumno.id.desc()).first()
+        (fuentes if fuente else faltantes).append(fuente if fuente else matricula)
+    resultado = _asignar_fuentes_a_grupo(db, grupo, fuentes) if fuentes else {"asignados": 0, "grupo_id": grupo.id}
+    db.commit()
+    resultado["no_encontradas"] = faltantes
+    return resultado
+
+
+@router.delete("/grupos/{grupo_id}/alumnos/{alumno_id}", summary="Retirar un alumno del grupo")
+def retirar_alumno_grupo(
+    grupo_id: int, alumno_id: int,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _require_se(db, current_user)
+    inscripcion = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == grupo_id,
+        InscripcionAlumno.alumno_id == alumno_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).first()
+    if not inscripcion:
+        raise HTTPException(404, "El alumno no está inscrito en este grupo")
+    inscripcion.estado = "INACTIVO"
+    db.commit()
+    return {"mensaje": "Alumno retirado del grupo"}
 
 
 def _carrera_catalogo_por_nombre(db: Session, nombre: str) -> CatalogoCarrera | None:
