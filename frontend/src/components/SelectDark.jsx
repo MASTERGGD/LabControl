@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
  *   className   {string}                 Clases extra para el trigger
  *   menuClass   {string}                 Clases extra para el panel flotante
  *   menuMinWidth {number}                Ancho minimo del panel flotante en px
+ *   wrapSelected {bool}                  Permite varias líneas en el valor visible
  *   size        {'sm'|'md'}              Tamaño del trigger (md por defecto)
  */
 export default function SelectDark({
@@ -27,6 +28,7 @@ export default function SelectDark({
   menuClass = '',
   menuMinWidth = 0,
   size = 'md',
+  wrapSelected = false,
 }) {
   const [open, setOpen]     = useState(false);
   const [active, setActive] = useState(-1);    // fila resaltada con teclado
@@ -173,7 +175,7 @@ export default function SelectDark({
         aria-haspopup="listbox"
         aria-expanded={open}
         className={`
-          w-full flex items-center justify-between gap-2
+          w-full flex items-center justify-between gap-2 text-left
           ${sizeStyles[size]}
           rounded-xl font-normal
           transition-all duration-150
@@ -190,7 +192,7 @@ export default function SelectDark({
           fontFamily: 'inherit',
         }}
       >
-        <span className="truncate min-w-0">{triggerLabel}</span>
+        <span className={`${wrapSelected ? 'whitespace-normal break-words leading-snug' : 'truncate'} min-w-0`}>{triggerLabel}</span>
         {/* Chevron */}
         <svg
           className="w-4 h-4 shrink-0 transition-transform duration-200"

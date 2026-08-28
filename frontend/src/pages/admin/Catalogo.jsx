@@ -440,9 +440,9 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-lg shadow-2xl max-h-[95vh] overflow-y-auto">
-        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between sticky top-0 bg-gray-800 z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-0 sm:p-4">
+      <div className="glass flex h-[100dvh] w-full flex-col overflow-hidden rounded-none shadow-2xl sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/5 bg-gray-800 px-5 py-4 sm:px-6">
           <h3 className="font-semibold text-white">{esEdicion ? 'Editar alumno' : 'Nuevo alumno'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -451,8 +451,8 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
+        <form onSubmit={handleSubmit} className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 sm:p-6 md:grid-cols-2">
+          <div className="md:col-span-1">
             <label className="block text-xs text-slate-400 mb-1">Matrícula *</label>
             <input value={form.matricula} onChange={e => set('matricula', e.target.value)}
               placeholder="Ej: 2026-0001"
@@ -460,7 +460,7 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
               required/>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:col-span-2">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Apellido Paterno *</label>
               <input value={form.apellido_paterno} onChange={e => set('apellido_paterno', e.target.value)}
@@ -475,24 +475,27 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
             </div>
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-xs text-slate-400 mb-1">Nombre(s) *</label>
             <input value={form.nombres} onChange={e => set('nombres', e.target.value)}
               className="w-full input-dark text-white  px-4 py-2.5  focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required/>
           </div>
 
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-xs text-slate-400 mb-1">Carrera *</label>
             <SelectDark
               value={form.carrera}
               onChange={v => set('carrera', v)}
               placeholder="Seleccionar carrera..."
-              options={[{ value: '', label: 'Seleccionar carrera...' }, ...carreras.map(c => ({ value: c, label: c }))]}
+              wrapSelected
+              menuMinWidth={720}
+              options={[{ value: '', label: 'Seleccionar carrera...' }, ...carreras.map(c => ({ value: c, label: c, wrap: true }))]}
             />
+            {form.carrera && <p className="mt-2 whitespace-normal break-words text-xs leading-relaxed text-slate-400">{form.carrera}</p>}
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-2">
             <div>
               <label className="block text-xs text-slate-400 mb-1">Cuatrimestre *</label>
               <SelectDark
@@ -522,9 +525,9 @@ function ModalAlumno({ alumno, periodos, carreras, onClose, onGuardado }) {
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
+          {error && <p className="rounded-lg border border-red-800 bg-red-900/30 px-3 py-2 text-sm text-red-400 md:col-span-2">{error}</p>}
 
-          <div className="flex gap-3 pt-2">
+          <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex gap-3 border-t border-white/10 bg-gray-800 p-4 sm:-mx-6 sm:-mb-6 sm:px-6 md:col-span-2">
             <button type="button" onClick={onClose}
               className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
               Cancelar
