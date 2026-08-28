@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Date, Text
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -114,6 +114,7 @@ class RequerimientoClase(Base):
 
     # Qué necesita el docente
     items          = Column(String, nullable=True)   # JSON list: ["Proyector","Software específico"]
+    items_estado   = Column(Text, nullable=True)     # JSON: [{item, estado, nota_admin}]
     descripcion    = Column(String, nullable=True)   # Detalle libre: "AutoCAD 2024"
 
     # Para software: ¿el docente tiene el instalador?

@@ -436,7 +436,7 @@ class TestBandejaRequerimientos:
         db.flush()
         requerimiento = RequerimientoClase(
             reservacion_id=reservacion.id,
-            items='["Micrófono / bocinas"]',
+            items='["Micrófono / bocinas", "Proyector / pantalla"]',
             descripcion="Dos micrófonos inalámbricos",
             estado="PENDIENTE",
         )
@@ -450,20 +450,32 @@ class TestBandejaRequerimientos:
         assert pendientes.status_code == 200
         assert pendientes.json()[0]["descripcion"] == "Dos micrófonos inalámbricos"
 
-        resuelto = client.put(
-            f"/horarios/requerimientos/{requerimiento.id}/resolver",
-            json={"estado": "CONFIRMADO", "nota_admin": "Equipo apartado"},
+        primer_item = client.put(
+            f"/horarios/requerimientos/{requerimiento.id}/items/0/resolver",
+            json={"estado": "CONFIRMADO", "nota_admin": "Micrófonos apartados"},
             headers=auth_headers(tok),
         )
-        assert resuelto.status_code == 200
+        assert primer_item.status_code == 200
+        assert primer_item.json()["estado"] == "PENDIENTE"
+        assert primer_item.json()["items_detalle"][0]["estado"] == "CONFIRMADO"
+        assert primer_item.json()["items_detalle"][1]["estado"] == "PENDIENTE"
+
+        segundo_item = client.put(
+            f"/horarios/requerimientos/{requerimiento.id}/items/1/resolver",
+            json={"estado": "RECHAZADO", "nota_admin": "Proyector en mantenimiento"},
+            headers=auth_headers(tok),
+        )
+        assert segundo_item.status_code == 200
+        assert segundo_item.json()["estado"] == "RESUELTO_PARCIAL"
 
         historial = client.get(
             f"/horarios/requerimientos/pendientes?laboratorio_id={lab.id}&cuatrimestre=MAY-AGO-2026&estado=TODOS",
             headers=auth_headers(tok),
         )
         assert historial.status_code == 200
-        assert historial.json()[0]["estado"] == "CONFIRMADO"
-        assert historial.json()[0]["nota_admin"] == "Equipo apartado"
+        assert historial.json()[0]["estado"] == "RESUELTO_PARCIAL"
+        assert historial.json()[0]["items_detalle"][0]["nota_admin"] == "Micrófonos apartados"
+        assert historial.json()[0]["items_detalle"][1]["nota_admin"] == "Proyector en mantenimiento"
 
 
 # ════════════════════════════════════════════════════════════════════════════

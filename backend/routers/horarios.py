@@ -95,6 +95,10 @@ class RequerimientoResolverSchema(BaseModel):
     estado:     str            # CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
     nota_admin: Optional[str]  = None
 
+class RequerimientoItemResolverSchema(BaseModel):
+    estado: str
+    nota_admin: Optional[str] = Field(None, max_length=500)
+
 class BloqueoCreate(BaseModel):
     motivo: str = Field(..., min_length=3, max_length=200,
                         description="Motivo del bloqueo: Reunión de academia, Mantenimiento, etc.")
@@ -170,6 +174,7 @@ ESTADO_REQ_LABEL = {
     "CONFIRMADO":     "Confirmado por el laboratorio",
     "RECHAZADO":      "No se puede atender",
     "DOCENTE_PROVEE": "El docente provee el instalador",
+    "RESUELTO_PARCIAL": "Atendido con resultados diferentes",
 }
 
 def _serializar_requerimiento(req: RequerimientoClase) -> dict:
@@ -179,9 +184,27 @@ def _serializar_requerimiento(req: RequerimientoClase) -> dict:
         items = json.loads(req.items) if req.items else []
     except Exception:
         pass
+    items_detalle = []
+    try:
+        items_detalle = json.loads(req.items_estado) if req.items_estado else []
+    except Exception:
+        items_detalle = []
+    estados_por_item = {
+        str(item.get("item")): item for item in items_detalle
+        if isinstance(item, dict) and item.get("item")
+    }
+    items_detalle = [
+        {
+            "item": item,
+            "estado": estados_por_item.get(item, {}).get("estado", "PENDIENTE"),
+            "nota_admin": estados_por_item.get(item, {}).get("nota_admin"),
+        }
+        for item in items
+    ]
     return {
         "id":               req.id,
         "items":            items,
+        "items_detalle":    items_detalle,
         "descripcion":      req.descripcion,
         "tiene_instalador": req.tiene_instalador,
         "urgente":          req.urgente,
@@ -1619,7 +1642,7 @@ def listar_requerimientos_pendientes(
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     estado = estado.strip().upper()
-    if estado not in {"PENDIENTE", "CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE", "TODOS"}:
+    if estado not in {"PENDIENTE", "CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE", "RESUELTO_PARCIAL", "TODOS"}:
         raise HTTPException(status_code=422, detail="Estado de requerimiento inválido")
     q = db.query(RequerimientoClase).join(Reservacion)
     if estado != "TODOS":
@@ -1704,6 +1727,12 @@ def resolver_requerimiento(
 
     req.estado          = data.estado
     req.nota_admin      = data.nota_admin
+    import json
+    items = _serializar_requerimiento(req)["items_detalle"]
+    req.items_estado = json.dumps([
+        {"item": item["item"], "estado": data.estado, "nota_admin": data.nota_admin}
+        for item in items
+    ], ensure_ascii=False)
     req.resuelto_en     = _utcnow()
     req.resuelto_por_id = current_user.id
     db.commit()
@@ -1728,6 +1757,57 @@ def resolver_requerimiento(
     except Exception:
         pass
 
+    return _serializar_requerimiento(req)
+
+
+@router.put("/requerimientos/{req_id}/items/{item_index}/resolver", summary="Resolver un recurso solicitado — admins")
+def resolver_item_requerimiento(
+    req_id: int,
+    item_index: int,
+    data: RequerimientoItemResolverSchema,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)),
+):
+    import json
+    estado = data.estado.strip().upper()
+    if estado not in {"CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE"}:
+        raise HTTPException(status_code=422, detail="Estado de recurso inválido")
+    req = db.query(RequerimientoClase).filter(RequerimientoClase.id == req_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Requerimiento no encontrado")
+    detalle = _serializar_requerimiento(req)["items_detalle"]
+    if item_index < 0 or item_index >= len(detalle):
+        raise HTTPException(status_code=404, detail="Recurso solicitado no encontrado")
+    detalle[item_index] = {
+        **detalle[item_index],
+        "estado": estado,
+        "nota_admin": data.nota_admin.strip() if data.nota_admin else None,
+    }
+    req.items_estado = json.dumps(detalle, ensure_ascii=False)
+    pendientes = [item for item in detalle if item["estado"] == "PENDIENTE"]
+    if pendientes:
+        req.estado = "PENDIENTE"
+        req.resuelto_en = None
+        req.resuelto_por_id = None
+    else:
+        estados = {item["estado"] for item in detalle}
+        req.estado = next(iter(estados)) if len(estados) == 1 else "RESUELTO_PARCIAL"
+        req.resuelto_en = _utcnow()
+        req.resuelto_por_id = current_user.id
+    req.nota_admin = None
+    db.commit()
+    db.refresh(req)
+
+    reservacion = req.reservacion
+    if reservacion:
+        item = detalle[item_index]
+        crear_notificacion(
+            db, reservacion.docente_id, "requerimiento",
+            "📋 Recurso de clase actualizado",
+            f"{item['item']}: {ESTADO_REQ_LABEL.get(estado, estado).lower()}."
+            + (f" Nota del laboratorio: {item['nota_admin']}" if item["nota_admin"] else ""),
+        )
+        db.commit()
     return _serializar_requerimiento(req)
 
 

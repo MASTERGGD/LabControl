@@ -14,9 +14,9 @@ const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sába
 const DIAS_CORTO = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
 
 const ESTADOS_CUMPLIMIENTO = [
-  { value: 'IMPARTIDA', label: 'Impartida', color: '#86efac' },
-  { value: 'NO_ASISTIO', label: 'No asistió', color: '#fca5a5' },
-  { value: 'CANCELADA_TARDIA', label: 'Cancelada tarde', color: '#fdba74' },
+  { value: 'IMPARTIDA', label: 'Impartida' },
+  { value: 'NO_ASISTIO', label: 'No asistió' },
+  { value: 'CANCELADA_TARDIA', label: 'Cancelada tarde' },
 ];
 
 // Backgrounds por estado
@@ -47,47 +47,94 @@ const REQ_ESTADO_STYLE = {
   CONFIRMADO:     { bg:'rgba(34,197,94,0.10)',   border:'rgba(34,197,94,0.30)',   text:'#86efac', label:'✅ Confirmado' },
   RECHAZADO:      { bg:'rgba(239,68,68,0.10)',   border:'rgba(239,68,68,0.30)',   text:'#fca5a5', label:'❌ Rechazado' },
   DOCENTE_PROVEE: { bg:'rgba(99,102,241,0.12)',  border:'rgba(99,102,241,0.35)',  text:'#c4b5fd', label:'💾 Docente provee' },
+  RESUELTO_PARCIAL:{ bg:'rgba(14,165,233,0.10)', border:'rgba(14,165,233,0.30)', text:'#38bdf8', label:'✓ Atendido por recurso' },
+};
+const REQ_ESTADO_CLASS = {
+  PENDIENTE: 'text-amber-700 dark:text-amber-300',
+  CONFIRMADO: 'text-emerald-700 dark:text-emerald-300',
+  RECHAZADO: 'text-red-700 dark:text-red-300',
+  DOCENTE_PROVEE: 'text-indigo-700 dark:text-indigo-300',
+  RESUELTO_PARCIAL: 'text-sky-700 dark:text-sky-300',
 };
 
-function RequerimientoPanel({ req }) {
+function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
+  const [actual, setActual] = useState(req || {});
+  const [notasItem, setNotasItem] = useState({});
+  const [resolviendoItem, setResolviendoItem] = useState(null);
+  useEffect(() => { setActual(req || {}); }, [req]);
   if (!req) return null;
-  const items = Array.isArray(req.items) ? req.items : [];
-  const style = REQ_ESTADO_STYLE[req.estado] || REQ_ESTADO_STYLE.PENDIENTE;
+  const items = Array.isArray(actual.items_detalle) && actual.items_detalle.length
+    ? actual.items_detalle
+    : (actual.items || []).map(item => ({ item, estado: 'PENDIENTE', nota_admin: null }));
+  const style = REQ_ESTADO_STYLE[actual.estado] || REQ_ESTADO_STYLE.PENDIENTE;
+
+  const resolverItem = async (index, estado) => {
+    setResolviendoItem(index);
+    try {
+      const { data } = await api.put(`/horarios/requerimientos/${actual.id}/items/${index}/resolver`, {
+        estado,
+        nota_admin: notasItem[index]?.trim() || null,
+      });
+      setActual(data);
+      onActualizado?.(data);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'No se pudo responder el recurso.');
+    } finally {
+      setResolviendoItem(null);
+    }
+  };
+
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
       <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: style.text }}>
+        <p className={`text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${REQ_ESTADO_CLASS[actual.estado] || REQ_ESTADO_CLASS.PENDIENTE}`}>
           📋 Requerimientos de clase
         </p>
-        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}>
-          {style.label}
+        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${REQ_ESTADO_CLASS[actual.estado] || REQ_ESTADO_CLASS.PENDIENTE}`} style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+          {actual.estado_label || style.label}
         </span>
       </div>
       {items.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {items.map(item => (
-            <span key={item} className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ background:'rgba(59,130,246,0.12)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.25)' }}>
-              {item}
-            </span>
-          ))}
+        <div className="space-y-2">
+          {items.map((item, index) => {
+            const estadoItem = REQ_ESTADO_STYLE[item.estado] || REQ_ESTADO_STYLE.PENDIENTE;
+            return (
+              <div key={`${item.item}-${index}`} className="rounded-lg border border-slate-500/20 bg-white/50 p-2.5 dark:bg-black/15">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{item.item}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${REQ_ESTADO_CLASS[item.estado] || REQ_ESTADO_CLASS.PENDIENTE}`} style={{ background: estadoItem.bg, border: `1px solid ${estadoItem.border}` }}>{estadoItem.label}</span>
+                </div>
+                {item.nota_admin && <p className="mt-1 text-xs text-slate-500">Respuesta: {item.nota_admin}</p>}
+                {esAdmin && item.estado === 'PENDIENTE' && (
+                  <div className="mt-2 space-y-2">
+                    <input value={notasItem[index] || ''} onChange={e => setNotasItem(value => ({ ...value, [index]: e.target.value }))} className="input-dark w-full text-xs" placeholder="Nota para este recurso (opcional)" />
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'CONFIRMADO')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-emerald-500 hover:text-emerald-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">Confirmar</button>
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'DOCENTE_PROVEE')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">Docente provee</button>
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'RECHAZADO')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-red-500 hover:text-red-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">No disponible</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
-      {req.descripcion && <p className="text-xs text-slate-300 italic leading-relaxed">"{req.descripcion}"</p>}
-      {req.tiene_instalador && (
+      {actual.descripcion && <p className="text-xs text-slate-600 italic leading-relaxed dark:text-slate-300">"{actual.descripcion}"</p>}
+      {actual.tiene_instalador && (
         <p className="text-xs text-indigo-300 flex items-center gap-1.5">
           <span>💾</span> El docente tiene el instalador disponible
         </p>
       )}
-      {req.urgente && (
+      {actual.urgente && (
         <p className="text-xs text-red-400 font-semibold flex items-center gap-1.5">
           <span>🔴</span> URGENTE — menos de 3 días hábiles
         </p>
       )}
-      {req.nota_admin && (
+      {actual.nota_admin && (
         <div className="pt-1.5 border-t border-white/5">
           <p className="text-xs text-slate-400">Nota del administrador:</p>
-          <p className="text-xs text-slate-200 italic mt-0.5">"{req.nota_admin}"</p>
+          <p className="text-xs text-slate-200 italic mt-0.5">"{actual.nota_admin}"</p>
         </div>
       )}
     </div>
@@ -173,14 +220,11 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
               <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${req.estado === 'PENDIENTE' ? 'bg-amber-500/15 text-amber-500' : req.estado === 'CONFIRMADO' ? 'bg-emerald-500/15 text-emerald-500' : req.estado === 'RECHAZADO' ? 'bg-red-500/15 text-red-500' : 'bg-indigo-500/15 text-indigo-500'}`}>{req.estado_label}</span>
             </div>
 
-            {!!req.items?.length && <div className="mt-3 flex flex-wrap gap-1.5">{req.items.map(item => <span key={item} className="rounded-full bg-blue-500/10 px-2 py-1 text-xs text-blue-500">{item}</span>)}</div>}
-            {req.descripcion && <p className={`mt-3 rounded-lg p-2 text-xs ${isDay ? 'bg-slate-50 text-slate-700' : 'bg-black/20 text-slate-300'}`}>{req.descripcion}</p>}
-            {req.tiene_instalador && <p className="mt-2 text-xs font-medium text-indigo-500">💾 El docente cuenta con el instalador.</p>}
-            {req.nota_admin && <p className="mt-2 text-xs text-slate-500"><b>Respuesta:</b> {req.nota_admin}</p>}
+            <div className="mt-3"><RequerimientoPanel req={req} esAdmin={req.estado === 'PENDIENTE'} onActualizado={cargar} /></div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-500/15 pt-3">
               <button type="button" onClick={() => onAbrirReservacion?.(req.reservacion_id)} className="text-xs font-semibold text-blue-500">Ver reservación</button>
-              {req.estado === 'PENDIENTE' && (
+              {req.estado === 'PENDIENTE' && !req.items?.length && (
                 <>
                   <input value={notas[req.id] || ''} onChange={e => setNotas(actual => ({ ...actual, [req.id]: e.target.value }))} className="input-dark min-w-[180px] flex-1 text-xs" placeholder="Nota para el docente (opcional)" />
                   <button disabled={resolviendo === req.id} onClick={() => resolver(req, 'CONFIRMADO')} className="rounded-lg bg-emerald-600 px-2.5 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar</button>
@@ -413,7 +457,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
   const [cediendo,   setCediendo]   = useState(false);
   const [confirmar,  setConfirmar]  = useState(false);
   const [error,      setError]      = useState('');
-  const [estadoCumplimiento, setEstadoCumplimiento] = useState('IMPARTIDA');
+  const [estadoCumplimiento, setEstadoCumplimiento] = useState('');
   const [motivoCumplimiento, setMotivoCumplimiento] = useState('');
   const [marcando, setMarcando] = useState(false);
   const [motivoAutorizacion, setMotivoAutorizacion] = useState('');
@@ -479,7 +523,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
       <div className="glass w-full max-w-sm rounded-2xl overflow-hidden shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
           <div>
-            <h2 className="font-semibold text-white">Mi reservación</h2>
+            <h2 className="font-semibold text-white">{esAdmin ? 'Detalle de la reservación' : 'Mi reservación'}</h2>
             <p className="text-sm text-slate-400">{DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none transition-colors">×</button>
@@ -487,6 +531,8 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
         <div className="p-5 space-y-3">
           <div className="glass-sm rounded-xl p-4 space-y-2 text-sm" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>
             <p><span className="text-slate-400">Tipo:</span> <span className="font-semibold text-white ml-2">{(r.tipo_actividad || 'CLASE').replaceAll('_', ' ')}</span></p>
+            <p><span className="text-slate-400">Docente:</span> <span className="font-semibold text-white ml-2">{r.docente_nombre || '—'}</span></p>
+            <p><span className="text-slate-400">Laboratorio:</span> <span className="text-slate-200 ml-2">{r.laboratorio_nombre || '—'}</span></p>
             {r.fecha_actividad && <p><span className="text-slate-400">Fecha:</span> <span className="text-slate-200 ml-2">{r.fecha_actividad}</span></p>}
             <p><span className="text-slate-400">Materia:</span> <span className="font-semibold text-white ml-2">{r.materia}</span></p>
             {(r.carrera || r.cuatrimestre_materia) && (
@@ -516,7 +562,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
           )}
 
           {/* Requerimientos registrados (nuevo modelo) */}
-          {r.requerimiento && <RequerimientoPanel req={r.requerimiento} />}
+          {r.requerimiento && <RequerimientoPanel req={r.requerimiento} esAdmin={esAdmin} />}
 
           {esAdmin && r.estado !== 'IMPARTIDA' && (
             <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(15,23,42,0.65)', border:'1px solid rgba(255,255,255,0.08)' }}>
@@ -533,12 +579,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
                     key={opt.value}
                     type="button"
                     onClick={() => setEstadoCumplimiento(opt.value)}
-                    className="py-2 rounded-lg text-xs font-semibold transition-all"
-                    style={{
-                      color: estadoCumplimiento === opt.value ? '#020617' : opt.color,
-                      background: estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${estadoCumplimiento === opt.value ? opt.color : 'rgba(255,255,255,0.08)'}`,
-                    }}>
+                    className={`rounded-lg border py-2 text-xs font-semibold transition-all ${estadoCumplimiento === opt.value ? 'border-emerald-500 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-500/15 dark:bg-emerald-500/15 dark:text-emerald-200' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 dark:border-white/15 dark:bg-white/5 dark:text-slate-200'}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -553,10 +594,10 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
               <button
                 type="button"
                 onClick={handleMarcarEstado}
-                disabled={marcando}
+                disabled={marcando || !estadoCumplimiento}
                 className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50"
-                style={{ background:'linear-gradient(135deg,#2563eb,#4f46e5)', color:'#fff' }}>
-                {marcando ? 'Guardando...' : 'Marcar estado'}
+                style={{ background:'#059669', color:'#fff' }}>
+                {marcando ? 'Guardando...' : 'Guardar cumplimiento'}
               </button>
             </div>
           )}
