@@ -11,9 +11,9 @@ const FORM_INICIAL = {
 };
 const PESTANAS = [
   ['RESUMEN', 'Resumen'],
-  ['PENDIENTES', 'Por atender'],
+  ['PENDIENTES', 'Abiertos'],
   ['OBSERVACION', 'Observaciones'],
-  ['ACUERDO', 'Acuerdos'],
+  ['ACUERDO', 'Historial de acuerdos'],
   ['TUTORIA', 'Tutoría'],
   ['ASISTENCIA', 'Asistencia'],
 ];
@@ -431,7 +431,7 @@ export default function FichaAlumnoDocente() {
                     {pestana === 'PENDIENTES' && (
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-3">
-                          <p className="text-sm font-semibold text-amber-200">Mis acuerdos por revisar · {acuerdosPorRevisar.length}</p>
+                          <p className="text-sm font-semibold text-amber-200">Acuerdos abiertos · {acuerdosPorRevisar.length}</p>
                           <p className="mt-1 text-xs text-slate-400">Tú registras el resultado cuando llegue la fecha de revisión.</p>
                         </div>
                         <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
