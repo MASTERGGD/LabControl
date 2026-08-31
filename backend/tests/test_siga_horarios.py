@@ -514,3 +514,42 @@ class TestPermisosHorarios:
             "cuatrimestre": "ENE-ABR-2026",
         }, headers=auth_headers(tok))
         assert r.status_code == 403
+
+
+def test_periodos_sabado_hasta_18_sin_extender_escolarizado(client, db):
+    _usuario(db, "Admin jornadas", "jornadas@test.mx", RolUsuario.SUPER_ADMIN)
+    headers = auth_headers(get_token(client, "jornadas@test.mx", "Test1234!"))
+    lab = _lab(db)
+    payload = {"laboratorio_id": lab.id, "cuatrimestre": "SEP-DIC-2026", "dias": [0, 1, 2, 3, 4, 5]}
+    respuesta = client.post("/horarios/periodos-utecan", json=payload, headers=headers)
+    assert respuesta.status_code == 201, respuesta.text
+    assert respuesta.json()["creados"] == 50
+    rows = db.query(HorarioDisponible).filter_by(laboratorio_id=lab.id).all()
+    for dia in range(6):
+        bloques = sorted((h.hora_inicio, h.hora_fin) for h in rows if h.dia_semana == dia)
+        assert len(bloques) == (10 if dia == 5 else 8)
+        assert bloques[0] == ("08:00", "09:00")
+        assert bloques[-1][1] == ("18:00" if dia == 5 else "16:00")
+        assert ("09:00", "09:45") in bloques and ("10:15", "11:00") in bloques
+        assert all(a[1] <= b[0] for a, b in zip(bloques, bloques[1:]))
+    repetida = client.post("/horarios/periodos-utecan", json=payload, headers=headers)
+    assert repetida.json()["creados"] == 0
+    assert repetida.json()["omitidos"] == 50
+    assert db.query(HorarioDisponible).count() == 50
+
+
+def test_periodos_sabado_no_divide_bloque_existente(client, db):
+    _usuario(db, "Admin jornadas", "jornadas@test.mx", RolUsuario.SUPER_ADMIN)
+    headers = auth_headers(get_token(client, "jornadas@test.mx", "Test1234!"))
+    lab = _lab(db)
+    bloque = HorarioDisponible(laboratorio_id=lab.id, cuatrimestre="SEP-DIC-2026",
+                              dia_semana=5, hora_inicio="08:00", hora_fin="18:00", activo=True)
+    db.add(bloque); db.commit()
+    respuesta = client.post("/horarios/periodos-utecan", headers=headers, json={
+        "laboratorio_id": lab.id, "cuatrimestre": "SEP-DIC-2026", "dias": [5],
+    })
+    assert respuesta.status_code == 201
+    assert respuesta.json()["creados"] == 0 and respuesta.json()["omitidos"] == 10
+    assert db.query(HorarioDisponible).count() == 1
+    db.refresh(bloque)
+    assert (bloque.hora_inicio, bloque.hora_fin) == ("08:00", "18:00")

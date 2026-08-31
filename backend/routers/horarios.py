@@ -547,6 +547,9 @@ PERIODOS_UTECAN = [
     ("15:00", "16:00"),   # Período 8
 ]
 
+PERIODOS_SABATINOS = PERIODOS_UTECAN + [("16:00", "17:00"), ("17:00", "18:00")]
+
+
 class PeriodosUtecanCreate(BaseModel):
     laboratorio_id: int
     cuatrimestre:   str  = Field(..., min_length=2, max_length=20)
@@ -560,7 +563,7 @@ def cargar_periodos_utecan(
     _: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     """
-    Crea los 8 períodos académicos estándar de UTECAN para cada día seleccionado.
+    Crea 8 períodos de lunes a viernes y 10 el sábado, conservando el receso.
     Omite los que ya existen.
     """
     if not db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True).first():
@@ -568,8 +571,10 @@ def cargar_periodos_utecan(
 
     creados = 0
     omitidos = 0
-    for dia in data.dias:
-        for inicio, fin in PERIODOS_UTECAN:
+    if not data.dias or any(dia < 0 or dia > 5 for dia in data.dias):
+        raise HTTPException(status_code=422, detail="Selecciona días de lunes a sábado")
+    for dia in sorted(set(data.dias)):
+        for inicio, fin in (PERIODOS_SABATINOS if dia == 5 else PERIODOS_UTECAN):
             solapado = _buscar_horario_solapado(
                 db,
                 data.laboratorio_id,
@@ -608,6 +613,7 @@ def cargar_periodos_utecan(
         "creados":  creados,
         "omitidos": omitidos,
         "periodos": [{"inicio": i, "fin": f} for i, f in PERIODOS_UTECAN],
+        "periodos_sabatinos": [{"inicio": i, "fin": f} for i, f in PERIODOS_SABATINOS],
     }
 
 

@@ -340,6 +340,11 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
   const [resultado, setResultado] = useState(null);
   const [error, setError]     = useState('');
 
+  const periodosVisibles = dias.includes(5)
+    ? [...PERIODOS_UTECAN, { n: 9, inicio: '16:00', fin: '17:00' }, { n: 10, inicio: '17:00', fin: '18:00' }]
+    : PERIODOS_UTECAN;
+  const totalTurnos = dias.reduce((total, dia) => total + (dia === 5 ? 10 : 8), 0);
+
   const toggleDia = (d) => setDias(prev =>
     prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()
   );
@@ -365,11 +370,11 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-lg shadow-2xl">
+      <div className="glass w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
           <div>
             <h3 className="font-semibold text-white">Cargar períodos UTECAN</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Crea los 8 períodos académicos estándar de una sola vez</p>
+            <p className="text-xs text-slate-400 mt-0.5">Lun–Vie: 8 turnos hasta las 16:00 · Sábado: 10 turnos hasta las 18:00</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -380,6 +385,11 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
 
         {!resultado ? (
           <div className="p-6 space-y-5">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={loading} onClick={() => setDias([0, 1, 2, 3, 4])} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-400">Escolarizada · Lun–Vie</button>
+              <button type="button" disabled={loading} onClick={() => setDias([5])} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-400">Sabatina · Sábado</button>
+              <button type="button" disabled={loading} onClick={() => setDias([0, 1, 2, 3, 4, 5])} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-400">Ambas jornadas</button>
+            </div>
             {/* Preview de períodos */}
             <div>
               <p className="text-xs text-slate-400 font-medium mb-2 uppercase tracking-wide">Períodos que se crearán</p>
@@ -394,7 +404,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {PERIODOS_UTECAN.map((p, i) => (
+                    {periodosVisibles.map((p, i) => (
                       <React.Fragment key={p.n}>
                         {p.receso && (
                           <tr className="bg-amber-900/20">
@@ -404,7 +414,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
                           </tr>
                         )}
                         <tr className={i % 2 === 0 ? '' : 'bg-gray-800/40'}>
-                          <td className="px-3 py-2 text-white font-medium">P{p.n}</td>
+                          <td className="px-3 py-2 text-white font-medium">P{p.n}{p.n > 8 && <span className="ml-1 text-[10px] text-emerald-400">Solo sábado</span>}</td>
                           <td className="px-3 py-2 text-gray-300">{p.inicio}</td>
                           <td className="px-3 py-2 text-gray-300">{p.fin}</td>
                           <td className="px-3 py-2 text-slate-400">
@@ -428,7 +438,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
               <p className="text-xs text-slate-400 font-medium mb-2 uppercase tracking-wide">¿Qué días aplicar?</p>
               <div className="flex gap-2 flex-wrap">
                 {DIAS.map((d, i) => (
-                  <button key={i} type="button" onClick={() => toggleDia(i)}
+                  <button key={i} type="button" disabled={loading} aria-pressed={dias.includes(i)} onClick={() => toggleDia(i)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
                       ${dias.includes(i)
                         ? 'bg-blue-600 border-blue-500 text-white'
@@ -440,8 +450,8 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
             </div>
 
             <div className="bg-blue-900/20 border border-blue-800/50 rounded-lg px-4 py-3 text-xs text-blue-300">
-              Se crearán hasta <strong>{8 * dias.length}</strong> turnos para <strong>{cuatrimestre}</strong>.
-              Los que ya existan se omitirán automáticamente.
+              Se crearán hasta <strong>{totalTurnos}</strong> turnos para <strong>{cuatrimestre}</strong>.
+              Cada bloque será un turno independiente. Se omitirán los turnos existentes o que se solapen; no se dividirán ni borrarán horarios guardados.
             </div>
 
             {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
@@ -453,7 +463,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
               </button>
               <button type="button" onClick={handleCargar} disabled={loading || dias.length === 0}
                 className="flex-1 bg-green-600 hover:bg-green-500 disabled:bg-green-900 disabled:opacity-50 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-                {loading ? 'Creando períodos…' : `✓ Cargar ${8 * dias.length} turnos`}
+                {loading ? 'Creando períodos…' : `✓ Cargar ${totalTurnos} turnos`}
               </button>
             </div>
           </div>
@@ -465,7 +475,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
             <div>
               <p className="text-white font-semibold text-lg">{resultado.creados} períodos creados</p>
               {resultado.omitidos > 0 && (
-                <p className="text-yellow-400 text-sm mt-1">{resultado.omitidos} ya existían (omitidos)</p>
+                <p className="text-yellow-400 text-sm mt-1">{resultado.omitidos} existentes o solapados (omitidos)</p>
               )}
             </div>
             <button onClick={onClose}
