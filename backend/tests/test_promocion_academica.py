@@ -29,6 +29,10 @@ def test_servicios_escolares_promueve_sin_borrar_historial(client, db, admin_use
     })
     assert bandeja.status_code == 200, bandeja.text
     assert bandeja.json()["alumnos"][0]["origen"] == "3° A"
+    periodos = client.get("/servicios-escolares/periodos", headers=headers).json()
+    por_clave = {item["clave"]: item for item in periodos}
+    assert por_clave[origen.clave]["estado_periodo"] == "CERRADO"
+    assert por_clave[destino.clave]["estado_periodo"] == "PREPARACION"
 
     resolver = client.put(f"/servicios-escolares/promociones/{inscripcion.id}", headers=headers, json={
         "periodo_destino_id": destino.id, "resolucion": "PROMOVIDO",

@@ -1282,6 +1282,7 @@ def listar_periodos_escolares(
     _ensure_organizacion_desde_catalogo(db)
     periodos = db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()
     vigente = _periodo_vigente(periodos)
+    cierres = {c.periodo_id: c.estado for c in db.query(CierreAcademicoPeriodo).all()}
     return [{
         "id": p.id,
         "clave": p.clave,
@@ -1289,6 +1290,7 @@ def listar_periodos_escolares(
         "es_actual": bool(vigente and p.id == vigente.id),
         "es_actual_configurado": p.es_actual,
         "coincide_con_fecha": _normalizar_periodo(p.clave) == _normalizar_periodo(_clave_periodo_por_fecha()),
+        "estado_periodo": "CERRADO" if cierres.get(p.id) == "CERRADO" else ("ACTUAL" if vigente and p.id == vigente.id else "PREPARACION"),
     } for p in periodos]
 
 
