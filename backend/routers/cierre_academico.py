@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
 from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
+from models.calendario_academico import CalendarioAcademico, HistorialCalendarioAcademico
 from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente, ClaseDocente
 from models.horario import Reservacion
@@ -123,6 +124,7 @@ def _ser_cierre(db, cierre, usuario):
     return {
         "id": cierre.id, "periodo_id": cierre.periodo_id, "periodo": cierre.periodo.clave,
         "estado": cierre.estado,
+        "cerrado_en": cierre.cerrado_en.isoformat() if cierre.cerrado_en else None,
         "confirmacion_inicio": cierre.confirmacion_inicio.isoformat() if cierre.confirmacion_inicio else None,
         "confirmacion_fin": cierre.confirmacion_fin.isoformat() if cierre.confirmacion_fin else None,
         "observaciones": cierre.observaciones, "puede_administrar": puede_gestionar_materias(db, usuario),
@@ -151,6 +153,10 @@ def configurar(data: ConfiguracionIn, db: Session = Depends(get_db), current_use
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_id).first()
     if not periodo: raise HTTPException(404, "Periodo no encontrado")
     cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == periodo.id).first()
+    if cierre and cierre.estado == "CERRADO":
+        if data.estado != "CERRADO":
+            raise HTTPException(409, "El cuatrimestre ya está cerrado. Solo se permiten reaperturas individuales de cargas para corrección.")
+        return _ser_cierre(db, cierre, current_user)
     if not cierre:
         cierre = CierreAcademicoPeriodo(periodo_id=periodo.id, configurado_por_id=current_user.id)
         db.add(cierre)
@@ -176,6 +182,18 @@ def configurar(data: ConfiguracionIn, db: Session = Depends(get_db), current_use
             if reservacion.estado == "PROGRAMADA":
                 reservacion.estado = "ARCHIVADA"
         cierre.cerrado_por_id = current_user.id; cierre.cerrado_en = _ahora()
+        calendario = db.query(CalendarioAcademico).filter_by(periodo_id=periodo.id).first()
+        if calendario and calendario.estado != "CERRADO":
+            anterior = calendario.estado
+            calendario.estado = "CERRADO"
+            calendario.cerrado_en = cierre.cerrado_en
+            calendario.version += 1
+            db.add(HistorialCalendarioAcademico(
+                calendario_id=calendario.id, accion="CIERRE_CUATRIMESTRE",
+                motivo="Calendario archivado al cerrar el cuatrimestre",
+                datos_anteriores={"estado": anterior}, datos_nuevos={"estado": "CERRADO"},
+                usuario_id=current_user.id,
+            ))
     db.commit(); db.refresh(cierre)
     return _ser_cierre(db, cierre, current_user)
 

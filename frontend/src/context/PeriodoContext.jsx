@@ -47,6 +47,16 @@ export function PeriodoProvider({ children }) {
       .finally(() => setCargando(false));
   }, [usuario?.id]);
 
+  const actualizarPeriodo = useCallback((cambios) => {
+    setPeriodos(actuales => actuales.map(item => item.id === cambios.id ? { ...item, ...cambios } : item));
+    setPeriodo(actual => {
+      if (actual?.id !== cambios.id) return actual;
+      const siguiente = { ...actual, ...cambios };
+      guardarPeriodo(siguiente);
+      return siguiente;
+    });
+  }, []);
+
   const seleccionarPeriodo = useCallback((periodoId) => {
     const siguiente = periodos.find(item => String(item.id) === String(periodoId));
     if (!siguiente || siguiente.id === periodo?.id) return;
@@ -65,7 +75,8 @@ export function PeriodoProvider({ children }) {
     esCerrado: periodo?.estado_periodo === 'CERRADO',
     cargando,
     seleccionarPeriodo,
-  }), [cargando, periodo, periodos, seleccionarPeriodo]);
+    actualizarPeriodo,
+  }), [cargando, periodo, periodos, seleccionarPeriodo, actualizarPeriodo]);
 
   return <PeriodoContext.Provider value={value}>{children}</PeriodoContext.Provider>;
 }

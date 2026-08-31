@@ -183,3 +183,85 @@ def test_cierre_bloquea_sesion_laboratorio_y_archiva_reserva(client, db):
     db.refresh(reserva)
     assert reserva.estado == "ARCHIVADA"
     assert cerrado.json()["laboratorios"]["reservaciones_archivadas"] == 1
+
+
+def test_cierre_unificado_archiva_calendario_y_es_irreversible(client, db):
+    from models.calendario_academico import CalendarioAcademico, HistorialCalendarioAcademico, EventoCalendarioAcademico
+    from services.calendario_academico import estado_fecha_academica
+    admin, docente, periodo, carga = _escenario(db)
+    carga.activo = False
+    calendario = CalendarioAcademico(periodo_id=periodo.id, creado_por_id=admin.id,
+                                    estado="PUBLICADO", publicado_en=datetime.datetime.utcnow())
+    db.add(calendario); db.flush()
+    db.add(EventoCalendarioAcademico(calendario_id=calendario.id, creado_por_id=admin.id,
+        titulo="Suspensión", tipo="SUSPENSION_GENERAL", fecha_inicio=datetime.date(2026, 8, 20),
+        fecha_fin=datetime.date(2026, 8, 20), requiere_asistencia=False, permite_iniciar_clase=False))
+    db.commit()
+    headers = auth_headers(get_token(client, admin.email, "Admin123!"))
+    independiente = client.put(f"/calendario-academico/{calendario.id}/estado", headers=headers,
+                               json={"estado": "CERRADO", "motivo": "Prueba"})
+    assert independiente.status_code == 409
+    respuesta = client.put("/cierre-academico", headers=headers,
+                           json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json()["cerrado_en"]
+    db.refresh(calendario)
+    assert calendario.estado == "CERRADO"
+    assert calendario.version == 2
+    assert db.query(HistorialCalendarioAcademico).one().accion == "CIERRE_CUATRIMESTRE"
+    repetir = client.put("/cierre-academico", headers=headers,
+                         json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert repetir.json()["cerrado_en"] == respuesta.json()["cerrado_en"]
+    assert db.query(HistorialCalendarioAcademico).count() == 1
+    for estado in ("ACTIVO", "PRECIERRE", "CONFIRMACION"):
+        assert client.put("/cierre-academico", headers=headers, json={
+            "periodo_id": periodo.id, "estado": estado,
+            "confirmacion_inicio": "2026-08-01", "confirmacion_fin": "2026-08-31",
+        }).status_code == 409
+    for estado in ("BORRADOR", "PUBLICADO"):
+        assert client.put(f"/calendario-academico/{calendario.id}/estado", headers=headers,
+                          json={"estado": estado}).status_code == 409
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    consulta = client.get("/calendario-academico", params={"periodo_id": periodo.id}, headers=docente_h)
+    assert consulta.json()["estado"] == "CERRADO"
+    assert not consulta.json()["puede_editar"]
+    assert not estado_fecha_academica(db, periodo.id, datetime.date(2026, 8, 20))["requiere_asistencia"]
+
+
+def test_cierre_fallido_conserva_calendario_publicado(client, db):
+    from models.calendario_academico import CalendarioAcademico, HistorialCalendarioAcademico
+    admin, docente, periodo, carga = _escenario(db)
+    calendario = CalendarioAcademico(periodo_id=periodo.id, creado_por_id=admin.id, estado="PUBLICADO")
+    db.add(calendario); db.commit()
+    headers = auth_headers(get_token(client, admin.email, "Admin123!"))
+    respuesta = client.put("/cierre-academico", headers=headers,
+                           json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert respuesta.status_code == 409
+    db.expire_all()
+    assert calendario.estado == "PUBLICADO"
+    assert calendario.version == 1
+    assert db.query(HistorialCalendarioAcademico).count() == 0
+
+
+def test_migracion_archiva_solo_calendarios_de_cuatris_cerrados(db, monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    from models.calendario_academico import CalendarioAcademico, HistorialCalendarioAcademico
+    admin, docente, periodo, carga = _escenario(db)
+    siguiente = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    db.add(siguiente); db.flush()
+    viejo = CalendarioAcademico(periodo_id=periodo.id, creado_por_id=admin.id, estado="PUBLICADO")
+    nuevo = CalendarioAcademico(periodo_id=siguiente.id, creado_por_id=admin.id, estado="BORRADOR")
+    db.add_all([viejo, nuevo, CierreAcademicoPeriodo(
+        periodo_id=periodo.id, estado="CERRADO", configurado_por_id=admin.id,
+        cerrado_por_id=admin.id, cerrado_en=datetime.datetime(2026, 8, 31, 10),
+    )]); db.commit()
+    archivo = Path(__file__).parents[1] / "alembic/versions/h7i8j9k0l1m2_sync_closed_calendars.py"
+    spec = importlib.util.spec_from_file_location("sync_closed_calendars", archivo)
+    migracion = importlib.util.module_from_spec(spec); spec.loader.exec_module(migracion)
+    monkeypatch.setattr(migracion.op, "get_bind", lambda: db.connection())
+    migracion.upgrade(); migracion.upgrade(); db.expire_all()
+    assert viejo.estado == "CERRADO" and viejo.version == 2
+    assert viejo.cerrado_en == datetime.datetime(2026, 8, 31, 10)
+    assert nuevo.estado == "BORRADOR" and nuevo.version == 1
+    assert db.query(HistorialCalendarioAcademico).count() == 1

@@ -84,6 +84,11 @@ def _exigir_administracion(db: Session, usuario: Usuario):
         raise HTTPException(403, "Solo División de Carrera puede administrar el calendario académico")
 
 
+def _exigir_periodo_abierto(db, periodo_id):
+    if db.query(CierreAcademicoPeriodo.id).filter_by(periodo_id=periodo_id, estado="CERRADO").first():
+        raise HTTPException(409, "El cuatrimestre está cerrado; su calendario es solo de consulta")
+
+
 def _evento_dict(evento: EventoCalendarioAcademico) -> dict:
     return {
         "id": evento.id, "titulo": evento.titulo, "tipo": evento.tipo,
@@ -180,8 +185,8 @@ def listar_periodos(
         "id": p.id, "clave": p.clave, "activo": p.activo,
         "es_actual": estado_periodo(p) == "ACTUAL", "estado_periodo": estado_periodo(p),
         "puede_administrar": puede_administrar,
-        "calendario_id": calendarios[p.id].id if p.id in calendarios and (puede_administrar or calendarios[p.id].estado == "PUBLICADO") else None,
-        "estado_calendario": calendarios[p.id].estado if p.id in calendarios and (puede_administrar or calendarios[p.id].estado == "PUBLICADO") else None,
+        "calendario_id": calendarios[p.id].id if p.id in calendarios and (puede_administrar or (calendarios[p.id].estado == "PUBLICADO" or (calendarios[p.id].estado == "CERRADO" and calendarios[p.id].publicado_en is not None))) else None,
+        "estado_calendario": calendarios[p.id].estado if p.id in calendarios and (puede_administrar or (calendarios[p.id].estado == "PUBLICADO" or (calendarios[p.id].estado == "CERRADO" and calendarios[p.id].publicado_en is not None))) else None,
     } for p in periodos]
 
 
@@ -198,11 +203,12 @@ def obtener_calendario(
         query = query.join(PeriodoEscolar).filter(PeriodoEscolar.es_actual == True)
     puede_administrar = _puede_administrar(db, current_user)
     if not puede_administrar:
-        query = query.filter(CalendarioAcademico.estado == "PUBLICADO")
+        query = query.filter((CalendarioAcademico.estado == "PUBLICADO") | ((CalendarioAcademico.estado == "CERRADO") & CalendarioAcademico.publicado_en.isnot(None)))
     calendario = query.first()
     if not calendario:
         return None
-    return _calendario_dict(calendario, puede_administrar)
+    cerrado = db.query(CierreAcademicoPeriodo.id).filter_by(periodo_id=calendario.periodo_id, estado="CERRADO").first()
+    return _calendario_dict(calendario, puede_administrar and not cerrado)
 
 
 @router.post("")
@@ -215,6 +221,7 @@ def crear_calendario(
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_id).first()
     if not periodo:
         raise HTTPException(404, "Periodo escolar no encontrado")
+    _exigir_periodo_abierto(db, periodo.id)
     if db.query(CalendarioAcademico.id).filter(CalendarioAcademico.periodo_id == periodo.id).first():
         raise HTTPException(409, "Este periodo ya tiene calendario académico")
     calendario = CalendarioAcademico(
@@ -239,6 +246,7 @@ def crear_evento(
     calendario = db.query(CalendarioAcademico).filter(CalendarioAcademico.id == calendario_id).first()
     if not calendario:
         raise HTTPException(404, "Calendario no encontrado")
+    _exigir_periodo_abierto(db, calendario.periodo_id)
     if calendario.estado == "CERRADO":
         raise HTTPException(409, "El calendario está cerrado")
     evento = EventoCalendarioAcademico(
@@ -268,6 +276,7 @@ def editar_evento(
     ).first()
     if not calendario or not evento:
         raise HTTPException(404, "Evento no encontrado")
+    _exigir_periodo_abierto(db, calendario.periodo_id)
     if calendario.estado == "CERRADO":
         raise HTTPException(409, "El calendario está cerrado")
     if calendario.estado == "PUBLICADO" and len((data.motivo_cambio or "").strip()) < 5:
@@ -297,6 +306,7 @@ def cancelar_evento(
     ).first()
     if not calendario or not evento:
         raise HTTPException(404, "Evento no encontrado")
+    _exigir_periodo_abierto(db, calendario.periodo_id)
     if calendario.estado == "CERRADO":
         raise HTTPException(409, "El calendario está cerrado")
     if len(motivo.strip()) < 5:
@@ -320,7 +330,10 @@ def cambiar_estado(
     calendario = db.query(CalendarioAcademico).filter(CalendarioAcademico.id == calendario_id).first()
     if not calendario:
         raise HTTPException(404, "Calendario no encontrado")
+    _exigir_periodo_abierto(db, calendario.periodo_id)
     nuevo = data.estado.upper()
+    if nuevo == "CERRADO":
+        raise HTTPException(409, "Usa Cerrar cuatrimestre: el calendario se cierra junto con la operación académica")
     if nuevo not in ESTADOS:
         raise HTTPException(422, "Estado no válido")
     permitidos = {"BORRADOR": {"PUBLICADO"}, "PUBLICADO": {"BORRADOR", "CERRADO"}, "CERRADO": set()}

@@ -26,7 +26,7 @@ def estado_fecha_academica(db: Session, periodo_id: int | None, fecha: datetime.
         return base
     calendario = db.query(CalendarioAcademico).filter(
         CalendarioAcademico.periodo_id == periodo_id,
-        CalendarioAcademico.estado == "PUBLICADO",
+        (CalendarioAcademico.estado == "PUBLICADO") | ((CalendarioAcademico.estado == "CERRADO") & CalendarioAcademico.publicado_en.isnot(None)),
     ).first()
     if not calendario:
         return base
