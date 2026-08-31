@@ -2,7 +2,7 @@ import datetime
 
 from dependencies import hashear_password
 from models.catalogo import GrupoAcademico, PeriodoEscolar
-from models.cierre_academico import ConfirmacionCargaDocente
+from models.cierre_academico import ConfirmacionCargaDocente, CierreAcademicoPeriodo
 from models.docencia import CargaDocente, ClaseDocente
 from models.horario import HorarioDisponible, Reservacion
 from models.laboratorio import Laboratorio
@@ -31,6 +31,38 @@ def _escenario(db):
     )
     db.add(carga); db.commit()
     return admin, docente, periodo, carga
+
+
+def test_periodo_cerrado_no_permite_nuevas_cargas_ni_activarlas(client, db, monkeypatch):
+    import routers.docencia as docencia
+    from zoneinfo import ZoneInfo
+    monkeypatch.setattr(docencia, "_ahora_mx", lambda: datetime.datetime(2026, 8, 31, 9, tzinfo=ZoneInfo("America/Mexico_City")))
+    admin, docente, periodo, carga = _escenario(db)
+    carga.estado = "BORRADOR"
+    db.add(CierreAcademicoPeriodo(periodo_id=periodo.id, estado="CERRADO", configurado_por_id=admin.id))
+    futuro = PeriodoEscolar(clave="SEP-DIC 2099", activo=True, es_actual=False)
+    db.add(futuro); db.commit()
+    headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    creada = client.post("/docencia/horario", headers=headers, json={
+        "periodo_id": periodo.id, "tipo_actividad": "CLASE", "actividad_nombre": "Prueba cierre",
+        "grupo_academico_id": carga.grupo_academico_id,
+        "dia_semana": 0, "hora_inicio": "08:00", "hora_fin": "09:00",
+    })
+    assert creada.status_code == 409, creada.text
+    assert "cerrado" in creada.json()["detail"]
+    activar = client.post(f"/docencia/horario/{carga.id}/activar", headers=headers)
+    assert activar.status_code == 409, activar.text
+    db.refresh(carga)
+    assert carga.estado == "BORRADOR"
+    assert db.query(CargaDocente).count() == 1
+    catalogos = client.get("/docencia/catalogos", headers=headers)
+    assert catalogos.status_code == 200, catalogos.text
+    assert not next(p for p in catalogos.json()["periodos"] if p["id"] == periodo.id)["es_actual"]
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    estados = client.get("/calendario-academico/periodos", headers=admin_h).json()
+    assert next(p for p in estados if p["id"] == periodo.id)["estado_periodo"] == "CERRADO"
+    assert not any(p["es_actual"] for p in estados)
+    assert next(p for p in estados if p["id"] == futuro.id)["estado_periodo"] == "PREPARACION"
 
 
 def test_confirmacion_bloquea_pendientes_y_evitar_duplicados(client, db):

@@ -944,7 +944,7 @@ export default function AdminLayout({ children }) {
   const location = useLocation();
   const homePath = getHomePath(usuario);
   const { themeKey } = useTheme();
-  const { periodos, periodo, periodoActual, esHistorico, cargando: cargandoPeriodos, seleccionarPeriodo } = usePeriodo();
+  const { periodos, periodo, periodoActual, esHistorico, esPreparacion, esCerrado, cargando: cargandoPeriodos, seleccionarPeriodo } = usePeriodo();
   const isDay = themeKey === 'day';
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
   const [menuMovil,    setMenuMovil]    = useState(false);
@@ -1152,7 +1152,7 @@ export default function AdminLayout({ children }) {
                   background: esHistorico ? (isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)') : 'var(--topbar-bg)',
                   borderColor: esHistorico ? (isDay ? '#FCD34D' : 'rgba(245,158,11,0.35)') : 'var(--topbar-border)',
                 }}
-                title={esHistorico ? 'Periodo histórico en modo consulta' : 'Periodo académico activo'}
+                title={esPreparacion ? 'Periodo en preparación' : esCerrado ? 'Cuatrimestre cerrado: solo consulta' : esHistorico ? 'Periodo histórico en modo consulta' : 'Periodo académico activo'}
               >
                 <svg className={`w-4 h-4 shrink-0 ${esHistorico ? 'text-amber-500' : 'text-emerald-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
@@ -1168,7 +1168,7 @@ export default function AdminLayout({ children }) {
                 >
                   {periodos.map(item => (
                     <option key={item.id} value={item.id}>
-                      {item.clave}{item.es_actual ? ' · Actual' : ''}
+                      {item.clave}{item.estado_periodo === 'CERRADO' ? ' · Cerrado' : item.estado_periodo === 'PREPARACION' ? ' · En preparación' : item.es_actual ? ' · Actual' : ''}
                     </option>
                   ))}
                 </select>
@@ -1275,9 +1275,14 @@ export default function AdminLayout({ children }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
               <div className="flex-1">
-                <p className="font-semibold">Consultando {periodo.clave}</p>
+                <p className="font-semibold">{esPreparacion ? 'En preparación' : esCerrado ? 'Cuatrimestre cerrado' : 'Consultando'} · {periodo.clave}</p>
                 <p className="text-xs mt-0.5 opacity-80">
-                  Estás viendo información de un periodo histórico. El periodo operativo actual es {periodoActual?.clave || 'el configurado por Servicios Escolares'}.
+                  {esPreparacion
+                    ? 'Puedes preparar la información del próximo cuatrimestre según tus permisos. La operación docente estará disponible cuando se habilite su periodo.'
+                    : esCerrado
+                      ? 'El cierre académico ya concluyó. Este cuatrimestre está disponible solo para consulta; no permite crear ni activar materias.'
+                      : 'Estás consultando información de un periodo histórico.'}
+                  {' '}{periodoActual ? `El periodo operativo actual es ${periodoActual.clave}.` : 'No hay un cuatrimestre operativo abierto.'}
                 </p>
               </div>
               {periodoActual && (

@@ -61,6 +61,8 @@ export function PeriodoProvider({ children }) {
     periodo,
     periodoActual: periodos.find(item => item.es_actual) || null,
     esHistorico: Boolean(periodo && !periodo.es_actual),
+    esPreparacion: periodo?.estado_periodo === 'PREPARACION',
+    esCerrado: periodo?.estado_periodo === 'CERRADO',
     cargando,
     seleccionarPeriodo,
   }), [cargando, periodo, periodos, seleccionarPeriodo]);
@@ -73,4 +75,3 @@ export function usePeriodo() {
   if (!context) throw new Error('usePeriodo debe usarse dentro de PeriodoProvider');
   return context;
 }
-

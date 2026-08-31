@@ -13,6 +13,7 @@ from models.calendario_academico import (
 )
 from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente
+from models.cierre_academico import CierreAcademicoPeriodo
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import estado_fecha_academica
 from services.user_permissions import puede_gestionar_materias, puede_gestionar_servicios_escolares
@@ -127,6 +128,14 @@ def listar_periodos(
 ):
     periodos = db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()
     calendarios = {c.periodo_id: c for c in db.query(CalendarioAcademico).all()}
+    cerrados = {c.periodo_id for c in db.query(CierreAcademicoPeriodo).filter_by(estado="CERRADO").all()}
+    def estado_periodo(p):
+        if p.id in cerrados:
+            return "CERRADO"
+        fin = _limite_periodo(p.clave)
+        if fin and datetime.date(fin.year, fin.month - 3, 1) > datetime.date.today():
+            return "PREPARACION"
+        return "ACTUAL" if p.es_actual else "HISTORICO"
     puede_administrar = _puede_administrar(db, current_user)
     puede_preparar_periodos = puede_administrar or puede_gestionar_servicios_escolares(db, current_user)
     if current_user.rol == RolUsuario.DOCENTE:
@@ -163,7 +172,8 @@ def listar_periodos(
         -(_limite_periodo(p.clave) or datetime.date.min).toordinal(),
     ))
     return [{
-        "id": p.id, "clave": p.clave, "activo": p.activo, "es_actual": p.es_actual,
+        "id": p.id, "clave": p.clave, "activo": p.activo,
+        "es_actual": estado_periodo(p) == "ACTUAL", "estado_periodo": estado_periodo(p),
         "puede_administrar": puede_administrar,
         "calendario_id": calendarios[p.id].id if p.id in calendarios and (puede_administrar or calendarios[p.id].estado == "PUBLICADO") else None,
         "estado_calendario": calendarios[p.id].estado if p.id in calendarios and (puede_administrar or calendarios[p.id].estado == "PUBLICADO") else None,

@@ -295,7 +295,10 @@ def _periodo_actual(db: Session):
     return por_fecha or next((periodo for periodo in periodos if periodo.es_actual), None)
 
 
-def _validar_periodo_actual(db: Session, periodo_id: int):
+def _validar_periodo_actual(db: Session, periodo_id: int, *, permitir_revision_carga=False):
+    cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=periodo_id).first()
+    if cierre and cierre.estado == "CERRADO" and not permitir_revision_carga:
+        raise HTTPException(409, "El cuatrimestre está cerrado y disponible solo para consulta; no se pueden crear ni activar materias.")
     periodo = _periodo_actual(db)
     if not periodo:
         raise HTTPException(
@@ -311,7 +314,7 @@ def _validar_periodo_actual(db: Session, periodo_id: int):
 
 
 def _validar_carga_actual(db: Session, carga: CargaDocente):
-    periodo = _validar_periodo_actual(db, carga.periodo_id)
+    periodo = _validar_periodo_actual(db, carga.periodo_id, permitir_revision_carga=True)
     cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == carga.periodo_id).first()
     if cierre:
         confirmacion = db.query(ConfirmacionCargaDocente).filter(
@@ -797,7 +800,7 @@ def catalogos_docente(
         "periodos": [{
             "id": p.id,
             "clave": p.clave,
-            "es_actual": bool(actual and p.id == actual.id),
+            "es_actual": bool(actual and p.id == actual.id and not db.query(CierreAcademicoPeriodo.id).filter_by(periodo_id=p.id, estado="CERRADO").first()),
             "es_actual_configurado": p.es_actual,
         } for p in periodos],
         "grupos": [{
@@ -911,6 +914,7 @@ def activar_carga(
     ).first()
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
+    _validar_periodo_actual(db, carga.periodo_id)
     _validar_carga_actual(db, carga)
     avisos = _advertencias(db, carga, carga.id)
     carga.estado = "ACTIVO"
