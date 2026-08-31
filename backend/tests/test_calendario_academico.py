@@ -36,7 +36,12 @@ def test_selector_administrativo_respeta_permiso_escolares(client, db, permiso_a
                        json={"periodo_id": futuro.id}).status_code == 403
 
 
-def test_selector_docente_muestra_actual_y_solo_historial_propio(client, db):
+def test_selector_docente_muestra_actual_preparacion_y_solo_historial_propio(client, db, monkeypatch):
+    class FechaFija(datetime.date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 8, 31)
+    monkeypatch.setattr(datetime, "date", FechaFija)
     docente = Usuario(
         nombre="Docente periodos", email="periodos.docente@test.mx",
         password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True,
@@ -45,7 +50,9 @@ def test_selector_docente_muestra_actual_y_solo_historial_propio(client, db):
     historico = PeriodoEscolar(clave="ENE-ABR 2020", activo=True, es_actual=False)
     futuro = PeriodoEscolar(clave="SEP-DIC 2099", activo=True, es_actual=False)
     ajeno = PeriodoEscolar(clave="SEP-DIC 2019", activo=True, es_actual=False)
-    db.add_all([docente, actual, historico, futuro, ajeno]); db.flush()
+    proximo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    db.add_all([docente, actual, historico, futuro, ajeno, proximo]); db.flush()
+    db.add(CalendarioAcademico(periodo_id=proximo.id, creado_por_id=docente.id, estado="BORRADOR"))
     for periodo, nombre in ((historico, "Materia histórica"), (futuro, "Materia futura")):
         db.add(CargaDocente(
             docente_id=docente.id, periodo_id=periodo.id,
@@ -58,7 +65,13 @@ def test_selector_docente_muestra_actual_y_solo_historial_propio(client, db):
     respuesta = client.get("/calendario-academico/periodos", headers=headers)
 
     assert respuesta.status_code == 200, respuesta.text
-    assert [periodo["clave"] for periodo in respuesta.json()] == ["MAY-AGO 2026", "ENE-ABR 2020"]
+    assert [periodo["clave"] for periodo in respuesta.json()] == ["MAY-AGO 2026", "SEP-DIC 2026", "ENE-ABR 2020"]
+    preparacion = respuesta.json()[1]
+    assert preparacion["estado_periodo"] == "PREPARACION"
+    assert preparacion["es_actual"] is False
+    assert preparacion["calendario_id"] is None
+    assert preparacion["estado_calendario"] is None
+    assert preparacion["puede_administrar"] is False
 
 
 def test_calendario_publicado_suprime_pendientes_y_bloquea_inicio(client, db, monkeypatch):

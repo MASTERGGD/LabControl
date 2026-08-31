@@ -1149,12 +1149,12 @@ export default function AdminLayout({ children }) {
               <label
                 className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5"
                 style={{
-                  background: esHistorico ? (isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)') : 'var(--topbar-bg)',
-                  borderColor: esHistorico ? (isDay ? '#FCD34D' : 'rgba(245,158,11,0.35)') : 'var(--topbar-border)',
+                  background: 'var(--topbar-bg)',
+                  borderColor: 'var(--topbar-border)',
                 }}
                 title={esPreparacion ? 'Periodo en preparación' : esCerrado ? 'Cuatrimestre cerrado: solo consulta' : esHistorico ? 'Periodo histórico en modo consulta' : 'Periodo académico activo'}
               >
-                <svg className={`w-4 h-4 shrink-0 ${esHistorico ? 'text-amber-500' : 'text-emerald-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 shrink-0 ${esHistorico ? 'text-slate-500' : 'text-emerald-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                 </svg>
                 <span className="hidden lg:block text-[10px] font-bold uppercase tracking-wider text-slate-500">Periodo</span>
@@ -1162,7 +1162,7 @@ export default function AdminLayout({ children }) {
                   value={periodo.id}
                   disabled={cargandoPeriodos}
                   onChange={event => seleccionarPeriodo(event.target.value)}
-                  className="max-w-[118px] sm:max-w-[170px] bg-transparent text-xs font-semibold outline-none cursor-pointer"
+                  className="max-w-[180px] sm:max-w-[260px] bg-transparent text-xs font-semibold outline-none cursor-pointer"
                   style={{color:'var(--main-text)'}}
                   aria-label="Periodo académico de trabajo"
                 >
@@ -1265,9 +1265,9 @@ export default function AdminLayout({ children }) {
             <div
               className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"
               style={{
-                background: isDay ? '#FFFBEB' : 'rgba(146,64,14,0.18)',
-                border: `1px solid ${isDay ? '#FCD34D' : 'rgba(245,158,11,0.32)'}`,
-                color: isDay ? '#78350F' : '#FDE68A',
+                background: isDay ? '#F1F5F9' : 'rgba(148,163,184,0.08)',
+                border: `1px solid ${isDay ? '#E2E8F0' : 'rgba(148,163,184,0.18)'}`,
+                color: isDay ? '#475569' : '#CBD5E1',
               }}
               role="status"
             >
@@ -1278,11 +1278,10 @@ export default function AdminLayout({ children }) {
                 <p className="font-semibold">{esPreparacion ? 'En preparación' : esCerrado ? 'Cuatrimestre cerrado' : 'Consultando'} · {periodo.clave}</p>
                 <p className="text-xs mt-0.5 opacity-80">
                   {esPreparacion
-                    ? 'Puedes preparar la información del próximo cuatrimestre según tus permisos. La operación docente estará disponible cuando se habilite su periodo.'
+                    ? 'Preparación según tus permisos. El registro de clases aún no está habilitado.'
                     : esCerrado
-                      ? 'El cierre académico ya concluyó. Este cuatrimestre está disponible solo para consulta; no permite crear ni activar materias.'
+                      ? 'Solo consulta. No se pueden crear ni activar materias.'
                       : 'Estás consultando información de un periodo histórico.'}
-                  {' '}{periodoActual ? `El periodo operativo actual es ${periodoActual.clave}.` : 'No hay un cuatrimestre operativo abierto.'}
                 </p>
               </div>
               {periodoActual && (

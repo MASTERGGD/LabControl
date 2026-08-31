@@ -139,18 +139,23 @@ def listar_periodos(
     puede_administrar = _puede_administrar(db, current_user)
     puede_preparar_periodos = puede_administrar or puede_gestionar_servicios_escolares(db, current_user)
     if current_user.rol == RolUsuario.DOCENTE:
-        # El selector global del docente no es un catálogo institucional: es su
-        # historial de trabajo. Conserva siempre el actual y solo agrega periodos
-        # anteriores donde tuvo una carga, evitando periodos futuros preparados.
+        # Mostrar el próximo cuatrimestre en preparación no habilita su operación
+        # ni expone calendarios en borrador. El historial sigue siendo personal.
         periodo_ids_docente = {
             periodo_id for (periodo_id,) in db.query(CargaDocente.periodo_id).filter(
                 CargaDocente.docente_id == current_user.id,
             ).distinct().all()
         }
         hoy = datetime.date.today()
+        siguiente_mes = ((hoy.month - 1) // 4 + 1) * 4 + 1
+        siguiente_fin = (
+            datetime.date(hoy.year + 1, 4, 30) if siguiente_mes > 12
+            else datetime.date(hoy.year, siguiente_mes + 3, 31)
+        )
         periodos = [
             p for p in periodos
-            if p.es_actual or (
+            if p.es_actual or (p.activo and _limite_periodo(p.clave) == siguiente_fin
+                               and estado_periodo(p) == "PREPARACION") or (
                 p.id in periodo_ids_docente
                 and (_limite_periodo(p.clave) is None or _limite_periodo(p.clave) < hoy)
             )

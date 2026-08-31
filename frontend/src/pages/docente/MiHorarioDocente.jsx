@@ -697,16 +697,11 @@ export default function MiHorarioDocente() {
         </div>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
-        {cierre && cierre.estado !== 'ACTIVO' && (
+        {cierre && cierre.estado !== 'ACTIVO' && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA')) && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana vigente: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
             <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div><span className="text-[10px] font-bold text-amber-300">{c.estado.replaceAll('_',' ')}</span></div>{(cierre.estado === 'CONFIRMACION' || c.estado === 'REABIERTA') && c.estado !== 'CONFIRMADA_DOCENTE' && <button onClick={() => abrirConfirmacionCarga(c)} className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white ${c.resumen.puede_confirmar ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-amber-600 hover:bg-amber-500'}`}>{c.resumen.puede_confirmar ? 'Revisar y confirmar' : c.resumen.motivo_bloqueo === 'SIN_CLASES_REGISTRADAS' ? 'Revisar: sin clases registradas' : `Revisar ${c.resumen.clases_abiertas} pendiente(s)`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
           </section>
-        )}
-        {!esPeriodoActual && periodoSeleccionado && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            Estás consultando {periodoSeleccionado.clave}. Este horario es histórico: puedes revisarlo, pero no editarlo ni iniciar clases.
-          </div>
         )}
         {esPeriodoActual && !horario.length && !cargando && (
           <div className="rounded-xl border border-blue-500/25 bg-blue-500/[0.08] px-4 py-3">
