@@ -1,5 +1,6 @@
 import datetime
 from zoneinfo import ZoneInfo
+import pytest
 
 import routers.docencia as docencia_router
 
@@ -9,6 +10,30 @@ from models.catalogo import GrupoAcademico, PeriodoEscolar
 from models.docencia import CargaDocente
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
+
+
+@pytest.mark.parametrize("permiso_activo", [True, False])
+def test_selector_administrativo_respeta_permiso_escolares(client, db, permiso_activo):
+    from models.usuario_permiso import UsuarioPermiso
+    from services.user_permissions import PERM_SERVICIOS_ESCOLARES_MANAGE
+
+    usuario = Usuario(nombre="Escolares", email="selector.se@test.mx",
+                      password_hash=hashear_password("Escolares123!"),
+                      rol=RolUsuario.ADMINISTRATIVO, activo=True)
+    actual = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    futuro = PeriodoEscolar(clave="SEP-DIC 2099", activo=True, es_actual=False)
+    db.add_all([usuario, actual, futuro]); db.flush()
+    db.add(UsuarioPermiso(usuario_id=usuario.id, permiso=PERM_SERVICIOS_ESCOLARES_MANAGE,
+                         activo=permiso_activo))
+    db.commit()
+    headers = auth_headers(get_token(client, usuario.email, "Escolares123!"))
+    respuesta = client.get("/calendario-academico/periodos", headers=headers)
+    assert respuesta.status_code == 200
+    claves = [p["clave"] for p in respuesta.json()]
+    assert (futuro.clave in claves) is permiso_activo
+    assert all(not p["puede_administrar"] for p in respuesta.json())
+    assert client.post("/calendario-academico", headers=headers,
+                       json={"periodo_id": futuro.id}).status_code == 403
 
 
 def test_selector_docente_muestra_actual_y_solo_historial_propio(client, db):

@@ -15,7 +15,7 @@ from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import estado_fecha_academica
-from services.user_permissions import puede_gestionar_materias
+from services.user_permissions import puede_gestionar_materias, puede_gestionar_servicios_escolares
 
 
 router = APIRouter(prefix="/calendario-academico", tags=["Calendario académico"])
@@ -128,10 +128,7 @@ def listar_periodos(
     periodos = db.query(PeriodoEscolar).order_by(PeriodoEscolar.id.desc()).all()
     calendarios = {c.periodo_id: c for c in db.query(CalendarioAcademico).all()}
     puede_administrar = _puede_administrar(db, current_user)
-    puede_preparar_periodos = puede_administrar or current_user.rol in {
-        RolUsuario.SUPER_ADMIN,
-        RolUsuario.SERVICIOS_ESCOLARES,
-    }
+    puede_preparar_periodos = puede_administrar or puede_gestionar_servicios_escolares(db, current_user)
     if current_user.rol == RolUsuario.DOCENTE:
         # El selector global del docente no es un catálogo institucional: es su
         # historial de trabajo. Conserva siempre el actual y solo agrega periodos
