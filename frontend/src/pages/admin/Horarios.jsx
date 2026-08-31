@@ -188,11 +188,26 @@ function ModalHorario({ labId, cuatrimestre, slot, onClose, onSave, preselect })
 
 function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
   const [dias, setDias]           = useState([0, 1, 2, 3, 4]);
-  const [horaInicio, setHoraInicio] = useState('07:00');
-  const [horaFin, setHoraFin]       = useState('09:00');
+  const [horaInicio, setHoraInicio] = useState('08:00');
+  const [horaFin, setHoraFin]       = useState('16:00');
   const [loading, setLoading]     = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError]         = useState('');
+
+  const jornadas = [
+    { id: 'escolarizada', nombre: 'Jornada escolarizada', detalle: 'Lun–Vie · 08:00–16:00', dias: [0, 1, 2, 3, 4], inicio: '08:00', fin: '16:00' },
+    { id: 'sabatina', nombre: 'Jornada sabatina', detalle: 'Sábado · 08:00–18:00', dias: [5], inicio: '08:00', fin: '18:00' },
+  ];
+  const jornadaSeleccionada = jornadas.find(jornada =>
+    jornada.inicio === horaInicio && jornada.fin === horaFin
+    && jornada.dias.length === dias.length && jornada.dias.every(dia => dias.includes(dia))
+  );
+  const aplicarJornada = jornada => {
+    setDias([...jornada.dias]);
+    setHoraInicio(jornada.inicio);
+    setHoraFin(jornada.fin);
+    setError('');
+  };
 
   const toggleDia = (d) => setDias(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
 
@@ -201,6 +216,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
     if (dias.length === 0) { setError('Selecciona al menos un día'); return; }
     if (horaFin <= horaInicio) { setError('La hora de fin debe ser posterior a la de inicio'); return; }
     setLoading(true);
+    setError('');
     try {
       const { data } = await api.post('/horarios/bulk', {
         laboratorio_id: labId,
@@ -220,17 +236,29 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md shadow-2xl">
+      <div className="glass w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="titulo-carga-horarios">
         <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
-          <h3 className="font-semibold text-white">Carga masiva de horarios</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+          <div><h3 id="titulo-carga-horarios" className="font-semibold text-white">Carga masiva de horarios</h3><p className="mt-1 text-xs text-slate-400">{cuatrimestre} · Disponibilidad del laboratorio</p></div>
+          <button disabled={loading} onClick={onClose} aria-label="Cerrar carga masiva" className="text-slate-400 hover:text-white">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
         {!resultado ? (
-          <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          <form onSubmit={handleSubmit} className="p-6">
+            <fieldset disabled={loading} className="space-y-5 disabled:opacity-60">
+            <div>
+              <p className="mb-2 text-sm font-semibold text-white">Jornada de trabajo</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {jornadas.map(jornada => <button key={jornada.id} type="button" aria-pressed={jornadaSeleccionada?.id === jornada.id} onClick={() => aplicarJornada(jornada)}
+                  className={`rounded-xl border p-3 text-left transition-colors ${jornadaSeleccionada?.id === jornada.id ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400' : 'border-white/10 bg-white/5 text-slate-400 hover:border-emerald-500/50'}`}>
+                  <span className="block text-sm font-semibold">{jornada.nombre}</span>
+                  <span className="mt-1 block text-xs">{jornada.detalle}</span>
+                </button>)}
+              </div>
+              <p className="mt-2 text-xs text-slate-400">{jornadaSeleccionada ? 'Días y horas preseleccionados. Puedes ajustarlos antes de crear los turnos.' : 'Horario personalizado: se usarán los días y horas que seleccionaste.'}</p>
+            </div>
             <div>
               <label className="block text-sm text-slate-400 mb-2">Días de la semana</label>
               <div className="flex gap-2 flex-wrap">
@@ -250,8 +278,8 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
                 <label className="block text-sm text-slate-400 mb-1">Hora inicio</label>
                 <SelectDark
                   value={horaInicio}
-                  onChange={setHoraInicio}
-                  options={HORAS.map(h => ({ value: h, label: h }))}
+                  onChange={valor => { setHoraInicio(valor); if (horaFin <= valor) setHoraFin(HORAS.find(h => h > valor) || ''); setError(''); }}
+                  options={HORAS.slice(0, -1).map(h => ({ value: h, label: h }))}
                 />
               </div>
               <div>
@@ -267,6 +295,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
               Creará <strong className="text-white">{dias.length}</strong> turno(s) de{' '}
               <strong className="text-white">{horaInicio} – {horaFin}</strong> para{' '}
               {dias.map(d => DIAS[d].slice(0, 3)).join(', ')}
+              <p className="mt-2 text-xs">Un turno de disponibilidad por día; no crea clases ni reservas. Para ambas jornadas, realiza una carga por cada una.</p>
             </div>
             {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
             <div className="flex gap-3">
@@ -274,11 +303,12 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
                 className="flex-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
                 Cancelar
               </button>
-              <button type="submit" disabled={loading}
+              <button type="submit" disabled={loading || !dias.length || !horaFin || horaFin <= horaInicio}
                 className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
                 {loading ? 'Creando...' : `Crear ${dias.length} turno(s)`}
               </button>
             </div>
+            </fieldset>
           </form>
         ) : (
           <div className="p-6 text-center space-y-4">
