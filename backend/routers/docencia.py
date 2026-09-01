@@ -846,6 +846,82 @@ def mi_horario(
     ).all()]
 
 
+@router.get("/ubicacion-docentes")
+def buscar_ubicacion_docentes(
+    q: str = "",
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Consulta entre docentes basada exclusivamente en el horario oficial."""
+    if current_user.rol != RolUsuario.DOCENTE:
+        raise HTTPException(403, "Esta consulta está disponible únicamente entre docentes")
+    termino = " ".join(q.strip().split())
+    if len(termino) < 2:
+        raise HTTPException(422, "Escribe al menos 2 caracteres del nombre del docente")
+
+    docentes = db.query(Usuario).filter(
+        Usuario.rol == RolUsuario.DOCENTE,
+        Usuario.activo == True,
+        Usuario.nombre.ilike(f"%{termino}%"),
+    ).order_by(Usuario.nombre).limit(20).all()
+    ahora = _ahora_mx()
+    periodo = _periodo_actual(db)
+    docente_ids = [docente.id for docente in docentes]
+    cargas = []
+    if periodo and docente_ids and ahora.weekday() <= 5:
+        cargas = db.query(CargaDocente).filter(
+            CargaDocente.docente_id.in_(docente_ids),
+            CargaDocente.periodo_id == periodo.id,
+            CargaDocente.dia_semana == ahora.weekday(),
+            CargaDocente.activo == True,
+            CargaDocente.estado == "ACTIVO",
+        ).order_by(CargaDocente.hora_inicio).all()
+
+    hora_actual = ahora.strftime("%H:%M")
+    por_docente = {}
+    for carga in cargas:
+        por_docente.setdefault(carga.docente_id, []).append(carga)
+
+    def detalle(carga):
+        privado = carga.tipo_actividad in {"RECESO", "DESCARGA"}
+        grupo = None
+        if carga.grupo_academico:
+            grupo = f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
+        elif carga.grupo_tutorado:
+            grupo = f"{carga.grupo_tutorado.cuatrimestre}° {carga.grupo_tutorado.grupo}"
+        return {
+            "tipo_actividad": carga.tipo_actividad,
+            "actividad": carga.actividad_nombre,
+            "grupo": None if privado else grupo,
+            "salon": None if privado else carga.espacio_nombre,
+            "hora_inicio": carga.hora_inicio,
+            "hora_fin": carga.hora_fin,
+        }
+
+    resultados = []
+    for docente in docentes:
+        horario = por_docente.get(docente.id, [])
+        actual = next((c for c in horario if c.hora_inicio <= hora_actual < c.hora_fin), None)
+        siguiente = next((c for c in horario if c.hora_inicio > hora_actual), None)
+        if actual:
+            estado = actual.tipo_actividad
+        else:
+            estado = "SIN_ACTIVIDAD"
+        resultados.append({
+            "docente_id": docente.id,
+            "nombre": docente.nombre,
+            "estado": estado,
+            "actividad_actual": detalle(actual) if actual else None,
+            "siguiente_actividad": detalle(siguiente) if siguiente else None,
+        })
+    return {
+        "fecha": ahora.date().isoformat(),
+        "hora_consulta": hora_actual,
+        "periodo": periodo.clave if periodo else None,
+        "resultados": resultados,
+    }
+
+
 @router.post("/horario")
 def crear_carga(
     data: CargaInput,

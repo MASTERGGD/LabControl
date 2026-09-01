@@ -41,6 +41,7 @@ import SesionClase from './pages/docente/SesionClase';
 import SesionActiva from './pages/docente/SesionActiva';
 import MiHistorial from './pages/docente/MiHistorial';
 import MiHorarioDocente from './pages/docente/MiHorarioDocente';
+import BuscarDocente from './pages/docente/BuscarDocente';
 import HistorialClasesDocente from './pages/docente/HistorialClasesDocente';
 import ClaseAsistencia from './pages/docente/ClaseAsistencia';
 import SeguimientoGrupos from './pages/docente/SeguimientoGrupos';
@@ -384,6 +385,11 @@ function AppRoutes() {
       <Route path="/docente/horario" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <MiHorarioDocente />
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/buscar-docente" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <BuscarDocente />
         </RutaProtegida>
       }/>
       <Route path="/docente/historial-clases" element={

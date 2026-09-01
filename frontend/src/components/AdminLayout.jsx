@@ -364,6 +364,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
+    label: 'Buscar docente', path: '/docente/buscar-docente', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Zm-9-1a2 2 0 1 0 4 0 2 2 0 0 0-4 0Zm-2.5 5.5a4.5 4.5 0 0 1 7 0"/></svg>,
+  },
+  {
     label: 'Historial de clases', path: '/docente/historial-clases', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 15l2 2 4-4"/></svg>,
   },
@@ -558,6 +562,7 @@ const BREADCRUMB_MAP = {
   '/servicios-escolares/estudios-socioeconomicos': [{ label: 'Servicios Escolares', to: '/servicios-escolares' }, { label: 'Estudios socioeconómicos' }],
   '/docente':                 [{ label: 'Inicio Docente' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],
+  '/docente/buscar-docente':  [{ label: 'Buscar docente' }],
   '/docente/seguimiento':     [{ label: 'Seguimiento de grupos' }],
   '/docente/laboratorio':     [{ label: 'Solicitar laboratorio' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
