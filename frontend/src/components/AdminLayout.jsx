@@ -1261,7 +1261,7 @@ export default function AdminLayout({ children }) {
 
         {/* Contenido */}
         <main className="flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>
-          {esHistorico && periodo && (
+          {esHistorico && periodo && usuario?.rol !== 'DOCENTE' && (
             <div
               className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"
               style={{

@@ -71,6 +71,24 @@ def test_selector_docente_muestra_actual_preparacion_y_solo_historial_propio(cli
     assert preparacion["puede_administrar"] is False
 
 
+def test_selector_cambia_periodo_actual_al_iniciar_septiembre(client, db, admin_user, monkeypatch):
+    monkeypatch.setattr(calendario_router, "today_mx", lambda: datetime.date(2026, 9, 1))
+    anterior = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
+    nuevo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=False)
+    db.add_all([anterior, nuevo]); db.commit()
+
+    respuesta = client.get(
+        "/calendario-academico/periodos",
+        headers=auth_headers(get_token(client, admin_user.email, "AdminPass123")),
+    )
+
+    assert respuesta.status_code == 200
+    periodos = {item["clave"]: item for item in respuesta.json()}
+    assert periodos["MAY-AGO 2026"]["estado_periodo"] == "HISTORICO"
+    assert periodos["SEP-DIC 2026"]["estado_periodo"] == "ACTUAL"
+    assert periodos["SEP-DIC 2026"]["es_actual"] is True
+
+
 def test_calendario_publicado_suprime_pendientes_y_bloquea_inicio(client, db, monkeypatch):
     ahora = datetime.datetime(2026, 8, 11, 12, 0, tzinfo=ZoneInfo("America/Mexico_City"))
     monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: ahora)

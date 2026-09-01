@@ -17,7 +17,7 @@ const fechaCorta = (fecha) => new Intl.DateTimeFormat('es-MX', {
 export default function SeguimientoGrupos() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { periodo: periodoSeleccionado, periodoActual } = usePeriodo();
+  const { periodo: periodoSeleccionado, periodoActual, esCerrado, seleccionarPeriodo } = usePeriodo();
   const [cargas, setCargas] = useState([]);
   const [cargandoCargas, setCargandoCargas] = useState(true);
   const [datos, setDatos] = useState(null);
@@ -25,7 +25,7 @@ export default function SeguimientoGrupos() {
   const [justificacion, setJustificacion] = useState(null);
   const seleccion = params.get('carga') || '';
   const periodoId = periodoSeleccionado?.id ? String(periodoSeleccionado.id) : '';
-  const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
+  const esPeriodoActual = periodoSeleccionado?.estado_periodo === 'ACTUAL';
 
   useEffect(() => {
     if (!periodoId) return;
@@ -169,15 +169,17 @@ export default function SeguimientoGrupos() {
           <p className="text-sm text-slate-400">Consulta asistencias por materia, detecta faltas recurrentes y revisa sesiones anteriores.</p></div>
           {seleccion && <button onClick={exportarConcentrado} className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-300">Exportar concentrado Excel</button>}
         </div>
-        <div className="glass rounded-2xl p-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
-            <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Periodo consultado</p><p className="mt-1 font-semibold text-white">{periodoSeleccionado?.clave || 'Cargando periodo…'}{esPeriodoActual ? ' · Actual' : ' · Histórico'}</p></div>
-            <p className="max-w-lg text-xs text-slate-400">Para consultar otro cuatrimestre, utiliza el selector de periodo del encabezado. Todos los datos de esta pantalla se actualizarán automáticamente.</p>
+        {esCerrado && periodoSeleccionado && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-700">
+            <p><b>Solo consulta.</b> {periodoSeleccionado.clave} está cerrado y no admite correcciones.</p>
+            {periodoActual && periodoActual.id !== periodoSeleccionado.id && <button type="button" onClick={() => seleccionarPeriodo(periodoActual.id)} className="font-semibold text-emerald-700">Ir a {periodoActual.clave} →</button>}
           </div>
+        )}
+        <div className="glass rounded-2xl p-4">
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Selecciona la materia y el grupo</label>
           <select value={seleccion} disabled={!cargas.length} onChange={(e) => setParams({ carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white disabled:cursor-not-allowed disabled:opacity-60">
             {!cargas.length && <option value="">Sin materias o grupos asignados</option>}
-            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.periodo}</option>)}
+            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo}</option>)}
           </select>
           {cargaActual?.horarios?.length > 0 && (
             <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3">
@@ -191,15 +193,10 @@ export default function SeguimientoGrupos() {
             </div>
           )}
         </div>
-        {!esPeriodoActual && periodoSeleccionado && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-            Estás consultando el historial de {periodoSeleccionado.clave}. La información permanece disponible, pero no se permiten correcciones. El periodo operativo actual es {periodoActual?.clave || 'el configurado por Servicios Escolares'}.
-          </div>
-        )}
         {!cargandoCargas && periodoSeleccionado && !cargas.length && !error && (
           <div className="glass rounded-2xl p-10 text-center">
-            <p className="font-semibold text-white">No tienes materias o grupos asignados en {periodoSeleccionado.clave}</p>
-            <p className="mt-1 text-sm text-slate-500">El historial solo muestra cuatrimestres relacionados con tu actividad docente en SIGA.</p>
+            <p className="font-semibold text-white">No tienes materias o grupos asignados en este periodo</p>
+            <p className="mt-1 text-sm text-slate-500">Cuando se publique tu carga docente, aparecerá aquí automáticamente.</p>
           </div>
         )}
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}

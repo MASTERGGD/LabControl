@@ -139,8 +139,14 @@ def listar_periodos(
         if p.id in cerrados:
             return "CERRADO"
         fin = _limite_periodo(p.clave)
-        if fin and datetime.date(fin.year, fin.month - 3, 1) > today_mx():
-            return "PREPARACION"
+        hoy = today_mx()
+        if fin:
+            inicio = datetime.date(fin.year, fin.month - 3, 1)
+            if inicio > hoy:
+                return "PREPARACION"
+            if inicio <= hoy <= fin:
+                return "ACTUAL"
+            return "HISTORICO"
         return "ACTUAL" if p.es_actual else "HISTORICO"
     puede_administrar = _puede_administrar(db, current_user)
     puede_preparar_periodos = puede_administrar or puede_gestionar_servicios_escolares(db, current_user)
@@ -160,7 +166,7 @@ def listar_periodos(
         )
         periodos = [
             p for p in periodos
-            if p.es_actual or (p.activo and _limite_periodo(p.clave) == siguiente_fin
+            if estado_periodo(p) == "ACTUAL" or (p.activo and _limite_periodo(p.clave) == siguiente_fin
                                and estado_periodo(p) == "PREPARACION") or (
                 p.id in periodo_ids_docente
                 and (_limite_periodo(p.clave) is None or _limite_periodo(p.clave) < hoy)
@@ -173,13 +179,13 @@ def listar_periodos(
         # conservan disponibles para consulta.
         periodos = [
             p for p in periodos
-            if p.es_actual or (
+            if estado_periodo(p) == "ACTUAL" or (
                 p.id in calendarios
                 and calendarios[p.id].estado in {"PUBLICADO", "CERRADO"}
             )
         ]
     periodos.sort(key=lambda p: (
-        0 if p.es_actual else 1,
+        0 if estado_periodo(p) == "ACTUAL" else 1,
         -(_limite_periodo(p.clave) or datetime.date.min).toordinal(),
     ))
     return [{
