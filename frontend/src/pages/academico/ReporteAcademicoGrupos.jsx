@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
+import { usePeriodo } from '../../context/PeriodoContext';
 import api from '../../hooks/useApi';
 
 const pct = (valor) => valor == null ? '—' : `${valor}%`;
 
 export default function ReporteAcademicoGrupos() {
+  const { periodo } = usePeriodo();
   const [catalogos, setCatalogos] = useState({ periodos: [], grupos: [] });
-  const [periodoId, setPeriodoId] = useState('');
   const [seleccion, setSeleccion] = useState([]);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -14,19 +15,23 @@ export default function ReporteAcademicoGrupos() {
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [exportando, setExportando] = useState('');
+  const periodoId = periodo?.id ? String(periodo.id) : '';
 
   useEffect(() => {
     api.get('/reportes-academicos/catalogos').then(({ data }) => {
       setCatalogos(data);
-      const actual = data.periodos.find((p) => p.es_actual) || data.periodos[0];
-      if (actual) setPeriodoId(String(actual.id));
     }).catch((err) => setError(err.response?.data?.detail || 'No se pudieron cargar los grupos.'));
   }, []);
+
+  useEffect(() => {
+    setSeleccion([]);
+    setDatos(null);
+    setError('');
+  }, [periodoId]);
 
   const grupos = useMemo(() => catalogos.grupos.filter((g) => String(g.periodo_id) === periodoId), [catalogos.grupos, periodoId]);
   const params = () => ({ periodo_id: periodoId, grupos: seleccion.join(','), ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) });
 
-  const cambiarPeriodo = (valor) => { setPeriodoId(valor); setSeleccion([]); setDatos(null); };
   const alternar = (id) => setSeleccion((actual) => actual.includes(id) ? actual.filter((x) => x !== id) : [...actual, id]);
   const consultar = async () => {
     if (!seleccion.length) { setError('Selecciona al menos un grupo.'); return; }
@@ -49,13 +54,12 @@ export default function ReporteAcademicoGrupos() {
   return <AdminLayout><div className="space-y-5">
     <header><h1 className="text-2xl font-bold text-white">Reporte académico de grupos</h1><p className="text-sm text-slate-400">Compara uno o varios grupos para reuniones académicas y seguimiento de División de Carrera.</p></header>
     <section className="glass space-y-4 rounded-2xl p-5">
-      <div className="grid gap-4 md:grid-cols-3">
-        <label className="text-sm text-slate-300">Periodo escolar<select value={periodoId} onChange={(e) => cambiarPeriodo(e.target.value)} className="input-dark mt-1">{catalogos.periodos.map((p) => <option key={p.id} value={p.id}>{p.clave}{p.es_actual ? ' · Actual' : ''}</option>)}</select></label>
+      <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm text-slate-300">Desde <span className="text-slate-500">(opcional)</span><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="input-dark mt-1" /></label>
         <label className="text-sm text-slate-300">Hasta <span className="text-slate-500">(opcional)</span><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="input-dark mt-1" /></label>
       </div>
       <div><div className="mb-2 flex items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-300">Grupos</p><button type="button" onClick={() => setSeleccion(seleccion.length === grupos.length ? [] : grupos.map((g) => g.id))} className="text-xs font-semibold text-emerald-400">{seleccion.length === grupos.length && grupos.length ? 'Quitar todos' : 'Seleccionar todos'}</button></div>
-        <div className="grid max-h-56 gap-2 overflow-y-auto rounded-xl border border-white/10 p-3 sm:grid-cols-2 lg:grid-cols-3">{grupos.map((g) => <label key={g.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${seleccion.includes(g.id) ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-white/5 bg-white/[0.025]'}`}><input type="checkbox" checked={seleccion.includes(g.id)} onChange={() => alternar(g.id)} className="mt-1 accent-emerald-500"/><span><b className="block text-sm text-white">{g.nombre}{g.turno ? ` · ${g.turno}` : ''}</b><span className="text-xs text-slate-400">{g.carrera}</span></span></label>)}</div>
+        <div className="grid max-h-56 gap-2 overflow-y-auto rounded-xl border border-white/10 p-3 sm:grid-cols-2 lg:grid-cols-3">{grupos.map((g) => <label key={g.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${seleccion.includes(g.id) ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-white/5 bg-white/[0.025]'}`}><input type="checkbox" checked={seleccion.includes(g.id)} onChange={() => alternar(g.id)} className="mt-1 accent-emerald-500"/><span><b className="block text-sm text-white">{g.nombre}{g.turno ? ` · ${g.turno}` : ''}</b><span className="text-xs text-slate-400">{g.carrera}</span></span></label>)}{!grupos.length && <p className="col-span-full p-5 text-center text-sm text-slate-500">No hay grupos registrados para {periodo?.clave || 'el periodo seleccionado'}.</p>}</div>
       </div>
       <div className="flex flex-wrap items-center gap-3"><button onClick={consultar} disabled={cargando || !seleccion.length} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{cargando ? 'Generando…' : `Generar reporte (${seleccion.length})`}</button>{datos && <><button onClick={() => exportar('pdf')} disabled={Boolean(exportando)} className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-300">{exportando === 'pdf' ? 'Preparando…' : 'Exportar PDF'}</button><button onClick={() => exportar('xlsx')} disabled={Boolean(exportando)} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">{exportando === 'xlsx' ? 'Preparando…' : 'Exportar Excel'}</button></>}</div>
     </section>
