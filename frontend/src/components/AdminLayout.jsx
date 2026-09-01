@@ -962,22 +962,33 @@ export default function AdminLayout({ children }) {
   const [avisoSesiones, setAvisoSesiones] = useState(false);
   const [cerrandoSesiones, setCerrandoSesiones] = useState(false);
   const sesionesRef = useRef(null);
-  const conteoSesionesAnterior = useRef(1);
 
   // Cerrar menú móvil al navegar
   useEffect(() => { setMenuMovil(false); }, [location.pathname]);
 
   useEffect(() => {
     const conteo = sessionInfo?.active_count || 1;
-    if (conteo > 1 && conteoSesionesAnterior.current <= 1) {
-      setAvisoSesiones(true);
-      const timer = window.setTimeout(() => setAvisoSesiones(false), 9000);
-      conteoSesionesAnterior.current = conteo;
-      return () => window.clearTimeout(timer);
+    const claveAviso = `labcontrol_session_notice_v1_${usuario?.id || 'anon'}`;
+    if (conteo <= 1) {
+      sessionStorage.removeItem(claveAviso);
+      setAvisoSesiones(false);
+      return undefined;
     }
-    conteoSesionesAnterior.current = conteo;
-    return undefined;
-  }, [sessionInfo?.active_count]);
+    const otrasSesiones = (sessionInfo?.active_sessions || [])
+      .filter(sesion => !sesion.current)
+      .map(sesion => sesion.session_id)
+      .sort();
+    const huella = otrasSesiones.length ? otrasSesiones.join('|') : `count:${conteo}`;
+    if (sessionStorage.getItem(claveAviso) === huella) return undefined;
+
+    // Se recuerda al mostrarlo, no solo al cerrarlo, para que navegar o volver
+    // a enfocar la ventana no repita el mismo aviso. Una sesión nueva cambia
+    // la huella y vuelve a notificar.
+    sessionStorage.setItem(claveAviso, huella);
+    setAvisoSesiones(true);
+    const timer = window.setTimeout(() => setAvisoSesiones(false), 9000);
+    return () => window.clearTimeout(timer);
+  }, [sessionInfo?.active_count, sessionInfo?.active_sessions, usuario?.id]);
 
   useEffect(() => {
     if (!mostrarSesiones) return undefined;
@@ -1311,7 +1322,7 @@ export default function AdminLayout({ children }) {
         <div className="fixed bottom-5 right-5 z-[100] w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl" role="status">
           <div className="flex items-start gap-3">
             <svg className="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m0 3.75h.008M10.3 3.9 1.8 18a1.75 1.75 0 0 0 1.5 2.6h17.4a1.75 1.75 0 0 0 1.5-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-            <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Detectamos otra sesión activa</p><p className="mt-1 text-xs opacity-80">Puedes consultarla desde el indicador “{sessionInfo.active_count} sesiones” de la barra superior.</p></div>
+            <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Tu cuenta está abierta en otro lugar</p><p className="mt-1 text-xs opacity-80">Puedes revisar las sesiones activas desde el indicador “{sessionInfo.active_count} sesiones” de la barra superior.</p></div>
             <button type="button" onClick={() => setAvisoSesiones(false)} className="rounded-lg p-1 hover:bg-amber-100" aria-label="Cerrar aviso">×</button>
           </div>
         </div>

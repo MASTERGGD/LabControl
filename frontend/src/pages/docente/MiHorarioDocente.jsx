@@ -110,10 +110,16 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     .sort((a, b) => {
       const aCoincide = grupoSeleccionado?.carrera && a.carrera === grupoSeleccionado.carrera ? 0 : 1;
       const bCoincide = grupoSeleccionado?.carrera && b.carrera === grupoSeleccionado.carrera ? 0 : 1;
-      return aCoincide - bCoincide || a.nombre.localeCompare(b.nombre, 'es');
+      return aCoincide - bCoincide
+        || a.nombre.localeCompare(b.nombre, 'es')
+        || Number(a.cuatrimestre_oficial || 0) - Number(b.cuatrimestre_oficial || 0);
     })
     .filter((materia, indice, lista) => (
-      lista.findIndex((otra) => otra.nombre === materia.nombre && otra.carrera === materia.carrera) === indice
+      lista.findIndex((otra) => (
+        otra.nombre === materia.nombre
+        && otra.carrera === materia.carrera
+        && Number(otra.cuatrimestre_oficial || 0) === Number(materia.cuatrimestre_oficial || 0)
+      )) === indice
     ))
     .slice(0, 10);
   const finalesDisponibles = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))]
@@ -280,7 +286,9 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                     {materiasFiltradas.length ? materiasFiltradas.map((materia) => (
                       <button key={materia.id} type="button" onMouseDown={() => seleccionarMateria(materia)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/10">
                         <span className="block font-medium text-white">{materia.nombre}</span>
-                        <span className="block text-xs text-slate-400">{materia.carrera || 'Materia común'}</span>
+                        <span className="block text-xs text-slate-400">
+                          {[materia.carrera || 'Materia común', materia.cuatrimestre_oficial ? `${materia.cuatrimestre_oficial}° cuatrimestre` : null].filter(Boolean).join(' · ')}
+                        </span>
                       </button>
                     )) : (
                       <p className="px-3 py-4 text-center text-xs text-slate-400">No se encontraron materias.</p>
@@ -288,7 +296,9 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                   </div>
                 )}
                 {form.materia_id && (
-                  <p className="mt-1.5 text-xs text-emerald-400">✓ Materia seleccionada{materiaSeleccionada?.carrera ? ` para ${materiaSeleccionada.carrera}` : ''}</p>
+                  <p className="mt-1.5 text-xs text-emerald-400">
+                    ✓ Materia seleccionada{materiaSeleccionada?.carrera ? ` para ${materiaSeleccionada.carrera}` : ''}{materiaSeleccionada?.cuatrimestre_oficial ? ` · ${materiaSeleccionada.cuatrimestre_oficial}° cuatrimestre` : ''}
+                  </p>
                 )}
               </div>
               <label className="text-sm text-slate-300">Grupo *

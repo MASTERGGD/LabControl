@@ -85,6 +85,44 @@ function Agenda({ eventos, onEvent }) {
   </div>;
 }
 
+const ACCIONES_HISTORIAL = {
+  CREAR_CALENDARIO: 'Calendario creado',
+  CREAR_EVENTO: 'Actividad agregada',
+  EDITAR_EVENTO: 'Actividad modificada',
+  CANCELAR_EVENTO: 'Actividad cancelada',
+  ESTADO_BORRADOR: 'Calendario reabierto para edición',
+  ESTADO_PUBLICADO: 'Calendario publicado',
+  CIERRE_CUATRIMESTRE: 'Cuatrimestre y calendario cerrados',
+};
+
+function EntradaHistorial({ registro }) {
+  const titulo = ACCIONES_HISTORIAL[registro.accion]
+    || registro.accion.replaceAll('_', ' ').toLocaleLowerCase('es-MX').replace(/^./, letra => letra.toUpperCase());
+  const datosEvento = registro.datos_nuevos?.titulo
+    ? registro.datos_nuevos
+    : registro.datos_anteriores?.titulo ? registro.datos_anteriores : null;
+  const fecha = new Date(`${registro.creado_en}Z`).toLocaleString('es-MX', {
+    dateStyle: 'long', timeStyle: 'short',
+  });
+  return (
+    <article className="py-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-white">{titulo}</h3>
+          {datosEvento?.titulo && <p className="mt-1 text-sm font-medium text-emerald-300">{datosEvento.titulo}</p>}
+          {registro.accion === 'CREAR_CALENDARIO' && registro.datos_nuevos?.periodo && <p className="mt-1 text-sm text-slate-300">Periodo {registro.datos_nuevos.periodo}</p>}
+        </div>
+        <time className="shrink-0 text-xs text-slate-500">{fecha}</time>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-[110px_1fr]">
+        <dt className="font-semibold text-slate-500">Responsable</dt>
+        <dd className="text-slate-300">{registro.usuario || 'Usuario no disponible'}</dd>
+        {registro.motivo && <><dt className="font-semibold text-slate-500">Motivo</dt><dd className="whitespace-pre-wrap font-medium text-slate-200">{registro.motivo}</dd></>}
+      </dl>
+    </article>
+  );
+}
+
 export default function CalendarioAcademico() {
   const { periodo, actualizarPeriodo } = usePeriodo();
   const periodoId = periodo?.id ? String(periodo.id) : '';
@@ -290,7 +328,7 @@ export default function CalendarioAcademico() {
       </div>}
       {modal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><form onSubmit={guardarEvento} className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"><div className="flex justify-between"><div><h2 className="text-lg font-bold text-white">{modal.tipo === 'nuevo' ? 'Nueva actividad' : 'Editar actividad'}</h2><p className="text-xs text-slate-400">Define cómo esta fecha afecta la operación docente.</p></div><button type="button" onClick={() => setModal(null)} className="text-2xl text-slate-400">×</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm text-slate-300 sm:col-span-2">Nombre *<input required value={form.titulo} onChange={e => setForm({ ...form, titulo: e.target.value })} className="input-dark mt-1" /></label><label className="text-sm text-slate-300 sm:col-span-2">Tipo<select value={form.tipo} onChange={e => cambiarTipo(e.target.value)} className="input-dark mt-1">{TIPOS.map(t => <option key={t[0]} value={t[0]}>{t[1]}</option>)}</select></label><label className="text-sm text-slate-300">Fecha inicial<input required type="date" value={form.fecha_inicio} onChange={e => setForm({ ...form, fecha_inicio: e.target.value })} className="input-dark mt-1" /></label><label className="text-sm text-slate-300">Fecha final<input required type="date" value={form.fecha_fin} onChange={e => setForm({ ...form, fecha_fin: e.target.value })} className="input-dark mt-1" /></label><label className="text-sm text-slate-300 sm:col-span-2">Descripción<textarea value={form.descripcion || ''} onChange={e => setForm({ ...form, descripcion: e.target.value })} className="input-dark mt-1 min-h-20" /></label><div className="space-y-2 rounded-xl border border-white/10 p-4 text-sm text-slate-300 sm:col-span-2">{[['requiere_asistencia','Requiere registro de asistencia'],['permite_iniciar_clase','Permite iniciar una clase'],['genera_alertas','Genera alertas por falta de registro']].map(([key,label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={form[key]} onChange={e => setForm({ ...form, [key]: e.target.checked })} />{label}</label>)}</div>{calendario.estado === 'PUBLICADO' && <label className="text-sm text-slate-300 sm:col-span-2">Motivo del cambio *<textarea required minLength={5} value={form.motivo_cambio} onChange={e => setForm({ ...form, motivo_cambio: e.target.value })} className="input-dark mt-1" /></label>}</div><div className="mt-6 flex justify-between gap-3">{modal.tipo === 'editar' ? <button type="button" onClick={cancelarEvento} className="rounded-lg border border-red-500/30 px-4 py-2 text-sm text-red-300">Cancelar actividad</button> : <span />}<div className="flex gap-2"><button type="button" onClick={() => setModal(null)} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-300">Cerrar</button><button disabled={guardando} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">{guardando ? 'Guardando…' : 'Guardar'}</button></div></div></form></div>}
       {modalCierre && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"><form onSubmit={guardarModalCierre} className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre académico</p><h2 className="mt-1 text-lg font-bold text-white">{modalCierre.tipo === 'confirmacion' ? 'Abrir confirmación docente' : 'Reabrir carga docente'}</h2><p className="mt-1 text-sm text-slate-400">{modalCierre.tipo === 'confirmacion' ? 'Define el periodo en el que cada docente revisará y confirmará sus materias.' : `${modalCierre.carga.materia} · ${modalCierre.carga.docente}`}</p></div><button type="button" onClick={() => setModalCierre(null)} className="text-2xl leading-none text-slate-400 hover:text-white">×</button></div>{modalCierre.tipo === 'confirmacion' ? <div className="mt-6 grid gap-4 sm:grid-cols-2"><label className="text-sm text-slate-300">Inicio de confirmación<input required type="date" value={formCierre.inicio} onChange={e => setFormCierre({ ...formCierre, inicio: e.target.value })} className="input-dark mt-1.5" /></label><label className="text-sm text-slate-300">Fin de confirmación<input required type="date" min={formCierre.inicio} value={formCierre.fin} onChange={e => setFormCierre({ ...formCierre, fin: e.target.value })} className="input-dark mt-1.5" /></label><p className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200 sm:col-span-2">Durante estas fechas, los docentes podrán confirmar únicamente materias sin clases abiertas.</p></div> : <div className="mt-6 space-y-4"><label className="block text-sm text-slate-300">Motivo de la reapertura *<textarea required minLength={5} value={formCierre.motivo} onChange={e => setFormCierre({ ...formCierre, motivo: e.target.value })} className="input-dark mt-1.5 min-h-24" placeholder="Describe la información que debe corregirse" /></label><label className="block text-sm text-slate-300">Tiempo disponible<select value={formCierre.horas} onChange={e => setFormCierre({ ...formCierre, horas: e.target.value })} className="input-dark mt-1.5"><option value="12">12 horas</option><option value="24">24 horas</option><option value="48">48 horas</option><option value="72">72 horas</option><option value="168">7 días</option></select></label></div>}<div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setModalCierre(null)} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-slate-300">Cancelar</button><button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">{modalCierre.tipo === 'confirmacion' ? 'Abrir confirmación' : 'Autorizar reapertura'}</button></div></form></div>}
-      {verHistorial && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"><div className="flex justify-between"><h2 className="text-lg font-bold text-white">Historial del calendario</h2><button onClick={() => setVerHistorial(false)} className="text-2xl text-slate-400">×</button></div><div className="mt-4 divide-y divide-white/10">{historial.map(h => <div key={h.id} className="py-3"><div className="flex justify-between gap-3"><p className="text-sm font-semibold text-white">{h.accion.replaceAll('_',' ')}</p><span className="text-xs text-slate-500">{new Date(`${h.creado_en}Z`).toLocaleString('es-MX')}</span></div><p className="mt-1 text-xs text-slate-400">{h.usuario}{h.motivo ? ` · ${h.motivo}` : ''}</p></div>)}</div></div></div>}
+      {verHistorial && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6"><div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-bold text-white">Historial del calendario</h2><p className="mt-1 text-xs text-slate-500">Registro de publicaciones, reaperturas y cambios realizados.</p></div><button onClick={() => setVerHistorial(false)} className="text-2xl text-slate-400" aria-label="Cerrar historial">×</button></div><div className="mt-4 divide-y divide-white/10">{historial.map(h => <EntradaHistorial key={h.id} registro={h} />)}</div></div></div>}
     </AdminLayout>
   );
 }
