@@ -2,6 +2,7 @@ import datetime
 
 from models.catalogo import CatalogoAlumno, CatalogoCarrera, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.cierre_academico import CierreAcademicoPeriodo
+from models.auditoria import AuditLog
 from models.promocion_academica import PromocionAcademicaAlumno
 from tests.conftest import auth_headers, get_token
 
@@ -204,3 +205,51 @@ def test_continuidad_reune_varios_tsu_y_conforma_dos_grupos(client, db, admin_us
         (ingenieria.nombre, 7, "A"), (ingenieria.nombre, 7, "B"),
     }
     assert all(db.get(CatalogoAlumno, item.alumno_id).carrera == ingenieria.nombre for item in inscripciones)
+
+
+def test_corrige_estadia_aplicada_sin_borrar_historial(client, db, admin_user):
+    origen = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=False)
+    destino = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add_all([origen, destino]); db.flush()
+    grupo = GrupoAcademico(periodo_id=origen.id, carrera="TIEID", cuatrimestre=6, grupo="A", activo=True)
+    alumno = CatalogoAlumno(matricula="EST26001", apellido_paterno="Caso", apellido_materno="Prueba", nombres="Estadía",
+                            carrera="TIEID", cuatrimestre=6, grupo="A", periodo=origen.clave, activo=True)
+    db.add_all([grupo, alumno]); db.flush()
+    inscripcion = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO")
+    db.add(inscripcion); db.flush()
+    db.add(CierreAcademicoPeriodo(periodo_id=origen.id, estado="CERRADO",
+        configurado_por_id=admin_user.id, cerrado_por_id=admin_user.id)); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    resuelta = client.put(f"/servicios-escolares/promociones/{inscripcion.id}", headers=headers, json={
+        "periodo_destino_id": destino.id, "resolucion": "ESTADIA", "observaciones": "Estadía inicial",
+    })
+    assert resuelta.status_code == 200, resuelta.text
+    aplicada = client.post("/servicios-escolares/promociones/aplicar", headers=headers, params={
+        "periodo_origen_id": origen.id, "periodo_destino_id": destino.id,
+    })
+    assert aplicada.json()["aplicadas"] == 1
+    invalida = client.post(f"/servicios-escolares/promociones/{inscripcion.id}/corregir", headers=headers, json={
+        "periodo_destino_id": destino.id, "resolucion": "PROMOVIDO",
+        "cuatrimestre_destino": 7, "grupo_destino": "B", "motivo_correccion": "corto",
+    })
+    assert invalida.status_code == 422
+    corregida = client.post(f"/servicios-escolares/promociones/{inscripcion.id}/corregir", headers=headers, json={
+        "periodo_destino_id": destino.id, "resolucion": "PROMOVIDO",
+        "cuatrimestre_destino": 7, "grupo_destino": "B",
+        "motivo_correccion": "El alumno debe continuar en séptimo B",
+        "observaciones": "Corrección autorizada por Servicios Escolares",
+    })
+    assert corregida.status_code == 200, corregida.text
+    db.expire_all()
+    promociones = db.query(PromocionAcademicaAlumno).all()
+    assert len(promociones) == 1
+    assert promociones[0].estado == "APLICADA" and promociones[0].resolucion == "PROMOVIDO"
+    inscripciones = db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id).all()
+    estados = {(i.grupo_academico.grupo, i.estado) for i in inscripciones}
+    assert ("ESTADIA", "CORREGIDA") in estados and ("B", "ACTIVO") in estados and ("A", "CONCLUIDA") in estados
+    db.refresh(alumno)
+    assert (alumno.cuatrimestre, alumno.grupo, alumno.activo) == (7, "B", True)
+    auditoria = db.query(AuditLog).filter_by(accion="CORREGIR_PROMOCION_APLICADA").one()
+    assert auditoria.detalle["anterior"]["resolucion"] == "ESTADIA"
+    assert auditoria.detalle["nuevo"]["resolucion"] == "PROMOVIDO"
+    assert auditoria.detalle["motivo"] == "El alumno debe continuar en séptimo B"

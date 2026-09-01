@@ -36,6 +36,7 @@ from models.ficha_socioeconomica import FichaSocioeconomica
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from models.cierre_academico import CierreAcademicoPeriodo
 from models.promocion_academica import ContinuidadPrograma, PromocionAcademicaAlumno
+from models.auditoria import AuditLog
 from services.auditoria import registrar, Accion, Recurso
 from services.user_permissions import puede_gestionar_servicios_escolares
 
@@ -107,6 +108,10 @@ class ResolucionPromocionIn(BaseModel):
     grupo_destino: Optional[str] = Field(None, max_length=10)
     carrera_destino_id: Optional[int] = None
     observaciones: Optional[str] = Field(None, max_length=1000)
+
+
+class CorreccionPromocionIn(ResolucionPromocionIn):
+    motivo_correccion: str = Field(..., min_length=10, max_length=1000)
 
 
 class ResolucionPromocionMasivaIn(ResolucionPromocionIn):
@@ -1781,6 +1786,77 @@ def resolver_promocion(inscripcion_id: int, data: ResolucionPromocionIn, db: Ses
     promo.resuelto_por_id = current_user.id; promo.resuelto_en = _now()
     db.commit(); db.refresh(promo)
     return _fila_promocion(inscripcion, promo)
+
+
+@router.post("/promociones/{inscripcion_id}/corregir", summary="Corregir una promoción ya aplicada con auditoría")
+def corregir_promocion_aplicada(inscripcion_id: int, data: CorreccionPromocionIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _require_se(db, current_user)
+    promo = db.query(PromocionAcademicaAlumno).filter_by(inscripcion_origen_id=inscripcion_id).first()
+    if not promo or promo.estado != "APLICADA":
+        raise HTTPException(409, "Solo se pueden corregir promociones ya aplicadas")
+    if promo.periodo_destino_id != data.periodo_destino_id:
+        raise HTTPException(422, "El periodo destino no corresponde a la promoción aplicada")
+    resolucion = data.resolucion.upper()
+    if resolucion not in RESOLUCIONES_PROMOCION or resolucion == "PENDIENTE":
+        raise HTTPException(422, "Selecciona una resolución definitiva")
+    requiere_grupo = resolucion in {"PROMOVIDO", "REPITE"}
+    if requiere_grupo and (not data.cuatrimestre_destino or not data.grupo_destino):
+        raise HTTPException(422, "Indica cuatrimestre y grupo de destino")
+    carrera_destino = db.get(CatalogoCarrera, data.carrera_destino_id) if data.carrera_destino_id else None
+    if data.carrera_destino_id and not carrera_destino:
+        raise HTTPException(404, "Programa destino no encontrado")
+    alumno, origen = promo.alumno, promo.inscripcion_origen
+    anterior = {
+        "resolucion": promo.resolucion, "cuatrimestre_destino": promo.cuatrimestre_destino,
+        "grupo_destino": promo.grupo_destino, "carrera_destino_id": promo.carrera_destino_id,
+        "observaciones": promo.observaciones,
+    }
+    # La inscripción creada por la aplicación anterior se conserva como corregida.
+    if promo.resolucion in {"PROMOVIDO", "REPITE", "ESTADIA"}:
+        nivel_anterior = promo.cuatrimestre_destino or origen.grupo_academico.cuatrimestre
+        grupo_anterior = promo.grupo_destino or "ESTADIA"
+        carrera_anterior = promo.carrera_destino.nombre if promo.carrera_destino else origen.grupo_academico.carrera
+        inscripcion_anterior = db.query(InscripcionAlumno).join(GrupoAcademico).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            GrupoAcademico.periodo_id == promo.periodo_destino_id,
+            GrupoAcademico.carrera == carrera_anterior,
+            GrupoAcademico.cuatrimestre == nivel_anterior,
+            GrupoAcademico.grupo == grupo_anterior,
+            InscripcionAlumno.estado == "ACTIVO",
+        ).first()
+        if inscripcion_anterior:
+            inscripcion_anterior.estado = "CORREGIDA"
+    if resolucion in {"PROMOVIDO", "REPITE", "ESTADIA"}:
+        nivel = data.cuatrimestre_destino or origen.grupo_academico.cuatrimestre
+        grupo_nombre = (data.grupo_destino or "ESTADIA").strip().upper()
+        carrera_nombre = carrera_destino.nombre if carrera_destino else origen.grupo_academico.carrera
+        grupo = db.query(GrupoAcademico).filter_by(periodo_id=promo.periodo_destino_id, carrera=carrera_nombre, cuatrimestre=nivel, grupo=grupo_nombre).first()
+        if not grupo:
+            grupo = GrupoAcademico(periodo_id=promo.periodo_destino_id, carrera=carrera_nombre, cuatrimestre=nivel, grupo=grupo_nombre, activo=True)
+            db.add(grupo); db.flush()
+        nueva = db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id, grupo_academico_id=grupo.id).first()
+        if nueva: nueva.estado = "ACTIVO"
+        else: db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
+        alumno.cuatrimestre, alumno.grupo, alumno.carrera = nivel, grupo_nombre, carrera_nombre
+        alumno.periodo, alumno.activo = promo.periodo_destino.clave, True
+    else:
+        alumno.activo = False
+    promo.resolucion = resolucion
+    promo.cuatrimestre_destino = data.cuatrimestre_destino if requiere_grupo else (data.cuatrimestre_destino if resolucion == "ESTADIA" else None)
+    promo.grupo_destino = data.grupo_destino.strip().upper() if data.grupo_destino else ("ESTADIA" if resolucion == "ESTADIA" else None)
+    promo.carrera_destino_id = data.carrera_destino_id if resolucion == "PROMOVIDO" else None
+    promo.observaciones = data.observaciones
+    promo.resuelto_por_id, promo.resuelto_en = current_user.id, _now()
+    nuevo = {"resolucion": promo.resolucion, "cuatrimestre_destino": promo.cuatrimestre_destino, "grupo_destino": promo.grupo_destino, "carrera_destino_id": promo.carrera_destino_id, "observaciones": promo.observaciones}
+    db.add(AuditLog(
+        accion="CORREGIR_PROMOCION_APLICADA", recurso="PROMOCION_ACADEMICA",
+        recurso_id=promo.id, usuario_id=current_user.id,
+        usuario_nombre=current_user.nombre, usuario_email=current_user.email,
+        detalle={"motivo": data.motivo_correccion, "anterior": anterior,
+                 "nuevo": nuevo, "alumno_id": alumno.id},
+    ))
+    db.commit(); db.refresh(promo)
+    return {**_fila_promocion(origen, promo), "mensaje": "Corrección aplicada y registrada en el historial."}
 
 
 @router.put("/promociones", summary="Resolver promoción de varios alumnos")
