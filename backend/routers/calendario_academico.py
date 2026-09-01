@@ -16,6 +16,7 @@ from models.docencia import CargaDocente
 from models.cierre_academico import CierreAcademicoPeriodo
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import estado_fecha_academica
+from services.timezone import today_mx
 from services.user_permissions import puede_gestionar_materias, puede_gestionar_servicios_escolares
 
 
@@ -138,7 +139,7 @@ def listar_periodos(
         if p.id in cerrados:
             return "CERRADO"
         fin = _limite_periodo(p.clave)
-        if fin and datetime.date(fin.year, fin.month - 3, 1) > datetime.date.today():
+        if fin and datetime.date(fin.year, fin.month - 3, 1) > today_mx():
             return "PREPARACION"
         return "ACTUAL" if p.es_actual else "HISTORICO"
     puede_administrar = _puede_administrar(db, current_user)
@@ -151,7 +152,7 @@ def listar_periodos(
                 CargaDocente.docente_id == current_user.id,
             ).distinct().all()
         }
-        hoy = datetime.date.today()
+        hoy = today_mx()
         siguiente_mes = ((hoy.month - 1) // 4 + 1) * 4 + 1
         siguiente_fin = (
             datetime.date(hoy.year + 1, 4, 30) if siguiente_mes > 12

@@ -3,6 +3,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import routers.docencia as docencia_router
+import routers.calendario_academico as calendario_router
 
 from dependencies import hashear_password
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico
@@ -37,11 +38,7 @@ def test_selector_administrativo_respeta_permiso_escolares(client, db, permiso_a
 
 
 def test_selector_docente_muestra_actual_preparacion_y_solo_historial_propio(client, db, monkeypatch):
-    class FechaFija(datetime.date):
-        @classmethod
-        def today(cls):
-            return cls(2026, 8, 31)
-    monkeypatch.setattr(datetime, "date", FechaFija)
+    monkeypatch.setattr(calendario_router, "today_mx", lambda: datetime.date(2026, 8, 31))
     docente = Usuario(
         nombre="Docente periodos", email="periodos.docente@test.mx",
         password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True,
