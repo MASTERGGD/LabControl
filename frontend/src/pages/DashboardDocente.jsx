@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../context/AuthContext';
+import { usePeriodo } from '../context/PeriodoContext';
 import api from '../hooks/useApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,32 +50,51 @@ function fmtHora(str) {
   return `${h}:${m}`;
 }
 
+const plural = (cantidad, singular, pluralTexto) => `${cantidad} ${cantidad === 1 ? singular : pluralTexto}`;
+
+function semanaDelPeriodo(clave) {
+  const coincidencia = String(clave || '').match(/(ENE-ABR|MAY-AGO|SEP-DIC)\s+(\d{4})/i);
+  if (!coincidencia) return null;
+  const meses = { 'ENE-ABR': 0, 'MAY-AGO': 4, 'SEP-DIC': 8 };
+  const inicio = new Date(Number(coincidencia[2]), meses[coincidencia[1].toUpperCase()], 1);
+  const hoy = new Date();
+  if (hoy < inicio) return null;
+  return Math.floor((hoy - inicio) / 604_800_000) + 1;
+}
+
 // ─── Componentes ──────────────────────────────────────────────────────────────
 
-// Tarjeta de estadística con número grande
-function StatCard({ icon, label, value, sub, badge, badgeColor = '', urgent, onClick }) {
+function IconoPanel({ name, className = 'h-5 w-5' }) {
+  const paths = {
+    asistencia: <><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>,
+    alumnos: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    acuerdos: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 13l2 2 4-5"/></>,
+    calendario: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></>,
+  };
+  return <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function Flecha() {
+  return <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>;
+}
+
+// Indicador compacto: los ceros permanecen discretos y los pendientes destacan.
+function StatCard({ icon, label, value, sub, urgent, onClick }) {
+  const activo = Number(value) > 0;
   return (
     <button
       onClick={onClick}
-      className={`dashboard-surface ${urgent ? 'dashboard-urgent' : ''} group w-full text-left rounded-2xl border p-4 transition-all duration-200
-        hover:-translate-y-0.5 hover:shadow-lg
+      className={`dashboard-surface ${urgent ? 'dashboard-urgent' : ''} group w-full text-left rounded-xl border px-4 py-3 transition-all duration-200
+        hover:bg-white/6
         ${urgent
           ? 'border-red-500/35 bg-gradient-to-br from-red-500/12 to-red-500/4 hover:from-red-500/18'
-          : 'border-white/8 bg-white/3 hover:bg-white/6'}`}
+          : 'border-white/8 bg-white/[0.025]'}`}
     >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <span className="text-[22px] leading-none">{icon}</span>
-        {badge && (
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full leading-4 ${badgeColor}`}>
-            {badge}
-          </span>
-        )}
+      <div className="flex items-center gap-3">
+        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${activo ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.04] text-slate-500'}`}><IconoPanel name={icon} /></span>
+        <div className="min-w-0 flex-1"><div className="flex items-baseline gap-2"><b className={`text-xl tabular-nums ${activo ? 'text-white' : 'text-slate-400'}`}>{value ?? '—'}</b><span className="text-sm font-semibold text-slate-300">{label}</span></div>{sub && <p className="truncate text-[11px] text-slate-500">{sub}</p>}</div>
+        <Flecha />
       </div>
-      <div className="text-[28px] font-black text-white leading-none tabular-nums mb-1">
-        {value ?? '—'}
-      </div>
-      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</div>
-      {sub && <div className="text-[11px] mt-1 leading-tight" style={{ color: '#9ca3af' }}>{sub}</div>}
     </button>
   );
 }
@@ -125,7 +145,7 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
-            {esHoy ? '⚡ Próxima clase hoy' : '📅 Próxima clase'}
+            {esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
           </p>
           <p className="text-white font-bold text-base leading-tight">{reservacion.materia}</p>
           <p className="text-slate-400 text-sm mt-0.5">
@@ -180,6 +200,7 @@ function BannerCalendarioOficial({ estado, proximaClase, onCalendario }) {
 
 export default function DashboardDocente() {
   const { usuario }   = useAuth();
+  const { periodo }   = usePeriodo();
   const navigate      = useNavigate();
 
   // Estado
@@ -187,7 +208,6 @@ export default function DashboardDocente() {
   const [sesionActiva,  setSesionActiva]   = useState(null);
   const [proximaClase,  setProximaClase]   = useState(null);
   const [solicitudes,   setSolicitudes]    = useState({ total: 0, pendientes: 0 });
-  const [clasesSemana,  setClasesSemana]   = useState(null);
   const [operacion,     setOperacion]      = useState(null);
   const [countdown,     setCountdown]      = useState('');
   const [loading,       setLoading]        = useState(true);
@@ -196,10 +216,9 @@ export default function DashboardDocente() {
   const cargarDatos = useCallback(async () => {
     setLoading(true);
     try {
-      const [resComunicados, resSesion, resReservaciones, resSolicitudes, resOperacion] = await Promise.allSettled([
+      const [resComunicados, resSesion, resSolicitudes, resOperacion] = await Promise.allSettled([
         api.get('/comunicados/pendientes-count'),
         api.get('/sesiones/activas'),
-        api.get('/horarios/reservaciones'),
         api.get('/espacios/mis-solicitudes'),
         api.get('/docencia/dashboard'),
       ]);
@@ -214,19 +233,6 @@ export default function DashboardDocente() {
         setSesionActiva(resSesion.value.data?.[0] || null);
       }
 
-      // Reservaciones → próxima clase + clases esta semana
-      if (resReservaciones.status === 'fulfilled') {
-        const reservaciones = resReservaciones.value.data || [];
-        const activas = reservaciones.filter(r => r.estado !== 'CANCELADA');
-
-        // Contar clases esta semana (días 0-6 desde hoy)
-        const hoy = new Date();
-        const diaPythonHoy = (hoy.getDay() + 6) % 7;
-        const semana = new Set([0,1,2,3,4,5,6].map(i => (diaPythonHoy + i) % 7));
-        setClasesSemana(activas.filter(r => semana.has(r.dia_semana)).length);
-
-      }
-
       // Solicitudes de espacio
       if (resSolicitudes.status === 'fulfilled') {
         const sol = resSolicitudes.value.data || [];
@@ -238,7 +244,6 @@ export default function DashboardDocente() {
       if (resOperacion.status === 'fulfilled') {
         const datosOperacion = resOperacion.value.data;
         setOperacion(datosOperacion);
-        setClasesSemana(datosOperacion?.resumen?.clases_semana_lectivas ?? 0);
         setProximaClase(datosOperacion?.proxima_clase ? {
           ...datosOperacion.proxima_clase,
           _proxFecha: new Date(datosOperacion.proxima_clase.inicio),
@@ -264,6 +269,8 @@ export default function DashboardDocente() {
   }, [proximaClase]);
 
   const { prefijo, nombre: nombreCorto } = saludar(usuario?.nombre);
+  const semana = semanaDelPeriodo(periodo?.clave);
+  const sinCarga = !loading && !operacion?.resumen?.grupos_activos && !operacion?.jornada?.length && !proximaClase;
 
   // Items de "Atención requerida"
   const atencionItems = [];
@@ -274,24 +281,10 @@ export default function DashboardDocente() {
     dot: 'bg-amber-400',
   });
   if (solicitudes.pendientes > 0) atencionItems.push({
-    label: `${solicitudes.pendientes} solicitud de espacio en revisión`,
+    label: plural(solicitudes.pendientes, 'solicitud de espacio en revisión', 'solicitudes de espacio en revisión'),
     path: '/espacios/mis-solicitudes',
     color: 'text-blue-400',
     dot: 'bg-blue-400',
-  });
-  if (operacion?.resumen.asistencias_pendientes > 0) atencionItems.unshift({
-    label: `${operacion.resumen.asistencias_pendientes} asistencia(s) requieren registro o cierre`,
-    path: '/docente/horario',
-    color: 'text-red-400',
-    dot: 'bg-red-400',
-  });
-  if (operacion?.resumen.acuerdos_pendientes > 0) atencionItems.push({
-    label: operacion.resumen.acuerdos_vencidos > 0
-      ? `${operacion.resumen.acuerdos_vencidos} acuerdo(s) requieren revisión inmediata`
-      : `${operacion.resumen.acuerdos_pendientes} acuerdo(s) académico(s) pendientes`,
-    path: '/docente/seguimiento',
-    color: operacion.resumen.acuerdos_vencidos > 0 ? 'text-red-400' : 'text-amber-400',
-    dot: operacion.resumen.acuerdos_vencidos > 0 ? 'bg-red-400' : 'bg-amber-400',
   });
 
   return (
@@ -305,7 +298,7 @@ export default function DashboardDocente() {
             <span className="text-slate-300">{nombreCorto}</span>
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {[periodo?.clave, semana && `Semana ${semana}`, new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })].filter(Boolean).join(' · ')}
           </p>
         </div>
 
@@ -333,57 +326,35 @@ export default function DashboardDocente() {
           />
         )}
 
-        {/* ── Stats en tiempo real ───────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        {sinCarga && <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-5"><div className="flex items-start gap-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300"><IconoPanel name="calendario" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{periodo?.clave || 'Periodo actual'}</p><h2 className="mt-1 text-lg font-bold text-white">Comienza un nuevo cuatrimestre</h2><p className="mt-1 text-sm text-slate-400">Todavía no tienes materias asignadas. Cuando División de Carrera configure tu carga, aquí aparecerán tu horario, grupos y actividades.</p></div></div></section>}
+
+        {/* ── Pendientes accionables ─────────────────────────────────── */}
+        {!sinCarga && <div><p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">Pendientes</p><div className="grid gap-3 md:grid-cols-3">
           <StatCard
-            icon="🗓"
-            label="Clases hoy"
-            value={operacion?.resumen.clases_hoy ?? '…'}
-            sub={operacion?.resumen.actividades_suspendidas_hoy > 0
-              ? `${operacion.resumen.actividades_suspendidas_hoy} suspendida(s) por calendario`
-              : `${operacion?.resumen.clases_cerradas ?? 0} cerrada(s)`}
-            onClick={() => navigate('/docente/horario')}
-          />
-          <StatCard
-            icon="⚠️"
-            label="Asistencias pendientes"
+            icon="asistencia"
+            label="Asistencias"
             value={operacion?.resumen.asistencias_pendientes ?? '…'}
-            sub="Por registrar o cerrar"
+            sub={operacion?.resumen.asistencias_pendientes > 0 ? 'Requieren registro o cierre' : 'Sin asistencias pendientes'}
             urgent={operacion?.resumen.asistencias_pendientes > 0}
             onClick={() => navigate('/docente/horario')}
           />
           <StatCard
-            icon="👥"
-            label="Grupos activos"
-            value={operacion?.resumen.grupos_activos ?? '…'}
-            sub={`${clasesSemana ?? 0} clase(s) esta semana`}
-            onClick={() => navigate('/docente/seguimiento')}
-          />
-          <StatCard
-            icon="🚨"
+            icon="alumnos"
             label="Alumnos en atención"
             value={operacion?.resumen.alumnos_atencion ?? '…'}
-            sub="Con indicadores académicos"
+            sub={operacion?.resumen.alumnos_atencion > 0 ? 'Con indicadores académicos' : 'Sin alumnos que requieran atención'}
             urgent={operacion?.resumen.alumnos_atencion > 0}
             onClick={() => navigate('/docente/seguimiento')}
           />
           <StatCard
-            icon="📌"
-            label="Acuerdos pendientes"
+            icon="acuerdos"
+            label="Acuerdos"
             value={operacion?.resumen.acuerdos_pendientes ?? '…'}
-            sub={operacion?.resumen.acuerdos_vencidos > 0 ? `${operacion.resumen.acuerdos_vencidos} vencido(s)` : 'Seguimiento académico'}
+            sub={operacion?.resumen.acuerdos_vencidos > 0 ? plural(operacion.resumen.acuerdos_vencidos, 'acuerdo vencido', 'acuerdos vencidos') : operacion?.resumen.acuerdos_pendientes > 0 ? 'Seguimiento académico pendiente' : 'Sin acuerdos pendientes'}
             urgent={operacion?.resumen.acuerdos_vencidos > 0}
             onClick={() => navigate('/docente/seguimiento')}
           />
-          <StatCard
-            icon="📢"
-            label="Comunicados"
-            value={pendientesComunicados ?? '…'}
-            sub={pendientesComunicados === 0 ? 'Estás al día ✓' : `${pendientesComunicados} sin leer`}
-            urgent={pendientesComunicados > 0}
-            onClick={() => navigate('/comunicados')}
-          />
-        </div>
+        </div></div>}
 
         {/* ── Atención requerida ─────────────────────────────────────── */}
         {atencionItems.length > 0 && (
@@ -413,13 +384,13 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Jornada de hoy ─────────────────────────────────────────── */}
-        <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
+        {!sinCarga && <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
             <div>
               <h2 className="font-bold text-white">Mi jornada de hoy</h2>
               <p className="text-xs text-slate-500">Clases, espacios y estado de la asistencia.</p>
             </div>
-            <button onClick={() => navigate('/docente/horario')} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo →</button>
+            <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">
@@ -441,7 +412,7 @@ export default function DashboardDocente() {
                       <td className="text-slate-400">{item.grupo}</td>
                       <td className="text-slate-400">{item.espacio}</td>
                       <td><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${estado[1]}`}>{estado[0]}</span></td>
-                      <td className="pr-5 text-right"><button onClick={() => navigate(item.estado === 'NO_LECTIVA' ? '/calendario-academico' : item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.estado === 'NO_LECTIVA' ? 'Ver calendario' : item.clase_id ? 'Abrir clase' : 'Ir al horario'} →</button></td>
+                      <td className="pr-5 text-right"><button onClick={() => navigate(item.estado === 'NO_LECTIVA' ? '/calendario-academico' : item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.estado === 'NO_LECTIVA' ? 'Ver calendario' : item.clase_id ? 'Abrir clase' : 'Ir al horario'} <Flecha /></button></td>
                     </tr>
                   );
                 })}
@@ -449,25 +420,25 @@ export default function DashboardDocente() {
             </table>
             {!loading && !operacion?.jornada.length && <p className="p-8 text-center text-sm text-slate-500">No tienes clases programadas para hoy.</p>}
           </div>
-        </div>
+        </div>}
 
         {/* ── Panorama de grupos y alumnos prioritarios ─────────────── */}
-        <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+        {!sinCarga && <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
           <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
               <div><h2 className="font-bold text-white">Panorama de mis grupos</h2><p className="text-xs text-slate-500">Asistencia y alertas de las materias que impartes.</p></div>
-              <button onClick={() => navigate('/docente/seguimiento')} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver seguimiento →</button>
+              <button onClick={() => navigate('/docente/seguimiento')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver seguimiento <Flecha /></button>
             </div>
             <div className="grid gap-3 p-4 md:grid-cols-2">
               {operacion?.grupos.map(grupo => (
                 <button key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="dashboard-subtle rounded-xl border border-white/8 p-4 text-left hover:border-emerald-500/30 hover:bg-emerald-500/5">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500">{grupo.grupo} · {grupo.carrera}</p></div>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{grupo.alumnos_alerta} alerta(s)</span>}</div>
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500">{grupo.grupo} · {grupo.carrera}</p></div>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{plural(grupo.alumnos_alerta, 'alerta', 'alertas')}</span>}</div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
                     <div><b className="block text-base text-white">{grupo.total_alumnos}</b><span className="text-slate-500">Alumnos</span></div>
                     <div><b className={`block text-base ${grupo.asistencia_promedio < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{grupo.asistencia_promedio}%</b><span className="text-slate-500">Asistencia</span></div>
                     <div><b className="block text-base text-amber-400">{grupo.acuerdos_pendientes}</b><span className="text-slate-500">Acuerdos</span></div>
                   </div>
-                  <p className="mt-3 text-[10px] text-slate-500">{grupo.total_clases} clase(s) registrada(s){grupo.ultima_clase ? ` · Última: ${new Date(`${grupo.ultima_clase}T12:00:00`).toLocaleDateString('es-MX')}` : ''}</p>
+                  <p className="mt-3 text-[10px] text-slate-500">{plural(grupo.total_clases, 'clase registrada', 'clases registradas')}{grupo.ultima_clase ? ` · Última: ${new Date(`${grupo.ultima_clase}T12:00:00`).toLocaleDateString('es-MX')}` : ''}</p>
                 </button>
               ))}
               {!loading && !operacion?.grupos.length && <p className="col-span-full p-6 text-center text-sm text-slate-500">Todavía no hay grupos activos configurados.</p>}
@@ -487,7 +458,7 @@ export default function DashboardDocente() {
               {!loading && !operacion?.alumnos_prioritarios.length && <p className="p-8 text-center text-sm text-slate-500">No hay alertas académicas activas.</p>}
             </div>
           </div>
-        </div>
+        </div>}
 
       </div>
     </AdminLayout>
