@@ -176,17 +176,6 @@ function BannerCalendarioOficial({ estado, proximaClase, onCalendario }) {
   );
 }
 
-// Acceso rápido compacto (row de chips)
-const ACCESOS = [
-  { label: 'Mi horario docente',    path: '/docente/horario',       icon: '📅' },
-  { label: 'Historial de clases',   path: '/docente/historial-clases', icon: '📖' },
-  { label: 'Solicitar laboratorio', path: '/docente/laboratorio',   icon: '🖥️' },
-  { label: 'Solicitar sala o espacio', path: '/espacios/apartar',   icon: '🏛' },
-  { label: 'Mis solicitudes de espacios', path: '/espacios/mis-solicitudes', icon: '📋' },
-  { label: 'Comunicados',           path: '/comunicados',           icon: '📢' },
-  { label: 'Mi historial',          path: '/docente/historial',     icon: '🗂' },
-];
-
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function DashboardDocente() {
@@ -497,27 +486,6 @@ export default function DashboardDocente() {
               ))}
               {!loading && !operacion?.alumnos_prioritarios.length && <p className="p-8 text-center text-sm text-slate-500">No hay alertas académicas activas.</p>}
             </div>
-          </div>
-        </div>
-
-        {/* ── Accesos rápidos (chips) ────────────────────────────────── */}
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600 mb-2">
-            Accesos rápidos
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {ACCESOS.map(a => (
-              <button
-                key={a.path}
-                onClick={() => navigate(a.path)}
-                className="dashboard-subtle flex items-center gap-2 px-4 py-2 rounded-xl border border-white/8
-                  hover:bg-white/6 text-slate-400 hover:text-white text-sm
-                  transition-all duration-150"
-              >
-                <span className="text-base leading-none">{a.icon}</span>
-                <span className="font-medium">{a.label}</span>
-              </button>
-            ))}
           </div>
         </div>
 
