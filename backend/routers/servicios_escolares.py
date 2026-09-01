@@ -38,6 +38,7 @@ from models.cierre_academico import CierreAcademicoPeriodo
 from models.promocion_academica import ContinuidadPrograma, PromocionAcademicaAlumno
 from models.auditoria import AuditLog
 from services.auditoria import registrar, Accion, Recurso
+from services.grupos_academicos import calcular_generacion, generacion_grupo
 from services.user_permissions import puede_gestionar_servicios_escolares
 
 router = APIRouter(prefix="/servicios-escolares", tags=["Servicios Escolares"])
@@ -231,7 +232,12 @@ def _ensure_organizacion_bloqueada(db: Session):
         if not grupo:
             grupo = GrupoAcademico(periodo_id=periodo.id, carrera=carrera,
                 cuatrimestre=alumno.cuatrimestre, grupo=grupo_letra, activo=True)
-            db.add(grupo); db.flush(); cambios = True
+            db.add(grupo); db.flush()
+            grupo.generacion = generacion_grupo(grupo)
+            cambios = True
+        elif not grupo.generacion:
+            grupo.generacion = generacion_grupo(grupo)
+            cambios = True
         existe = db.query(InscripcionAlumno).filter(
             InscripcionAlumno.alumno_id == alumno.id,
             InscripcionAlumno.grupo_academico_id == grupo.id,
@@ -1433,11 +1439,13 @@ def crear_grupo_academico(
     if existente:
         raise HTTPException(409, "Ese grupo ya existe para la carrera, cuatrimestre y periodo")
     grupo = GrupoAcademico(periodo_id=periodo.id, carrera=carrera.nombre, carrera_id=carrera.id,
-        cuatrimestre=data.cuatrimestre, grupo=letra, turno=data.turno, capacidad=data.capacidad, activo=True)
+        cuatrimestre=data.cuatrimestre, grupo=letra, turno=data.turno, capacidad=data.capacidad,
+        generacion=calcular_generacion(carrera.clave, periodo.clave, data.cuatrimestre), activo=True)
     db.add(grupo); db.commit(); db.refresh(grupo)
     return {"id": grupo.id, "periodo": periodo.clave, "carrera": carrera.nombre,
             "carrera_id": carrera.id, "cuatrimestre": grupo.cuatrimestre, "grupo": grupo.grupo,
-            "turno": grupo.turno, "capacidad": grupo.capacidad, "total_alumnos": 0, "activo": True}
+            "turno": grupo.turno, "capacidad": grupo.capacidad, "generacion": generacion_grupo(grupo),
+            "total_alumnos": 0, "activo": True}
 
 
 @router.get("/grupos", summary="Listar grupos académicos")
@@ -1457,7 +1465,8 @@ def listar_grupos_academicos(
         result.append({"id": g.id, "periodo": g.periodo.clave, "carrera": g.carrera,
             "carrera_id": g.carrera_id,
             "cuatrimestre": g.cuatrimestre, "grupo": g.grupo, "turno": g.turno,
-            "capacidad": g.capacidad, "activo": g.activo, "total_alumnos": total})
+            "capacidad": g.capacidad, "generacion": generacion_grupo(g),
+            "activo": g.activo, "total_alumnos": total})
     return result
 
 
@@ -1832,8 +1841,11 @@ def corregir_promocion_aplicada(inscripcion_id: int, data: CorreccionPromocionIn
         carrera_nombre = carrera_destino.nombre if carrera_destino else origen.grupo_academico.carrera
         grupo = db.query(GrupoAcademico).filter_by(periodo_id=promo.periodo_destino_id, carrera=carrera_nombre, cuatrimestre=nivel, grupo=grupo_nombre).first()
         if not grupo:
-            grupo = GrupoAcademico(periodo_id=promo.periodo_destino_id, carrera=carrera_nombre, cuatrimestre=nivel, grupo=grupo_nombre, activo=True)
+            grupo = GrupoAcademico(periodo_id=promo.periodo_destino_id, carrera=carrera_nombre, cuatrimestre=nivel,
+                grupo=grupo_nombre, generacion=generacion_grupo(origen.grupo_academico), activo=True)
             db.add(grupo); db.flush()
+        elif not grupo.generacion:
+            grupo.generacion = generacion_grupo(origen.grupo_academico)
         nueva = db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id, grupo_academico_id=grupo.id).first()
         if nueva: nueva.estado = "ACTIVO"
         else: db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
@@ -1944,8 +1956,12 @@ def aplicar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Ses
                 GrupoAcademico.cuatrimestre == cuatrimestre_destino, GrupoAcademico.grupo == grupo_destino,
             ).first()
             if not grupo:
-                grupo = GrupoAcademico(periodo_id=periodo_destino_id, carrera=carrera_destino, cuatrimestre=cuatrimestre_destino, grupo=grupo_destino, activo=True)
+                grupo = GrupoAcademico(periodo_id=periodo_destino_id, carrera=carrera_destino,
+                    cuatrimestre=cuatrimestre_destino, grupo=grupo_destino,
+                    generacion=generacion_grupo(inscripcion.grupo_academico), activo=True)
                 db.add(grupo); db.flush()
+            elif not grupo.generacion:
+                grupo.generacion = generacion_grupo(inscripcion.grupo_academico)
             nueva = db.query(InscripcionAlumno).filter(InscripcionAlumno.alumno_id == alumno.id, InscripcionAlumno.grupo_academico_id == grupo.id).first()
             if not nueva: db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
             else: nueva.estado = "ACTIVO"

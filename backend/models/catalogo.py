@@ -57,6 +57,7 @@ class GrupoAcademico(Base):
     grupo         = Column(String(10), nullable=False)
     turno         = Column(String(20), nullable=True)
     capacidad     = Column(Integer, nullable=True)
+    generacion    = Column(String(40), nullable=True, index=True)
     activo        = Column(Boolean, default=True, nullable=False)
     creado_en     = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 

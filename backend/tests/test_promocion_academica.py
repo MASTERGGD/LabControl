@@ -52,6 +52,8 @@ def test_servicios_escolares_promueve_sin_borrar_historial(client, db, admin_use
     assert {i.estado for i in historicas} == {"CONCLUIDA", "ACTIVO"}
     actualizado = db.query(CatalogoAlumno).get(alumno.id)
     assert (actualizado.cuatrimestre, actualizado.grupo, actualizado.periodo) == (4, "B", destino.clave)
+    grupo_destino = next(i.grupo_academico for i in historicas if i.estado == "ACTIVO")
+    assert grupo_destino.generacion == "TSUTI-SEP2025"
 
     expediente = client.get(f"/expediente-academico/alumnos/{alumno.id}", headers=headers)
     assert expediente.status_code == 200, expediente.text

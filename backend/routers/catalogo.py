@@ -9,6 +9,7 @@ from models.usuario import Usuario, RolUsuario
 from models.ficha_socioeconomica import FichaSocioeconomica
 from dependencies import get_current_user, require_roles
 from services.user_permissions import puede_gestionar_materias
+from services.grupos_academicos import generacion_grupo
 import openpyxl
 import io
 import datetime
@@ -138,8 +139,11 @@ def _sincronizar_inscripcion(db, alumno):
             carrera_id=alumno.carrera_id, cuatrimestre=alumno.cuatrimestre,
             grupo=alumno.grupo.upper(), activo=True)
         db.add(grupo); db.flush()
+        grupo.generacion = generacion_grupo(grupo)
     elif alumno.carrera_id and not grupo.carrera_id:
         grupo.carrera_id = alumno.carrera_id
+    if not grupo.generacion:
+        grupo.generacion = generacion_grupo(grupo)
     inscripcion = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.alumno_id == alumno.id,
         InscripcionAlumno.grupo_academico_id == grupo.id,
@@ -650,6 +654,7 @@ def _serializar_grupo(grupo, periodo_escolar):
         "cuatrimestre": grupo.cuatrimestre,
         "periodo": periodo_escolar.clave,
         "turno": grupo.turno,
+        "generacion": generacion_grupo(grupo),
         "total_alumnos": sum(1 for i in grupo.inscripciones if i.estado == "ACTIVO"),
     }
 

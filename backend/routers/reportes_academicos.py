@@ -30,6 +30,7 @@ from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente, Corre
 from models.reporte_academico import EmisionReporteAcademico
 from models.usuario import Usuario
 from services.calendario_academico import estado_fecha_academica
+from services.grupos_academicos import generacion_grupo
 from services.timezone import as_mx, format_fecha_corta_mx, now_mx, today_mx
 from services.user_permissions import puede_gestionar_materias
 
@@ -319,6 +320,7 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         grupos_json.append({
             "id": grupo.id, "nombre": f"{grupo.cuatrimestre}° {grupo.grupo}", "carrera": grupo.carrera,
             "carrera_corta": _carrera_corta(grupo.carrera),
+            "generacion": generacion_grupo(grupo),
             "alumnos": len(inscritos), "materias": len(mats),
             "sesiones": sesiones_registradas, "sesiones_programadas": sesiones_programadas,
             "cobertura": round(sesiones_registradas * 100 / sesiones_programadas, 1) if sesiones_programadas else None,
@@ -440,7 +442,8 @@ def catalogos(db: Session = Depends(get_db), current_user: Usuario = Depends(get
     ).all()
     return {"periodos": [{"id": p.id, "clave": p.clave, "es_actual": p.es_actual} for p in periodos],
             "grupos": [{"id": g.id, "periodo_id": g.periodo_id, "carrera": g.carrera,
-                        "nombre": f"{g.cuatrimestre}° {g.grupo}", "turno": g.turno} for g in grupos]}
+                        "nombre": f"{g.cuatrimestre}° {g.grupo}", "turno": g.turno,
+                        "generacion": generacion_grupo(g)} for g in grupos]}
 
 
 @router.get("")
@@ -517,7 +520,7 @@ def _excel(data: dict, emision: EmisionReporteAcademico, usuario: Usuario) -> io
     resumen.merge_cells(start_row=notas_fila+5, start_column=1, end_row=notas_fila+6, end_column=4); resumen.cell(notas_fila+5, 1, data["privacidad"]); resumen.cell(notas_fila+5, 1).alignment = Alignment(wrap_text=True, vertical="top")
     resumen.column_dimensions["A"].width = 42; resumen.column_dimensions["B"].width = 52; resumen.column_dimensions["C"].width = 20; resumen.column_dimensions["D"].width = 20
 
-    grupos = {g["id"]: f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
+    grupos = {g["id"]: f'{g["nombre"]} · {g["carrera_corta"]} · Gen. {g["generacion"]}' for g in data["grupos"]}
     pct = {"Cobertura": "0.0%", "Asistencia observada": "0.0%", "Cumplimiento declarado": "0.0%", "% asistencia observado": "0.0%"}
     fecha = {"Fecha": "dd/mm/yyyy", "Última corrección": "dd/mm/yyyy hh:mm", "Hora inicio": "hh:mm", "Hora fin": "hh:mm"}
     hoja_datos("Grupos", ["Grupo", "Alumnos", "Materias", "Sesiones registradas", "Sesiones programadas", "Cobertura", "Asistencias", "Registros", "Asistencia observada", "Nota de muestra", "Incidencias", "Alumnos con indicador"], [[grupos[g["id"]],g["alumnos"],g["materias"],g["sesiones"],g["sesiones_programadas"],g["cobertura"]/100 if g["cobertura"] is not None else None,g["asistencia_detalle"]["asistio"],g["asistencia_detalle"]["registros"],g["asistencia_detalle"]["porcentaje_observado"]/100 if g["asistencia_detalle"]["porcentaje_observado"] is not None else None,"" if g["asistencia_detalle"]["publicable"] else "Muestra insuficiente",g["incidencias"],g["alumnos_atencion"]] for g in data["grupos"]], pct, {"Grupo":34})
@@ -593,7 +596,7 @@ def _pdf(data: dict, usuario: Usuario, emision: EmisionReporteAcademico) -> tupl
         if alinear_numeros: comandos.append(("ALIGN",(2,1),(-1,-1),"CENTER"))
         t.setStyle(TableStyle(comandos)); return t
 
-    grupos_n={g["id"]:f'{g["nombre"]} · {g["carrera_corta"]}' for g in data["grupos"]}
+    grupos_n={g["id"]:f'{g["nombre"]} · {g["carrera_corta"]} · Gen. {g["generacion"]}' for g in data["grupos"]}
     alcance=", ".join(grupos_n[g["id"]] for g in data["grupos"])
     r=data["resumen"]; asistencia_general = _porcentaje(r["asistencia"]) if r["asistencia_detalle"]["publicable"] else f'{r["asistencia_detalle"]["texto"]} asistencias registradas (muestra insuficiente para porcentaje)'
     membrete_texto = [Paragraph("UNIVERSIDAD TECNOLÓGICA DE CANDELARIA",styles["Institucion"]),Paragraph("Dirección de División de Carrera",styles["Division"]),Paragraph("Reporte académico de grupos",styles["TituloReporte"])]
@@ -612,7 +615,7 @@ def _pdf(data: dict, usuario: Usuario, emision: EmisionReporteAcademico) -> tupl
             asistencia = _porcentaje(m["asistencia"]) if m["asistencia_detalle"]["publicable"] else f'{m["asistencia_detalle"]["texto"]} (muestra insuficiente)'
             sesiones = f'{m["sesiones"]}/{m["sesiones_programadas"]}' if m["sesiones_programadas"] else f'{m["sesiones"]}/—'
             filas.append([m["materia"],m["docente"],sesiones,_porcentaje(m["cobertura"]),asistencia,_porcentaje(m["avance_sesion"]),m["ultimo_tema"],m["pendiente"]])
-        bloque=[Paragraph(f'{escape(g["nombre"])} · {escape(g["carrera_corta"])}',styles["Seccion"]),tabla(filas,[3.5*cm,3.5*cm,2.0*cm,1.8*cm,3.3*cm,2.4*cm,4.8*cm,4.8*cm])]
+        bloque=[Paragraph(f'{escape(g["nombre"])} · {escape(g["carrera_corta"])} · Generación {escape(g["generacion"])}',styles["Seccion"]),tabla(filas,[3.5*cm,3.5*cm,2.0*cm,1.8*cm,3.3*cm,2.4*cm,4.8*cm,4.8*cm])]
         story.append(KeepTogether(bloque) if len(filas)<=3 else bloque[0]);
         if len(filas)>3: story.append(bloque[1])
     if data["alumnos_atencion"]:

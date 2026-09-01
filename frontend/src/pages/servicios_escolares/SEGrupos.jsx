@@ -262,6 +262,7 @@ export default function SEGrupos() {
                 <tr className="text-slate-400 border-b border-white/10">
                   <th className="p-3 text-left">Grupo</th>
                   <th className="p-3 text-left">Carrera</th>
+                  <th className="p-3 text-left">Generación</th>
                   <th className="p-3 text-left">Periodo</th>
                   <th className="p-3 text-right">Alumnos</th>
                 </tr>
@@ -269,12 +270,12 @@ export default function SEGrupos() {
               <tbody>
                 {cargando && (
                   <tr>
-                    <td colSpan="4" className="p-8 text-center text-slate-400">Cargando grupos del periodo...</td>
+                    <td colSpan="5" className="p-8 text-center text-slate-400">Cargando grupos del periodo...</td>
                   </tr>
                 )}
                 {!cargando && grupos.length === 0 && !error && (
                   <tr>
-                    <td colSpan="4" className="p-8 text-center text-slate-400">No hay grupos registrados en este periodo.</td>
+                    <td colSpan="5" className="p-8 text-center text-slate-400">No hay grupos registrados en este periodo.</td>
                   </tr>
                 )}
                 {!cargando && grupos.map((grupo) => (
@@ -285,6 +286,7 @@ export default function SEGrupos() {
                   >
                     <td className="p-3 font-semibold text-white">{grupo.cuatrimestre}° {grupo.grupo}</td>
                     <td className="p-3 text-slate-300">{grupo.carrera}</td>
+                    <td className="p-3"><span className="rounded-full bg-blue-500/10 px-2 py-1 text-xs font-semibold text-blue-300">{grupo.generacion}</span></td>
                     <td className="p-3 text-slate-400">{grupo.periodo}</td>
                     <td className="p-3 text-right text-emerald-400">{grupo.total_alumnos}</td>
                   </tr>
@@ -378,7 +380,7 @@ export default function SEGrupos() {
               <div className="flex justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-white">{detalle.cuatrimestre}° {detalle.grupo}</h2>
-                  <p className="text-sm text-slate-400">{detalle.carrera} · {alumnos.length} alumnos</p>
+                  <p className="text-sm text-slate-400">{detalle.carrera} · Generación {detalle.generacion} · {alumnos.length} alumnos</p>
                 </div>
                 <button type="button" onClick={() => setDetalle(null)} className="text-slate-400">✕</button>
               </div>
@@ -402,7 +404,7 @@ export default function SEGrupos() {
           </div>
         )}
 
-        {nuevoGrupo && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setNuevoGrupo(false)}><form onSubmit={crearGrupo} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg space-y-4 p-6"><div><h2 className="text-lg font-bold text-white">Crear grupo</h2><p className="text-sm text-slate-400">{periodo}</p></div><label className="block text-sm text-slate-300">Carrera oficial<select required value={formGrupo.carrera_id} onChange={e => setFormGrupo(f => ({ ...f, carrera_id: e.target.value }))} className="input-dark mt-1 w-full"><option value="">Selecciona…</option>{carreras.map(c => <option key={c.id} value={c.id}>{c.clave} · {c.nombre}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm text-slate-300">Cuatrimestre<input required type="number" min="1" max="12" value={formGrupo.cuatrimestre} onChange={e => setFormGrupo(f => ({ ...f, cuatrimestre: e.target.value }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Grupo<input required value={formGrupo.grupo} onChange={e => setFormGrupo(f => ({ ...f, grupo: e.target.value.toUpperCase() }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Turno<input value={formGrupo.turno} onChange={e => setFormGrupo(f => ({ ...f, turno: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Matutino"/></label><label className="text-sm text-slate-300">Capacidad<input type="number" min="1" max="100" value={formGrupo.capacidad} onChange={e => setFormGrupo(f => ({ ...f, capacidad: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Opcional"/></label></div><div className="flex justify-end gap-2"><button type="button" onClick={() => setNuevoGrupo(false)} className="rounded-xl border border-white/10 px-4 py-2 text-slate-300">Cancelar</button><button disabled={guardando} className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-40">Crear grupo</button></div></form></div>}
+        {nuevoGrupo && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setNuevoGrupo(false)}><form onSubmit={crearGrupo} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg space-y-4 p-6"><div><h2 className="text-lg font-bold text-white">Crear grupo</h2><p className="text-sm text-slate-400">{periodo}</p></div><label className="block text-sm text-slate-300">Carrera oficial<select required value={formGrupo.carrera_id} onChange={e => setFormGrupo(f => ({ ...f, carrera_id: e.target.value }))} className="input-dark mt-1 w-full"><option value="">Selecciona…</option>{carreras.map(c => <option key={c.id} value={c.id}>{c.clave} · {c.nombre}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm text-slate-300">Cuatrimestre<input required type="number" min="1" max="12" value={formGrupo.cuatrimestre} onChange={e => setFormGrupo(f => ({ ...f, cuatrimestre: e.target.value }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Grupo<input required value={formGrupo.grupo} onChange={e => setFormGrupo(f => ({ ...f, grupo: e.target.value.toUpperCase() }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Turno<input value={formGrupo.turno} onChange={e => setFormGrupo(f => ({ ...f, turno: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Matutino"/></label><label className="text-sm text-slate-300">Capacidad<input type="number" min="1" max="100" value={formGrupo.capacidad} onChange={e => setFormGrupo(f => ({ ...f, capacidad: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Opcional"/></label></div><p className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">SIGA calculará la generación con la carrera, el periodo de ingreso y el cuatrimestre. La conservará automáticamente en cada promoción.</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setNuevoGrupo(false)} className="rounded-xl border border-white/10 px-4 py-2 text-slate-300">Cancelar</button><button disabled={guardando} className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-40">Crear grupo</button></div></form></div>}
       </div>
     </AdminLayout>
   );
