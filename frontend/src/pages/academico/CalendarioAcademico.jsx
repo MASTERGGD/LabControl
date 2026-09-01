@@ -38,28 +38,28 @@ function CalendarGrid({ cursor, eventos, onDay, onEvent }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/50 shadow-xl shadow-black/10">
       <div className="grid grid-cols-7 border-b border-white/10 bg-white/[0.04] text-center text-xs font-semibold uppercase text-slate-400">
-        {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => <div key={d} className="py-3">{d}</div>)}
+        {['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => <div key={d} className="py-3 text-[13px]">{d}</div>)}
       </div>
       <div className="grid grid-cols-7">
         {cells.map((day, idx) => {
-          if (!day) return <div key={`blank-${idx}`} className="min-h-32 border-b border-r border-white/5 bg-black/20" />;
+          if (!day) return <div key={`blank-${idx}`} className="min-h-40 border-b border-r border-white/5 bg-black/20" />;
           const iso = isoLocal(year, month, day);
           const delDia = eventos.filter(e => e.fecha_inicio <= iso && e.fecha_fin >= iso);
           const today = new Date();
           const esHoy = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
           return (
-            <button type="button" key={iso} onClick={() => onDay(iso)} className={`min-h-32 border-b border-r border-white/5 p-2 text-left transition hover:bg-white/[0.05] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 ${idx % 7 > 4 ? 'bg-white/[0.015]' : ''}`} aria-label={`${day} de ${MESES[month]}`}>
-              <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs ${esHoy ? 'bg-blue-600 font-bold text-white' : 'text-slate-400'}`}>{day}</span>
-              <div className="mt-1 space-y-1">
+            <button type="button" key={iso} onClick={() => onDay(iso)} className={`min-h-40 border-b border-r border-white/5 p-2.5 text-left align-top transition hover:bg-white/[0.05] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 ${idx % 7 > 4 ? 'bg-white/[0.015]' : ''}`} aria-label={`${day} de ${MESES[month]}`}>
+              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${esHoy ? 'bg-blue-600 font-bold text-white' : 'text-slate-400'}`}>{day}</span>
+              <div className="mt-1.5 space-y-1.5">
                 {delDia.slice(0, 3).map(e => {
                   const spec = TIPO_MAP[e.tipo] || TIPO_MAP.OTRO;
                   const inicia = e.fecha_inicio === iso;
                   const termina = e.fecha_fin === iso;
                   return (
-                  <span key={e.id} onClick={ev => { ev.stopPropagation(); onEvent(e); }} className={`flex min-h-6 items-center gap-1 truncate border-l-2 bg-white/[0.07] px-1.5 py-1 text-[10px] font-semibold text-slate-100 hover:bg-white/[0.12] ${inicia ? 'rounded-l-md' : '-ml-2'} ${termina ? 'rounded-r-md' : '-mr-2'}`} style={{ borderLeftColor: e.color || spec[2] }} title={e.titulo}><i className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[8px] not-italic text-white" style={{ backgroundColor: e.color || spec[2] }}>{spec[5]}</i><span className="truncate">{e.titulo}</span></span>
+                  <span key={e.id} onClick={ev => { ev.stopPropagation(); onEvent(e); }} className={`flex min-h-8 items-start gap-1.5 border-l-2 bg-white/[0.07] px-2 py-1.5 text-xs font-semibold leading-4 text-slate-100 hover:bg-white/[0.12] ${inicia ? 'rounded-l-md' : '-ml-2.5'} ${termina ? 'rounded-r-md' : '-mr-2.5'}`} style={{ borderLeftColor: e.color || spec[2] }} title={`${e.titulo} · ${e.fecha_inicio}${e.fecha_fin !== e.fecha_inicio ? ` al ${e.fecha_fin}` : ''}`}><i className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] not-italic text-white" style={{ backgroundColor: e.color || spec[2] }}>{spec[5]}</i><span className="line-clamp-2 min-w-0 whitespace-normal break-words">{e.titulo}</span></span>
                   );
                 })}
-                {delDia.length > 3 && <span className="text-[10px] text-slate-500">+{delDia.length - 3} más</span>}
+                {delDia.length > 3 && <span className="text-xs font-medium text-slate-500">+{delDia.length - 3} más</span>}
               </div>
             </button>
           );
