@@ -33,6 +33,13 @@ def _escenario(db):
     return admin, docente, periodo, carga
 
 
+def _poner_en_precierre(db, admin, periodo):
+    db.add(CierreAcademicoPeriodo(
+        periodo_id=periodo.id, estado="PRECIERRE", configurado_por_id=admin.id,
+    ))
+    db.commit()
+
+
 def test_periodo_cerrado_no_permite_nuevas_cargas_ni_activarlas(client, db, monkeypatch):
     import routers.docencia as docencia
     from zoneinfo import ZoneInfo
@@ -70,6 +77,7 @@ def test_confirmacion_bloquea_pendientes_y_evitar_duplicados(client, db):
     admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
     docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
     hoy = datetime.date.today()
+    _poner_en_precierre(db, admin, periodo)
     configurado = client.put("/cierre-academico", headers=admin_h, json={
         "periodo_id": periodo.id, "estado": "CONFIRMACION",
         "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
@@ -95,6 +103,7 @@ def test_cierre_reapertura_y_reconfirmacion(client, db):
     admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
     docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
     hoy = datetime.date.today()
+    _poner_en_precierre(db, admin, periodo)
     ventana = {
         "periodo_id": periodo.id, "estado": "CONFIRMACION",
         "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
@@ -119,6 +128,7 @@ def test_confirmacion_bloquea_carga_sin_clases_registradas(client, db):
     admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
     docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
     hoy = datetime.date.today()
+    _poner_en_precierre(db, admin, periodo)
     assert client.put("/cierre-academico", headers=admin_h, json={
         "periodo_id": periodo.id, "estado": "CONFIRMACION",
         "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
@@ -142,11 +152,47 @@ def test_docente_no_puede_configurar_cierre(client, db):
     assert respuesta.status_code == 403
 
 
+def test_precierre_requiere_fin_oficial_y_no_permite_saltar_etapas(client, db):
+    from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
+    admin, _, periodo, _ = _escenario(db)
+    headers = auth_headers(get_token(client, admin.email, "Admin123!"))
+    hoy = datetime.date.today()
+
+    salto = client.put("/cierre-academico", headers=headers, json={
+        "periodo_id": periodo.id, "estado": "CONFIRMACION",
+        "confirmacion_inicio": hoy.isoformat(), "confirmacion_fin": hoy.isoformat(),
+    })
+    assert salto.status_code == 409
+    sin_fecha = client.put("/cierre-academico", headers=headers, json={
+        "periodo_id": periodo.id, "estado": "PRECIERRE",
+    })
+    assert sin_fecha.status_code == 409
+    assert "fin de actividades académicas" in sin_fecha.json()["detail"]
+
+    calendario = CalendarioAcademico(
+        periodo_id=periodo.id, creado_por_id=admin.id, estado="PUBLICADO",
+    )
+    db.add(calendario); db.flush()
+    db.add(EventoCalendarioAcademico(
+        calendario_id=calendario.id, creado_por_id=admin.id,
+        titulo="Fin de actividades", tipo="FIN_ACTIVIDADES_ACADEMICAS",
+        fecha_inicio=hoy - datetime.timedelta(days=1),
+        fecha_fin=hoy - datetime.timedelta(days=1),
+    ))
+    db.commit()
+    permitido = client.put("/cierre-academico", headers=headers, json={
+        "periodo_id": periodo.id, "estado": "PRECIERRE",
+    })
+    assert permitido.status_code == 200, permitido.text
+    assert permitido.json()["estado"] == "PRECIERRE"
+
+
 def test_cierre_bloquea_sesion_laboratorio_y_archiva_reserva(client, db):
     admin, docente, periodo, carga = _escenario(db)
     admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
     docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
     hoy = datetime.date.today()
+    _poner_en_precierre(db, admin, periodo)
     assert client.put("/cierre-academico", headers=admin_h, json={
         "periodo_id": periodo.id, "estado": "CONFIRMACION",
         "confirmacion_inicio": (hoy - datetime.timedelta(days=1)).isoformat(),
@@ -196,6 +242,10 @@ def test_cierre_unificado_archiva_calendario_y_es_irreversible(client, db):
     db.add(EventoCalendarioAcademico(calendario_id=calendario.id, creado_por_id=admin.id,
         titulo="Suspensión", tipo="SUSPENSION_GENERAL", fecha_inicio=datetime.date(2026, 8, 20),
         fecha_fin=datetime.date(2026, 8, 20), requiere_asistencia=False, permite_iniciar_clase=False))
+    db.add(CierreAcademicoPeriodo(
+        periodo_id=periodo.id, estado="CONFIRMACION", configurado_por_id=admin.id,
+        confirmacion_inicio=datetime.date(2026, 8, 1), confirmacion_fin=datetime.date(2026, 8, 31),
+    ))
     db.commit()
     headers = auth_headers(get_token(client, admin.email, "Admin123!"))
     independiente = client.put(f"/calendario-academico/{calendario.id}/estado", headers=headers,

@@ -1,5 +1,6 @@
 import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
 from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
-from models.calendario_academico import CalendarioAcademico, HistorialCalendarioAcademico
+from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico
 from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente, ClaseDocente
 from models.horario import Reservacion
@@ -18,6 +19,7 @@ from models.usuario import Usuario
 from services.user_permissions import puede_gestionar_materias
 
 router = APIRouter(prefix="/cierre-academico", tags=["Cierre académico"])
+MX = ZoneInfo("America/Mexico_City")
 
 
 class ConfiguracionIn(BaseModel):
@@ -59,6 +61,28 @@ def _normalizar_periodo(valor):
 def _reservaciones_periodo(db, clave):
     buscada = _normalizar_periodo(clave)
     return [r for r in db.query(Reservacion).all() if _normalizar_periodo(r.cuatrimestre) == buscada]
+
+
+def _fecha_fin_actividades(db, periodo_id):
+    base = db.query(EventoCalendarioAcademico).join(CalendarioAcademico).filter(
+        CalendarioAcademico.periodo_id == periodo_id,
+        EventoCalendarioAcademico.activo == True,
+    )
+    fin_actividades = base.filter(
+        EventoCalendarioAcademico.tipo == "FIN_ACTIVIDADES_ACADEMICAS",
+    ).order_by(EventoCalendarioAcademico.fecha_fin.desc()).first()
+    return fin_actividades or base.filter(
+        EventoCalendarioAcademico.tipo == "FIN_CUATRIMESTRE",
+    ).order_by(EventoCalendarioAcademico.fecha_fin.desc()).first()
+
+
+def _validar_inicio_cierre(db, periodo_id):
+    evento = _fecha_fin_actividades(db, periodo_id)
+    if not evento:
+        raise HTTPException(409, "Configura en el calendario oficial la fecha de fin de actividades académicas antes de comenzar el cierre")
+    hoy = datetime.datetime.now(MX).date()
+    if hoy <= evento.fecha_fin:
+        raise HTTPException(409, f"El cierre estará disponible después del {evento.fecha_fin.strftime('%d/%m/%Y')}, al terminar las actividades académicas")
 
 
 def _resumen_carga(db, carga):
@@ -157,6 +181,17 @@ def configurar(data: ConfiguracionIn, db: Session = Depends(get_db), current_use
         if data.estado != "CERRADO":
             raise HTTPException(409, "El cuatrimestre ya está cerrado. Solo se permiten reaperturas individuales de cargas para corrección.")
         return _ser_cierre(db, cierre, current_user)
+    estado_actual = cierre.estado if cierre else "ACTIVO"
+    transiciones = {
+        "ACTIVO": {"ACTIVO", "PRECIERRE"},
+        "PRECIERRE": {"PRECIERRE", "CONFIRMACION"},
+        "CONFIRMACION": {"CONFIRMACION", "CERRADO"},
+    }
+    if data.estado not in transiciones.get(estado_actual, {estado_actual}):
+        nombres = {"ACTIVO": "periodo en curso", "PRECIERRE": "pre-cierre", "CONFIRMACION": "confirmación docente", "CERRADO": "cierre definitivo"}
+        raise HTTPException(409, f"No se puede pasar de {nombres.get(estado_actual, estado_actual)} a {nombres.get(data.estado, data.estado)}; completa primero la etapa actual")
+    if data.estado == "PRECIERRE" and estado_actual == "ACTIVO":
+        _validar_inicio_cierre(db, periodo.id)
     if not cierre:
         cierre = CierreAcademicoPeriodo(periodo_id=periodo.id, configurado_por_id=current_user.id)
         db.add(cierre)
