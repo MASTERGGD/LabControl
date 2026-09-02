@@ -89,6 +89,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   const [verificandoLab, setVerificandoLab] = useState(false);
   const esClase = form.tipo_actividad === 'CLASE';
   const esTutoria = form.tipo_actividad === 'TUTORIA';
+  const esActividadConGrupo = esClase || esTutoria;
   const grupoSeleccionado = catalogos.grupos.find((g) => String(g.id) === String(form.grupo_academico_id));
   const materiaSeleccionada = catalogos.materias.find((m) => String(m.id) === String(form.materia_id));
   const asignacionGrupo = (grupoId, materiaId = form.materia_id) => (
@@ -188,7 +189,10 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   };
 
   useEffect(() => {
-    if (!esClase || !form.laboratorio_id || !form.grupo_academico_id || !form.materia_id) {
+    const tieneGrupo = esClase
+      ? Boolean(form.grupo_academico_id && form.materia_id)
+      : esTutoria && Boolean(form.grupo_tutorado_id);
+    if (!esActividadConGrupo || !form.laboratorio_id || !tieneGrupo) {
       setDisponibilidadLab(null);
       return undefined;
     }
@@ -207,7 +211,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     }, 350);
     return () => window.clearTimeout(timer);
   }, [
-    esClase, form.laboratorio_id, form.grupo_academico_id, form.materia_id,
+    esClase, esTutoria, esActividadConGrupo, form.laboratorio_id, form.grupo_academico_id, form.materia_id, form.grupo_tutorado_id,
     form.dia_semana, form.hora_inicio, form.hora_fin, periodoId, actividad?.id,
   ]);
 
@@ -351,12 +355,12 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
             <input className="input-dark mt-1 w-full" value={form.espacio_nombre} onChange={(e) => cambiar('espacio_nombre', e.target.value)} placeholder="Ej. S3, Aula 2" list="espacios-docencia" />
             <datalist id="espacios-docencia">{catalogos.espacios.map((e) => <option key={e.id} value={e.nombre} />)}</datalist>
           </label>
-          {form.laboratorio_id && esClase && (
+          {form.laboratorio_id && esActividadConGrupo && (
             <fieldset className="sm:col-span-2 rounded-xl border border-white/10 p-4">
               <legend className="px-1 text-sm font-semibold text-slate-200">¿Cómo utilizarás el laboratorio?</legend>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
                 {[
-                  ['SOLO_AULA', 'Solo como aula', 'Clase y asistencia, sin control de computadoras.'],
+                  ['SOLO_AULA', 'Solo como aula', `${esTutoria ? 'Tutoría' : 'Clase'} sin control de computadoras.`],
                   ['EQUIPOS', 'Aula y computadoras', 'Habilita revisión y asignación de equipos.'],
                   ['USO_PARCIAL', 'Uso parcial', 'Solo algunos estudiantes utilizarán computadoras.'],
                 ].map(([valor, titulo, ayuda]) => (
@@ -370,7 +374,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
               </div>
             </fieldset>
           )}
-          {form.laboratorio_id && esClase && (
+          {form.laboratorio_id && esActividadConGrupo && (
             <div className="sm:col-span-2">
               <div className={`rounded-xl border p-4 ${
                 disponibilidadLab?.estado === 'DISPONIBLE' ? 'border-emerald-500/30 bg-emerald-500/10'
@@ -382,14 +386,14 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                     <p className="text-sm font-semibold text-white">
                       {verificandoLab ? 'Verificando disponibilidad…' : ({
                         DISPONIBLE: 'Laboratorio disponible en todo el horario',
-                        RESERVADO: 'Laboratorio reservado para esta clase',
+                        RESERVADO: `Laboratorio reservado para esta ${esTutoria ? 'tutoría' : 'clase'}`,
                         OCUPADO: 'El laboratorio está ocupado',
                         SOLICITADO: 'Ya solicitaste uno de estos periodos',
                         BLOQUEADO: 'El laboratorio tiene un bloqueo institucional',
                         SIN_HORARIOS: 'El laboratorio no tiene horarios configurados',
                         COBERTURA_INCOMPLETA: 'No hay cobertura para todo el horario',
                         ERROR: 'No se pudo verificar la disponibilidad',
-                      }[disponibilidadLab?.estado] || 'Selecciona materia y grupo para verificar')}
+                      }[disponibilidadLab?.estado] || (esTutoria ? 'Selecciona el grupo tutorado para verificar' : 'Selecciona materia y grupo para verificar'))}
                     </p>
                     {disponibilidadLab?.ocupaciones?.map((ocupacion, indice) => (
                       <p key={`${ocupacion.hora}-${indice}`} className="mt-1 text-xs text-slate-400">

@@ -739,8 +739,11 @@ def test_bloque_tutoria_exige_grupo_formal_asignado(client, db):
     # preparación. Al convertirse en vigente debe estar disponible en horario
     # aunque la sincronización de Tutoría todavía conserve ese estado.
     grupo = GrupoTutorado(tutor_id=docente.id, carrera="TIEID", cuatrimestre=9, grupo="A", periodo=periodo.clave, activo=True, estado="PREPARACION")
-    db.add(grupo); db.commit()
-    payload = {"periodo_id": periodo.id, "grupo_tutorado_id": grupo.id, "tipo_actividad": "TUTORIA", "actividad_nombre": "texto ignorado", "dia_semana": 2, "hora_inicio": "08:00", "hora_fin": "09:00"}
+    laboratorio = Laboratorio(nombre="Laboratorio para tutoría", categoria="COMPUTO", activo=True)
+    db.add_all([grupo, laboratorio]); db.flush()
+    db.add(HorarioDisponible(laboratorio_id=laboratorio.id, dia_semana=2, hora_inicio="08:00", hora_fin="09:00", cuatrimestre="MAY-AGO-2026", activo=True))
+    db.commit()
+    payload = {"periodo_id": periodo.id, "grupo_tutorado_id": grupo.id, "tipo_actividad": "TUTORIA", "actividad_nombre": "texto ignorado", "dia_semana": 2, "hora_inicio": "08:00", "hora_fin": "09:00", "laboratorio_id": laboratorio.id, "uso_laboratorio": "SOLO_AULA"}
     headers = auth_headers(get_token(client, docente.email, "Docente123!"))
     catalogos = client.get("/docencia/catalogos", headers=headers)
     assert catalogos.status_code == 200
@@ -749,5 +752,14 @@ def test_bloque_tutoria_exige_grupo_formal_asignado(client, db):
     assert creada.status_code == 200, creada.text
     assert creada.json()["carga"]["grupo_tutorado_id"] == grupo.id
     assert creada.json()["carga"]["actividad_nombre"] == "Tutoría grupal · 9° A"
+    assert creada.json()["carga"]["uso_laboratorio"] == "SOLO_AULA"
+    disponibilidad = client.post("/docencia/horario/verificar-laboratorio", headers=headers, json=payload)
+    assert disponibilidad.status_code == 200, disponibilidad.text
+    assert disponibilidad.json()["estado"] == "DISPONIBLE"
+    reservada = client.post(f"/docencia/horario/{creada.json()['carga']['id']}/reservar-laboratorio", headers=headers)
+    assert reservada.status_code == 200, reservada.text
+    reserva = db.query(Reservacion).filter(Reservacion.carga_docente_id == creada.json()["carga"]["id"]).one()
+    assert reserva.tipo_actividad == "TUTORIA"
+    assert reserva.grupo == "9° A"
     denegada = client.post("/docencia/horario", headers=auth_headers(get_token(client, ajeno.email, "Docente123!")), json=payload)
     assert denegada.status_code == 409

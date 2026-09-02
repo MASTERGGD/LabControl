@@ -1065,10 +1065,12 @@ def reservar_laboratorio_carga(
         CargaDocente.id == carga_id,
         CargaDocente.docente_id == current_user.id,
         CargaDocente.activo == True,
-        CargaDocente.tipo_actividad == "CLASE",
+        CargaDocente.tipo_actividad.in_(["CLASE", "TUTORIA"]),
     ).first()
-    if not carga or not carga.laboratorio_id or not carga.grupo_academico:
-        raise HTTPException(422, "La clase debe tener laboratorio, materia y grupo")
+    grupo = carga.grupo_academico if carga else None
+    grupo_tutorado = carga.grupo_tutorado if carga else None
+    if not carga or not carga.laboratorio_id or not (grupo or grupo_tutorado):
+        raise HTTPException(422, "La actividad debe tener laboratorio y grupo")
     _validar_carga_actual(db, carga)
     data = CargaInput.model_validate({
         campo: getattr(carga, campo) for campo in CargaInput.model_fields
@@ -1088,14 +1090,15 @@ def reservar_laboratorio_carga(
             docente_id=current_user.id,
             carga_docente_id=carga.id,
             materia=carga.actividad_nombre,
-            carrera=carga.grupo_academico.carrera,
+            carrera=(grupo.carrera if grupo else grupo_tutorado.carrera),
             cuatrimestre=carga.periodo.clave,
             periodo_id=carga.periodo_id,
-            cuatrimestre_materia=str(carga.grupo_academico.cuatrimestre),
-            grupo=f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}",
+            cuatrimestre_materia=str(grupo.cuatrimestre if grupo else grupo_tutorado.cuatrimestre),
+            grupo=f"{grupo.cuatrimestre}° {grupo.grupo}" if grupo else f"{grupo_tutorado.cuatrimestre}° {grupo_tutorado.grupo}",
             estado="PROGRAMADA",
             creado_por=current_user.id,
-            observaciones="Reservación vinculada desde Mi horario docente",
+            observaciones=f"Reservación de {'tutoría' if carga.tipo_actividad == 'TUTORIA' else 'clase'} vinculada desde Mi horario docente",
+            tipo_actividad=carga.tipo_actividad,
         ))
     db.commit()
     disponibilidad["estado"] = "RESERVADO"
