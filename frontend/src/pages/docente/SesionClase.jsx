@@ -1461,7 +1461,7 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
 
   // Día activo: hoy si tiene slots, si no el primero disponible
   const hoy = new Date().getDay(); // 0=Dom,1=Lun...
-  const hoyIdx = hoy === 0 ? 5 : hoy - 1; // convertir a 0=Lun
+  const hoyIdx = hoy === 0 ? -1 : hoy - 1; // convertir a 0=Lun; domingo no tiene pestaña
   const [diaActivo, setDiaActivo] = useState(
     dias.includes(initialDia) ? initialDia : dias.includes(hoyIdx) ? hoyIdx : dias[0] ?? 0
   );
@@ -1513,8 +1513,9 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
         {dias.map(d => {
           const tieneMio = slots.some(s => s.dia_semana === d && s.estado_vista === 'MIO');
           const activo   = d === diaActivo;
+          const esHoy    = d === hoyIdx;
           return (
-            <button key={d} onClick={() => setDiaActivo(d)} style={{
+            <button key={d} onClick={() => setDiaActivo(d)} aria-current={esHoy ? 'date' : undefined} style={{
               flexShrink: 0,
               minWidth: '66px',
               padding: '7px 10px',
@@ -1532,7 +1533,7 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                 {DIAS_CORTO[d]}
               </span>
               <span style={{ display: 'block', fontSize: '12px', marginTop: '2px', whiteSpace: 'nowrap' }}>
-                {DIAS_LABEL[d]}
+                {esHoy ? 'Hoy' : DIAS_LABEL[d]}
               </span>
               {tieneMio && (
                 <span style={{
@@ -1557,18 +1558,20 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
           const clave = `${slot.dia_semana}-${slot.hora_inicio}`;
           const grupo = gruposConsecutivos[clave];
           const isClickable = ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
+          const esLibre = slot.estado_vista === 'LIBRE';
 
           return (
             <button key={clave} onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
               style={{
                 width: '100%', textAlign: 'left',
                 background: c.bg, border: `1px solid ${c.border}`,
-                borderRadius: '14px', padding: '14px 16px',
+                borderRadius: '14px', padding: esLibre ? '11px 14px' : '14px 16px',
+                minHeight: esLibre ? '52px' : undefined,
                 cursor: isClickable ? 'pointer' : 'default',
                 boxShadow: slot.estado_vista === 'MIO' ? (isDay ? '0 4px 16px rgba(79,70,229,0.18)' : '0 4px 16px rgba(79,70,229,0.25)') : 'none',
                 fontFamily: 'inherit',
               }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: esLibre ? 0 : '6px' }}>
                 {/* Hora */}
                 <span style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 800, color: c.hour }}>
                   {slot.hora_inicio} – {slot.hora_fin}
@@ -1639,8 +1642,6 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                     </span>
                   )}
                 </div>
-              ) : slot.estado_vista === 'LIBRE' ? (
-                <p style={{ margin: 0, fontSize: '14px', color: c.txt, opacity: 1, fontWeight: isDay ? 600 : 400 }}>Disponible para reservar</p>
               ) : slot.estado_vista === 'BLOQUEADO' ? (
                 <p style={{ margin: 0, fontSize: '14px', color: c.txt, opacity: 1, fontWeight: isDay ? 600 : 400 }}>
                   {slot.bloqueo?.motivo || 'No disponible'}
@@ -2091,7 +2092,6 @@ export default function SesionClase() {
   useEffect(() => { window.scrollTo(0, 0); }, [labId]);
 
   const recargar = () => { cargarGrid(); cargarSesionActiva(); cargarSolicRecibidas(); };
-  const laboratorioSeleccionado = laboratorios.find(l => String(l.id) === String(labId));
 
   const handleCeder = async (reservacion_id) => {
     setAccionando(reservacion_id);
@@ -2198,11 +2198,9 @@ export default function SesionClase() {
           <h1 className="text-xl font-bold" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>
             {esMobil ? 'Mi horario' : 'Mi horario semanal'}
           </h1>
-          {!esMobil && (
-            <p className="text-sm mt-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
-              Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.
-            </p>
-          )}
+          <p className={`${esMobil ? 'text-xs' : 'text-sm'} mt-1`} style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
+            {esMobil ? 'Toca un turno para ver las acciones disponibles.' : 'Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.'}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <button onClick={() => setModalLibre(true)}
@@ -2210,7 +2208,7 @@ export default function SesionClase() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
-            {esMobil ? 'Sin reserva' : 'Sesión sin reservación'}
+            {esMobil ? 'Registrar sin reserva' : 'Sesión sin reservación'}
           </button>
         </div>
       </div>
@@ -2237,11 +2235,6 @@ export default function SesionClase() {
             options={laboratorios.map(l => ({ value: l.id, label: l.nombre, wrap: true }))}
           />
         </div>
-        {esMobil && laboratorioSeleccionado?.nombre && (
-          <p className="w-full -mt-1 mb-1 text-xs leading-snug" style={{ color: isDay ? '#475569' : '#cbd5e1' }}>
-            {laboratorioSeleccionado.nombre}
-          </p>
-        )}
         <div className="flex items-center gap-2" style={{ marginLeft: esMobil ? 0 : '16px', width: esMobil ? '100%' : undefined }}>
           <span className="text-sm" style={{ color: isDay ? '#475569' : '#94a3b8' }}>Cuatrimestre</span>
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full"
@@ -2250,7 +2243,10 @@ export default function SesionClase() {
               color: isDay ? '#0b5ed7' : '#93c5fd',
               border: `1px solid ${isDay ? '#93c5fd' : 'rgba(59,130,246,0.25)'}`,
             }}>
-            📅 {cuatrimestre}
+            <svg className="mr-1 inline-block h-3.5 w-3.5 align-[-2px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 2v3m8-3v3M3.5 9h17M5 4h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+            </svg>
+            {cuatrimestre}
           </span>
         </div>
         <button onClick={recargar}
@@ -2303,9 +2299,7 @@ export default function SesionClase() {
         </div>
       ) : (
         <>
-          <div className="mb-3">
-            <Leyenda />
-          </div>
+          {!esMobil && <div className="mb-3"><Leyenda /></div>}
           {esMobil
             ? <GridMobile slots={slots} onSlotClick={handleSlotClick} isDay={isDay} initialDia={diaSolicitado} />
             : <GridSemanal slots={slots} onSlotClick={handleSlotClick} />
