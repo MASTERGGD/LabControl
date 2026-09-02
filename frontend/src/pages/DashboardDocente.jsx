@@ -23,7 +23,7 @@ function fmtCountdown(ms) {
   const m = totalMin % 60;
 
   if (dias > 0) {
-    const textoDias = dias === 1 ? '1 dia' : `${dias} dias`;
+    const textoDias = dias === 1 ? '1 día' : `${dias} días`;
     return h > 0 ? `${textoDias} ${h}h` : textoDias;
   }
 
@@ -135,10 +135,14 @@ function BannerSesionActiva({ sesion, onIr }) {
 }
 
 // Bloque "Próxima clase"
-function BloqueProximaClase({ reservacion, countdown, onIr }) {
+function BloqueProximaClase({ reservacion, tiempoRestante, onIr }) {
   if (!reservacion) return null;
   const prox = reservacion._proxFecha;
-  const esHoy = fmtFechaClase(prox) === 'Hoy';
+  const fechaClase = fmtFechaClase(prox);
+  const esHoy = fechaClase === 'Hoy';
+  const enCurso = tiempoRestante <= 0;
+  const comienzaPronto = tiempoRestante > 0 && tiempoRestante <= 60 * 60_000;
+  const referenciaFecha = esHoy ? 'hoy' : fechaClase === 'Mañana' ? 'mañana' : `el ${fechaClase}`;
 
   return (
     <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-500/3 p-4">
@@ -151,22 +155,28 @@ function BloqueProximaClase({ reservacion, countdown, onIr }) {
           <p className="text-slate-400 text-sm mt-0.5">
             {reservacion.grupo} · {toTitleCase(reservacion.laboratorio_nombre)}
           </p>
-          <p className="text-slate-500 text-xs mt-1">
-            {fmtFechaClase(prox)} · {fmtHora(reservacion.hora_inicio)} – {fmtHora(reservacion.hora_fin)}
-          </p>
         </div>
-        <div className="text-right flex-shrink-0">
-          <div className={`text-2xl font-black tabular-nums leading-none mb-0.5
-            ${countdown === 'En curso' ? 'text-emerald-400' : 'text-blue-300'}`}>
-            {countdown}
-          </div>
-          <p className="text-[11px] text-slate-500">
-            {countdown === 'En curso' ? '¡Clase en curso!' : 'para comenzar'}
-          </p>
+        <div className="flex-shrink-0 text-left sm:text-right">
+          {enCurso ? (
+            <>
+              <p className="text-lg font-bold text-emerald-400">Clase en curso</p>
+              <p className="text-xs text-slate-500">Puedes iniciar la clase</p>
+            </>
+          ) : comienzaPronto ? (
+            <>
+              <p className="text-2xl font-black tabular-nums leading-none text-emerald-400">{fmtCountdown(tiempoRestante)}</p>
+              <p className="mt-1 text-[11px] text-slate-500">para comenzar</p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-medium text-slate-500">Tu próxima clase es {referenciaFecha}</p>
+              <p className="mt-0.5 text-lg font-bold text-blue-300">{fmtHora(reservacion.hora_inicio)}–{fmtHora(reservacion.hora_fin)}</p>
+            </>
+          )}
           <button
             onClick={onIr}
             className="mt-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors
-              flex items-center gap-1 ml-auto"
+              flex items-center gap-1 sm:ml-auto"
           >
             Ver horario
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,7 +219,7 @@ export default function DashboardDocente() {
   const [proximaClase,  setProximaClase]   = useState(null);
   const [solicitudes,   setSolicitudes]    = useState({ total: 0, pendientes: 0 });
   const [operacion,     setOperacion]      = useState(null);
-  const [countdown,     setCountdown]      = useState('');
+  const [tiempoRestante, setTiempoRestante] = useState(Number.POSITIVE_INFINITY);
   const [loading,       setLoading]        = useState(true);
 
   // Cargar datos al montar
@@ -256,12 +266,12 @@ export default function DashboardDocente() {
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // Countdown cada minuto
+  // Actualiza la cercanía de la próxima clase cada minuto.
   useEffect(() => {
     if (!proximaClase) return;
     const tick = () => {
       const diff = proximaClase._proxFecha - new Date();
-      setCountdown(fmtCountdown(diff));
+      setTiempoRestante(diff);
     };
     tick();
     const id = setInterval(tick, 60_000);
@@ -321,7 +331,7 @@ export default function DashboardDocente() {
         {!loading && proximaClase && !operacion?.calendario_hoy && (
           <BloqueProximaClase
             reservacion={proximaClase}
-            countdown={countdown}
+            tiempoRestante={tiempoRestante}
             onIr={() => navigate('/docente/horario')}
           />
         )}
