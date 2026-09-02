@@ -634,6 +634,11 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
   // Duración máxima = tiempo exacto del slot reservado (no se puede pasar de eso)
   const slotDurMin  = toMin(slot.hora_fin) - toMin(slot.hora_inicio);
   const durDefault  = grupo ? grupo.duracionMin : slotDurMin;
+  const horaFinSesion = grupo?.horaFinGrupo || slot.hora_fin;
+  const diaReserva = Number(slot.dia_semana);
+  const diaHoy = weekdayIndexInMexico();
+  const esOtroDia = Number.isInteger(diaReserva) && diaReserva !== diaHoy;
+  const diaReservaLabel = (DIAS_LABEL[diaReserva] || 'otro día').toLocaleLowerCase('es-MX');
   const [duracion, setDuracion]       = useState(durDefault);
   const [error, setError]             = useState('');
 
@@ -649,12 +654,8 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
 
   const handleIniciarSesion = async () => {
     setIniciando(true); setError('');
-    const diaReserva = Number(slot.dia_semana);
-    const diaHoy = weekdayIndexInMexico();
-    if (Number.isInteger(diaReserva) && diaReserva !== diaHoy) {
-      const diaReservaLabel = DIAS_LABEL[diaReserva] || 'otro dia';
-      const diaHoyLabel = DIAS_LABEL[diaHoy] || 'hoy';
-      setError(`Esta reservacion es para ${diaReservaLabel}. Hoy en Mexico es ${diaHoyLabel}; solo puedes iniciar la sesion el dia de la clase.`);
+    if (esOtroDia) {
+      setError(`Esta clase está programada para el ${diaReservaLabel}. Podrás iniciarla ese día.`);
       setIniciando(false);
       return;
     }
@@ -669,7 +670,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
       onSesionIniciada(data);
       navigate(`/docente/sesion/${data.id}`);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Error al iniciar sesion'));
+      setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
       setIniciando(false);
     }
   };
@@ -680,7 +681,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
         <div className="p-5 border-b border-white/5 flex items-center justify-between">
           <div>
             <h2 className="font-bold text-white">Mi reservación</h2>
-            <p className="text-sm text-slate-400">{DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}</p>
+            <p className="text-sm text-slate-400">{diaReservaLabel} · {slot.hora_inicio}–{horaFinSesion}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
         </div>
@@ -691,8 +692,9 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
             {(r.carrera || r.cuatrimestre_materia) && (
               <div className="flex flex-wrap gap-1.5">
                 {r.carrera && (
-                  <span className="text-xs bg-blue-950/60 text-blue-300 border border-blue-700/40 px-2 py-0.5 rounded-full">
-                    🎓 {r.carrera}
+                  <span className="inline-flex items-center gap-1 text-xs bg-blue-950/60 text-blue-300 border border-blue-700/40 px-2 py-0.5 rounded-full">
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="m3 10 9-5 9 5-9 5-9-5Zm4 2.2V17c3 2 7 2 10 0v-4.8M21 10v6" /></svg>
+                    {r.carrera}
                   </span>
                 )}
                 {r.cuatrimestre_materia && (
@@ -709,11 +711,11 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
             {grupo && grupo.total > 1 && (
               <div className="mt-2 pt-2 border-t border-blue-700/50">
                 <p className="text-blue-300 text-xs font-medium mb-1.5">
-                  📚 Clase de {grupo.total} períodos consecutivos
+                  Clase de {grupo.total} períodos consecutivos
                 </p>
                 <div className="flex items-center gap-1.5 text-xs text-gray-300">
                   <span className="font-mono bg-blue-800/60 px-1.5 py-0.5 rounded">{slot.hora_inicio}</span>
-                  <span className="text-slate-500">→</span>
+                  <svg className="h-3.5 w-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M5 12h14m-5-5 5 5-5 5" /></svg>
                   <span className="font-mono bg-blue-800/60 px-1.5 py-0.5 rounded">{grupo.horaFinGrupo}</span>
                   <span className="text-slate-500 ml-1">({grupo.duracionMin} min en total)</span>
                 </div>
@@ -726,7 +728,8 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
             {slot.solicitudes_n > 0 && (
               <div className="mt-2 pt-2 border-t border-blue-700/50">
                 <p className="text-amber-400 flex items-center gap-1 text-xs font-medium">
-                  ⚠️ {slot.solicitudes_n} docente{slot.solicitudes_n > 1 ? 's solicitan' : ' solicita'} este horario
+                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 9v4m0 4h.01M10.3 4.6 2.5 18a1 1 0 0 0 .9 1.5h17.2a1 1 0 0 0 .9-1.5L13.7 4.6a1 1 0 0 0-1.7 0Z" /></svg>
+                  {slot.solicitudes_n} docente{slot.solicitudes_n > 1 ? 's solicitan' : ' solicita'} este horario
                 </p>
               </div>
             )}
@@ -751,21 +754,22 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
           {!sesionActiva && (
             <div className="space-y-2">
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-slate-400">Duración de la sesión</label>
-                  <span className="text-xs text-slate-600">
-                    slot reservado: <span className="text-blue-400 font-mono">{slot.hora_inicio}–{slot.hora_fin}</span>
-                    {' '}({slotDurMin} min)
-                  </span>
-                </div>
                 {grupo && grupo.total > 1 ? (
-                  // Duración calculada automáticamente por períodos consecutivos
-                  <div className="w-full bg-white/5 border border-gray-600 rounded-xl px-3 py-2 text-sm flex items-center justify-between">
-                    <span className="text-gray-300">{grupo.duracionMin} min</span>
-                    <span className="text-xs text-blue-400">calculado automáticamente</span>
+                  <div className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm">
+                    <p className="text-gray-200"><span className="text-slate-400">Duración total:</span> {grupo.duracionMin} minutos</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Turnos reservados: {grupo.turnos?.map(turno => `${turno.hora_inicio}–${turno.hora_fin}`).join(' y ') || `${slot.hora_inicio}–${horaFinSesion}`}
+                    </p>
                   </div>
                 ) : (
                   <>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-slate-400">Duración de la sesión</label>
+                      <span className="text-xs text-slate-600">
+                        turno reservado: <span className="text-blue-400 font-mono">{slot.hora_inicio}–{slot.hora_fin}</span>
+                        {' '}({slotDurMin} min)
+                      </span>
+                    </div>
                     <SelectDark
                       value={duracion}
                       onChange={v => setDuracion(Number(v))}
@@ -782,12 +786,17 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
                   </>
                 )}
               </div>
+              {esOtroDia && (
+                <p className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-400">
+                  Esta clase está programada para el {diaReservaLabel}. Podrás iniciarla ese día.
+                </p>
+              )}
               {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-3 py-2">{error}</p>}
-              <button onClick={handleIniciarSesion} disabled={iniciando}
-                className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all">
+              <button onClick={handleIniciarSesion} disabled={iniciando || esOtroDia}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all">
                 {iniciando
-                  ? <><span className="animate-spin">⚙️</span> Iniciando…</>
-                  : <><span className="text-lg">▶</span> Iniciar sesión de clase</>}
+                  ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" /> Iniciando…</>
+                  : <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg> Iniciar sesión de clase</>}
               </button>
             </div>
           )}
@@ -796,18 +805,19 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
           <div className="pt-1 border-t border-white/5">
             {!confirmar ? (
               <button onClick={() => setConfirmar(true)}
-                className="w-full border border-red-800 text-red-400 py-2 rounded-lg hover:bg-red-900/20 text-sm transition">
-                🗑 Liberar este horario
+                className="flex w-full items-center justify-center gap-2 border border-red-800 text-red-400 py-2 rounded-lg hover:bg-red-900/20 text-sm transition">
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M6 7h12m-9 0V5h6v2m-8 0 1 12h8l1-12M10 10v6m4-6v6" /></svg>
+                Cancelar reservación
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-slate-400 text-center">¿Confirmar liberación?</p>
+                <p className="text-xs text-slate-400 text-center">¿Deseas cancelar esta reservación?</p>
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmar(false)}
                     className="flex-1 bg-gray-700 text-gray-300 py-2 rounded-lg text-sm">No</button>
                   <button onClick={handleCancelar} disabled={cancelando}
                     className="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">
-                    {cancelando ? 'Liberando…' : 'Sí, liberar'}
+                    {cancelando ? 'Cancelando…' : 'Sí, cancelar'}
                   </button>
                 </div>
               </div>
@@ -1238,6 +1248,7 @@ function detectarGruposConsecutivos(slots) {
           esInicio: pos === 0,
           esFin: pos === grupo.length - 1,
           horaFinGrupo,
+          turnos: grupo.map(turno => ({ hora_inicio: turno.hora_inicio, hora_fin: turno.hora_fin })),
           duracionMin: grupo.reduce((acc, sl) => {
             const [ih, im] = sl.hora_inicio.split(':').map(Number);
             const [fh, fm] = sl.hora_fin.split(':').map(Number);
