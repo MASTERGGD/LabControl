@@ -4,6 +4,7 @@ import pytest
 
 import routers.docencia as docencia_router
 import routers.calendario_academico as calendario_router
+from services.calendario_academico import estado_fecha_academica
 
 from dependencies import hashear_password
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico
@@ -11,6 +12,36 @@ from models.catalogo import GrupoAcademico, PeriodoEscolar
 from models.docencia import CargaDocente
 from models.usuario import RolUsuario, Usuario
 from tests.conftest import auth_headers, get_token
+
+
+def test_inicio_cuatrimestre_excluye_fechas_anteriores_de_asistencia(db, admin_user):
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add(periodo); db.flush()
+    calendario = CalendarioAcademico(
+        periodo_id=periodo.id, creado_por_id=admin_user.id, estado="PUBLICADO",
+        publicado_en=datetime.datetime(2026, 9, 1, 6, 0),
+    )
+    db.add(calendario); db.flush()
+    inicio = EventoCalendarioAcademico(
+        calendario_id=calendario.id, titulo="Inicio de Cuatrimestre",
+        tipo="INICIO_CUATRIMESTRE",
+        fecha_inicio=datetime.date(2026, 9, 1), fecha_fin=datetime.date(2026, 9, 1),
+        requiere_asistencia=False, permite_iniciar_clase=False, genera_alertas=False,
+        creado_por_id=admin_user.id,
+    )
+    db.add(inicio); db.commit()
+
+    antes = estado_fecha_academica(db, periodo.id, datetime.date(2026, 8, 31))
+    inicio_del_periodo = estado_fecha_academica(db, periodo.id, datetime.date(2026, 9, 1))
+    despues = estado_fecha_academica(db, periodo.id, datetime.date(2026, 9, 2))
+
+    assert antes["tipo"] == "ANTES_INICIO_CUATRIMESTRE"
+    assert antes["requiere_asistencia"] is False
+    assert antes["permite_iniciar_clase"] is False
+    assert antes["genera_alertas"] is False
+    assert inicio_del_periodo["tipo"] == "INICIO_CUATRIMESTRE"
+    assert inicio_del_periodo["requiere_asistencia"] is False
+    assert despues["requiere_asistencia"] is True
 
 
 @pytest.mark.parametrize("permiso_activo", [True, False])

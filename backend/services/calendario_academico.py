@@ -31,6 +31,22 @@ def estado_fecha_academica(db: Session, periodo_id: int | None, fecha: datetime.
     if not calendario:
         return base
     base["calendario_publicado"] = True
+    inicio_cuatrimestre = db.query(EventoCalendarioAcademico).filter(
+        EventoCalendarioAcademico.calendario_id == calendario.id,
+        EventoCalendarioAcademico.activo == True,
+        EventoCalendarioAcademico.tipo == "INICIO_CUATRIMESTRE",
+    ).order_by(EventoCalendarioAcademico.fecha_inicio.asc()).first()
+    if inicio_cuatrimestre and fecha < inicio_cuatrimestre.fecha_inicio:
+        return {
+            "es_lectiva": False,
+            "requiere_asistencia": False,
+            "permite_iniciar_clase": False,
+            "genera_alertas": False,
+            "motivo": f"Antes del inicio de cuatrimestre ({inicio_cuatrimestre.fecha_inicio.strftime('%d/%m/%Y')})",
+            "tipo": "ANTES_INICIO_CUATRIMESTRE",
+            "evento_id": inicio_cuatrimestre.id,
+            "calendario_publicado": True,
+        }
     eventos = db.query(EventoCalendarioAcademico).filter(
         EventoCalendarioAcademico.calendario_id == calendario.id,
         EventoCalendarioAcademico.activo == True,
