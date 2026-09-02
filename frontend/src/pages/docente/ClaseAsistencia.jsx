@@ -16,6 +16,8 @@ export default function ClaseAsistencia() {
   const [clase, setClase] = useState(null);
   const [contextos, setContextos] = useState({});
   const [mensaje, setMensaje] = useState('');
+  const [cierreConfirmado, setCierreConfirmado] = useState(null);
+  const [redireccionAutomatica, setRedireccionAutomatica] = useState(false);
   const [error, setError] = useState('');
   const [cerrando, setCerrando] = useState(false);
   const [modal, setModal] = useState(null);
@@ -42,6 +44,11 @@ export default function ClaseAsistencia() {
     }
   }, [claseId]);
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    if (!redireccionAutomatica || !cierreConfirmado) return undefined;
+    const temporizador = window.setTimeout(() => navigate('/docente'), 3500);
+    return () => window.clearTimeout(temporizador);
+  }, [cierreConfirmado, navigate, redireccionAutomatica]);
 
   const cambiar = async (asistenciaId, estado, observacion = null) => {
     if (!['ABIERTA', 'CORRECCION'].includes(clase.estado)) return;
@@ -62,6 +69,7 @@ export default function ClaseAsistencia() {
 
   const cerrar = async () => {
     setCerrando(true);
+    const eraCorreccion = clase.estado === 'CORRECCION';
     try {
       const { data } = await api.post(`/docencia/clases/${claseId}/cerrar`, {
         ...bitacora,
@@ -72,7 +80,12 @@ export default function ClaseAsistencia() {
       setClase(data);
       setModal(null);
       setTexto('');
-      setMensaje(data.canalizacion_tutoria?.mensaje || 'La clase y su bitácora quedaron guardadas.');
+      setMensaje('');
+      setCierreConfirmado({
+        titulo: eraCorreccion ? 'Corrección guardada correctamente' : 'Asistencia registrada y clase cerrada correctamente',
+        detalle: data.canalizacion_tutoria?.mensaje || '',
+      });
+      setRedireccionAutomatica(true);
       setError('');
     } catch (err) {
       setError(err.response?.data?.detail || 'No se pudo cerrar la clase.');
@@ -177,6 +190,29 @@ export default function ClaseAsistencia() {
         </div>
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+        {cierreConfirmado && (
+          <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-emerald-100" role="status" aria-live="polite">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300" aria-hidden="true">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m5 12 4 4L19 6" /></svg>
+                </span>
+                <div>
+                  <p className="font-semibold">{cierreConfirmado.titulo}</p>
+                  <p className="mt-1 text-sm text-emerald-200/80">
+                    {r.presente} {r.presente === 1 ? 'presente' : 'presentes'} · {r.falta} {r.falta === 1 ? 'falta' : 'faltas'} · {r.retardo} {r.retardo === 1 ? 'retardo' : 'retardos'}{r.justificada ? ` · ${r.justificada} ${r.justificada === 1 ? 'justificada' : 'justificadas'}` : ''}
+                  </p>
+                  {cierreConfirmado.detalle && <p className="mt-1 text-xs text-emerald-200/70">{cierreConfirmado.detalle}</p>}
+                  {redireccionAutomatica && <p className="mt-1 text-xs text-slate-400">Volverás al inicio en unos segundos.</p>}
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <button type="button" onClick={() => setRedireccionAutomatica(false)} disabled={!redireccionAutomatica} className="rounded-xl border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 disabled:opacity-50">Permanecer aquí</button>
+                <button type="button" onClick={() => navigate('/docente')} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Ir al inicio</button>
+              </div>
+            </div>
+          </div>
+        )}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
         {clase.es_extemporanea && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm">
