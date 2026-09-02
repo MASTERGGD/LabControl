@@ -733,7 +733,10 @@ def test_bloque_tutoria_exige_grupo_formal_asignado(client, db):
     ajeno = Usuario(nombre="Tutor Ajeno", email="tutor.ajeno@test.mx", password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True)
     periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)
     db.add_all([docente, ajeno, periodo]); db.flush()
-    grupo = GrupoTutorado(tutor_id=docente.id, carrera="TIEID", cuatrimestre=9, grupo="A", periodo=periodo.clave, activo=True, estado="ACTIVO")
+    # La asignación puede haberse realizado mientras el periodo aún estaba en
+    # preparación. Al convertirse en vigente debe estar disponible en horario
+    # aunque la sincronización de Tutoría todavía conserve ese estado.
+    grupo = GrupoTutorado(tutor_id=docente.id, carrera="TIEID", cuatrimestre=9, grupo="A", periodo=periodo.clave, activo=True, estado="PREPARACION")
     db.add(grupo); db.commit()
     payload = {"periodo_id": periodo.id, "grupo_tutorado_id": grupo.id, "tipo_actividad": "TUTORIA", "actividad_nombre": "texto ignorado", "dia_semana": 2, "hora_inicio": "08:00", "hora_fin": "09:00"}
     headers = auth_headers(get_token(client, docente.email, "Docente123!"))

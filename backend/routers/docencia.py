@@ -547,7 +547,7 @@ def _validar_asignacion_tutoria(db: Session, data: CargaInput, docente_id: int, 
         GrupoTutorado.id == data.grupo_tutorado_id,
         GrupoTutorado.tutor_id == docente_id,
         GrupoTutorado.activo == True,
-        GrupoTutorado.estado == "ACTIVO",
+        GrupoTutorado.estado.in_(["ACTIVO", "PREPARACION"]),
         GrupoTutorado.periodo == periodo.clave,
     ).first()
     if not grupo:
@@ -792,7 +792,7 @@ def catalogos_docente(
     grupos_tutorados = db.query(GrupoTutorado).filter(
         GrupoTutorado.tutor_id == current_user.id,
         GrupoTutorado.activo == True,
-        GrupoTutorado.estado == "ACTIVO",
+        GrupoTutorado.estado.in_(["ACTIVO", "PREPARACION"]),
         GrupoTutorado.periodo == (periodo.clave if elegido and periodo else ""),
     ).order_by(GrupoTutorado.carrera, GrupoTutorado.cuatrimestre, GrupoTutorado.grupo).all()
     return {
