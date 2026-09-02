@@ -29,6 +29,7 @@ class CargaDocente(Base):
     hora_fin = Column(String(5), nullable=False)
     espacio_nombre = Column(String(180), nullable=True)
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=True)
+    uso_laboratorio = Column(String(20), nullable=False, default="EQUIPOS")
     estado = Column(String(25), nullable=False, default="BORRADOR")
     observaciones = Column(Text, nullable=True)
     activo = Column(Boolean, nullable=False, default=True)

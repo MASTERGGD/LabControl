@@ -40,6 +40,7 @@ const VACIO = {
   tipo_actividad: 'CLASE', actividad_nombre: '', dia_semana: 0,
   hora_inicio: '08:00', hora_fin: '09:00', grupo_academico_id: '',
   materia_id: '', grupo_tutorado_id: '', espacio_nombre: '', laboratorio_id: '', observaciones: '',
+  uso_laboratorio: 'SOLO_AULA',
 };
 
 const minutosDeHora = (hora = '00:00') => {
@@ -351,6 +352,25 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
             <datalist id="espacios-docencia">{catalogos.espacios.map((e) => <option key={e.id} value={e.nombre} />)}</datalist>
           </label>
           {form.laboratorio_id && esClase && (
+            <fieldset className="sm:col-span-2 rounded-xl border border-white/10 p-4">
+              <legend className="px-1 text-sm font-semibold text-slate-200">¿Cómo utilizarás el laboratorio?</legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                {[
+                  ['SOLO_AULA', 'Solo como aula', 'Clase y asistencia, sin control de computadoras.'],
+                  ['EQUIPOS', 'Aula y computadoras', 'Habilita revisión y asignación de equipos.'],
+                  ['USO_PARCIAL', 'Uso parcial', 'Solo algunos estudiantes utilizarán computadoras.'],
+                ].map(([valor, titulo, ayuda]) => (
+                  <label key={valor} className={`cursor-pointer rounded-xl border p-3 ${form.uso_laboratorio === valor ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 bg-white/[0.02]'}`}>
+                    <span className="flex items-start gap-2">
+                      <input type="radio" name="uso_laboratorio" value={valor} checked={form.uso_laboratorio === valor} onChange={(e) => cambiar('uso_laboratorio', e.target.value)} className="mt-0.5" />
+                      <span><b className="block text-sm text-white">{titulo}</b><span className="mt-1 block text-xs leading-4 text-slate-400">{ayuda}</span></span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          {form.laboratorio_id && esClase && (
             <div className="sm:col-span-2">
               <div className={`rounded-xl border p-4 ${
                 disponibilidadLab?.estado === 'DISPONIBLE' ? 'border-emerald-500/30 bg-emerald-500/10'
@@ -553,7 +573,7 @@ export default function MiHorarioDocente() {
       const clase = item.clase_id
         ? { id: item.clase_id }
         : (await api.post(`/docencia/horario/${item.id}/iniciar`)).data;
-      if (item.laboratorio_id && item.estado_reserva_laboratorio === 'RESERVADO' && item.reservacion_laboratorio_id) {
+      if (item.laboratorio_id && item.uso_laboratorio !== 'SOLO_AULA' && item.estado_reserva_laboratorio === 'RESERVADO' && item.reservacion_laboratorio_id) {
         const [horaInicio, minutoInicio] = item.hora_inicio.split(':').map(Number);
         const [horaFin, minutoFin] = item.hora_fin.split(':').map(Number);
         const duracion = Math.max(15, Math.min(300, ((horaFin * 60) + minutoFin) - ((horaInicio * 60) + minutoInicio)));

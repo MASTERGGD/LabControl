@@ -81,9 +81,11 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
         "hora_fin": "09:00",
         "espacio_nombre": "S3",
         "laboratorio_id": laboratorio.id,
+        "uso_laboratorio": "SOLO_AULA",
     }
     creada = client.post("/docencia/horario", json=payload, headers=headers)
     assert creada.status_code == 200, creada.text
+    assert creada.json()["carga"]["uso_laboratorio"] == "SOLO_AULA"
     carga_id = creada.json()["carga"]["id"]
     activada = client.post(f"/docencia/horario/{carga_id}/activar", headers=headers)
     assert activada.status_code == 200, activada.text

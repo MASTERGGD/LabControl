@@ -72,6 +72,7 @@ class CargaInput(BaseModel):
     hora_fin: str = Field(..., pattern=r"^\d{2}:\d{2}$")
     espacio_nombre: Optional[str] = Field(None, max_length=180)
     laboratorio_id: Optional[int] = None
+    uso_laboratorio: str = "EQUIPOS"
     observaciones: Optional[str] = Field(None, max_length=1000)
 
     @model_validator(mode="after")
@@ -85,6 +86,9 @@ class CargaInput(BaseModel):
             raise ValueError("Las clases deben tener un grupo")
         if self.tipo_actividad == "TUTORIA" and not self.grupo_tutorado_id:
             raise ValueError("Selecciona uno de tus grupos tutorados")
+        self.uso_laboratorio = self.uso_laboratorio.upper()
+        if self.uso_laboratorio not in {"SOLO_AULA", "EQUIPOS", "USO_PARCIAL"}:
+            raise ValueError("Tipo de uso del laboratorio no válido")
         return self
 
 
@@ -608,6 +612,7 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "hora_fin": c.hora_fin,
         "espacio_nombre": lab.nombre if lab else c.espacio_nombre,
         "laboratorio_id": c.laboratorio_id,
+        "uso_laboratorio": c.uso_laboratorio or "EQUIPOS",
         "estado_reserva_laboratorio": estado_reserva_lab if c.laboratorio_id else None,
         "reservacion_laboratorio_id": reserva_operable.id if reserva_operable else None,
         "estado": c.estado,
