@@ -913,11 +913,14 @@ def panorama_grupos(
                 InscripcionAlumno.alumno_id.in_(ids_accesibles),
             )
         total = alumnos_query.distinct().count()
-        materias = db.query(CargaDocente.id).filter(
+        cargas_grupo = db.query(CargaDocente).filter(
             CargaDocente.grupo_academico_id == grupo.id,
             CargaDocente.tipo_actividad == "CLASE",
             CargaDocente.activo == True,
-        ).count()
+        ).all()
+        # Una materia puede ocupar varios bloques semanales. El panorama debe
+        # contar identidades académicas, no filas de horario.
+        materias = len({_clave_materia(carga) for carga in cargas_grupo})
         periodo = grupo.periodo.clave if grupo.periodo else None
         resultado.append({
             "id": grupo.id,

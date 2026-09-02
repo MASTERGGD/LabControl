@@ -214,6 +214,7 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert any(
         grupo["id"] == carga.grupo_academico_id
         and grupo["total_alumnos"] == 1
+        and grupo["materias"] == 1
         for grupo in grupos.json()
     )
     panorama = client.get(
