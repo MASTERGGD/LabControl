@@ -1255,6 +1255,9 @@ export default function TutoriaAdmin() {
   const [filtroCarrera, setFiltroCarrera] = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroTutor, setFiltroTutor] = useState("");
+  const [filtroAsignacion, setFiltroAsignacion] = useState("TODOS");
+  const [ordenGrupos, setOrdenGrupos] = useState({ campo: "carrera", direccion: "asc" });
+  const [vistaAgrupacion, setVistaAgrupacion] = useState("GRUPOS");
   const [vistaHistorica, setVistaHistorica] = useState(false);
   const [alumnosRiesgo, setAlumnosRiesgo] = useState([]);
   const [filtroSemaforo, setFiltroSemaforo] = useState("");
@@ -1522,8 +1525,46 @@ export default function TutoriaAdmin() {
   const gruposFiltrados = useMemo(() => grupos.filter(g =>
     (!filtroCarrera || g.carrera === filtroCarrera)
     && (!filtroPeriodo || g.periodo === filtroPeriodo)
-    && (!filtroTutor || (filtroTutor === "SIN_TUTOR" ? !g.tutor_id : String(g.tutor_id) === String(filtroTutor)))
-  ), [grupos, filtroCarrera, filtroPeriodo, filtroTutor]);
+    && (!filtroTutor || String(g.tutor_id) === String(filtroTutor))
+    && (filtroAsignacion === "TODOS" || (filtroAsignacion === "CON_TUTOR" ? Boolean(g.tutor_id) : !g.tutor_id))
+  ), [grupos, filtroAsignacion, filtroCarrera, filtroPeriodo, filtroTutor]);
+
+  const gruposOrdenados = useMemo(() => [...gruposFiltrados].sort((a, b) => {
+    const numericos = new Set(["cuatrimestre", "total_alumnos", "sesiones_realizadas"]);
+    const valorA = a[ordenGrupos.campo] ?? "";
+    const valorB = b[ordenGrupos.campo] ?? "";
+    const comparacion = numericos.has(ordenGrupos.campo)
+      ? Number(valorA) - Number(valorB)
+      : String(valorA).localeCompare(String(valorB), "es", { sensitivity: "base" });
+    return ordenGrupos.direccion === "asc" ? comparacion : -comparacion;
+  }), [gruposFiltrados, ordenGrupos]);
+
+  const ordenarPor = (campo) => setOrdenGrupos(actual => ({
+    campo,
+    direccion: actual.campo === campo && actual.direccion === "asc" ? "desc" : "asc",
+  }));
+
+  const gruposSinTutor = useMemo(
+    () => grupos.filter(g => g.activo && !g.tutor_id && g.estado !== "ARCHIVADO"),
+    [grupos]
+  );
+
+  const resumenPorTutor = useMemo(() => {
+    const acumulado = new Map();
+    gruposFiltrados.forEach(g => {
+      const clave = g.tutor_id ? String(g.tutor_id) : "SIN_TUTOR";
+      const actual = acumulado.get(clave) || { tutor_id: g.tutor_id, tutor_nombre: g.tutor_nombre || "Sin tutor", grupos: 0, alumnos: 0, sesiones: 0 };
+      actual.grupos += 1;
+      actual.alumnos += Number(g.total_alumnos || 0);
+      actual.sesiones += Number(g.sesiones_realizadas || 0);
+      acumulado.set(clave, actual);
+    });
+    return [...acumulado.values()].sort((a, b) => {
+      if (!a.tutor_id) return -1;
+      if (!b.tutor_id) return 1;
+      return a.tutor_nombre.localeCompare(b.tutor_nombre, "es", { sensitivity: "base" });
+    });
+  }, [gruposFiltrados]);
 
   const coberturaTutoria = useMemo(() => {
     const activos = grupos.filter(g => g.activo);
@@ -1945,28 +1986,43 @@ export default function TutoriaAdmin() {
               <h2 className="text-lg font-semibold">Cobertura tutorial por grupo</h2>
               <p className="text-sm text-slate-400">Grupos e inscripciones sincronizados automáticamente desde Servicios Escolares.</p>
             </div>
-            <button type="button" onClick={() => setVistaHistorica(v => !v)}
-              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-white/5">
-              {vistaHistorica ? "Ver grupos actuales" : "Ver historial"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <div className="flex rounded-xl border border-slate-700 p-1">
+                <button type="button" onClick={() => setVistaAgrupacion("GRUPOS")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${vistaAgrupacion === "GRUPOS" ? "bg-blue-600 text-white" : "text-slate-400"}`}>Por grupo</button>
+                <button type="button" onClick={() => setVistaAgrupacion("TUTORES")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${vistaAgrupacion === "TUTORES" ? "bg-blue-600 text-white" : "text-slate-400"}`}>Por tutor</button>
+              </div>
+              <button type="button" onClick={() => setVistaHistorica(v => !v)} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-white/5">{vistaHistorica ? "Ver grupos actuales" : "Ver historial"}</button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {[
-              ["Grupos activos", coberturaTutoria.total, "text-blue-400"],
-              ["Con tutor", coberturaTutoria.asignados, "text-emerald-400"],
-              ["Sin tutor", coberturaTutoria.sinTutor, "text-amber-400"],
+              ["Grupos activos", coberturaTutoria.total, "text-blue-400", "TODOS"],
+              ["Con tutor", coberturaTutoria.asignados, "text-emerald-400", "CON_TUTOR"],
+              ["Sin tutor", coberturaTutoria.sinTutor, "text-amber-400", "SIN_TUTOR"],
               ["Cobertura", `${coberturaTutoria.porcentaje}%`, "text-cyan-400"],
               ["Alumnos vinculados", coberturaTutoria.alumnos, "text-violet-400"],
-            ].map(([label, value, tone]) => (
-              <div key={label} className="rounded-xl border border-white/10 bg-slate-900/35 p-3">
+            ].map(([label, value, tone, filtro]) => (
+              <button key={label} type="button" disabled={!filtro} onClick={() => filtro && setFiltroAsignacion(filtro)} className={`rounded-xl border border-white/10 bg-slate-900/35 p-3 text-left ${filtro ? "transition hover:border-blue-500/40 hover:bg-slate-800/60" : "cursor-default"}`}>
                 <p className={`text-xl font-bold ${tone}`}>{value}</p>
-                <p className="text-xs text-slate-400">{label}</p>
-              </div>
+                <p className="text-xs text-slate-400">{label}{filtro && <span className="ml-1 text-slate-600">→</span>}</p>
+              </button>
             ))}
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+          {!vistaHistorica && gruposSinTutor.length > 0 && (
+            <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h3 className="font-semibold text-amber-200">{gruposSinTutor.length} {gruposSinTutor.length === 1 ? "grupo requiere" : "grupos requieren"} asignación de tutor</h3><p className="mt-1 text-sm text-slate-400">Asigna estos casos para completar la cobertura tutorial.</p></div>
+                <button type="button" onClick={() => setFiltroAsignacion("SIN_TUTOR")} className="rounded-xl border border-amber-500/30 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/10">Mostrar solo pendientes</button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {gruposSinTutor.map(g => <button key={g.id} type="button" onClick={() => setModal({ type: "editar", grupo: g })} className="rounded-xl border border-amber-500/25 bg-slate-900/35 px-3 py-2 text-left text-xs hover:bg-amber-500/10"><b className="text-amber-200">{g.carrera} · {g.cuatrimestre}° {g.grupo}</b><span className="ml-2 text-slate-400">Asignar →</span></button>)}
+              </div>
+            </section>
+          )}
+
+          <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-3 grid grid-cols-1 md:grid-cols-5 gap-3">
             <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
               <option value="">Todos los periodos</option>
@@ -1980,27 +2036,28 @@ export default function TutoriaAdmin() {
             <select value={filtroTutor} onChange={e => setFiltroTutor(e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
               <option value="">Todos los tutores</option>
-              <option value="SIN_TUTOR">Sin tutor asignado</option>
               {tutoresDisponibles.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
+            <select value={filtroAsignacion} onChange={e => setFiltroAsignacion(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
+              <option value="TODOS">Todos los estados</option><option value="CON_TUTOR">Con tutor</option><option value="SIN_TUTOR">Sin tutor</option>
+            </select>
             <button type="button"
-              onClick={() => { setFiltroPeriodo(""); setFiltroCarrera(""); setFiltroTutor(""); }}
+              onClick={() => { setFiltroPeriodo(""); setFiltroCarrera(""); setFiltroTutor(""); setFiltroAsignacion("TODOS"); }}
               className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-white/5">
               Limpiar filtros
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
-            {gruposFiltrados.map(g => (
+          {vistaAgrupacion === "GRUPOS" && <>
+          <div className="grid grid-cols-1 gap-3 md:hidden">
+            {gruposOrdenados.map(g => (
               <div key={g.id} className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <p className="font-semibold text-white">{g.carrera}</p>
-                    <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre · {g.periodo}</p>
+                    <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre</p>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${g.tutor_id ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"}`}>
-                    {g.estado === "NO_VINCULADO" ? "Grupo vacío" : g.estado === "ARCHIVADO" ? "Archivado" : g.estado === "CERRADO" ? "Cerrado" : g.tutor_id ? "Tutor asignado" : "Sin tutor"}
-                  </span>
+                  {!g.tutor_id && <span className="rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}
                 </div>
                 <div className="border-t border-slate-700 pt-2 mt-2 flex justify-between items-center text-xs text-slate-400">
                   <span className={g.tutor_id ? "" : "text-amber-300"}>{g.estado === "NO_VINCULADO" ? "Sin inscripciones activas" : (g.tutor_nombre || "Pendiente de asignación")}</span>
@@ -2030,12 +2087,43 @@ export default function TutoriaAdmin() {
                 </div>
               </div>
             ))}
-            {gruposFiltrados.length === 0 && (
+            {gruposOrdenados.length === 0 && (
               <p className="text-slate-500 text-sm col-span-3 text-center py-8">
                 No hay grupos académicos con estos filtros.
               </p>
             )}
           </div>
+
+          <div className="hidden overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/35 md:block">
+            <table className="w-full min-w-[1050px] text-left text-sm">
+              <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr>
+                {[["carrera", "Carrera"], ["grupo", "Grupo"], ["cuatrimestre", "Cuatr."], ["tutor_nombre", "Tutor"], ["total_alumnos", "Alumnos"], ["sesiones_realizadas", "Sesiones"]].map(([campo, etiqueta]) => <th key={campo} className="px-4 py-3"><button type="button" onClick={() => ordenarPor(campo)} className="inline-flex items-center gap-1 hover:text-white">{etiqueta}<span aria-hidden="true">{ordenGrupos.campo === campo ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>)}
+                <th className="px-4 py-3 text-right">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-white/5">
+                {gruposOrdenados.map(g => <tr key={g.id} className={`${!g.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}>
+                  <td className="max-w-[360px] px-4 py-3 font-medium text-white">{g.carrera}</td><td className="px-4 py-3 font-semibold text-slate-200">{g.grupo}</td><td className="px-4 py-3 text-slate-300">{g.cuatrimestre}°</td>
+                  <td className="px-4 py-3">{g.tutor_id ? <span className="text-slate-300">{g.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td>
+                  <td className={`px-4 py-3 ${Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : "text-slate-300"}`}>{g.total_alumnos}</td><td className="px-4 py-3 text-slate-300">{g.sesiones_realizadas}</td>
+                  <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => setModal({ type: "ver-alumnos", grupo: g })} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700">Ver alumnos</button>{!vistaHistorica && g.estado !== "NO_VINCULADO" && <button type="button" onClick={() => setModal({ type: "editar", grupo: g })} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${g.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}</button>}{g.estado === "NO_VINCULADO" && <button type="button" onClick={() => archivarGrupo(g)} className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10">Archivar</button>}</div></td>
+                </tr>)}
+                {gruposOrdenados.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">No hay grupos académicos con estos filtros.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          </>}
+
+          {vistaAgrupacion === "TUTORES" && (
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/35">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Tutor</th><th className="px-4 py-3">Grupos</th><th className="px-4 py-3">Alumnos</th><th className="px-4 py-3">Sesiones</th><th className="px-4 py-3 text-right">Acción</th></tr></thead>
+                <tbody className="divide-y divide-white/5">
+                  {resumenPorTutor.map(t => <tr key={t.tutor_id || "SIN_TUTOR"} className={`${!t.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}><td className="px-4 py-3">{t.tutor_id ? <span className="font-medium text-white">{t.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td><td className="px-4 py-3 text-slate-300">{t.grupos}</td><td className="px-4 py-3 text-slate-300">{t.alumnos}</td><td className={`px-4 py-3 ${t.sesiones === 0 ? "text-amber-300" : "text-slate-300"}`}>{t.sesiones}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => { setFiltroTutor(t.tutor_id ? String(t.tutor_id) : ""); setFiltroAsignacion(t.tutor_id ? "CON_TUTOR" : "SIN_TUTOR"); setVistaAgrupacion("GRUPOS"); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${t.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{t.tutor_id ? "Ver grupos" : "Asignar tutores"}</button></td></tr>)}
+                  {resumenPorTutor.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No hay tutores con estos filtros.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
