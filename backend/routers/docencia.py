@@ -102,6 +102,7 @@ class ClaseNoImpartidaInput(BaseModel):
     fecha: datetime.date
     motivo: str = Field(..., min_length=5, max_length=500)
     programar_reposicion: bool = False
+    requiere_reposicion: bool = True
     fecha_reposicion: Optional[datetime.date] = None
     hora_inicio: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
     hora_fin: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
@@ -109,6 +110,8 @@ class ClaseNoImpartidaInput(BaseModel):
 
     @model_validator(mode="after")
     def validar(self):
+        if self.programar_reposicion and not self.requiere_reposicion:
+            raise ValueError("No se puede programar una reposicion cuando la clase no la requiere")
         if self.programar_reposicion:
             if not self.fecha_reposicion or not self.hora_inicio or not self.hora_fin:
                 raise ValueError("Indica fecha y horario de la reposicion")
@@ -1311,6 +1314,7 @@ def declarar_clase_no_impartida(
         declarada_no_impartida_en=datetime.datetime.utcnow(),
         observacion_general=f"Clase no impartida: {data.motivo.strip()}",
         tema_pendiente=(data.tema or "").strip() or None,
+        estado_reposicion="PENDIENTE" if data.requiere_reposicion else "NO_REQUERIDA",
     )
     db.add(original)
     db.flush()
@@ -1346,6 +1350,7 @@ def declarar_clase_no_impartida(
         "mensaje": (
             "Clase no impartida y reposicion programada"
             if reposicion else "Clase no impartida; la reposicion queda pendiente"
+            if data.requiere_reposicion else "Clase registrada como no exigible; no requiere reposicion"
         ),
     }
 
@@ -1455,6 +1460,7 @@ def reposiciones_pendientes(db: Session = Depends(get_db), current_user: Usuario
         CargaDocente.activo == True,
         ClaseDocente.estado == "NO_IMPARTIDA",
         ClaseDocente.es_reposicion == False,
+        or_(ClaseDocente.estado_reposicion.is_(None), ClaseDocente.estado_reposicion != "NO_REQUERIDA"),
     ).order_by(ClaseDocente.fecha.desc()).all()
     ids_con_reposicion = {
         row[0] for row in db.query(ClaseDocente.clase_origen_id).filter(
@@ -1479,6 +1485,35 @@ def reposiciones_pendientes(db: Session = Depends(get_db), current_user: Usuario
     } for clase in originales if clase.id not in ids_con_reposicion]
 
 
+@router.post("/reposiciones/pendientes/{clase_id}/no-requerida")
+def marcar_reposicion_no_requerida(
+    clase_id: int,
+    data: CorreccionInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    original = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        ClaseDocente.estado == "NO_IMPARTIDA",
+        ClaseDocente.es_reposicion == False,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not original:
+        raise HTTPException(404, "Clase no impartida no encontrada")
+    activa = db.query(ClaseDocente.id).filter(
+        ClaseDocente.clase_origen_id == original.id,
+        ClaseDocente.es_reposicion == True,
+        ClaseDocente.estado_reposicion != "CANCELADA",
+    ).first()
+    if activa:
+        raise HTTPException(409, "Cancela primero la reposicion programada")
+    original.estado_reposicion = "NO_REQUERIDA"
+    nota = data.motivo.strip()
+    original.observacion_general = f"{original.observacion_general or 'Clase no impartida'}\nReposicion no requerida: {nota}"
+    db.commit()
+    return {"mensaje": "La clase queda cerrada sin reposicion; el motivo permanece en el historial"}
+
+
 @router.post("/reposiciones/{clase_id}/cancelar")
 def cancelar_reposicion(clase_id: int, data: CorreccionInput, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     clase = db.query(ClaseDocente).join(CargaDocente).filter(
@@ -1492,6 +1527,9 @@ def cancelar_reposicion(clase_id: int, data: CorreccionInput, db: Session = Depe
     clase.estado = "CANCELADA"; clase.estado_reposicion = "CANCELADA"
     clase.cancelada_en = datetime.datetime.utcnow()
     clase.observacion_general = f"Reposición cancelada: {data.motivo.strip()}"
+    if clase.clase_origen:
+        clase.clase_origen.estado_reposicion = "NO_REQUERIDA"
+        clase.clase_origen.observacion_general = f"{clase.clase_origen.observacion_general or 'Clase no impartida'}\nReposicion no requerida: {data.motivo.strip()}"
     db.commit()
     return {"mensaje": "Reposición cancelada; permanece en el historial"}
 

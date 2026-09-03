@@ -728,6 +728,24 @@ def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
     db.refresh(clase)
     assert clase.estado_reposicion == "CANCELADA"
     assert "Se acordó otra fecha" in clase.observacion_general
+    db.refresh(original)
+    assert original.estado_reposicion == "NO_REQUERIDA"
+    assert client.get("/docencia/reposiciones/pendientes", headers=headers).json() == []
+
+    # Los registros antiguos no tenían estado de reposición; pueden cerrarse sin programarla.
+    original.estado_reposicion = None
+    db.commit()
+    assert client.get("/docencia/reposiciones/pendientes", headers=headers).json()[0]["clase_id"] == original.id
+    cerrada = client.post(
+        f"/docencia/reposiciones/pendientes/{original.id}/no-requerida",
+        headers=headers,
+        json={"motivo": "El grupo inició actividades en una fecha posterior"},
+    )
+    assert cerrada.status_code == 200, cerrada.text
+    db.refresh(original)
+    assert original.estado_reposicion == "NO_REQUERIDA"
+    assert "fecha posterior" in original.observacion_general
+    assert client.get("/docencia/reposiciones/pendientes", headers=headers).json() == []
 
 
 def test_bloque_tutoria_exige_grupo_formal_asignado(client, db):
