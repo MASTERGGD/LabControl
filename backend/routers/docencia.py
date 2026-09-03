@@ -952,6 +952,8 @@ def buscar_ubicacion_docentes(
     ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all() if periodo and docentes else []
     return {**contexto, "resultados": [{
         "docente_id": d.id, "nombre": d.nombre,
+        "numero_empleado": d.numero_empleado,
+        "departamento": d.departamento.nombre if d.departamento else None,
         **_resumen_horario_publico([c for c in cargas if c.docente_id == d.id], periodo, ahora, calendario, contexto["es_actual"]),
     } for d in docentes]}
 

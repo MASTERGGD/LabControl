@@ -11,6 +11,8 @@ let host, root;
 beforeEach(() => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   Element.prototype.scrollIntoView = jest.fn();
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   jest.clearAllMocks();
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
   api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/consulta-horarios/grupos' ? [{ id: 2, carrera: 'Tecnologías', grupo: '7° A' }, { id: 8, carrera: 'Administración', grupo: '7° A' }] : { fecha: '2026-09-03', hora_consulta: '10:30', periodo: 'SEP-DIC 2026', es_actual: true, resultados: [resultado] } }));
@@ -29,7 +31,11 @@ test('filtra carrera y grupo y muestra docente, espacio y semana usando el selec
   expect(host.textContent).toContain('Docente Prueba');
   expect(host.textContent).toContain('Salón 14');
   expect(host.textContent).toContain('Jornada de hoy');
-  expect(host.querySelector('details').textContent).toContain('Jueves');
+  expect(host.querySelector('details')).toBeNull();
+  await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent.includes('Ver horario semanal')).click());
+  expect(document.querySelector('dialog').textContent).toContain('Jueves');
+  await act(async () => document.querySelector('dialog button').click());
+  expect(document.querySelector('dialog')).toBeNull();
 });
 test('buscar nuevamente el mismo docente vuelve a consultar el periodo seleccionado', async () => {
   await act(async () => root.render(<BuscarDocente />));

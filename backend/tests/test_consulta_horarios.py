@@ -87,6 +87,7 @@ def test_busqueda_incluye_docentes_con_funcion_adicional(db, docente_user, datos
     from models.usuario import Usuario, RolUsuario
     actual, _, grupo, _, _ = datos
     docente_user.nombre = "Gilberto García D. (demo)"
+    docente_user.numero_empleado = "1042"
     multi = Usuario(nombre="MTI García Delgado Gilberto", email="multi@test.mx", password_hash="no-login", rol=RolUsuario.ADMINISTRATIVO, roles_adicionales='["DOCENTE"]', activo=True)
     solo_admin = Usuario(nombre="Gilberto Administrativo", email="admin-sin-docencia@test.mx", password_hash="no-login", rol=RolUsuario.ADMINISTRATIVO, activo=True)
     inactivo = Usuario(nombre="Gilberto Inactivo", email="inactivo@test.mx", password_hash="no-login", rol=RolUsuario.DOCENTE, activo=False)
@@ -95,6 +96,7 @@ def test_busqueda_incluye_docentes_con_funcion_adicional(db, docente_user, datos
     db.commit()
     resultados = router.buscar_ubicacion_docentes("gilberto", actual.id, db, docente_user)["resultados"]
     assert {r["docente_id"] for r in resultados} == {docente_user.id, multi.id}
+    assert next(r for r in resultados if r["docente_id"] == docente_user.id)["numero_empleado"] == "1042"
     real = next(r for r in resultados if r["docente_id"] == multi.id)
     assert real["actividad_actual"]["actividad"] == "Materia de docente con dos funciones"
     horario = router.horario_publico_grupo(grupo.id, actual.id, db, docente_user)["resultados"][0]

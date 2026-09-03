@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { abreviarCarrera, esDemo, ordenarResultados, resumenConsultaHorario } from '../../utils/resumenConsultaHorario';
 import AdminLayout from '../../components/AdminLayout';
 import SelectDark from '../../components/SelectDark';
 import { usePeriodo } from '../../context/PeriodoContext';
@@ -8,55 +10,74 @@ import api from '../../hooks/useApi';
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const texto = { color: 'var(--input-color)' };
 const fechaCorta = fecha => new Date(`${fecha}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'short' });
-const noLectivo = calendario => calendario && (!calendario.requiere_asistencia || !calendario.permite_iniciar_clase);
+const secundario = { color: 'var(--text-muted)' };
+const borde = { borderColor: 'var(--surface-border)' };
 
-function Actividad({ actividad, actual = false, porGrupo = false }) {
-  const privada = ['RECESO', 'DESCARGA'].includes(actividad.tipo_actividad);
-  return <div className={`rounded-xl border p-4 ${actual ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-white/10 bg-white/[0.025]'}`}>
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-sm font-bold" style={texto}>{actividad.actividad}</p>
-      <span className="text-xs font-semibold text-slate-400">{actividad.hora_inicio}–{actividad.hora_fin}</span>
-    </div>
-    <p className="mt-1 text-sm text-slate-400">{porGrupo ? actividad.docente : [actividad.grupo && `Grupo ${actividad.grupo}`, actividad.carrera].filter(Boolean).join(' · ')}</p>
-    <p className="mt-1 text-xs text-slate-400">{privada ? 'Ubicación privada' : actividad.salon || 'Sin espacio asignado'}</p>
-  </div>;
+function Carrera({ nombre }) {
+  return nombre ? <span title={nombre} className="rounded border px-1.5 py-0.5 text-[10px] font-semibold" style={borde}>{abreviarCarrera(nombre)}</span> : null;
 }
 
-function Resultado({ resultado, respuesta, porGrupo }) {
-  const actuales = respuesta.es_actual ? resultado.actividades_actuales || [] : [];
-  const suspendido = noLectivo(respuesta.calendario_hoy);
-  return <article className="glass rounded-2xl p-4 sm:p-5" style={texto}>
-    <h2 className="text-lg font-bold">{porGrupo ? `Grupo ${resultado.nombre}` : resultado.nombre}</h2>
-    {resultado.carrera && <p className="mt-1 text-sm text-slate-400">{resultado.carrera}</p>}
-    {!respuesta.es_actual ? <p className="mt-4 rounded-xl bg-white/5 p-3 text-sm text-slate-400">Periodo de consulta: revisa el horario semanal registrado. No corresponde a la actividad de hoy.</p>
-      : suspendido ? <p className="mt-4 rounded-xl bg-white/5 p-3 text-sm text-slate-400">Día no lectivo · {respuesta.calendario_hoy.motivo || 'Sin clases programadas'}</p>
-      : <div className="mt-4 space-y-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-emerald-400">Ahora, según el horario</p>
-        {actuales.length ? actuales.map(a => <Actividad key={a.id} actividad={a} actual porGrupo={porGrupo} />)
-          : <p className="text-sm text-slate-400">Sin {porGrupo ? 'clase' : 'actividad'} programada ahora.</p>}
-        {actuales.length > 1 && <p className="text-xs text-amber-500">Hay actividades que coinciden en este horario.</p>}
-      </div>}
-    {respuesta.es_actual && resultado.siguiente_actividad && <div className="mt-4 space-y-2">
-      <p className="text-xs font-semibold text-slate-400">Siguiente actividad · {fechaCorta(resultado.siguiente_actividad.fecha)}</p>
-      <Actividad actividad={resultado.siguiente_actividad} porGrupo={porGrupo} />
+function Actividad({ actividad, actual = false, pasada = false, porGrupo = false }) {
+  const privada = ['RECESO', 'DESCARGA'].includes(actividad.tipo_actividad);
+  return <li className={`grid gap-1 border-l-2 px-3 py-3 sm:grid-cols-[110px_1fr] sm:gap-4 ${actual ? 'border-emerald-500 bg-emerald-500/5' : 'border-transparent'}`} style={{ opacity: pasada ? 0.6 : 1 }}>
+    <p className="text-xs tabular-nums" style={secundario}>{actividad.hora_inicio}–{actividad.hora_fin}{actual && <span className="mt-1 block font-semibold" style={{ color: 'var(--accent-success-ui)' }}>En curso</span>}</p>
+    <div><p className={`text-sm ${actual ? 'font-semibold' : ''}`} style={texto}>{actividad.actividad}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs" style={secundario}>
+        {porGrupo ? <span>{actividad.docente}</span> : <><span>{actividad.grupo}</span><Carrera nombre={actividad.carrera} /></>}
+        <span>· {privada ? 'Sin ubicación' : actividad.salon || 'Sin espacio asignado'}</span>
+      </div>
+    </div>
+  </li>;
+}
+
+export function Resultado({ resultado, respuesta, porGrupo, automatico, onSemana }) {
+  const [abierto, setAbierto] = useState(automatico);
+  const resumen = resumenConsultaHorario(resultado, respuesta);
+  const carreras = [...new Set([resultado.carrera, ...resultado.semana.map(a => a.carrera)].filter(Boolean))];
+  const identidad = [resultado.departamento, resultado.numero_empleado && `Emp. ${resultado.numero_empleado}`].filter(Boolean).join(' · ');
+  return <article style={{ ...texto, ...borde }} className="border-b last:border-b-0">
+    <button type="button" aria-expanded={abierto} onClick={() => setAbierto(v => !v)} className="grid w-full grid-cols-[12px_1fr_16px] items-center gap-x-3 gap-y-2 px-4 py-4 text-left hover:bg-white/[0.025] sm:grid-cols-[12px_1fr_minmax(140px,220px)_16px] sm:px-5">
+      <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${resumen.color}`} />
+      <span className="min-w-0"><span className="text-sm font-bold">{porGrupo ? `Grupo ${resultado.nombre}` : resultado.nombre}</span>
+        {esDemo(resultado) && <span className="ml-2 rounded border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: 'var(--accent-warning-ui)' }}>Cuenta de prueba</span>}
+        <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs" style={secundario}>{carreras.map(c => <Carrera key={c} nombre={c} />)}{identidad || (!carreras.length ? 'Sin adscripción registrada' : '')}</span>
+      </span>
+      <span className="col-start-2 row-start-2 min-w-0 text-xs sm:col-start-3 sm:row-start-1 sm:text-right">
+        <span className="block font-semibold" style={resumen.prioridad === 0 ? { color: 'var(--accent-success-ui)' } : texto}>{resumen.titulo}</span>
+        <span className="mt-1 block text-[11px] tabular-nums" style={secundario}>{resumen.estado && resumen.estado !== resumen.titulo && `${resumen.estado} · `}{resumen.detalle}</span>
+      </span>
+      <span aria-hidden="true" className="col-start-3 row-start-1 text-xs sm:col-start-4" style={secundario}>{abierto ? '▼' : '▶'}</span>
+    </button>
+    {abierto && <div className="pb-4 pl-10 pr-4 sm:pl-11 sm:pr-5">
+      {resumen.vacio ? <p className="mb-3 text-sm" style={secundario}>{resumen.vacio}</p> : <>
+        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wider" style={secundario}>Jornada de hoy</h3>
+        {resumen.conflicto && <p className="mb-2 text-xs" style={{ color: 'var(--accent-warning-ui)' }}>Hay actividades con horarios coincidentes.</p>}
+        <ul className="space-y-1">{resultado.jornada.map(a => <Actividad key={a.id} actividad={a} porGrupo={porGrupo} actual={resultado.actividades_actuales.some(c => c.id === a.id)} pasada={a.hora_fin <= respuesta.hora_consulta} />)}</ul>
+      </>}
+      <button type="button" onClick={onSemana} className="mt-3 text-xs font-semibold hover:underline" style={{ color: 'var(--accent-success-ui)' }}>Ver horario semanal →</button>
     </div>}
-    {respuesta.es_actual && !actuales.length && !resultado.siguiente_actividad && resultado.semana.length > 0 && <p className="mt-3 text-xs text-slate-400">No hay otra actividad lectiva prevista en los próximos 7 días de este cuatrimestre.</p>}
-    {respuesta.es_actual && <section className="mt-5 border-t border-white/10 pt-4">
-      <h3 className="text-sm font-bold">Jornada de hoy</h3>
-      {suspendido ? <p className="mt-2 text-sm text-slate-400">Las clases del horario recurrente no aplican hoy por el calendario académico.</p>
-        : resultado.jornada.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{resultado.jornada.map(a => <Actividad key={a.id} actividad={a} actual={actuales.some(c => c.id === a.id)} porGrupo={porGrupo} />)}</div>
-        : <p className="mt-2 text-sm text-slate-400">No hay actividades registradas para hoy.</p>}
-    </section>}
-    <details className="mt-5 border-t border-white/10 pt-4" open={!respuesta.es_actual || undefined}>
-      <summary className="cursor-pointer text-sm font-semibold text-emerald-400">Ver horario semanal</summary>
-      <p className="mt-2 text-xs text-slate-400">Horario recurrente de {respuesta.periodo}. Los días no lectivos se rigen por el calendario académico.</p>
-      {!resultado.semana.length ? <p className="mt-3 text-sm text-slate-400">Sin horario activo registrado en este periodo.</p>
-        : <div className="mt-3 grid gap-3 md:grid-cols-2">{DIAS.map((dia, indice) => {
-          const actividades = resultado.semana.filter(a => a.dia_semana === indice);
-          return actividades.length > 0 && <section key={dia} className="space-y-2"><h4 className="text-sm font-bold">{dia}</h4>{actividades.map(a => <Actividad key={a.id} actividad={a} porGrupo={porGrupo} />)}</section>;
-        })}</div>}
-    </details>
   </article>;
+}
+
+function PanelSemana({ resultado, respuesta, porGrupo, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const dialogo = ref.current;
+    const anterior = document.activeElement;
+    dialogo.showModal();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { dialogo.close(); document.body.style.overflow = overflow; anterior?.focus(); };
+  }, []);
+  return createPortal(<dialog ref={ref} onCancel={e => { e.preventDefault(); onClose(); }} aria-labelledby="titulo-horario-semanal" className="fixed inset-y-0 left-auto right-0 m-0 h-[100dvh] max-h-none w-full max-w-xl border-l p-0 shadow-2xl backdrop:bg-black/50" style={{ background: 'var(--layout-bg)', ...texto, ...borde }}>
+    <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b p-5" style={{ background: 'var(--layout-bg)', ...borde }}><div><h2 id="titulo-horario-semanal" className="font-bold">Horario semanal</h2><p className="mt-1 text-sm">{resultado.nombre}</p><p className="mt-1 text-xs" style={secundario}>{respuesta.periodo} · Horario recurrente</p></div><button autoFocus type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm" style={borde}>Cerrar</button></header>
+    <div className="space-y-5 p-5"><p className="text-xs" style={secundario}>Los días no lectivos se rigen por el calendario académico.</p>
+      {!resultado.semana.length ? <p className="text-sm" style={secundario}>Sin carga activa registrada en este periodo.</p> : DIAS.map((dia, indice) => {
+        const actividades = resultado.semana.filter(a => a.dia_semana === indice);
+        return actividades.length > 0 && <section key={dia}><h3 className="border-b pb-2 text-xs font-bold uppercase" style={borde}>{dia}</h3><ul>{actividades.map(a => <Actividad key={a.id} actividad={a} porGrupo={porGrupo} />)}</ul></section>;
+      })}
+    </div>
+  </dialog>, document.body);
 }
 
 export default function BuscarDocente() {
@@ -75,6 +96,7 @@ export default function BuscarDocente() {
   const [error, setError] = useState('');
   const [errorGrupos, setErrorGrupos] = useState('');
   const [revision, setRevision] = useState(0);
+  const [semanaId, setSemanaId] = useState(null);
 
   useEffect(() => {
     let vigente = true;
@@ -91,7 +113,7 @@ export default function BuscarDocente() {
   useEffect(() => {
     let vigente = true;
     let peticion = 0;
-    setRespuesta(null); setError(''); setCargando(false);
+    setRespuesta(null); setSemanaId(null); setError(''); setCargando(false);
     if (!periodoId || (tab === 'docente' ? !consulta : !grupoId)) return;
     const cargar = async (silencioso = false) => {
       const turno = ++peticion;
@@ -117,6 +139,8 @@ export default function BuscarDocente() {
     setBusqueda(n => n + 1);
   };
   const carreras = [...new Set(grupos.map(g => g.carrera))];
+  const resultados = respuesta ? ordenarResultados(respuesta.resultados, respuesta) : [];
+  const semanaSeleccionada = resultados.find(r => (r.docente_id || `grupo-${r.grupo_id}`) === semanaId);
   return <AdminLayout><div className="mx-auto max-w-5xl space-y-5" style={texto}>
     <header><p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">Consulta entre docentes</p>
       <h1 className="mt-1 text-2xl font-bold">Consultar horarios</h1>
@@ -138,7 +162,8 @@ export default function BuscarDocente() {
     {cargando && <p role="status" className="text-sm text-slate-400">Consultando horario…</p>}
     {respuesta && <section className="space-y-3" aria-live="polite"><div className="flex flex-wrap justify-between gap-2 text-xs text-slate-400"><span>{respuesta.resultados.length} resultado{respuesta.resultados.length === 1 ? '' : 's'}</span><span>{fechaCorta(respuesta.fecha)} · Actualizado a las {respuesta.hora_consulta} h</span></div>
       {!respuesta.resultados.length && <p className="glass rounded-2xl p-6 text-sm text-slate-400">No se encontró un docente activo con ese nombre.</p>}
-      {respuesta.resultados.map(r => <Resultado key={r.docente_id || `grupo-${r.grupo_id}`} resultado={r} respuesta={respuesta} porGrupo={tab === 'grupo'} />)}
+      <div className="overflow-hidden rounded-2xl border" style={borde}>{resultados.map(r => <Resultado key={`${tab}-${consulta}-${busqueda}-${r.docente_id || r.grupo_id}`} resultado={r} respuesta={respuesta} porGrupo={tab === 'grupo'} automatico={resultados.length === 1} onSemana={() => setSemanaId(r.docente_id || `grupo-${r.grupo_id}`)} />)}</div>
     </section>}
+    {semanaSeleccionada && <PanelSemana resultado={semanaSeleccionada} respuesta={respuesta} porGrupo={tab === 'grupo'} onClose={() => setSemanaId(null)} />}
   </div></AdminLayout>;
 }
