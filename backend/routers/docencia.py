@@ -851,80 +851,140 @@ def mi_horario(
     ).all()]
 
 
+def _permiso_consulta_horarios(usuario):
+    if usuario.rol != RolUsuario.DOCENTE:
+        raise HTTPException(403, "Esta consulta está disponible únicamente entre docentes")
+
+
+def _periodo_consulta_horarios(db, periodo_id):
+    if periodo_id is None:
+        return _periodo_actual(db)
+    periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_id).first()
+    if not periodo:
+        raise HTTPException(404, "Periodo no encontrado")
+    return periodo
+
+
+def _detalle_horario_publico(carga):
+    privado = carga.tipo_actividad in {"RECESO", "DESCARGA"}
+    grupo = carga.grupo_academico or carga.grupo_tutorado
+    return {
+        "id": carga.id, "dia_semana": carga.dia_semana,
+        "tipo_actividad": carga.tipo_actividad,
+        "actividad": carga.actividad_nombre,
+        "docente": carga.docente.nombre,
+        "grupo": None if privado or not grupo else f"{grupo.cuatrimestre}° {grupo.grupo}",
+        "carrera": None if privado or not grupo else grupo.carrera,
+        "salon": None if privado else (carga.laboratorio.nombre if carga.laboratorio else carga.espacio_nombre),
+        "hora_inicio": carga.hora_inicio, "hora_fin": carga.hora_fin,
+    }
+
+
+def _resumen_horario_publico(cargas, periodo, ahora, calendario, es_actual):
+    semana = [_detalle_horario_publico(c) for c in cargas]
+    hoy = [c for c in semana if c["dia_semana"] == ahora.weekday()] if es_actual else []
+    lectivo = calendario[0]["requiere_asistencia"] and calendario[0]["permite_iniciar_clase"]
+    hora = ahora.strftime("%H:%M")
+    actuales = [c for c in hoy if lectivo and c["hora_inicio"] <= hora < c["hora_fin"]]
+    siguiente = None
+    if es_actual:
+        for dias, estado in enumerate(calendario):
+            fecha = ahora.date() + datetime.timedelta(days=dias)
+            if not estado["requiere_asistencia"] or not estado["permite_iniciar_clase"]:
+                continue
+            # No atribuir el horario de este cuatrimestre al siguiente.
+            if (fecha.year, (fecha.month - 1) // 4) != (ahora.year, (ahora.month - 1) // 4):
+                break
+            opciones = [c for c in semana if c["dia_semana"] == fecha.weekday() and (dias > 0 or c["hora_inicio"] > hora)]
+            if opciones:
+                siguiente = {**min(opciones, key=lambda c: c["hora_inicio"]), "fecha": fecha.isoformat()}
+                break
+    return {
+        "actividad_actual": actuales[0] if actuales else None,
+        "actividades_actuales": actuales,
+        "siguiente_actividad": siguiente,
+        "estado": actuales[0]["tipo_actividad"] if actuales else "SIN_ACTIVIDAD",
+        "jornada": hoy, "semana": semana,
+    }
+
+
+def _contexto_consulta_horarios(db, periodo):
+    ahora = _ahora_mx()
+    actual = _periodo_actual(db)
+    es_actual = bool(periodo and actual and periodo.id == actual.id)
+    calendario = [estado_fecha_academica(db, periodo.id if periodo else None, ahora.date() + datetime.timedelta(days=d)) for d in range(8)]
+    return ahora, calendario, {
+        "fecha": ahora.date().isoformat(), "hora_consulta": ahora.strftime("%H:%M"),
+        "periodo": periodo.clave if periodo else None, "es_actual": es_actual,
+        "calendario_hoy": calendario[0] if es_actual else None,
+    }
+
+
 @router.get("/ubicacion-docentes")
 def buscar_ubicacion_docentes(
-    q: str = "",
-    db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
+    q: str = "", periodo_id: Optional[int] = None,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
 ):
-    """Consulta entre docentes basada exclusivamente en el horario oficial."""
-    if current_user.rol != RolUsuario.DOCENTE:
-        raise HTTPException(403, "Esta consulta está disponible únicamente entre docentes")
+    """Consulta de solo lectura; no expone ubicaciones de actividades privadas."""
+    _permiso_consulta_horarios(current_user)
     termino = " ".join(q.strip().split())
     if len(termino) < 2:
         raise HTTPException(422, "Escribe al menos 2 caracteres del nombre del docente")
-
     docentes = db.query(Usuario).filter(
-        Usuario.rol == RolUsuario.DOCENTE,
-        Usuario.activo == True,
+        Usuario.rol == RolUsuario.DOCENTE, Usuario.activo == True,
         Usuario.nombre.ilike(f"%{termino}%"),
     ).order_by(Usuario.nombre).limit(20).all()
-    ahora = _ahora_mx()
-    periodo = _periodo_actual(db)
-    docente_ids = [docente.id for docente in docentes]
-    cargas = []
-    if periodo and docente_ids and ahora.weekday() <= 5:
-        cargas = db.query(CargaDocente).filter(
-            CargaDocente.docente_id.in_(docente_ids),
-            CargaDocente.periodo_id == periodo.id,
-            CargaDocente.dia_semana == ahora.weekday(),
-            CargaDocente.activo == True,
-            CargaDocente.estado == "ACTIVO",
-        ).order_by(CargaDocente.hora_inicio).all()
+    periodo = _periodo_consulta_horarios(db, periodo_id)
+    ahora, calendario, contexto = _contexto_consulta_horarios(db, periodo)
+    cargas = db.query(CargaDocente).filter(
+        CargaDocente.docente_id.in_([d.id for d in docentes]),
+        CargaDocente.periodo_id == periodo.id,
+        CargaDocente.activo == True, CargaDocente.estado == "ACTIVO",
+    ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all() if periodo and docentes else []
+    return {**contexto, "resultados": [{
+        "docente_id": d.id, "nombre": d.nombre,
+        **_resumen_horario_publico([c for c in cargas if c.docente_id == d.id], periodo, ahora, calendario, contexto["es_actual"]),
+    } for d in docentes]}
 
-    hora_actual = ahora.strftime("%H:%M")
-    por_docente = {}
-    for carga in cargas:
-        por_docente.setdefault(carga.docente_id, []).append(carga)
 
-    def detalle(carga):
-        privado = carga.tipo_actividad in {"RECESO", "DESCARGA"}
-        grupo = None
-        if carga.grupo_academico:
-            grupo = f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
-        elif carga.grupo_tutorado:
-            grupo = f"{carga.grupo_tutorado.cuatrimestre}° {carga.grupo_tutorado.grupo}"
-        return {
-            "tipo_actividad": carga.tipo_actividad,
-            "actividad": carga.actividad_nombre,
-            "grupo": None if privado else grupo,
-            "salon": None if privado else carga.espacio_nombre,
-            "hora_inicio": carga.hora_inicio,
-            "hora_fin": carga.hora_fin,
-        }
+@router.get("/consulta-horarios/grupos")
+def grupos_consulta_horarios(
+    periodo_id: Optional[int] = None,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _permiso_consulta_horarios(current_user)
+    periodo = _periodo_consulta_horarios(db, periodo_id)
+    if not periodo:
+        return []
+    grupos = db.query(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo.id, GrupoAcademico.activo == True,
+    ).order_by(GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all()
+    return [{"id": g.id, "carrera": g.carrera, "grupo": f"{g.cuatrimestre}° {g.grupo}", "turno": g.turno} for g in grupos]
 
-    resultados = []
-    for docente in docentes:
-        horario = por_docente.get(docente.id, [])
-        actual = next((c for c in horario if c.hora_inicio <= hora_actual < c.hora_fin), None)
-        siguiente = next((c for c in horario if c.hora_inicio > hora_actual), None)
-        if actual:
-            estado = actual.tipo_actividad
-        else:
-            estado = "SIN_ACTIVIDAD"
-        resultados.append({
-            "docente_id": docente.id,
-            "nombre": docente.nombre,
-            "estado": estado,
-            "actividad_actual": detalle(actual) if actual else None,
-            "siguiente_actividad": detalle(siguiente) if siguiente else None,
-        })
-    return {
-        "fecha": ahora.date().isoformat(),
-        "hora_consulta": hora_actual,
-        "periodo": periodo.clave if periodo else None,
-        "resultados": resultados,
-    }
+
+@router.get("/consulta-horarios/grupos/{grupo_id}")
+def horario_publico_grupo(
+    grupo_id: int, periodo_id: Optional[int] = None,
+    db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
+):
+    _permiso_consulta_horarios(current_user)
+    periodo = _periodo_consulta_horarios(db, periodo_id)
+    grupo = db.query(GrupoAcademico).filter(
+        GrupoAcademico.id == grupo_id, GrupoAcademico.activo == True,
+        GrupoAcademico.periodo_id == (periodo.id if periodo else -1),
+    ).first()
+    if not grupo:
+        raise HTTPException(404, "Grupo no encontrado en el periodo seleccionado")
+    cargas = db.query(CargaDocente).join(Usuario, Usuario.id == CargaDocente.docente_id).filter(
+        CargaDocente.grupo_academico_id == grupo.id, CargaDocente.periodo_id == periodo.id,
+        CargaDocente.tipo_actividad == "CLASE", CargaDocente.activo == True,
+        CargaDocente.estado == "ACTIVO", Usuario.activo == True, Usuario.rol == RolUsuario.DOCENTE,
+    ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all()
+    ahora, calendario, contexto = _contexto_consulta_horarios(db, periodo)
+    return {**contexto, "resultados": [{
+        "grupo_id": grupo.id, "nombre": f"{grupo.cuatrimestre}° {grupo.grupo}", "carrera": grupo.carrera,
+        **_resumen_horario_publico(cargas, periodo, ahora, calendario, contexto["es_actual"]),
+    }]}
 
 
 @router.post("/horario")
