@@ -757,7 +757,7 @@ export default function ExpedienteAcademico() {
   const [busquedaGrupo, setBusquedaGrupo] = useState('');
   const [filtroCuatrimestre, setFiltroCuatrimestre] = useState('TODOS');
   const [filtroConfiguracion, setFiltroConfiguracion] = useState('TODOS');
-  const [ordenGrupos, setOrdenGrupos] = useState('GRUPO');
+  const [ordenGrupos, setOrdenGrupos] = useState({ campo: 'grupo', direccion: 'asc' });
   const [vistaGrupos, setVistaGrupos] = useState('LISTA');
   const [alumnoId, setAlumnoId] = useState(Number(searchParams.get('alumno')) || null);
   const [data, setData] = useState(null);
@@ -873,13 +873,16 @@ export default function ExpedienteAcademico() {
       .filter(grupo => filtroConfiguracion === 'TODOS'
         || (filtroConfiguracion === 'CONFIGURADOS' ? Number(grupo.materias || 0) > 0 : Number(grupo.materias || 0) === 0))
       .sort((a, b) => {
-        if (ordenGrupos === 'ALUMNOS') return Number(b.total_alumnos || 0) - Number(a.total_alumnos || 0);
-        if (ordenGrupos === 'CARRERA') return String(a.carrera).localeCompare(String(b.carrera), 'es-MX');
-        return Number(a.cuatrimestre) - Number(b.cuatrimestre)
-          || String(a.grupo).localeCompare(String(b.grupo), 'es-MX')
-          || String(a.carrera).localeCompare(String(b.carrera), 'es-MX');
+        const numericos = new Set(['grupo', 'total_alumnos', 'materias']);
+        let comparacion;
+        if (ordenGrupos.campo === 'grupo') comparacion = Number(a.cuatrimestre) - Number(b.cuatrimestre) || String(a.grupo).localeCompare(String(b.grupo), 'es-MX');
+        else if (numericos.has(ordenGrupos.campo)) comparacion = Number(a[ordenGrupos.campo] || 0) - Number(b[ordenGrupos.campo] || 0);
+        else comparacion = String(a[ordenGrupos.campo] || '').localeCompare(String(b[ordenGrupos.campo] || ''), 'es-MX', { sensitivity: 'base' });
+        return ordenGrupos.direccion === 'asc' ? comparacion : -comparacion;
       });
   }, [grupos, busquedaGrupo, filtroCuatrimestre, filtroConfiguracion, ordenGrupos]);
+  const ordenarGrupoPor = campo => setOrdenGrupos(actual => ({ campo, direccion: actual.campo === campo && actual.direccion === 'asc' ? 'desc' : 'asc' }));
+  const indicadorOrden = campo => ordenGrupos.campo === campo ? (ordenGrupos.direccion === 'asc' ? '↑' : '↓') : '↕';
 
   return (
     <AdminLayout>
@@ -922,7 +925,7 @@ export default function ExpedienteAcademico() {
                   <label className="text-xs font-semibold text-slate-500">Buscar grupo o carrera<input value={busquedaGrupo} onChange={e => setBusquedaGrupo(e.target.value)} className="input-dark mt-1" placeholder="Ej. Contaduría, 9° A…" /></label>
                   <label className="text-xs font-semibold text-slate-500">Cuatrimestre<select value={filtroCuatrimestre} onChange={e => setFiltroCuatrimestre(e.target.value)} className="input-dark mt-1"><option value="TODOS">Todos</option>{cuatrimestres.map(valor => <option key={valor} value={valor}>{valor}° cuatrimestre</option>)}</select></label>
                   <label className="text-xs font-semibold text-slate-500">Configuración<select value={filtroConfiguracion} onChange={e => setFiltroConfiguracion(e.target.value)} className="input-dark mt-1"><option value="TODOS">Todos los grupos</option><option value="CONFIGURADOS">Con materias</option><option value="SIN_MATERIAS">Sin materias</option></select></label>
-                  <label className="text-xs font-semibold text-slate-500">Ordenar por<select value={ordenGrupos} onChange={e => setOrdenGrupos(e.target.value)} className="input-dark mt-1"><option value="GRUPO">Grado y grupo</option><option value="CARRERA">Carrera</option><option value="ALUMNOS">Más alumnos</option></select></label>
+                  <label className="text-xs font-semibold text-slate-500">Ordenar por<select value={ordenGrupos.campo} onChange={e => setOrdenGrupos({ campo: e.target.value, direccion: e.target.value === 'total_alumnos' ? 'desc' : 'asc' })} className="input-dark mt-1"><option value="grupo">Grado y grupo</option><option value="carrera">Carrera</option><option value="periodo">Periodo</option><option value="total_alumnos">Alumnos</option><option value="materias">Materias</option></select></label>
                 </div>
                 <div className={`flex shrink-0 rounded-xl border p-1 ${isDay ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-white/[0.035]'}`} aria-label="Tipo de vista">
                   <button type="button" onClick={() => setVistaGrupos('LISTA')} className={`rounded-lg px-3 py-2 text-xs font-semibold ${vistaGrupos === 'LISTA' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>☷ Lista</button>
@@ -936,7 +939,7 @@ export default function ExpedienteAcademico() {
               <Panel className="overflow-hidden">
                 <div className="max-h-[337px] overflow-auto" aria-label="Selector de grupos; muestra cuatro filas antes de desplazarse">
                   <table className="w-full min-w-[850px] text-left text-sm">
-                    <thead className={`sticky top-0 z-10 text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-slate-900 text-slate-400'}`}><tr><th className="px-5 py-3">Grupo</th><th className="px-4 py-3">Carrera</th><th className="px-4 py-3">Periodo</th><th className="px-4 py-3 text-center">Alumnos</th><th className="px-4 py-3 text-center">Materias</th><th className="px-4 py-3 text-right">Estado</th><th className="px-5 py-3 text-right">Acción</th></tr></thead>
+                    <thead className={`sticky top-0 z-10 text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-slate-900 text-slate-400'}`}><tr>{[['grupo','Grupo','px-5'],['carrera','Carrera','px-4'],['periodo','Periodo','px-4'],['total_alumnos','Alumnos','px-4 text-center'],['materias','Materias','px-4 text-center']].map(([campo, etiqueta, clase]) => <th key={campo} className={`${clase} py-3`}><button type="button" onClick={() => ordenarGrupoPor(campo)} aria-label={`Ordenar por ${etiqueta}`} className={`inline-flex items-center gap-1 hover:text-blue-500 ${clase.includes('text-center') ? 'justify-center' : ''}`}>{etiqueta} <span aria-hidden="true">{indicadorOrden(campo)}</span></button></th>)}<th className="px-4 py-3 text-right">Estado</th><th className="px-5 py-3 text-right">Acción</th></tr></thead>
                     <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
                       {gruposFiltrados.map(grupo => (
                         <tr key={grupo.id} className={`h-[72px] transition ${grupo.id === grupoId ? isDay ? 'bg-blue-50' : 'bg-blue-500/10' : ''}`}>

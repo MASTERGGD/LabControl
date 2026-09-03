@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo } from "react";
+﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
@@ -407,6 +407,39 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
       </div>
     </div>
   );
+}
+
+function ModalArchivarGrupo({ grupo, onClose, onArchivado }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === "day";
+  const [archivando, setArchivando] = useState(false);
+  const [error, setError] = useState("");
+  const cancelarRef = useRef(null);
+  useEffect(() => {
+    cancelarRef.current?.focus();
+    const cerrarConEscape = e => { if (e.key === "Escape" && !archivando) onClose(); };
+    document.addEventListener("keydown", cerrarConEscape);
+    return () => document.removeEventListener("keydown", cerrarConEscape);
+  }, [archivando, onClose]);
+  const confirmar = async () => {
+    if (archivando) return;
+    setArchivando(true); setError("");
+    try {
+      await api.post(`/tutoria/grupos/${grupo.id}/archivar`);
+      onArchivado();
+    } catch (err) {
+      setError(err.response?.data?.detail || "No se pudo archivar el grupo");
+      setArchivando(false);
+    }
+  };
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !archivando) onClose(); }}>
+    <section role="dialog" aria-modal="true" aria-labelledby="titulo-archivar-grupo" className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${isDay ? "border-slate-200 bg-white text-slate-950" : "border-white/10 bg-slate-900 text-white"}`}>
+      <div className="flex items-start gap-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isDay ? "bg-amber-100 text-amber-700" : "bg-amber-500/15 text-amber-300"}`}>!</span><div><h2 id="titulo-archivar-grupo" className="text-lg font-bold">Archivar grupo tutorado</h2><p className="mt-1 text-sm text-slate-500">El grupo dejará de aparecer entre los actuales, pero su historial se conservará.</p></div></div>
+      <div className={`mt-4 rounded-xl border p-3 ${isDay ? "border-slate-200 bg-slate-50" : "border-white/10 bg-white/[0.035]"}`}><p className="font-semibold">{grupo.carrera}</p><p className="mt-1 text-sm text-slate-500">Grupo {grupo.grupo}</p></div>
+      {error && <p role="alert" className="mt-3 text-sm text-red-500">{error}</p>}
+      <div className="mt-5 flex justify-end gap-2"><button ref={cancelarRef} type="button" disabled={archivando} onClick={onClose} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${isDay ? "border-slate-300 text-slate-700" : "border-slate-600 text-slate-300"}`}>Cancelar</button><button type="button" disabled={archivando} onClick={confirmar} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50">{archivando ? "Archivando…" : "Archivar grupo"}</button></div>
+    </section>
+  </div>;
 }
 
 // â”€â”€â”€ Modal Ver Alumnos del Grupo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1336,17 +1369,7 @@ export default function TutoriaAdmin() {
     }
   }, [showToast, vistaHistorica]);
 
-  const archivarGrupo = async (grupo) => {
-    if (!window.confirm(`¿Archivar ${grupo.carrera} · Grupo ${grupo.grupo}? El historial se conservará.`)) return;
-    try {
-      await api.post(`/tutoria/grupos/${grupo.id}/archivar`);
-      showToast("Grupo archivado; permanece disponible en el historial", "success");
-      cargarGrupos();
-      cargarDash();
-    } catch (err) {
-      showToast(err.response?.data?.detail || "No se pudo archivar el grupo", "error");
-    }
-  };
+  const archivarGrupo = (grupo) => setModal({ type: "archivar", grupo });
 
   const cargarCanalizaciones = useCallback(async () => {
     try {
@@ -2770,6 +2793,9 @@ export default function TutoriaAdmin() {
           onClose={() => setModal(null)}
           onGuardado={() => { setModal(null); cargarGrupos(); cargarDash(); }}
         />
+      )}
+      {modal?.type === "archivar" && (
+        <ModalArchivarGrupo grupo={modal.grupo} onClose={() => setModal(null)} onArchivado={() => { setModal(null); showToast("Grupo archivado; permanece disponible en el historial", "success"); cargarGrupos(); cargarDash(); }} />
       )}
       {modal?.type === "atender" && (
         <ModalAtenderCan can={modal.can} onClose={() => setModal(null)}
