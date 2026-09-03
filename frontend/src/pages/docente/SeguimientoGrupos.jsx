@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
 import { usePeriodo } from '../../context/PeriodoContext';
 
@@ -177,10 +178,19 @@ export default function SeguimientoGrupos() {
         )}
         <div className="glass rounded-2xl p-4">
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-400">Selecciona la materia y el grupo</label>
-          <select value={seleccion} disabled={!cargas.length} onChange={(e) => setParams({ carga: e.target.value })} className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white disabled:cursor-not-allowed disabled:opacity-60">
-            {!cargas.length && <option value="">Sin materias o grupos asignados</option>}
-            {cargas.map((c) => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo}</option>)}
-          </select>
+          <SelectDark
+            value={seleccion}
+            disabled={!cargas.length}
+            onChange={(value) => setParams({ carga: String(value) })}
+            placeholder="Sin materias o grupos asignados"
+            className="w-full"
+            wrapSelected
+            options={cargas.map((c) => ({
+              value: c.id,
+              label: `${c.actividad_nombre} · ${c.grupo}`,
+              wrap: true,
+            }))}
+          />
           {cargaActual?.horarios?.length > 0 && (
             <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.025] px-4 py-3">
               <p className="text-xs font-semibold text-slate-400">Horario semanal</p>
