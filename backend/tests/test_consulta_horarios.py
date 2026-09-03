@@ -81,3 +81,21 @@ def test_rutas_http_y_permisos(client, db, docente_user, admin_user, datos):
     with pytest.raises(HTTPException) as error:
         router.grupos_consulta_horarios(actual.id, db, admin_user)
     assert error.value.status_code == 403
+
+
+def test_busqueda_incluye_docentes_con_funcion_adicional(db, docente_user, datos):
+    from models.usuario import Usuario, RolUsuario
+    actual, _, grupo, _, _ = datos
+    docente_user.nombre = "Gilberto García D. (demo)"
+    multi = Usuario(nombre="MTI García Delgado Gilberto", email="multi@test.mx", password_hash="no-login", rol=RolUsuario.ADMINISTRATIVO, roles_adicionales='["DOCENTE"]', activo=True)
+    solo_admin = Usuario(nombre="Gilberto Administrativo", email="admin-sin-docencia@test.mx", password_hash="no-login", rol=RolUsuario.ADMINISTRATIVO, activo=True)
+    inactivo = Usuario(nombre="Gilberto Inactivo", email="inactivo@test.mx", password_hash="no-login", rol=RolUsuario.DOCENTE, activo=False)
+    db.add_all([multi, solo_admin, inactivo]); db.flush()
+    db.add(CargaDocente(docente_id=multi.id, periodo_id=actual.id, grupo_academico_id=grupo.id, tipo_actividad="CLASE", actividad_nombre="Materia de docente con dos funciones", dia_semana=3, hora_inicio="10:00", hora_fin="11:00", estado="ACTIVO", activo=True))
+    db.commit()
+    resultados = router.buscar_ubicacion_docentes("gilberto", actual.id, db, docente_user)["resultados"]
+    assert {r["docente_id"] for r in resultados} == {docente_user.id, multi.id}
+    real = next(r for r in resultados if r["docente_id"] == multi.id)
+    assert real["actividad_actual"]["actividad"] == "Materia de docente con dos funciones"
+    horario = router.horario_publico_grupo(grupo.id, actual.id, db, docente_user)["resultados"][0]
+    assert any(a["docente"] == multi.nombre for a in horario["actividades_actuales"])

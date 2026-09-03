@@ -16,6 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -851,6 +852,14 @@ def mi_horario(
     ).all()]
 
 
+def _filtro_funcion_docente():
+    # El rol principal persiste aunque la persona cambie al modo Docente.
+    return or_(
+        Usuario.rol == RolUsuario.DOCENTE,
+        Usuario.roles_adicionales.contains('"DOCENTE"'),
+    )
+
+
 def _permiso_consulta_horarios(usuario):
     if usuario.rol != RolUsuario.DOCENTE:
         raise HTTPException(403, "Esta consulta está disponible únicamente entre docentes")
@@ -925,13 +934,13 @@ def buscar_ubicacion_docentes(
     q: str = "", periodo_id: Optional[int] = None,
     db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
 ):
-    """Consulta de solo lectura; no expone ubicaciones de actividades privadas."""
+    """Consulta docentes con función principal o adicional, sin ubicaciones privadas."""
     _permiso_consulta_horarios(current_user)
     termino = " ".join(q.strip().split())
     if len(termino) < 2:
         raise HTTPException(422, "Escribe al menos 2 caracteres del nombre del docente")
     docentes = db.query(Usuario).filter(
-        Usuario.rol == RolUsuario.DOCENTE, Usuario.activo == True,
+        _filtro_funcion_docente(), Usuario.activo == True,
         Usuario.nombre.ilike(f"%{termino}%"),
     ).order_by(Usuario.nombre).limit(20).all()
     periodo = _periodo_consulta_horarios(db, periodo_id)
@@ -978,7 +987,7 @@ def horario_publico_grupo(
     cargas = db.query(CargaDocente).join(Usuario, Usuario.id == CargaDocente.docente_id).filter(
         CargaDocente.grupo_academico_id == grupo.id, CargaDocente.periodo_id == periodo.id,
         CargaDocente.tipo_actividad == "CLASE", CargaDocente.activo == True,
-        CargaDocente.estado == "ACTIVO", Usuario.activo == True, Usuario.rol == RolUsuario.DOCENTE,
+        CargaDocente.estado == "ACTIVO", Usuario.activo == True, _filtro_funcion_docente(),
     ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all()
     ahora, calendario, contexto = _contexto_consulta_horarios(db, periodo)
     return {**contexto, "resultados": [{
