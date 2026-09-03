@@ -2709,7 +2709,29 @@ def dashboard_docente(
     acuerdos_vencidos = 0
     for carga in cargas_seguimiento:
         seguimiento = seguimiento_grupo(carga.id, db, current_user)
-        cargas_equivalentes_ids = [item.id for item in _cargas_equivalentes(db, carga)]
+        cargas_equivalentes = _cargas_equivalentes(db, carga)
+        cargas_equivalentes_ids = [item.id for item in cargas_equivalentes]
+        coincidencia_periodo = re.search(r"(ENE-ABR|MAY-AGO|SEP-DIC)\s+(\d{4})", actual.clave or "", re.I)
+        if coincidencia_periodo:
+            mes_inicio = {"ENE-ABR": 1, "MAY-AGO": 5, "SEP-DIC": 9}[coincidencia_periodo.group(1).upper()]
+            fecha_inicio_periodo = datetime.date(int(coincidencia_periodo.group(2)), mes_inicio, 1)
+        else:
+            fecha_inicio_periodo = min((clase.fecha for clase in clases), default=hoy)
+        clases_esperadas = 0
+        fecha_revision = fecha_inicio_periodo
+        while fecha_revision <= hoy:
+            for bloque in cargas_equivalentes:
+                if bloque.dia_semana != fecha_revision.weekday():
+                    continue
+                estado_fecha = estado_fecha_academica(db, bloque.periodo_id, fecha_revision)
+                if not estado_fecha["requiere_asistencia"]:
+                    continue
+                fin_bloque = datetime.datetime.combine(
+                    fecha_revision, datetime.time.fromisoformat(bloque.hora_fin), tzinfo=MX,
+                )
+                if fin_bloque <= ahora:
+                    clases_esperadas += 1
+            fecha_revision += datetime.timedelta(days=1)
         acuerdos_activos = db.query(SeguimientoAlumnoDocente).filter(
             SeguimientoAlumnoDocente.carga_docente_id.in_(cargas_equivalentes_ids),
             SeguimientoAlumnoDocente.docente_id == current_user.id,
@@ -2727,6 +2749,7 @@ def dashboard_docente(
             "carrera": seguimiento["carga"]["carrera"],
             "total_alumnos": seguimiento["total_alumnos"],
             "total_clases": seguimiento["total_clases"],
+            "clases_esperadas": clases_esperadas,
             "asistencia_promedio": seguimiento["promedio_asistencia"],
             "alumnos_alerta": seguimiento["alumnos_en_alerta"],
             "acuerdos_pendientes": pendientes_carga,

@@ -253,6 +253,7 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert tablero["jornada"][0]["estado"] == "CERRADA"
     assert tablero["grupos"][0]["total_alumnos"] == 2
     assert tablero["grupos"][0]["asistencia_promedio"] == 100.0
+    assert tablero["grupos"][0]["clases_esperadas"] >= tablero["grupos"][0]["total_clases"]
 
 
 def test_cambio_de_periodo_separa_horarios_y_protege_historial(client, db):

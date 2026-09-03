@@ -21,7 +21,7 @@ test('no habilita otra fecha ni un día no lectivo', () => {
 });
 test('continúa una clase abierta y consulta una cerrada sin volver a iniciarla', () => {
   expect(accion('13:00:00', { clase_id: 8, estado: 'EN_CURSO' })).toEqual({ texto: 'Continuar clase', path: '/docente/clase/8' });
-  expect(accion('10:15:00', { clase_id: 8, estado: 'CERRADA' }).texto).toBe('Abrir clase');
+  expect(accion('10:15:00', { clase_id: 8, estado: 'CERRADA' }).texto).toBe('Ver clase');
   expect(accion('12:10:00', { estado: 'SIN_REGISTRO' }).iniciar).toBe(true);
 });
 test('inicia una clase de aula y navega directamente al registro', async () => {

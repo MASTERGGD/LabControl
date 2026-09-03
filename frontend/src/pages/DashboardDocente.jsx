@@ -7,12 +7,14 @@ import api from '../hooks/useApi';
 import { abrirClaseDocente } from '../utils/abrirClaseDocente';
 import { accionClaseDashboard } from '../utils/accionClaseDashboard';
 import { getApiErrorMessage } from '../utils/apiError';
+import { abreviarCarrera } from '../utils/resumenConsultaHorario';
+import { MEXICO_TIME_ZONE } from '../utils/timezone';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
 function saludar(nombre) {
-  const h = new Date().getHours();
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: MEXICO_TIME_ZONE, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
   const prefijo = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
   const primer = nombre?.split(' ')[0] ?? 'docente';
   return { prefijo, nombre: primer };
@@ -361,7 +363,7 @@ export default function DashboardDocente() {
             <span className="text-slate-300">{nombreCorto}</span>
           </h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {[periodo?.clave, semana && `Semana ${semana}`, new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })].filter(Boolean).join(' · ')}
+            {[periodo?.clave, semana && `Semana ${semana}`, new Date().toLocaleDateString('es-MX', { timeZone: MEXICO_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })].filter(Boolean).join(' · ')}
           </p>
         </div>
 
@@ -396,32 +398,24 @@ export default function DashboardDocente() {
         {sinCarga && <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300"><IconoPanel name="calendario" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{periodo?.clave || 'Periodo actual'}</p><h2 className="mt-1 text-lg font-bold text-white">Todavía no has registrado tus materias</h2><p className="mt-1 text-sm text-slate-400">Cuando recibas tu horario de División de Carrera, captura aquí tus materias, grupos y actividades.</p></div></div><button onClick={() => navigate('/docente/horario')} className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Registrar mi horario <Flecha /></button></div></section>}
 
         {/* ── Pendientes accionables ─────────────────────────────────── */}
-        {!sinCarga && <div><p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">Pendientes</p><div className="grid gap-3 md:grid-cols-3">
-          <StatCard
+        {!sinCarga && <div><p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">Pendientes</p>{(operacion?.resumen.asistencias_pendientes > 0 || operacion?.resumen.acuerdos_pendientes > 0) ? <div className="grid gap-3 md:grid-cols-2">
+          {operacion?.resumen.asistencias_pendientes > 0 && <StatCard
             icon="asistencia"
             label="Asistencias"
             value={operacion?.resumen.asistencias_pendientes ?? '…'}
             sub={operacion?.resumen.asistencias_pendientes > 0 ? 'Requieren registro o cierre' : 'Sin asistencias pendientes'}
             urgent={operacion?.resumen.asistencias_pendientes > 0}
             onClick={() => navigate('/docente/horario')}
-          />
-          <StatCard
-            icon="alumnos"
-            label="Alumnos en atención"
-            value={operacion?.resumen.alumnos_atencion ?? '…'}
-            sub={operacion?.resumen.alumnos_atencion > 0 ? 'Con indicadores académicos' : 'Sin alumnos que requieran atención'}
-            urgent={operacion?.resumen.alumnos_atencion > 0}
-            onClick={() => navigate('/docente/seguimiento')}
-          />
-          <StatCard
+          />}
+          {operacion?.resumen.acuerdos_pendientes > 0 && <StatCard
             icon="acuerdos"
             label="Acuerdos"
             value={operacion?.resumen.acuerdos_pendientes ?? '…'}
             sub={operacion?.resumen.acuerdos_vencidos > 0 ? plural(operacion.resumen.acuerdos_vencidos, 'acuerdo vencido', 'acuerdos vencidos') : operacion?.resumen.acuerdos_pendientes > 0 ? 'Seguimiento académico pendiente' : 'Sin acuerdos pendientes'}
             urgent={operacion?.resumen.acuerdos_vencidos > 0}
             onClick={() => navigate('/docente/seguimiento')}
-          />
-        </div></div>}
+          />}
+        </div> : <p className="dashboard-surface rounded-xl border border-white/8 px-4 py-3 text-sm text-slate-500">Sin asistencias ni acuerdos pendientes.</p>}</div>}
 
         {/* ── Atención requerida ─────────────────────────────────────── */}
         {atencionItems.length > 0 && (
@@ -491,29 +485,35 @@ export default function DashboardDocente() {
         </div>}
 
         {/* ── Panorama de grupos y alumnos prioritarios ─────────────── */}
-        {!sinCarga && <div className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+        {!sinCarga && <div className="space-y-5">
           <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
             <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
               <div><h2 className="font-bold text-white">Panorama de mis grupos</h2><p className="text-xs text-slate-500">Asistencia y alertas de las materias que impartes.</p></div>
               <button onClick={() => navigate('/docente/seguimiento')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver seguimiento <Flecha /></button>
             </div>
-            <div className="grid gap-3 p-4 md:grid-cols-2">
-              {operacion?.grupos.map(grupo => (
-                <button key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="dashboard-subtle rounded-xl border border-white/8 p-4 text-left hover:border-emerald-500/30 hover:bg-emerald-500/5">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500">{grupo.grupo} · {grupo.carrera}</p></div>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{plural(grupo.alumnos_alerta, 'alerta', 'alertas')}</span>}</div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
-                    <div><b className="block text-base text-white">{grupo.total_alumnos}</b><span className="text-slate-500">Alumnos</span></div>
-                    <div><b className={`block text-base ${grupo.asistencia_promedio < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{grupo.asistencia_promedio}%</b><span className="text-slate-500">Asistencia</span></div>
-                    <div><b className="block text-base text-amber-400">{grupo.acuerdos_pendientes}</b><span className="text-slate-500">Acuerdos</span></div>
-                  </div>
-                  <p className="mt-3 text-[10px] text-slate-500">{plural(grupo.total_clases, 'clase registrada', 'clases registradas')}{grupo.ultima_clase ? ` · Última: ${new Date(`${grupo.ultima_clase}T12:00:00`).toLocaleDateString('es-MX')}` : ''}</p>
-                </button>
-              ))}
-              {!loading && !operacion?.grupos.length && <p className="col-span-full p-6 text-center text-sm text-slate-500">Todavía no hay grupos activos configurados.</p>}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[780px] text-left text-sm">
+                <thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Materia</th><th>Grupo</th><th>Clases</th><th>Asistencia</th><th>Atención</th><th className="pr-5"></th></tr></thead>
+                <tbody className="divide-y divide-white/5">
+                  {[...(operacion?.grupos || [])].sort((a, b) => Number(b.total_clases < b.clases_esperadas) - Number(a.total_clases < a.clases_esperadas) || b.alumnos_alerta - a.alumnos_alerta || b.acuerdos_vencidos - a.acuerdos_vencidos || a.materia.localeCompare(b.materia, 'es')).map(grupo => {
+                    const sinRegistro = grupo.total_clases === 0;
+                    const faltanClases = grupo.total_clases < grupo.clases_esperadas;
+                    return <tr key={grupo.carga_id} onClick={() => navigate(`/docente/seguimiento?carga=${grupo.carga_id}`)} className="cursor-pointer hover:bg-white/3">
+                      <td className="px-5 py-3"><p className="font-semibold text-white">{grupo.materia}</p><p className="text-xs text-slate-500" title={grupo.carrera}>{abreviarCarrera(grupo.carrera)}</p></td>
+                      <td className="text-slate-300">{grupo.grupo}<span className="block text-xs text-slate-500">{plural(grupo.total_alumnos, 'alumno', 'alumnos')}</span></td>
+                      <td><span className={faltanClases ? 'font-semibold text-amber-300' : 'text-slate-300'}>{grupo.total_clases} / {grupo.clases_esperadas}</span><span className="block text-xs text-slate-500">registradas</span></td>
+                      <td>{sinRegistro ? <span className="text-slate-500">Sin registro</span> : <div className="flex items-center gap-2"><span className={`font-semibold tabular-nums ${grupo.asistencia_promedio < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{grupo.asistencia_promedio}%</span><span className="h-1.5 w-16 overflow-hidden rounded-full bg-white/5"><span className={`block h-full ${grupo.asistencia_promedio < 80 ? 'bg-red-400' : 'bg-emerald-400'}`} style={{ width: `${Math.min(100, grupo.asistencia_promedio)}%` }} /></span></div>}</td>
+                      <td>{grupo.alumnos_alerta > 0 && <span className="rounded-full bg-red-500/15 px-2 py-1 text-[10px] font-bold text-red-300">{plural(grupo.alumnos_alerta, 'alerta', 'alertas')}</span>}{grupo.acuerdos_pendientes > 0 && <span className="ml-1 rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-300">{plural(grupo.acuerdos_pendientes, 'acuerdo', 'acuerdos')}</span>}{!grupo.alumnos_alerta && !grupo.acuerdos_pendientes && <span className="text-slate-600">—</span>}</td>
+                      <td className="pr-5 text-right text-emerald-400"><span className="inline-flex items-center gap-1 text-xs font-semibold">Ver grupo <Flecha /></span></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+              {!loading && !operacion?.grupos.length && <p className="p-6 text-center text-sm text-slate-500">Todavía no hay grupos activos configurados.</p>}
             </div>
           </div>
 
-          <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
+          {!!operacion?.alumnos_prioritarios.length && <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
             <div className="border-b border-white/8 px-5 py-4"><h2 className="font-bold text-white">Alumnos que requieren atención</h2><p className="text-xs text-slate-500">Prioridad calculada con asistencias y seguimiento.</p></div>
             <div className="divide-y divide-white/5">
               {operacion?.alumnos_prioritarios.slice(0, 5).map(alumno => (
@@ -523,9 +523,9 @@ export default function DashboardDocente() {
                   <span className="text-xs font-bold text-slate-400">{alumno.asistencia}%</span>
                 </button>
               ))}
-              {!loading && !operacion?.alumnos_prioritarios.length && <p className="p-8 text-center text-sm text-slate-500">No hay alertas académicas activas.</p>}
             </div>
-          </div>
+          </div>}
+          {!loading && !operacion?.alumnos_prioritarios.length && <p className="dashboard-surface rounded-xl border border-white/8 px-4 py-3 text-sm text-slate-500">Sin alumnos que requieran atención.</p>}
         </div>}
 
       </div>

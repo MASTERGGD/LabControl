@@ -5,7 +5,7 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
   if (item.clase_id) {
-    return { texto: ['EN_CURSO', 'CORRECCION'].includes(item.estado) ? 'Continuar clase' : 'Abrir clase', path: `/docente/clase/${item.clase_id}` };
+    return { texto: ['EN_CURSO', 'CORRECCION'].includes(item.estado) ? 'Continuar clase' : 'Ver clase', path: `/docente/clase/${item.clase_id}` };
   }
   const partes = new Intl.DateTimeFormat('en-GB', { timeZone: MEXICO_TIME_ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(ahora);
   const valor = tipo => Number(partes.find(p => p.type === tipo)?.value);
