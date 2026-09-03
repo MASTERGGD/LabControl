@@ -52,7 +52,6 @@ const ESTADO_INF = {
 function StatCard({ label, value, icon, alert, hint, tone = "slate" }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === "day";
-  const hoverEncabezado = isDay ? "hover:text-slate-950" : "hover:text-white";
   // All cards share a neutral background — only the value number is colored
   const cardBg = isDay ? "bg-white border-slate-200" : "bg-slate-800/60 border-slate-700/50";
   const valueColors = {
@@ -1254,6 +1253,7 @@ export default function TutoriaAdmin() {
   const [searchParams] = useSearchParams();
   const { themeKey } = useTheme();
   const isDay = themeKey === "day";
+  const hoverEncabezado = isDay ? "hover:text-slate-950" : "hover:text-white";
   const { toast: showToast } = useToast();
   const navigate = useNavigate();
   const [tab, setTab] = useState(searchParams.get("tab") === "reportes-tutor" ? "reportes-tutor" : "dashboard");
