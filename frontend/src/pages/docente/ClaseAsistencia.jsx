@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
+import { useTheme } from '../../context/ThemeContext';
 
 const ESTADOS = [
   ['PRESENTE', 'Presente', 'bg-emerald-600'],
@@ -13,6 +14,8 @@ const ESTADOS = [
 export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const [clase, setClase] = useState(null);
   const [contextos, setContextos] = useState({});
   const [mensaje, setMensaje] = useState('');
@@ -191,23 +194,23 @@ export default function ClaseAsistencia() {
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {cierreConfirmado && (
-          <div className="rounded-2xl border border-emerald-500/35 bg-emerald-500/10 p-4 text-emerald-100" role="status" aria-live="polite">
+          <div className={`rounded-2xl border p-4 ${isDay ? 'border-emerald-300 bg-emerald-50 text-emerald-950' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-100'}`} role="status" aria-live="polite">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300" aria-hidden="true">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isDay ? 'bg-emerald-100 text-emerald-700' : 'bg-emerald-500/20 text-emerald-300'}`} aria-hidden="true">
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m5 12 4 4L19 6" /></svg>
                 </span>
                 <div>
                   <p className="font-semibold">{cierreConfirmado.titulo}</p>
-                  <p className="mt-1 text-sm text-emerald-200/80">
+                  <p className={`mt-1 text-sm ${isDay ? 'text-emerald-800' : 'text-emerald-200/80'}`}>
                     {r.presente} {r.presente === 1 ? 'presente' : 'presentes'} · {r.falta} {r.falta === 1 ? 'falta' : 'faltas'} · {r.retardo} {r.retardo === 1 ? 'retardo' : 'retardos'}{r.justificada ? ` · ${r.justificada} ${r.justificada === 1 ? 'justificada' : 'justificadas'}` : ''}
                   </p>
-                  {cierreConfirmado.detalle && <p className="mt-1 text-xs text-emerald-200/70">{cierreConfirmado.detalle}</p>}
-                  {redireccionAutomatica && <p className="mt-1 text-xs text-slate-400">Volverás al inicio en unos segundos.</p>}
+                  {cierreConfirmado.detalle && <p className={`mt-1 text-xs ${isDay ? 'text-emerald-700' : 'text-emerald-200/70'}`}>{cierreConfirmado.detalle}</p>}
+                  {redireccionAutomatica && <p className={`mt-1 text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Volverás al inicio en unos segundos.</p>}
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => setRedireccionAutomatica(false)} disabled={!redireccionAutomatica} className="rounded-xl border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 disabled:opacity-50">Permanecer aquí</button>
+                <button type="button" onClick={() => setRedireccionAutomatica(false)} disabled={!redireccionAutomatica} className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 ${isDay ? 'border-emerald-300 bg-white text-emerald-900' : 'border-white/15 text-slate-300'}`}>Permanecer aquí</button>
                 <button type="button" onClick={() => navigate('/docente')} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Ir al inicio</button>
               </div>
             </div>

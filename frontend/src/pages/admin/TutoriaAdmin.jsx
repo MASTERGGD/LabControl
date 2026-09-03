@@ -8,6 +8,19 @@ import { todayISOInMexico } from "../../utils/timezone";
 
 const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
 
+const formatearCarrera = (valor) => {
+  const palabrasBreves = new Set(["a", "de", "del", "e", "el", "en", "la", "las", "los", "o", "para", "por", "y"]);
+  const abreviada = String(valor || "").trim()
+    .replace(/^TÉCNICO SUPERIOR UNIVERSITARIO\s+EN\s+/i, "TSU en ")
+    .replace(/^LICENCIATURA\s+EN\s+/i, "Licenciatura en ");
+  return abreviada.split(/\s+/).map((palabra, indice) => {
+    if (palabra === "TSU") return palabra;
+    const minuscula = palabra.toLocaleLowerCase("es");
+    if (indice > 0 && palabrasBreves.has(minuscula)) return minuscula;
+    return minuscula.charAt(0).toLocaleUpperCase("es") + minuscula.slice(1);
+  }).join(" ");
+};
+
 const SEMAFORO = {
   ALTO:      { label: "Vulnerabilidad Alta",   cls: "bg-red-500/20 text-red-300 border-red-500/40" },
   MEDIO:     { label: "Vulnerabilidad Media",  cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
@@ -39,6 +52,7 @@ const ESTADO_INF = {
 function StatCard({ label, value, icon, alert, hint, tone = "slate" }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === "day";
+  const hoverEncabezado = isDay ? "hover:text-slate-950" : "hover:text-white";
   // All cards share a neutral background — only the value number is colored
   const cardBg = isDay ? "bg-white border-slate-200" : "bg-slate-800/60 border-slate-700/50";
   const valueColors = {
@@ -1544,11 +1558,6 @@ export default function TutoriaAdmin() {
     direccion: actual.campo === campo && actual.direccion === "asc" ? "desc" : "asc",
   }));
 
-  const gruposSinTutor = useMemo(
-    () => grupos.filter(g => g.activo && !g.tutor_id && g.estado !== "ARCHIVADO"),
-    [grupos]
-  );
-
   const resumenPorTutor = useMemo(() => {
     const acumulado = new Map();
     gruposFiltrados.forEach(g => {
@@ -2010,18 +2019,6 @@ export default function TutoriaAdmin() {
             ))}
           </div>
 
-          {!vistaHistorica && gruposSinTutor.length > 0 && (
-            <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><h3 className="font-semibold text-amber-200">{gruposSinTutor.length} {gruposSinTutor.length === 1 ? "grupo requiere" : "grupos requieren"} asignación de tutor</h3><p className="mt-1 text-sm text-slate-400">Asigna estos casos para completar la cobertura tutorial.</p></div>
-                <button type="button" onClick={() => { setFiltroTutor(""); setFiltroAsignacion("SIN_TUTOR"); }} className="rounded-xl border border-amber-500/30 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/10">Mostrar solo pendientes</button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {gruposSinTutor.map(g => <button key={g.id} type="button" onClick={() => setModal({ type: "editar", grupo: g })} className="rounded-xl border border-amber-500/25 bg-slate-900/35 px-3 py-2 text-left text-xs hover:bg-amber-500/10"><b className="text-amber-200">{g.carrera} · {g.cuatrimestre}° {g.grupo}</b><span className="ml-2 text-slate-400">Asignar →</span></button>)}
-              </div>
-            </section>
-          )}
-
           <div className="rounded-2xl border border-white/10 bg-slate-900/35 p-3 grid grid-cols-1 md:grid-cols-5 gap-3">
             <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}
               className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
@@ -2054,7 +2051,7 @@ export default function TutoriaAdmin() {
               <div key={g.id} className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="font-semibold text-white">{toTitleCase(g.carrera)}</p>
+                    <p className="font-semibold text-white">{formatearCarrera(g.carrera)}</p>
                     <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre</p>
                   </div>
                   {!g.tutor_id && <span className="rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}
@@ -2074,7 +2071,7 @@ export default function TutoriaAdmin() {
                   {!vistaHistorica && g.estado !== "NO_VINCULADO" && (
                     <button
                       onClick={() => setModal({ type: "editar", grupo: g })}
-                      className="px-3 py-1.5 rounded-lg border border-slate-600 text-slate-400 text-xs hover:bg-slate-700 transition-all">
+                      className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${g.tutor_id ? "border border-slate-600 text-slate-400 hover:bg-slate-700" : "bg-emerald-600 text-white hover:bg-emerald-500"}`}>
                       {g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}
                     </button>
                   )}
@@ -2097,19 +2094,19 @@ export default function TutoriaAdmin() {
           <div className="hidden overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/35 md:block">
             <table className="w-full min-w-[980px] table-fixed text-left text-sm">
               <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr>
-                <th className="w-[29%] px-4 py-3"><button type="button" onClick={() => ordenarPor("carrera")} className="inline-flex items-center gap-1 hover:text-white">Carrera <span aria-hidden="true">{ordenGrupos.campo === "carrera" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
-                <th className="w-[10%] px-4 py-3"><button type="button" onClick={() => ordenarPor("cuatrimestre")} className="inline-flex items-center gap-1 hover:text-white">Grupo <span aria-hidden="true">{ordenGrupos.campo === "cuatrimestre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
-                <th className="w-[25%] px-4 py-3"><button type="button" onClick={() => ordenarPor("tutor_nombre")} className="inline-flex items-center gap-1 hover:text-white">Tutor <span aria-hidden="true">{ordenGrupos.campo === "tutor_nombre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
-                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("total_alumnos")} className="ml-auto inline-flex items-center gap-1 hover:text-white">Alumnos <span aria-hidden="true">{ordenGrupos.campo === "total_alumnos" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
-                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("sesiones_realizadas")} className="ml-auto inline-flex items-center gap-1 hover:text-white">Sesiones <span aria-hidden="true">{ordenGrupos.campo === "sesiones_realizadas" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[29%] px-4 py-3"><button type="button" onClick={() => ordenarPor("carrera")} className={`inline-flex items-center gap-1 ${hoverEncabezado}`}>Carrera <span aria-hidden="true">{ordenGrupos.campo === "carrera" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[10%] px-4 py-3"><button type="button" onClick={() => ordenarPor("cuatrimestre")} className={`inline-flex items-center gap-1 ${hoverEncabezado}`}>Grupo <span aria-hidden="true">{ordenGrupos.campo === "cuatrimestre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[25%] px-4 py-3"><button type="button" onClick={() => ordenarPor("tutor_nombre")} className={`inline-flex items-center gap-1 ${hoverEncabezado}`}>Tutor <span aria-hidden="true">{ordenGrupos.campo === "tutor_nombre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("total_alumnos")} className={`ml-auto inline-flex items-center gap-1 ${hoverEncabezado}`}>Alumnos <span aria-hidden="true">{ordenGrupos.campo === "total_alumnos" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("sesiones_realizadas")} className={`ml-auto inline-flex items-center gap-1 ${hoverEncabezado}`}>Sesiones <span aria-hidden="true">{ordenGrupos.campo === "sesiones_realizadas" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
                 <th className="w-[18%] px-4 py-3 text-right">Acciones</th>
               </tr></thead>
               <tbody className="divide-y divide-white/5">
                 {gruposOrdenados.map(g => <tr key={g.id} className={`${!g.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}>
-                  <td className="px-4 py-2.5 font-medium text-white">{toTitleCase(g.carrera)}</td><td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-200">{g.cuatrimestre}° {g.grupo}</td>
+                  <td className="px-4 py-2.5 font-medium text-white">{formatearCarrera(g.carrera)}</td><td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-200">{g.cuatrimestre}° {g.grupo}</td>
                   <td className="px-4 py-2.5">{g.tutor_id ? <span className="text-slate-300">{g.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td>
                   <td className={`px-4 py-2.5 text-right tabular-nums ${Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : "text-slate-300"}`}>{g.total_alumnos}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-300">{g.sesiones_realizadas}</td>
-                  <td className="px-4 py-2.5"><div className="flex justify-end gap-2 whitespace-nowrap"><button type="button" onClick={() => setModal({ type: "ver-alumnos", grupo: g })} className="whitespace-nowrap rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700">Ver alumnos</button>{!vistaHistorica && g.estado !== "NO_VINCULADO" && <button type="button" onClick={() => setModal({ type: "editar", grupo: g })} className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold ${g.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}</button>}{g.estado === "NO_VINCULADO" && <button type="button" onClick={() => archivarGrupo(g)} className="whitespace-nowrap rounded-lg border border-amber-500/40 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10">Archivar</button>}</div></td>
+                  <td className="px-4 py-2.5"><div className="flex justify-end gap-2 whitespace-nowrap"><button type="button" onClick={() => setModal({ type: "ver-alumnos", grupo: g })} className="whitespace-nowrap rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700">Ver alumnos</button>{!vistaHistorica && g.estado !== "NO_VINCULADO" && <button type="button" onClick={() => setModal({ type: "editar", grupo: g })} className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold ${g.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-emerald-600 text-white hover:bg-emerald-500"}`}>{g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}</button>}{g.estado === "NO_VINCULADO" && <button type="button" onClick={() => archivarGrupo(g)} className="whitespace-nowrap rounded-lg border border-amber-500/40 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10">Archivar</button>}</div></td>
                 </tr>)}
                 {gruposOrdenados.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">No hay grupos académicos con estos filtros.</td></tr>}
               </tbody>
@@ -2122,7 +2119,7 @@ export default function TutoriaAdmin() {
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Tutor</th><th className="px-4 py-3">Grupos</th><th className="px-4 py-3">Alumnos</th><th className="px-4 py-3">Sesiones</th><th className="px-4 py-3 text-right">Acción</th></tr></thead>
                 <tbody className="divide-y divide-white/5">
-                  {resumenPorTutor.map(t => <tr key={t.tutor_id || "SIN_TUTOR"} className={`${!t.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}><td className="px-4 py-3">{t.tutor_id ? <span className="font-medium text-white">{t.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td><td className="px-4 py-3 text-slate-300">{t.grupos}</td><td className="px-4 py-3 text-slate-300">{t.alumnos}</td><td className={`px-4 py-3 ${t.sesiones === 0 ? "text-amber-300" : "text-slate-300"}`}>{t.sesiones}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => { setFiltroTutor(t.tutor_id ? String(t.tutor_id) : ""); setFiltroAsignacion(t.tutor_id ? "CON_TUTOR" : "SIN_TUTOR"); setVistaAgrupacion("GRUPOS"); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${t.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{t.tutor_id ? "Ver grupos" : "Asignar tutores"}</button></td></tr>)}
+                  {resumenPorTutor.map(t => <tr key={t.tutor_id || "SIN_TUTOR"} className={`${!t.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}><td className="px-4 py-3">{t.tutor_id ? <span className="font-medium text-white">{t.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td><td className="px-4 py-3 text-slate-300">{t.grupos}</td><td className="px-4 py-3 text-slate-300">{t.alumnos}</td><td className={`px-4 py-3 ${t.sesiones === 0 ? "text-amber-300" : "text-slate-300"}`}>{t.sesiones}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => { setFiltroTutor(t.tutor_id ? String(t.tutor_id) : ""); setFiltroAsignacion(t.tutor_id ? "CON_TUTOR" : "SIN_TUTOR"); setVistaAgrupacion("GRUPOS"); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${t.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-emerald-600 text-white hover:bg-emerald-500"}`}>{t.tutor_id ? "Ver grupos" : "Asignar tutores"}</button></td></tr>)}
                   {resumenPorTutor.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No hay tutores con estos filtros.</td></tr>}
                 </tbody>
               </table>
