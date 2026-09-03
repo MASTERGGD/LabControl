@@ -1983,7 +1983,7 @@ export default function TutoriaAdmin() {
         <div className="space-y-4">
           <div className="flex justify-between items-start gap-3 flex-wrap">
             <div>
-              <h2 className="text-lg font-semibold">Cobertura tutorial por grupo</h2>
+              <h2 className="text-lg font-semibold">Cobertura tutorial</h2>
               <p className="text-sm text-slate-400">Grupos e inscripciones sincronizados automáticamente desde Servicios Escolares.</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -2003,7 +2003,7 @@ export default function TutoriaAdmin() {
               ["Cobertura", `${coberturaTutoria.porcentaje}%`, "text-cyan-400"],
               ["Alumnos vinculados", coberturaTutoria.alumnos, "text-violet-400"],
             ].map(([label, value, tone, filtro]) => (
-              <button key={label} type="button" disabled={!filtro} onClick={() => filtro && setFiltroAsignacion(filtro)} className={`rounded-xl border border-white/10 bg-slate-900/35 p-3 text-left ${filtro ? "transition hover:border-blue-500/40 hover:bg-slate-800/60" : "cursor-default"}`}>
+              <button key={label} type="button" disabled={!filtro} onClick={() => { if (filtro) { setFiltroTutor(""); setFiltroAsignacion(filtro); } }} className={`rounded-xl p-3 text-left ${filtro ? "border border-white/10 bg-slate-900/35 transition hover:border-blue-500/40 hover:bg-slate-800/60" : "cursor-default border border-transparent bg-slate-900/15 opacity-75"}`}>
                 <p className={`text-xl font-bold ${tone}`}>{value}</p>
                 <p className="text-xs text-slate-400">{label}{filtro && <span className="ml-1 text-slate-600">→</span>}</p>
               </button>
@@ -2014,7 +2014,7 @@ export default function TutoriaAdmin() {
             <section className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div><h3 className="font-semibold text-amber-200">{gruposSinTutor.length} {gruposSinTutor.length === 1 ? "grupo requiere" : "grupos requieren"} asignación de tutor</h3><p className="mt-1 text-sm text-slate-400">Asigna estos casos para completar la cobertura tutorial.</p></div>
-                <button type="button" onClick={() => setFiltroAsignacion("SIN_TUTOR")} className="rounded-xl border border-amber-500/30 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/10">Mostrar solo pendientes</button>
+                <button type="button" onClick={() => { setFiltroTutor(""); setFiltroAsignacion("SIN_TUTOR"); }} className="rounded-xl border border-amber-500/30 px-3 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-500/10">Mostrar solo pendientes</button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {gruposSinTutor.map(g => <button key={g.id} type="button" onClick={() => setModal({ type: "editar", grupo: g })} className="rounded-xl border border-amber-500/25 bg-slate-900/35 px-3 py-2 text-left text-xs hover:bg-amber-500/10"><b className="text-amber-200">{g.carrera} · {g.cuatrimestre}° {g.grupo}</b><span className="ml-2 text-slate-400">Asignar →</span></button>)}
@@ -2054,7 +2054,7 @@ export default function TutoriaAdmin() {
               <div key={g.id} className="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div>
-                    <p className="font-semibold text-white">{g.carrera}</p>
+                    <p className="font-semibold text-white">{toTitleCase(g.carrera)}</p>
                     <p className="text-xs text-slate-400">Grupo {g.grupo} · {g.cuatrimestre}° cuatrimestre</p>
                   </div>
                   {!g.tutor_id && <span className="rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}
@@ -2095,19 +2095,23 @@ export default function TutoriaAdmin() {
           </div>
 
           <div className="hidden overflow-x-auto rounded-2xl border border-white/10 bg-slate-900/35 md:block">
-            <table className="w-full min-w-[1050px] text-left text-sm">
+            <table className="w-full min-w-[980px] table-fixed text-left text-sm">
               <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr>
-                {[["carrera", "Carrera"], ["grupo", "Grupo"], ["cuatrimestre", "Cuatr."], ["tutor_nombre", "Tutor"], ["total_alumnos", "Alumnos"], ["sesiones_realizadas", "Sesiones"]].map(([campo, etiqueta]) => <th key={campo} className="px-4 py-3"><button type="button" onClick={() => ordenarPor(campo)} className="inline-flex items-center gap-1 hover:text-white">{etiqueta}<span aria-hidden="true">{ordenGrupos.campo === campo ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>)}
-                <th className="px-4 py-3 text-right">Acciones</th>
+                <th className="w-[29%] px-4 py-3"><button type="button" onClick={() => ordenarPor("carrera")} className="inline-flex items-center gap-1 hover:text-white">Carrera <span aria-hidden="true">{ordenGrupos.campo === "carrera" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[10%] px-4 py-3"><button type="button" onClick={() => ordenarPor("cuatrimestre")} className="inline-flex items-center gap-1 hover:text-white">Grupo <span aria-hidden="true">{ordenGrupos.campo === "cuatrimestre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[25%] px-4 py-3"><button type="button" onClick={() => ordenarPor("tutor_nombre")} className="inline-flex items-center gap-1 hover:text-white">Tutor <span aria-hidden="true">{ordenGrupos.campo === "tutor_nombre" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("total_alumnos")} className="ml-auto inline-flex items-center gap-1 hover:text-white">Alumnos <span aria-hidden="true">{ordenGrupos.campo === "total_alumnos" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[9%] px-4 py-3 text-right"><button type="button" onClick={() => ordenarPor("sesiones_realizadas")} className="ml-auto inline-flex items-center gap-1 hover:text-white">Sesiones <span aria-hidden="true">{ordenGrupos.campo === "sesiones_realizadas" ? (ordenGrupos.direccion === "asc" ? "↑" : "↓") : "↕"}</span></button></th>
+                <th className="w-[18%] px-4 py-3 text-right">Acciones</th>
               </tr></thead>
               <tbody className="divide-y divide-white/5">
                 {gruposOrdenados.map(g => <tr key={g.id} className={`${!g.tutor_id ? "bg-amber-500/[0.06]" : ""} hover:bg-white/[0.035]`}>
-                  <td className="max-w-[360px] px-4 py-3 font-medium text-white">{g.carrera}</td><td className="px-4 py-3 font-semibold text-slate-200">{g.grupo}</td><td className="px-4 py-3 text-slate-300">{g.cuatrimestre}°</td>
-                  <td className="px-4 py-3">{g.tutor_id ? <span className="text-slate-300">{g.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td>
-                  <td className={`px-4 py-3 ${Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : "text-slate-300"}`}>{g.total_alumnos}</td><td className="px-4 py-3 text-slate-300">{g.sesiones_realizadas}</td>
-                  <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => setModal({ type: "ver-alumnos", grupo: g })} className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700">Ver alumnos</button>{!vistaHistorica && g.estado !== "NO_VINCULADO" && <button type="button" onClick={() => setModal({ type: "editar", grupo: g })} className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${g.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}</button>}{g.estado === "NO_VINCULADO" && <button type="button" onClick={() => archivarGrupo(g)} className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10">Archivar</button>}</div></td>
+                  <td className="px-4 py-2.5 font-medium text-white">{toTitleCase(g.carrera)}</td><td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-200">{g.cuatrimestre}° {g.grupo}</td>
+                  <td className="px-4 py-2.5">{g.tutor_id ? <span className="text-slate-300">{g.tutor_nombre}</span> : <span className="inline-flex rounded-full bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-300">Sin tutor</span>}</td>
+                  <td className={`px-4 py-2.5 text-right tabular-nums ${Number(g.total_alumnos || 0) === 0 ? "text-amber-300" : "text-slate-300"}`}>{g.total_alumnos}</td><td className="px-4 py-2.5 text-right tabular-nums text-slate-300">{g.sesiones_realizadas}</td>
+                  <td className="px-4 py-2.5"><div className="flex justify-end gap-2 whitespace-nowrap"><button type="button" onClick={() => setModal({ type: "ver-alumnos", grupo: g })} className="whitespace-nowrap rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700">Ver alumnos</button>{!vistaHistorica && g.estado !== "NO_VINCULADO" && <button type="button" onClick={() => setModal({ type: "editar", grupo: g })} className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold ${g.tutor_id ? "border border-slate-600 text-slate-300 hover:bg-slate-700" : "bg-amber-500 text-slate-950 hover:bg-amber-400"}`}>{g.tutor_id ? "Cambiar tutor" : "Asignar tutor"}</button>}{g.estado === "NO_VINCULADO" && <button type="button" onClick={() => archivarGrupo(g)} className="whitespace-nowrap rounded-lg border border-amber-500/40 px-2.5 py-1.5 text-xs text-amber-300 hover:bg-amber-500/10">Archivar</button>}</div></td>
                 </tr>)}
-                {gruposOrdenados.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">No hay grupos académicos con estos filtros.</td></tr>}
+                {gruposOrdenados.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">No hay grupos académicos con estos filtros.</td></tr>}
               </tbody>
             </table>
           </div>
