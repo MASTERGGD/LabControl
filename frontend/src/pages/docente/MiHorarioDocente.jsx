@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
+import { abrirClaseDocente } from '../../utils/abrirClaseDocente';
 import { usePeriodo } from '../../context/PeriodoContext';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
@@ -572,28 +573,6 @@ export default function MiHorarioDocente() {
       setRetirando(false);
     }
   };
-  const iniciar = async (item) => {
-    try {
-      const clase = item.clase_id
-        ? { id: item.clase_id }
-        : (await api.post(`/docencia/horario/${item.id}/iniciar`)).data;
-      if (item.laboratorio_id && item.uso_laboratorio !== 'SOLO_AULA' && item.estado_reserva_laboratorio === 'RESERVADO' && item.reservacion_laboratorio_id) {
-        const [horaInicio, minutoInicio] = item.hora_inicio.split(':').map(Number);
-        const [horaFin, minutoFin] = item.hora_fin.split(':').map(Number);
-        const duracion = Math.max(15, Math.min(300, ((horaFin * 60) + minutoFin) - ((horaInicio * 60) + minutoInicio)));
-        const { data: sesion } = await api.post('/sesiones', {
-          laboratorio_id: item.laboratorio_id,
-          reservacion_id: item.reservacion_laboratorio_id,
-          fin_estimado_min: duracion,
-        });
-        navigate(`/docente/sesion/${sesion.id}`, { state: { claseDocenteId: clase.id } });
-        return;
-      }
-      navigate(`/docente/clase/${clase.id}`);
-    } catch (err) {
-      setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
-    }
-  };
   const abrirReposicion = (pendiente = reposicionesPendientes[0]) => {
     if (!pendiente) return;
     setModalReposicion(pendiente);
@@ -690,13 +669,11 @@ export default function MiHorarioDocente() {
           : 'Registrar asistencia'
   );
   const abrirClase = async (item) => {
-    if (item.es_reposicion && item.clase_estado === 'PROGRAMADA') {
-      try {
-        const { data } = await api.post(`/docencia/reposiciones/${item.clase_id}/iniciar`);
-        navigate(`/docente/clase/${data.id}`);
-      } catch (err) { setMensaje(err.response?.data?.detail || 'No se pudo iniciar la reposición.'); }
-    } else if (item.clase_estado === 'CERRADA') navigate(`/docente/clase/${item.clase_id}`);
-    else iniciar(item);
+    try {
+      await abrirClaseDocente(api, navigate, item);
+    } catch (err) {
+      setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
+    }
   };
   const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
   const recordatorioPrincipal = actividadPrincipal ? recordatorios[actividadPrincipal.id] : null;

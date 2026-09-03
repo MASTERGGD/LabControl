@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../context/AuthContext';
 import { usePeriodo } from '../context/PeriodoContext';
 import api from '../hooks/useApi';
+import { abrirClaseDocente } from '../utils/abrirClaseDocente';
+import { accionClaseDashboard } from '../utils/accionClaseDashboard';
+import { getApiErrorMessage } from '../utils/apiError';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
@@ -135,7 +138,7 @@ function BannerSesionActiva({ sesion, onIr }) {
 }
 
 // Bloque "Próxima clase"
-function BloqueProximaClase({ reservacion, tiempoRestante, onIr }) {
+function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr }) {
   if (!reservacion) return null;
   const prox = reservacion._proxFecha;
   const fechaClase = fmtFechaClase(prox);
@@ -149,7 +152,7 @@ function BloqueProximaClase({ reservacion, tiempoRestante, onIr }) {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
-            {esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
+            {accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
           </p>
           <p className="text-white font-bold text-base leading-tight">{reservacion.materia}</p>
           <p className="text-slate-400 text-sm mt-0.5">
@@ -160,7 +163,7 @@ function BloqueProximaClase({ reservacion, tiempoRestante, onIr }) {
           {enCurso ? (
             <>
               <p className="text-lg font-bold text-emerald-400">Clase en curso</p>
-              <p className="text-xs text-slate-500">Puedes iniciar la clase</p>
+              <p className="text-xs text-slate-500">{accion.texto === 'Continuar clase' ? 'Continúa con el registro de tu clase' : 'Puedes iniciar la clase'}</p>
             </>
           ) : comienzaPronto ? (
             <>
@@ -175,10 +178,11 @@ function BloqueProximaClase({ reservacion, tiempoRestante, onIr }) {
           )}
           <button
             onClick={onIr}
+            disabled={ocupado}
             className="mt-2 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors
               flex items-center gap-1 sm:ml-auto"
           >
-            Ver horario
+            {ocupado ? 'Abriendo…' : accion.texto}
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
             </svg>
@@ -219,12 +223,15 @@ export default function DashboardDocente() {
   const [proximaClase,  setProximaClase]   = useState(null);
   const [solicitudes,   setSolicitudes]    = useState({ total: 0, pendientes: 0 });
   const [operacion,     setOperacion]      = useState(null);
-  const [tiempoRestante, setTiempoRestante] = useState(Number.POSITIVE_INFINITY);
+  const [ahora, setAhora] = useState(() => new Date());
+  const [abriendo, setAbriendo] = useState(false);
+  const aperturaEnCurso = useRef(false);
+  const [errorClase, setErrorClase] = useState('');
   const [loading,       setLoading]        = useState(true);
 
   // Cargar datos al montar
-  const cargarDatos = useCallback(async () => {
-    setLoading(true);
+  const cargarDatos = useCallback(async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     try {
       const [resComunicados, resSesion, resSolicitudes, resOperacion] = await Promise.allSettled([
         api.get('/comunicados/pendientes-count'),
@@ -266,17 +273,63 @@ export default function DashboardDocente() {
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
-  // Actualiza la cercanía de la próxima clase cada minuto.
+  // El reloj cambia las acciones sin recargar; al volver a la pestaña se actualizan los estados.
   useEffect(() => {
-    if (!proximaClase) return;
-    const tick = () => {
-      const diff = proximaClase._proxFecha - new Date();
-      setTiempoRestante(diff);
+    const reloj = setInterval(() => setAhora(new Date()), 1000);
+    const refrescar = () => { setAhora(new Date()); cargarDatos(true); };
+    const datos = setInterval(refrescar, 30_000);
+    window.addEventListener('focus', refrescar);
+    return () => {
+      clearInterval(reloj);
+      clearInterval(datos);
+      window.removeEventListener('focus', refrescar);
     };
-    tick();
-    const id = setInterval(tick, 60_000);
-    return () => clearInterval(id);
-  }, [proximaClase]);
+  }, [cargarDatos]);
+
+  const jornada = operacion?.jornada || [];
+  const actual = jornada.find(item => item.estado === 'EN_CURSO' || item.estado === 'CORRECCION')
+    || jornada.find(item => accionClaseDashboard(item, operacion?.fecha, ahora).iniciar);
+  const claseDestacada = actual ? {
+    ...actual, fecha: operacion.fecha,
+    laboratorio_nombre: actual.espacio,
+    _proxFecha: new Date(`${operacion.fecha}T${actual.hora_inicio}-06:00`),
+  } : proximaClase ? {
+    ...proximaClase,
+    ...(proximaClase.fecha === operacion?.fecha ? jornada.find(item => item.carga_id === proximaClase.carga_id) : {}),
+    estado: proximaClase.fecha === operacion?.fecha
+      ? jornada.find(item => item.carga_id === proximaClase.carga_id)?.estado || 'PROGRAMADA'
+      : 'PROGRAMADA',
+  } : null;
+  const accionDestacada = claseDestacada && accionClaseDashboard(claseDestacada, claseDestacada.fecha, ahora);
+
+  const abrirDesdeInicio = async (item, fecha) => {
+    if (aperturaEnCurso.current) return;
+    const accion = accionClaseDashboard(item, fecha, new Date());
+    if (!accion.iniciar && accion.texto !== 'Continuar clase') {
+      navigate(accion.path);
+      return;
+    }
+    aperturaEnCurso.current = true;
+    setAbriendo(true);
+    setErrorClase('');
+    try {
+      // Obtener el bloque vigente conserva las reservas y el flujo de laboratorio del horario.
+      const { data } = await api.get('/docencia/hoy');
+      const bloque = data.find(c => c.id === item.carga_id && (!item.clase_id || c.clase_id === item.clase_id));
+      if (!bloque) throw new Error('La clase ya no está disponible para hoy. Actualiza tu horario.');
+      if (bloque.calendario && (!bloque.calendario.requiere_asistencia || !bloque.calendario.permite_iniciar_clase)) {
+        navigate('/calendario-academico');
+        return;
+      }
+      await abrirClaseDocente(api, navigate, bloque);
+    } catch (err) {
+      setErrorClase(getApiErrorMessage(err, 'No se pudo abrir la clase. Intenta de nuevo.'));
+      cargarDatos(true);
+    } finally {
+      aperturaEnCurso.current = false;
+      setAbriendo(false);
+    }
+  };
 
   const { prefijo, nombre: nombreCorto } = saludar(usuario?.nombre);
   const semana = semanaDelPeriodo(periodo?.clave);
@@ -328,13 +381,17 @@ export default function DashboardDocente() {
             onCalendario={() => navigate('/calendario-academico')}
           />
         )}
-        {!loading && proximaClase && !operacion?.calendario_hoy && (
+        {!loading && claseDestacada && !operacion?.calendario_hoy && (
           <BloqueProximaClase
-            reservacion={proximaClase}
-            tiempoRestante={tiempoRestante}
-            onIr={() => navigate('/docente/horario')}
+            reservacion={claseDestacada}
+            tiempoRestante={claseDestacada._proxFecha - ahora}
+            accion={accionDestacada}
+            ocupado={abriendo}
+            onIr={() => abrirDesdeInicio(claseDestacada, claseDestacada.fecha)}
           />
         )}
+
+        {errorClase && <p role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{errorClase}</p>}
 
         {sinCarga && <section className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300"><IconoPanel name="calendario" /></span><div><p className="text-xs font-bold uppercase tracking-wider text-emerald-400">{periodo?.clave || 'Periodo actual'}</p><h2 className="mt-1 text-lg font-bold text-white">Todavía no has registrado tus materias</h2><p className="mt-1 text-sm text-slate-400">Cuando recibas tu horario de División de Carrera, captura aquí tus materias, grupos y actividades.</p></div></div><button onClick={() => navigate('/docente/horario')} className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Registrar mi horario <Flecha /></button></div></section>}
 
@@ -406,7 +463,8 @@ export default function DashboardDocente() {
             <table className="w-full min-w-[850px] text-left text-sm">
               <thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Hora</th><th>Materia</th><th>Grupo</th><th>Espacio</th><th>Estado</th><th className="pr-5 text-right"></th></tr></thead>
               <tbody className="divide-y divide-white/5">
-                {operacion?.jornada.map(item => {
+                {jornada.map(item => {
+                  const accion = accionClaseDashboard(item, operacion.fecha, ahora);
                   const estado = {
                     PROGRAMADA: ['Programada', 'bg-blue-500/15 text-blue-300'],
                     EN_CURSO: ['En curso', 'bg-emerald-500/15 text-emerald-300'],
@@ -422,7 +480,7 @@ export default function DashboardDocente() {
                       <td className="text-slate-400">{item.grupo}</td>
                       <td className="text-slate-400">{item.espacio}</td>
                       <td><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${estado[1]}`}>{estado[0]}</span></td>
-                      <td className="pr-5 text-right"><button onClick={() => navigate(item.estado === 'NO_LECTIVA' ? '/calendario-academico' : item.clase_id ? `/docente/clase/${item.clase_id}` : '/docente/horario')} className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{item.estado === 'NO_LECTIVA' ? 'Ver calendario' : item.clase_id ? 'Abrir clase' : 'Ir al horario'} <Flecha /></button></td>
+                      <td className="pr-5 text-right"><button disabled={abriendo} onClick={() => abrirDesdeInicio(item, operacion.fecha)} className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">{abriendo ? 'Abriendo…' : accion.texto} <Flecha /></button></td>
                     </tr>
                   );
                 })}
