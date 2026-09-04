@@ -143,14 +143,29 @@ class TestAlumnosGrupo:
 
     def test_listar_alumnos_grupo(self, client, db):
         tok, grupo_id = self._setup_grupo(client, db)
-        alum = _usuario(db, "Alum", "alum@test.mx", RolUsuario.ALUMNO)
+        alum = CatalogoAlumno(
+            matricula="UTC-TUT-001", apellido_paterno="Pérez", apellido_materno="López",
+            nombres="Alumna Tutorada", carrera="Ingeniería en TI", cuatrimestre=3,
+            grupo="A", periodo="ENE-ABR-2026", activo=True,
+        )
+        db.add(alum)
+        db.commit()
+        db.refresh(alum)
         client.post(f"/tutoria/grupos/{grupo_id}/alumnos", json={
             "alumno_ids": [alum.id],
         }, headers=auth_headers(tok))
         r = client.get(f"/tutoria/grupos/{grupo_id}/alumnos",
                        headers=auth_headers(tok))
         assert r.status_code == 200
-        assert isinstance(r.json(), list)
+        assert len(r.json()) == 1
+        fila = r.json()[0]
+        assert fila["asistencia_global"] is None
+        assert fila["registros_asistencia"] == 0
+        assert fila["muestra_asistencia_suficiente"] is False
+        assert fila["materias_riesgo"] == 0
+        assert fila["ultima_sesion"] is None
+        assert fila["requiere_atencion"] is False
+        assert fila["tiene_perfil_socioeconomico"] is False
 
 
 # ════════════════════════════════════════════════════════════════════════════

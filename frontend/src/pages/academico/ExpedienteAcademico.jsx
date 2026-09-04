@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
@@ -745,6 +745,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
 }
 
 export default function ExpedienteAcademico() {
+  const navigate = useNavigate();
   const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -782,13 +783,14 @@ export default function ExpedienteAcademico() {
   }, []);
 
   useEffect(() => {
+    if (alumnoId) return;
     api.get('/expediente-academico/panorama/grupos')
       .then(({ data: rows }) => {
         setGrupos(rows);
         if (!grupoId && rows.length) setGrupoId(rows[0].id);
       })
       .catch(err => setError(err.response?.data?.detail || 'No se pudieron consultar los grupos.'));
-  }, []);
+  }, [usuario?.rol, alumnoId]);
   useEffect(() => {
     const timer = setTimeout(() => buscar(busqueda), 300);
     return () => clearTimeout(timer);
@@ -812,6 +814,10 @@ export default function ExpedienteAcademico() {
     setAlumnos([]);
   };
   const volverPanorama = () => {
+    if (usuario?.rol === 'DOCENTE') {
+      navigate('/docente/mis-tutorados?tab=alumnos');
+      return;
+    }
     setAlumnoId(null);
     setData(null);
     const params = new URLSearchParams(searchParams);
@@ -894,7 +900,7 @@ export default function ExpedienteAcademico() {
             <p className="mt-1 text-sm text-slate-500">{alumnoId ? (data?.alumno?.nombre || 'Consulta académica individual') : 'Seguimiento por grupo y acceso al expediente individual de cada alumno.'}</p>
           </div>
           <div className="relative w-full max-w-md">
-            <label className="text-xs font-semibold text-slate-500">{alumnoId ? 'Buscar otro alumno en la institución' : 'Búsqueda directa de alumno'}</label>
+            <label className="text-xs font-semibold text-slate-500">{alumnoId ? (usuario?.rol === 'DOCENTE' ? 'Buscar otro de mis tutorados' : 'Buscar otro alumno en la institución') : 'Búsqueda directa de alumno'}</label>
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark mt-1" placeholder="Escribe nombre o matrícula…" />
             {busqueda.trim().length >= 2 && (
               <Panel className="absolute right-0 top-full z-30 mt-2 max-h-80 w-full overflow-y-auto shadow-2xl">
@@ -974,7 +980,7 @@ export default function ExpedienteAcademico() {
 
         {alumnoId && (
           <div className="min-w-0">
-            <button onClick={volverPanorama} className="mb-3 text-sm font-semibold text-blue-400 hover:text-blue-300">← Volver al panorama del grupo</button>
+            <button onClick={volverPanorama} className="mb-3 text-sm font-semibold text-blue-400 hover:text-blue-300">← {usuario?.rol === 'DOCENTE' ? 'Volver a Mis Tutorados' : 'Volver al panorama del grupo'}</button>
             {loading && <Panel className="p-12 text-center text-sm text-slate-500">Cargando expediente del alumno…</Panel>}
             {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
             {data && !loading && (

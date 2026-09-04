@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
@@ -7,13 +7,6 @@ import SelectDark from "../../components/SelectDark";
 import RegistroSesionTutoria from "./RegistroSesionTutoria";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-const SEMAFORO = {
-  ALTO:      { emoji: "🔴", label: "Vulnerabilidad Alta",       cls: "border-red-500/50 bg-red-900/10" },
-  MEDIO:     { emoji: "🟡", label: "Vulnerabilidad Media",      cls: "border-amber-500/50 bg-amber-900/10" },
-  BAJO:      { emoji: "🟢", label: "Vulnerabilidad Baja",       cls: "border-emerald-500/30 bg-slate-800/60" },
-  SIN_DATOS: { emoji: "⚪", label: "Sin datos socioeconómicos", cls: "border-slate-600/50 bg-slate-800/40" },
-};
-
 const toTitleCase = s =>
   s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
 
@@ -38,42 +31,10 @@ const CATEGORIAS_F09 = {
   ADICCIONES: "⚠️ Adicciones", ENFERMEDAD: "🏥 Enfermedad diagnosticada", TRABAJA: "💼 Trabaja",
 };
 
-// ─── Perfil Socioeconómico ────────────────────────────────────────────────────
-function PerfilCard({ perfil }) {
-  if (!perfil) return <p className="text-xs text-slate-500 mt-2">Sin datos del estudio socioeconómico.</p>;
-  const items = [
-    perfil.promedio_bachillerato && `Prom. bachillerato: ${perfil.promedio_bachillerato}`,
-    perfil.ingreso_familiar_mensual && `Ingreso familiar: $${Number(perfil.ingreso_familiar_mensual).toLocaleString("es-MX")}/mes`,
-    perfil.recibe_apoyo_institucional && `Apoyo institucional: ${perfil.institucion_apoyo || "Sí"}`,
-    perfil.habla_lengua_indigena && "Habla lengua indígena",
-    perfil.tiene_hijos && `Tiene ${perfil.num_hijos || ""} hijo(s)`,
-    perfil.trabaja && `Trabaja: ${perfil.empresa || "Sí"}`,
-    perfil.tiene_alergia && "Tiene alergia",
-    perfil.tiene_enfermedad_cronica && [
-      perfil.diabetes && "Diabetes", perfil.hipertension && "Hipertensión",
-      perfil.hemofilia && "Hemofilia", perfil.problemas_cardiacos && "Prob. cardíacos",
-    ].filter(Boolean).join(", "),
-    perfil.tiene_discapacidad && "Discapacidad diagnosticada",
-  ].filter(Boolean);
-
-  return (
-    <div className="mt-2 space-y-1">
-      {items.map((item, i) => (
-        <p key={i} className="text-xs text-slate-300 flex items-start gap-1">
-          <span className="text-slate-500 mt-0.5">·</span> {item}
-        </p>
-      ))}
-      {perfil.informacion_relevante && (
-        <p className="text-xs text-amber-300 mt-1">📌 {perfil.informacion_relevante}</p>
-      )}
-    </div>
-  );
-}
-
 // ─── Modal Nueva Canalización (F-DC-08) ───────────────────────────────────────
-function ModalCanalizar({ alumnos, grupoId, onClose, onGuardado }) {
+function ModalCanalizar({ alumnos, grupoId, alumnoInicial, onClose, onGuardado }) {
   const { toast: showToast } = useToast();
-  const [alumnoId, setAlumnoId] = useState(alumnos[0]?.id || "");
+  const [alumnoId, setAlumnoId] = useState(alumnoInicial || alumnos[0]?.id || "");
   const [tipos, setTipos] = useState({ tipo_psicologico: false, tipo_pedagogico: false, tipo_personal: false, tipo_medico: false });
   const [modalidad, setModalidad] = useState("INDIVIDUAL");
   const [motivo, setMotivo] = useState("");
@@ -594,9 +555,14 @@ export default function MisTutorados() {
   const [canalizaciones, setCanalizaciones] = useState([]);
   const [reportesTutor, setReportesTutor] = useState([]);
   const [pendientes, setPendientes] = useState(null);
-  const [tab, setTab] = useState(searchParams.get("tab") === "reportes" ? "reportes" : "agenda");
+  const [tab, setTab] = useState(() => {
+    const solicitado = searchParams.get("tab");
+    return ["agenda", "alumnos", "sesiones", "informe", "reportes", "canalizaciones"].includes(solicitado) ? solicitado : "agenda";
+  });
   const [modal, setModal] = useState(null); // null | "sesion" | "canalizar"
-  const [expandido, setExpandido] = useState(null);
+  const [busquedaAlumno, setBusquedaAlumno] = useState("");
+  const [filtroAlumnos, setFiltroAlumnos] = useState("TODOS");
+  const [canalizarAlumnoId, setCanalizarAlumnoId] = useState(null);
   const [registrarGrupoId, setRegistrarGrupoId] = useState(null);
   const [atenderReporte, setAtenderReporte] = useState(null);
   const [resultadoReporte, setResultadoReporte] = useState("");
@@ -652,6 +618,18 @@ export default function MisTutorados() {
   const urgentes = pendientes?.resumen?.urgente || 0;
   const canPend  = canalizaciones.filter(c => c.estado === "PENDIENTE").length;
   const reportesPend = reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"].includes(r.estado)).length;
+  const alumnosFiltrados = useMemo(() => {
+    const termino = busquedaAlumno.trim().toLocaleLowerCase("es-MX");
+    return alumnos
+      .filter(a => !termino || `${a.nombre} ${a.matricula}`.toLocaleLowerCase("es-MX").includes(termino))
+      .filter(a => filtroAlumnos === "TODOS"
+        || (filtroAlumnos === "ATENCION" && a.requiere_atencion)
+        || (filtroAlumnos === "SIN_SESION" && !a.ultima_sesion)
+        || (filtroAlumnos === "CANALIZADOS" && a.canalizaciones_abiertas > 0))
+      .sort((a, b) => Number(b.requiere_atencion) - Number(a.requiere_atencion)
+        || Number(b.materias_riesgo || 0) - Number(a.materias_riesgo || 0)
+        || a.nombre.localeCompare(b.nombre, "es-MX"));
+  }, [alumnos, busquedaAlumno, filtroAlumnos]);
 
   if (grupos.length === 0) return (
     <AdminLayout>
@@ -751,10 +729,6 @@ export default function MisTutorados() {
                 className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">
                 Registrar sesión
               </button>
-              <button onClick={() => setModal("canalizar")}
-                className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-sm font-medium">
-                🔔 Nueva Canalización
-              </button>
             </div>
           )}
         </div>
@@ -780,10 +754,8 @@ export default function MisTutorados() {
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 mb-5">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <p className="font-semibold text-white">{grupoSel.carrera}</p>
-                <p className="text-xs text-slate-400">
-                  Grupo {grupoSel.grupo} · {grupoSel.cuatrimestre}° cuatrimestre · {grupoSel.periodo}
-                </p>
+                <p className="font-semibold text-white">Grupo {grupoSel.cuatrimestre}° {grupoSel.grupo}</p>
+                <p className="text-xs text-slate-400">{grupoSel.carrera} · {grupoSel.periodo}</p>
               </div>
               <div className="flex gap-4 text-center">
                 <div>
@@ -791,8 +763,8 @@ export default function MisTutorados() {
                   <p className="text-xs text-slate-400">Alumnos</p>
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-emerald-400">{grupoSel.sesiones_realizadas}</p>
-                  <p className="text-xs text-slate-400">Sesiones</p>
+                  <p className={`text-xl font-bold ${grupoSel.sesiones_programadas ? 'text-emerald-400' : 'text-slate-400'}`}>{grupoSel.sesiones_programadas ? `${grupoSel.sesiones_realizadas} / ${grupoSel.sesiones_programadas}` : 'Sin programar'}</p>
+                  <p className="text-xs text-slate-400">Sesiones registradas</p>
                 </div>
               </div>
             </div>
@@ -828,56 +800,45 @@ export default function MisTutorados() {
 
         {/* ── MI GRUPO ── */}
         {tab === "alumnos" && (
-          <div className="space-y-3">
-            {alumnos.map(a => {
-              const sem = a.semaforo_vulnerabilidad;
-              const est = a.estado_seguimiento || "SIN_SEGUIMIENTO";
-              const isExp = expandido === a.id;
-              return (
-                <div key={a.id} className={`border rounded-xl p-4 transition-all ${SEMAFORO[sem]?.cls}`}>
-                  <div className="flex items-center justify-between gap-3 flex-wrap cursor-pointer"
-                    onClick={() => setExpandido(isExp ? null : a.id)}>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">{SEMAFORO[sem]?.emoji}</span>
-                      <div>
-                        <p className="font-medium text-white">{toTitleCase(a.nombre)}</p>
-                        <p className="text-xs text-slate-400">{a.matricula}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${ESTADO_SEG[est]?.cls}`}>
-                        {ESTADO_SEG[est]?.label}
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full border border-slate-600/60 text-slate-500">
-                        {SEMAFORO[sem]?.label}
-                      </span>
-                      <span className="text-slate-500 text-sm">{isExp ? "▲" : "▼"}</span>
-                    </div>
-                  </div>
-                  {isExp && (
-                    <div className="mt-3 pt-3 border-t border-white/10">
-                      <PerfilCard perfil={a.perfil_socioeconomico} />
-                      {a.estado_observaciones && (
-                        <div className="mt-2 p-2 bg-slate-700/40 rounded-lg">
-                          <p className="text-xs text-slate-400">Nota del responsable:</p>
-                          <p className="text-xs text-slate-300 mt-0.5">{a.estado_observaciones}</p>
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          navigate(`/expediente-academico?alumno=${a.id}`);
-                        }}
-                        className="mt-3 inline-flex items-center rounded-lg border border-blue-500/50 bg-blue-600/15 px-3 py-2 text-sm font-medium text-blue-200 transition-colors hover:bg-blue-600/30 hover:text-white"
-                      >
-                        Ver expediente académico integral
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/45">
+            <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="font-semibold">Seguimiento de alumnos</h2>
+                <p className="mt-1 text-xs text-slate-400">{alumnos.length} alumnos · {alumnos.filter(a => a.requiere_atencion).length} requieren atención · {alumnos.filter(a => a.tiene_perfil_socioeconomico).length} estudios socioeconómicos registrados</p>
+              </div>
+              <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                <label className="sr-only" htmlFor="buscar-tutorado">Buscar alumno</label>
+                <input id="buscar-tutorado" value={busquedaAlumno} onChange={e => setBusquedaAlumno(e.target.value)} className="input-dark min-w-[260px]" placeholder="Buscar nombre o matrícula…" />
+                <label className="sr-only" htmlFor="filtrar-tutorados">Filtrar alumnos</label>
+                <select id="filtrar-tutorados" value={filtroAlumnos} onChange={e => setFiltroAlumnos(e.target.value)} className="input-dark sm:w-52">
+                  <option value="TODOS">Todos los alumnos</option>
+                  <option value="ATENCION">Requieren atención</option>
+                  <option value="SIN_SESION">Sin sesión tutorial</option>
+                  <option value="CANALIZADOS">Con canalización abierta</option>
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="bg-white/[0.035] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th className="px-4 py-3">Matrícula</th><th className="px-4 py-3">Asistencia</th><th className="px-4 py-3">En riesgo</th><th className="px-4 py-3">Última sesión</th><th className="px-4 py-3">Atención</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead>
+                <tbody className="divide-y divide-white/5">
+                  {alumnosFiltrados.map(a => {
+                    const est = a.estado_seguimiento || "SIN_SEGUIMIENTO";
+                    const pendientesAlumno = Number(a.canalizaciones_abiertas || 0) + Number(a.reportes_abiertos || 0);
+                    return <tr key={a.id} className={`transition hover:bg-white/[0.035] ${a.requiere_atencion ? 'bg-amber-500/[0.025]' : ''}`}>
+                      <td className="px-5 py-3.5"><p className="font-medium text-white">{toTitleCase(a.nombre)}</p>{est !== "SIN_SEGUIMIENTO" && <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] ${ESTADO_SEG[est]?.cls}`}>{ESTADO_SEG[est]?.label}</span>}</td>
+                      <td className="px-4 py-3.5 text-slate-400">{a.matricula}</td>
+                      <td className="px-4 py-3.5">{a.muestra_asistencia_suficiente ? <div><span className={`font-semibold ${a.asistencia_global < 80 ? 'text-amber-300' : 'text-emerald-300'}`}>{a.asistencia_global}%</span><p className="text-[11px] text-slate-500">{a.registros_asistencia} clases</p></div> : <div><span className="text-slate-400">Sin evaluación</span><p className="text-[11px] text-slate-500">{a.registros_asistencia || 0} de 3 clases mínimas</p></div>}</td>
+                      <td className="px-4 py-3.5">{a.materias_riesgo ? <span className="rounded-full bg-red-500/15 px-2 py-1 text-xs font-semibold text-red-300">{a.materias_riesgo} {a.materias_riesgo === 1 ? 'materia' : 'materias'}</span> : <span className="text-slate-600">—</span>}</td>
+                      <td className="px-4 py-3.5 text-slate-300">{a.ultima_sesion ? new Date(`${a.ultima_sesion}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : <span className="text-slate-500">Sin sesiones</span>}</td>
+                      <td className="px-4 py-3.5">{pendientesAlumno ? <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-300">{pendientesAlumno} pendiente{pendientesAlumno === 1 ? '' : 's'}</span> : <span className="text-slate-600">—</span>}</td>
+                      <td className="px-5 py-3.5"><div className="flex justify-end gap-2"><button type="button" onClick={() => { setCanalizarAlumnoId(a.id); setModal("canalizar"); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-white">Canalizar</button><button type="button" onClick={() => navigate(`/expediente-academico?alumno=${a.id}`)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10">Ver expediente ›</button></div></td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {alumnos.length > 0 && alumnosFiltrados.length === 0 && <p className="p-10 text-center text-sm text-slate-500">No hay alumnos que coincidan con la búsqueda o el filtro.</p>}
             {alumnos.length === 0 && (
               <p className="text-slate-500 text-sm text-center py-8">
                 No hay alumnos asignados a este grupo.<br />
@@ -976,8 +937,8 @@ export default function MisTutorados() {
 
         {/* Modales */}
         {modal === "canalizar" && grupoSel && (
-          <ModalCanalizar alumnos={alumnos} grupoId={grupoSel.id}
-            onClose={() => setModal(null)}
+          <ModalCanalizar alumnos={alumnos} grupoId={grupoSel.id} alumnoInicial={canalizarAlumnoId}
+            onClose={() => { setModal(null); setCanalizarAlumnoId(null); }}
             onGuardado={recargarTodo} />
         )}
         {atenderReporte && (

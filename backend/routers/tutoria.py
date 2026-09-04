@@ -255,6 +255,10 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
     sesiones_cuatrimestre = db.query(SesionTutoria).filter(
         SesionTutoria.grupo_tutorado_id == g.id
     ).count()
+    sesiones_programadas = db.query(ProgramacionSesionTutoria).filter(
+        ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
+        ProgramacionSesionTutoria.estado != "CANCELADA",
+    ).count()
     historial_tutores = []
     for asignacion in db.query(HistorialTutorGrupo).filter(
         HistorialTutorGrupo.grupo_tutorado_id == g.id
@@ -281,6 +285,7 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
         "cerrado_en":   g.cerrado_en.isoformat() if g.cerrado_en else None,
         "total_alumnos": total,
         "sesiones_realizadas": sesiones_cuatrimestre,
+        "sesiones_programadas": sesiones_programadas,
         "estado_tutoria": "ASIGNADO" if tutor else "SIN_TUTOR",
         "historial_tutores": historial_tutores,
     }
@@ -828,6 +833,11 @@ def alumnos_grupo(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    from routers.expediente_academico import (
+        MINIMO_CLASES_SEMAFORO,
+        _agrupar_materias as agrupar_materias_academicas,
+        _grupo_y_cargas as grupo_y_cargas_academicas,
+    )
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == grupo_id).first()
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
@@ -848,14 +858,53 @@ def alumnos_grupo(
             PerfilSocioeconómico.alumno_id == alumno.id
         ).first()
         perfil_d = _ser_perfil(perfil)
+        _, cargas_academicas = grupo_y_cargas_academicas(db, alumno)
+        materias = agrupar_materias_academicas(db, alumno, cargas_academicas)
+        registros_asistencia = sum(m["asistencias_registradas"] for m in materias)
+        asistencias_validas = sum(
+            m["presente"] + m["retardo"] + m["justificada"] for m in materias
+        )
+        asistencia_global = (
+            round(asistencias_validas * 100 / registros_asistencia, 1)
+            if registros_asistencia else None
+        )
+        materias_riesgo = sum(
+            1 for m in materias if m["estado"] in {"RIESGO_ALTO", "RIESGO_MEDIO"}
+        )
+        ultima_sesion = db.query(SesionTutoria).join(
+            RegistroSesionAlumno, RegistroSesionAlumno.sesion_id == SesionTutoria.id,
+        ).filter(
+            RegistroSesionAlumno.alumno_id == alumno.id,
+            SesionTutoria.grupo_tutorado_id == grupo_id,
+        ).order_by(SesionTutoria.fecha.desc(), SesionTutoria.id.desc()).first()
+        canalizaciones_abiertas = db.query(Canalizacion).filter(
+            Canalizacion.alumno_id == alumno.id,
+            Canalizacion.estado.in_(["PENDIENTE", "EN_SEGUIMIENTO"]),
+        ).count()
+        reportes_abiertos = db.query(ReporteTutor).filter(
+            ReporteTutor.alumno_id == alumno.id,
+            ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"]),
+        ).count()
         resultado.append({
             **_ser_alumno_basico(alumno),
             "asignacion_id":          a.id,
-            "perfil_socioeconomico":  perfil_d,
-            "semaforo_vulnerabilidad": _semaforo(perfil_d),
+            "perfil_socioeconomico":  perfil_d if current_user.rol != RolUsuario.DOCENTE else None,
+            "tiene_perfil_socioeconomico": bool(perfil_d),
+            "semaforo_vulnerabilidad": _semaforo(perfil_d) if current_user.rol != RolUsuario.DOCENTE else None,
             "estado_seguimiento":     a.estado_seguimiento,
             "estado_observaciones":   a.estado_observaciones,
             "estado_actualizado_en":  a.estado_actualizado_en.isoformat() if a.estado_actualizado_en else None,
+            "asistencia_global": asistencia_global,
+            "registros_asistencia": registros_asistencia,
+            "muestra_asistencia_suficiente": registros_asistencia >= MINIMO_CLASES_SEMAFORO,
+            "materias_riesgo": materias_riesgo,
+            "ultima_sesion": ultima_sesion.fecha.isoformat() if ultima_sesion else None,
+            "canalizaciones_abiertas": canalizaciones_abiertas,
+            "reportes_abiertos": reportes_abiertos,
+            "requiere_atencion": bool(
+                materias_riesgo or canalizaciones_abiertas or reportes_abiertos
+                or a.estado_seguimiento in {"EN_OBSERVACION", "CANALIZADO"}
+            ),
         })
 
     resultado.sort(key=lambda x: x["nombre"])
