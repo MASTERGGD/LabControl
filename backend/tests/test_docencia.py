@@ -370,7 +370,7 @@ def test_servicios_escolares_confirma_periodo_vigente(client, db):
     assert anterior.es_actual is False
 
 
-def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
+def test_captura_extemporanea_solo_dentro_de_7_dias(client, db, monkeypatch):
     ahora = datetime.datetime(2026, 7, 31, 10, 0, tzinfo=ZoneInfo("America/Mexico_City"))
     monkeypatch.setattr(docencia_router, "_ahora_mx", lambda: ahora)
     docente = Usuario(
@@ -402,8 +402,8 @@ def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
     )
     vencida = CargaDocente(
         docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
-        tipo_actividad="CLASE", actividad_nombre="Clase del miércoles",
-        dia_semana=2, hora_inicio="08:00", hora_fin="09:00",
+        tipo_actividad="CLASE", actividad_nombre="Clase del viernes anterior",
+        dia_semana=4, hora_inicio="08:00", hora_fin="09:00",
         estado="ACTIVO", activo=True,
     )
     db.add_all([vigente, vencida])
@@ -413,6 +413,7 @@ def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
     disponibles = client.get("/docencia/capturas-extemporaneas/disponibles", headers=headers)
     assert disponibles.status_code == 200, disponibles.text
     assert [(item["carga_id"], item["fecha"]) for item in disponibles.json()] == [
+        (vencida.id, "2026-07-31"),
         (vigente.id, "2026-07-30"),
     ]
 
@@ -454,10 +455,10 @@ def test_captura_extemporanea_solo_dentro_de_48_horas(client, db, monkeypatch):
     fuera_plazo = client.post(
         f"/docencia/horario/{vencida.id}/captura-extemporanea",
         headers=headers,
-        json={"fecha": "2026-07-29", "motivo": "Intento fuera del plazo permitido."},
+        json={"fecha": "2026-07-24", "motivo": "Intento fuera del plazo permitido."},
     )
     assert fuera_plazo.status_code == 409
-    assert "48 horas" in fuera_plazo.json()["detail"]
+    assert "7 días" in fuera_plazo.json()["detail"]
 
 
 def test_clase_en_curso_no_aparece_como_pendiente(client, db, monkeypatch):
@@ -488,7 +489,9 @@ def test_clase_en_curso_no_aparece_como_pendiente(client, db, monkeypatch):
 
     disponibles = client.get("/docencia/capturas-extemporaneas/disponibles", headers=headers)
     assert disponibles.status_code == 200, disponibles.text
-    assert disponibles.json() == []
+    assert [(item["carga_id"], item["fecha"]) for item in disponibles.json()] == [
+        (carga.id, "2026-08-19"),
+    ]
 
     captura = client.post(
         f"/docencia/horario/{carga.id}/captura-extemporanea",

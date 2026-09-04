@@ -734,6 +734,9 @@ def _fecha_programada_carga(carga: CargaDocente, fecha: datetime.date, *, usar_f
     return datetime.datetime.combine(fecha, hora, tzinfo=MX)
 
 
+PLAZO_CAPTURA_EXTEMPORANEA = datetime.timedelta(days=7)
+
+
 def _validar_ventana_extemporanea(db: Session, carga: CargaDocente, fecha: datetime.date):
     ahora = _ahora_mx()
     inicio_programado = _fecha_programada_carga(carga, fecha)
@@ -745,8 +748,8 @@ def _validar_ventana_extemporanea(db: Session, carga: CargaDocente, fecha: datet
         raise HTTPException(409, f"No se requiere asistencia: {estado_fecha['motivo']}")
     if fin_programado > ahora:
         raise HTTPException(409, "La clase todavía está en curso")
-    if ahora - fin_programado > datetime.timedelta(hours=48):
-        raise HTTPException(409, "El plazo de 48 horas para capturar esta asistencia ya venció")
+    if ahora - fin_programado > PLAZO_CAPTURA_EXTEMPORANEA:
+        raise HTTPException(409, "El plazo de 7 días para capturar esta asistencia ya venció")
     return inicio_programado
 
 
@@ -1198,7 +1201,7 @@ def capturas_extemporaneas_disponibles(
         CargaDocente.grupo_academico_id.isnot(None),
     ).all()
     opciones = []
-    for dias_atras in range(0, 3):
+    for dias_atras in range(0, PLAZO_CAPTURA_EXTEMPORANEA.days + 1):
         fecha = ahora.date() - datetime.timedelta(days=dias_atras)
         for carga in cargas:
             if carga.dia_semana != fecha.weekday():
@@ -1207,7 +1210,7 @@ def capturas_extemporaneas_disponibles(
             if not estado_fecha["requiere_asistencia"] or not estado_fecha["genera_alertas"]:
                 continue
             fin_programado = _fecha_programada_carga(carga, fecha, usar_fin=True)
-            if fin_programado > ahora or ahora - fin_programado > datetime.timedelta(hours=48):
+            if fin_programado > ahora or ahora - fin_programado > PLAZO_CAPTURA_EXTEMPORANEA:
                 continue
             existe = db.query(ClaseDocente.id).filter(
                 ClaseDocente.carga_docente_id == carga.id,
@@ -1226,7 +1229,7 @@ def capturas_extemporaneas_disponibles(
                 "carrera": carga.grupo_academico.carrera if carga.grupo_academico else None,
                 "hora_inicio": carga.hora_inicio,
                 "hora_fin": carga.hora_fin,
-                "vence_en": (fin_programado + datetime.timedelta(hours=48)).isoformat(),
+                "vence_en": (fin_programado + PLAZO_CAPTURA_EXTEMPORANEA).isoformat(),
             })
     opciones.sort(key=lambda item: (item["fecha"], item["hora_inicio"]), reverse=True)
     return opciones
