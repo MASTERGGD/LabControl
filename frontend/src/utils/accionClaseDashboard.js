@@ -5,7 +5,7 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
   if (item.tipo_actividad === 'TUTORIA') {
-    return { texto: 'Iniciar tutoría', path: `/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion` };
+    return { texto: 'Registrar tutoría', path: `/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion` };
   }
   if (item.tipo_actividad && item.tipo_actividad !== 'CLASE') {
     return { texto: 'Ver horario', path: '/docente/horario' };

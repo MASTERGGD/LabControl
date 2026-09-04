@@ -19,9 +19,9 @@ test('no habilita otra fecha ni un día no lectivo', () => {
   expect(accion('10:15:00', { calendario: { requiere_asistencia: false } }).path).toBe('/calendario-academico');
   expect(accion('10:15:00', { calendario: { permite_iniciar_clase: false } }).iniciar).toBeUndefined();
 });
-test('abre la tutoría desde el panel sin intentar iniciar una clase', () => {
+test('abre el registro de tutoría desde el panel sin intentar iniciar una clase', () => {
   expect(accion('15:00:00', { tipo_actividad: 'TUTORIA', grupo_tutorado_id: 4 })).toEqual({
-    texto: 'Iniciar tutoría', path: '/docente/mis-tutorados?grupo=4&accion=sesion',
+    texto: 'Registrar tutoría', path: '/docente/mis-tutorados?grupo=4&accion=sesion',
   });
 });
 test('continúa una clase abierta y consulta una cerrada sin volver a iniciarla', () => {
