@@ -381,7 +381,7 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
         return {
             "total_grupos": 0, "total_tutores": 0, "total_tutorados": 0,
             "total_sesiones": 0, "total_asistencias": 0, "total_inasistencias": 0,
-            "porcentaje_asistencia": 0, "alumnos_riesgo_alto": socio_stats["perfiles_riesgo_alto"],
+            "porcentaje_asistencia": None, "alumnos_riesgo_alto": socio_stats["perfiles_riesgo_alto"],
             "canalizaciones_pendientes": 0, "canalizaciones_seguimiento": 0,
             "canalizaciones_atendidas": 0, "informes_borrador": 0,
             "informes_enviados": 0, "informes_recibidos": 0,
@@ -499,11 +499,13 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
                 alumnos_riesgo_sin_seg += 1
 
         esperado = programadas or sesiones
-        cumplimiento_pct = round((sesiones / esperado) * 100, 1) if esperado else 0
+        cumplimiento_pct = round((sesiones / esperado) * 100, 1) if esperado else None
         if programadas_vencidas > 0 or alumnos_riesgo_sin_seg > 0:
             semaforo = "ROJO"
-        elif cumplimiento_pct < 80 or canalizaciones_abiertas_tutor > 0 or informes_pendientes_tutor > 0:
+        elif (cumplimiento_pct is not None and cumplimiento_pct < 80) or canalizaciones_abiertas_tutor > 0 or informes_pendientes_tutor > 0:
             semaforo = "AMARILLO"
+        elif cumplimiento_pct is None:
+            semaforo = "SIN_PROGRAMACION"
         else:
             semaforo = "VERDE"
 
@@ -554,7 +556,7 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
         "total_sesiones": total_sesiones,
         "total_asistencias": total_asistencias,
         "total_inasistencias": total_inasistencias,
-        "porcentaje_asistencia": round((total_asistencias / total_registros) * 100, 1) if total_registros else 0,
+        "porcentaje_asistencia": round((total_asistencias / total_registros) * 100, 1) if total_registros else None,
         "alumnos_riesgo_alto": alumnos_riesgo_alto,
         "canalizaciones_pendientes": canalizaciones_pendientes,
         "canalizaciones_seguimiento": canalizaciones_seguimiento,
@@ -578,31 +580,36 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
 
 @router.get("/dashboard", summary="Dashboard del responsable de tutoría")
 def dashboard_tutoria(
+    periodo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_resp_roles),
 ):
-    indicadores = _calcular_indicadores(db)
+    indicadores = _calcular_indicadores(db, periodo=periodo)
     hoy = datetime.date.today()
     semana_inicio = hoy - datetime.timedelta(days=hoy.weekday())
 
+    grupos_periodo = db.query(GrupoTutorado).filter(GrupoTutorado.activo == True)
+    if periodo:
+        grupos_periodo = grupos_periodo.filter(GrupoTutorado.periodo == periodo)
+    grupos_periodo = grupos_periodo.all()
+    grupo_ids = [grupo.id for grupo in grupos_periodo]
     sesiones_semana = db.query(SesionTutoria).filter(
-        SesionTutoria.fecha >= semana_inicio
+        SesionTutoria.grupo_tutorado_id.in_(grupo_ids or [0]),
+        SesionTutoria.fecha >= semana_inicio,
     ).count()
 
     informes_pendientes = db.query(InformeBimestral).filter(
-        InformeBimestral.estado == "ENVIADO"
+        InformeBimestral.grupo_tutorado_id.in_(grupo_ids or [0]),
+        InformeBimestral.estado == "ENVIADO",
     ).count()
 
     # Tutores sin sesión esta semana
-    tutores_activos = [
-        r[0] for r in db.query(GrupoTutorado.tutor_id)
-        .filter(GrupoTutorado.activo == True, GrupoTutorado.tutor_id.isnot(None)).distinct().all()
-    ]
-    tutores_con_sesion = [
-        r[0] for r in db.query(SesionTutoria.tutor_id)
-        .filter(SesionTutoria.fecha >= semana_inicio).distinct().all()
-    ]
-    tutores_sin_sesion = len(set(tutores_activos) - set(tutores_con_sesion))
+    programaciones_vencidas = db.query(ProgramacionSesionTutoria).filter(
+        ProgramacionSesionTutoria.grupo_tutorado_id.in_(grupo_ids or [0]),
+        ProgramacionSesionTutoria.estado == "PROGRAMADA",
+        ProgramacionSesionTutoria.fecha_programada < hoy,
+    ).all()
+    tutores_sin_sesion = len({p.tutor_id for p in programaciones_vencidas})
 
     return {
         "total_grupos":             indicadores["total_grupos"],
@@ -1181,49 +1188,23 @@ def historial_alumno(
 #  ALERTAS PERSISTENTES
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _calcular_alertas(db: Session) -> list:
+def _calcular_alertas(db: Session, periodo: Optional[str] = None) -> list:
     """Lógica central de alertas — reutilizable por GET y POST /procesar."""
     alertas = []
     ahora   = _now()
 
     # 1. Grupos activos sin sesión en los últimos 14 días
     hace_14 = ahora - datetime.timedelta(days=14)
-    grupos_activos = db.query(GrupoTutorado).filter(GrupoTutorado.activo == True).all()
-    for g in grupos_activos:
-        tutor = db.query(Usuario).filter(Usuario.id == g.tutor_id).first()
-        ultima = db.query(SesionTutoria).filter(
-            SesionTutoria.grupo_tutorado_id == g.id
-        ).order_by(SesionTutoria.fecha.desc()).first()
-
-        nombre_tutor = tutor.nombre if tutor else "Tutor desconocido"
-        desc_grupo   = f"{g.carrera} Grupo {g.grupo} ({g.periodo})"
-
-        if not ultima:
-            alertas.append({
-                "tipo":    "SIN_SESION",
-                "nivel":   "ALTO",
-                "mensaje": f"{nombre_tutor} no ha registrado ninguna sesión para {desc_grupo}",
-                "detalle": "Sin sesiones F-DC-07 registradas.",
-                "grupo_id": g.id,
-                "dias":    None,
-            })
-        else:
-            fecha_ul = datetime.datetime.combine(ultima.fecha, datetime.time())
-            if fecha_ul < hace_14:
-                dias  = (ahora.date() - ultima.fecha).days
-                nivel = "ALTO" if dias > 21 else "MEDIO"
-                alertas.append({
-                    "tipo":    "SIN_SESION",
-                    "nivel":   nivel,
-                    "mensaje": f"{nombre_tutor} sin sesión en {desc_grupo} hace {dias} días",
-                    "detalle": f"Última sesión: {ultima.fecha.strftime('%d/%m/%Y')}",
-                    "grupo_id": g.id,
-                    "dias":    dias,
-                })
+    q_grupos = db.query(GrupoTutorado).filter(GrupoTutorado.activo == True)
+    if periodo:
+        q_grupos = q_grupos.filter(GrupoTutorado.periodo == periodo)
+    grupos_activos = q_grupos.all()
+    grupo_ids = [grupo.id for grupo in grupos_activos]
 
     # 2. Canalizaciones pendientes con más de 10 días sin movimiento
     hace_10 = ahora - datetime.timedelta(days=10)
     cans_viejas = db.query(Canalizacion).filter(
+        Canalizacion.grupo_tutorado_id.in_(grupo_ids or [0]),
         Canalizacion.estado == "PENDIENTE",
         Canalizacion.fecha_solicitud < hace_10,
     ).all()
@@ -1244,6 +1225,7 @@ def _calcular_alertas(db: Session) -> list:
         })
 
     progs_vencidas = db.query(ProgramacionSesionTutoria).filter(
+        ProgramacionSesionTutoria.grupo_tutorado_id.in_(grupo_ids or [0]),
         ProgramacionSesionTutoria.estado == "PROGRAMADA",
         ProgramacionSesionTutoria.fecha_programada < ahora.date(),
     ).all()
@@ -1259,6 +1241,7 @@ def _calcular_alertas(db: Session) -> list:
             "detalle": f"Tutor: {tutor.nombre if tutor else 'Tutor desconocido'} · Fecha programada: {p.fecha_programada.strftime('%d/%m/%Y')}",
             "grupo_id": p.grupo_tutorado_id,
             "programacion_id": p.id,
+            "tutor_id": p.tutor_id,
             "dias": dias,
         })
 
@@ -1279,7 +1262,10 @@ def _calcular_alertas(db: Session) -> list:
                     "dias": 0,
                 })
 
-    asignaciones = db.query(AsignacionTutoria).filter(AsignacionTutoria.activo == True).all()
+    asignaciones = db.query(AsignacionTutoria).filter(
+        AsignacionTutoria.activo == True,
+        AsignacionTutoria.grupo_tutorado_id.in_(grupo_ids or [0]),
+    ).all()
     for a in asignaciones:
         if a.estado_seguimiento and a.estado_seguimiento != "SIN_SEGUIMIENTO":
             continue
@@ -1306,14 +1292,38 @@ def _calcular_alertas(db: Session) -> list:
 
 @router.get("/alertas", summary="Alertas persistentes del sistema de tutoría")
 def alertas_tutoria(
+    periodo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_resp_roles),
 ):
-    return _calcular_alertas(db)
+    return _calcular_alertas(db, periodo=periodo)
+
+
+@router.get("/alertas/vista-previa", summary="Vista previa de alertas antes de notificar")
+def vista_previa_alertas(
+    periodo: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_resp_roles),
+):
+    alertas = _calcular_alertas(db, periodo=periodo)
+    condiciones = {}
+    for alerta in alertas:
+        condiciones[alerta["tipo"]] = condiciones.get(alerta["tipo"], 0) + 1
+    responsables = db.query(Usuario).filter(
+        Usuario.rol.in_([RolUsuario.TUTORIA_ADMIN, RolUsuario.SUPER_ADMIN]),
+        Usuario.activo == True,
+    ).all()
+    return {
+        "periodo": periodo,
+        "total": len(alertas),
+        "condiciones": condiciones,
+        "destinatarios": [{"id": usuario.id, "nombre": usuario.nombre} for usuario in responsables],
+    }
 
 
 @router.post("/alertas/procesar", summary="Generar notificaciones para alertas no enviadas en 48 h")
 def procesar_alertas(
+    periodo: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(_resp_roles),
 ):
@@ -1322,7 +1332,7 @@ def procesar_alertas(
     siempre que no se haya enviado una notificación idéntica en las últimas 48 horas.
     Devuelve el número de notificaciones nuevas generadas.
     """
-    alertas = _calcular_alertas(db)
+    alertas = _calcular_alertas(db, periodo=periodo)
     hace_48 = _now() - datetime.timedelta(hours=48)
     nuevas  = 0
 

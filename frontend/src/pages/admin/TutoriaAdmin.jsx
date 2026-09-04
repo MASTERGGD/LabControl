@@ -4,6 +4,7 @@ import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { usePeriodo } from "../../context/PeriodoContext";
 import { todayISOInMexico } from "../../utils/timezone";
 
 const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
@@ -136,12 +137,12 @@ function TutorCumplimientoCard({ tutor, onVerGrupos, onVerInformes }) {
             tutor.semaforo === "AMARILLO" ? (isDay ? "text-amber-700" : "text-amber-400") :
             tutor.semaforo === "ROJO" ? (isDay ? "text-red-700" : "text-red-400") :
             (isDay ? "text-slate-700" : "text-slate-300")
-          }`}>{tutor.cumplimiento_pct}%</span>
+          }`}>{tutor.cumplimiento_pct == null ? 'Sin programación' : `${tutor.cumplimiento_pct}%`}</span>
         </div>
         <div className={`w-full rounded-full h-1.5 ${isDay ? "bg-slate-200" : "bg-white/10"}`}>
           <div
             className={`h-1.5 rounded-full transition-all ${dot}`}
-            style={{ width: `${Math.min(Math.max(tutor.cumplimiento_pct, 0), 100)}%` }}
+            style={{ width: `${Math.min(Math.max(tutor.cumplimiento_pct || 0, 0), 100)}%` }}
           />
         </div>
       </div>
@@ -1285,6 +1286,8 @@ function AlumnoRiesgoCard({ alumno, onVerSeguimiento }) {
 export default function TutoriaAdmin() {
   const [searchParams] = useSearchParams();
   const { themeKey } = useTheme();
+  const { periodo } = usePeriodo();
+  const periodoPanel = periodo?.clave || '';
   const isDay = themeKey === "day";
   const hoverEncabezado = isDay ? "hover:text-slate-950" : "hover:text-white";
   const { toast: showToast } = useToast();
@@ -1353,12 +1356,12 @@ export default function TutoriaAdmin() {
 
   const cargarDash = useCallback(async () => {
     try {
-      const { data } = await api.get("/tutoria/dashboard");
+      const { data } = await api.get(`/tutoria/dashboard${periodoPanel ? `?periodo=${encodeURIComponent(periodoPanel)}` : ''}`);
       setDash(data);
     } catch {
       showToast("Error al cargar el panel de tutoría", "error");
     }
-  }, [showToast]);
+  }, [periodoPanel, showToast]);
 
   const cargarGrupos = useCallback(async () => {
     try {
@@ -1422,10 +1425,24 @@ export default function TutoriaAdmin() {
 
   const cargarAlertas = useCallback(async () => {
     try {
-      const { data } = await api.get("/tutoria/alertas");
+      const { data } = await api.get(`/tutoria/alertas${periodoPanel ? `?periodo=${encodeURIComponent(periodoPanel)}` : ''}`);
       setAlertas(data);
     } catch { /* silencioso */ }
-  }, []);
+  }, [periodoPanel]);
+
+  const confirmarNotificaciones = async () => {
+    try {
+      const qs = periodoPanel ? `?periodo=${encodeURIComponent(periodoPanel)}` : '';
+      const { data: vista } = await api.get(`/tutoria/alertas/vista-previa${qs}`);
+      if (!vista.total) return showToast('No hay incumplimientos reales que notificar en este periodo', 'success');
+      const condiciones = Object.entries(vista.condiciones).map(([tipo, total]) => `${total} ${tipo.replaceAll('_', ' ').toLowerCase()}`).join('\n');
+      const destinatarios = vista.destinatarios.map(item => item.nombre).join(', ');
+      if (!window.confirm(`Vista previa · ${vista.periodo || 'periodo actual'}\n\n${condiciones}\n\nDestinatarios responsables: ${destinatarios}\n\n¿Enviar estas notificaciones?`)) return;
+      const { data } = await api.post(`/tutoria/alertas/procesar${qs}`);
+      showToast(`${data.notificaciones_nuevas} notificación(es) enviada(s)`, 'success');
+      cargarAlertas();
+    } catch { showToast('No se pudieron procesar las alertas', 'error'); }
+  };
 
   const cargarReporteGeneral = useCallback(async () => {
     try {
@@ -1537,6 +1554,13 @@ export default function TutoriaAdmin() {
     cargarAlertas();
     cargarReportesTutor();
   }, []);
+
+  useEffect(() => {
+    if (periodoPanel) {
+      cargarDash();
+      cargarAlertas();
+    }
+  }, [periodoPanel, cargarDash, cargarAlertas]);
 
   useEffect(() => {
     if (tab === "grupos") cargarGrupos();
@@ -1701,10 +1725,23 @@ export default function TutoriaAdmin() {
   };
 
   const alertasAltas = alertas.filter(a => a.nivel === "ALTO").length;
-  const alertasDashboard = [...alertas]
+  const etiquetasAlerta = {
+    SESION_PROGRAMADA_VENCIDA: 'Sesiones programadas sin evidencia F-DC-07',
+    CANALIZACION_PENDIENTE: 'Canalizaciones fuera del plazo de atención',
+    INFORME_PENDIENTE: 'Informes F-DC-09 pendientes de recepción',
+    RIESGO_ALTO_SIN_SEGUIMIENTO: 'Alumnos de riesgo alto sin seguimiento',
+  };
+  const alertasAgrupadas = Object.values(alertas.reduce((acc, alerta) => {
+    if (!acc[alerta.tipo]) acc[alerta.tipo] = { ...alerta, cantidad: 0, mensaje: etiquetasAlerta[alerta.tipo] || alerta.mensaje };
+    acc[alerta.tipo].cantidad += 1;
+    acc[alerta.tipo].detalle = `${acc[alerta.tipo].cantidad} ${acc[alerta.tipo].cantidad === 1 ? 'caso' : 'casos'} en ${periodoPanel || 'el periodo seleccionado'}`;
+    if (alerta.nivel === 'ALTO') acc[alerta.tipo].nivel = 'ALTO';
+    return acc;
+  }, {}));
+  const alertasDashboard = [...alertasAgrupadas]
     .sort((a, b) => (a.nivel === "ALTO" ? -1 : 1) - (b.nivel === "ALTO" ? -1 : 1))
     .slice(0, 4);
-  const alertasRestantes = Math.max(alertas.length - alertasDashboard.length, 0);
+  const alertasRestantes = Math.max(alertasAgrupadas.length - alertasDashboard.length, 0);
   const TABS = [
     { id: "dashboard",      label: "Dashboard",        badge: alertasAltas > 0 ? alertasAltas : null },
     { id: "grupos",         label: "Grupos" },
@@ -1734,8 +1771,8 @@ export default function TutoriaAdmin() {
             Importar estudio socioeconómico
           </button>
           <button onClick={() => navigate("/admin/comunicados?nuevo=1&origen=tutoria")}
-            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold flex items-center gap-2 transition-colors">
-            Enviar comunicado a tutores
+            className="px-4 py-2.5 rounded-xl border border-slate-600/80 text-slate-200 hover:bg-white/8 text-sm font-medium flex items-center gap-2 transition-colors">
+            Preparar comunicado
           </button>
         </div>
       </div>
@@ -1791,8 +1828,6 @@ export default function TutoriaAdmin() {
                 alert={dash.canalizaciones_pendientes > 0} hint="Seguimiento F-DC-08" />
               <StatCard label="Informes por revisar" value={dash.informes_por_revisar} icon="I"
                 alert={dash.informes_por_revisar > 0} hint="Recepción F-DC-09" />
-              <StatCard label="Tutores sin sesión esta semana" value={dash.tutores_sin_sesion_semana} icon="T"
-                alert={dash.tutores_sin_sesion_semana > 0} hint="Cumplimiento semanal" />
               {dash.sesiones_por_tutor?.length > 0 && (
                 <div className="rounded-xl border border-slate-700/50 bg-slate-800/35 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Sesiones por tutor</p>
@@ -1828,34 +1863,13 @@ export default function TutoriaAdmin() {
                 alert={(dash.perfiles_riesgo_alto ?? dash.alumnos_riesgo_alto ?? 0) > 0} hint="Atención prioritaria" />
               <StatCard label="Canalizaciones abiertas" value={dash.canalizaciones_abiertas || 0} icon="C"
                 alert={(dash.canalizaciones_abiertas || 0) > 0} hint="Pendientes + seguimiento" />
-              <StatCard label="Asistencia global" value={`${dash.porcentaje_asistencia || 0}%`} icon="%"
-                tone="emerald" hint="Sesiones registradas" />
+              <StatCard label="Asistencia global" value={dash.porcentaje_asistencia == null ? 'Sin datos' : `${dash.porcentaje_asistencia}%`} icon="%"
+                tone={dash.porcentaje_asistencia == null ? 'slate' : 'emerald'} hint="Sesiones registradas" />
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-slate-900/30 p-5">
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-              <div>
-                <h2 className="text-lg font-semibold">Resumen del periodo</h2>
-                <p className="text-sm text-slate-400">Métricas de contexto separadas de los pendientes diarios.</p>
-              </div>
-              <button onClick={() => setTab("grupos")}
-                className="text-xs px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-white/5">
-                Revisar asignaciones
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
-              <StatCard label="Sesiones esta semana" value={dash.sesiones_esta_semana} icon="S" hint="Registros F-DC-07" />
-              <StatCard label="Grupos sin alumnos" value={gruposSinAlumnos.length} icon="!" alert={gruposSinAlumnos.length > 0} hint="Revisar asignación" />
-              <StatCard label="Estudios importados" value={dash.perfiles_importados || 0} icon="E"
-                tone="blue" hint="Perfiles socioeconómicos" />
-              <StatCard label="Riesgo medio" value={dash.perfiles_riesgo_medio || 0} icon="M"
-                alert={(dash.perfiles_riesgo_medio || 0) > 0} hint="Vulnerabilidad moderada" />
-              <StatCard label="Sin grupo tutorado" value={dash.perfiles_sin_grupo || 0} icon="G"
-                alert={(dash.perfiles_sin_grupo || 0) > 0} hint="Importados sin asignación" />
-              <StatCard label="Tiempo de atención" value={dash.promedio_dias_atencion == null ? "—" : `${dash.promedio_dias_atencion} d`} icon="D"
-                tone="blue" hint="Promedio de canalizaciones atendidas" />
-            </div>
+          <section className="rounded-xl border border-white/10 bg-slate-900/30 px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Contexto del periodo · {periodoPanel || 'Actual'}</h2><p className="mt-1 text-xs text-slate-400">{dash.sesiones_esta_semana} sesiones F-DC-07 esta semana · {dash.perfiles_importados || 0} estudios importados{dash.promedio_dias_atencion != null ? ` · ${dash.promedio_dias_atencion} días promedio de atención` : ''}</p></div><div className="flex flex-wrap gap-2">{gruposSinAlumnos.length > 0 && <button onClick={() => setTab('grupos')} className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300">{gruposSinAlumnos.length} grupos sin alumnos</button>}{dash.perfiles_sin_grupo > 0 && <button onClick={() => setTab('riesgo')} className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300">{dash.perfiles_sin_grupo} perfiles sin grupo</button>}</div></div>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-slate-900/40 p-5">
@@ -1870,16 +1884,9 @@ export default function TutoriaAdmin() {
               </button>
             </div>
             {dash.cumplimiento_tutores?.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {dash.cumplimiento_tutores.map(t => (
-                  <TutorCumplimientoCard
-                    key={t.tutor_id}
-                    tutor={t}
-                    onVerGrupos={abrirGruposTutor}
-                    onVerInformes={() => setTab("informes")}
-                  />
-                ))}
-              </div>
+              <div className="overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-white/[0.03] text-xs uppercase text-slate-400"><tr><th className="px-4 py-3">Tutor</th><th>Grupos / alumnos</th><th>Sesiones</th><th>Informes</th><th>Canalizaciones</th><th>Estado</th><th className="pr-4"></th></tr></thead><tbody className="divide-y divide-white/5">
+                {dash.cumplimiento_tutores.map(t => <tr key={t.tutor_id} className="hover:bg-white/[0.03]"><td className="px-4 py-3 font-medium text-white">{toTitleCase(t.tutor_nombre)}</td><td className="text-slate-300">{t.grupos} · {t.alumnos}</td><td className={t.programadas_vencidas > 0 ? 'font-semibold text-red-300' : 'text-slate-300'}>{t.sesiones_realizadas}/{t.sesiones_esperadas}{t.sesiones_esperadas === 0 && <span className="block text-xs font-normal text-slate-500">Sin programación</span>}</td><td className={t.informes_pendientes > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.informes_pendientes || '—'}</td><td className={t.canalizaciones_abiertas > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.canalizaciones_abiertas || '—'}</td><td><span className={`rounded-full px-2 py-1 text-xs font-semibold ${t.semaforo === 'ROJO' ? 'bg-red-500/15 text-red-300' : t.semaforo === 'AMARILLO' ? 'bg-amber-500/15 text-amber-300' : t.semaforo === 'VERDE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-400'}`}>{t.semaforo === 'SIN_PROGRAMACION' ? 'Sin programación' : t.semaforo}</span></td><td className="pr-4 text-right"><button type="button" onClick={() => abrirGruposTutor(t)} className="text-xs font-semibold text-blue-300">Ver →</button></td></tr>)}
+              </tbody></table></div>
             ) : (
               <p className="text-sm text-slate-500 text-center py-8">Aún no hay datos suficientes para calcular cumplimiento por tutor.</p>
             )}
@@ -1922,17 +1929,11 @@ export default function TutoriaAdmin() {
               <div>
                 <h2 className="text-lg font-semibold">Alertas prioritarias</h2>
                 <p className="text-xs text-slate-500">
-                  {alertas.length} alerta(s) activa(s){alertasRestantes > 0 ? ` · mostrando ${alertasDashboard.length}` : ""}
+                  {alertas.length} caso(s) en {alertasAgrupadas.length} condición(es){alertasRestantes > 0 ? ` · mostrando ${alertasDashboard.length}` : ""}
                 </p>
               </div>
               <button
-                onClick={async () => {
-                  try {
-                    const { data } = await api.post("/tutoria/alertas/procesar");
-                    showToast(`${data.notificaciones_nuevas} notificacion(es) enviada(s)`, "success");
-                    cargarAlertas();
-                  } catch { showToast("Error al procesar alertas", "error"); }
-                }}
+                onClick={confirmarNotificaciones}
                 className="px-3 py-1.5 rounded-xl border border-slate-600 text-slate-300 text-xs hover:bg-white/5 flex items-center gap-1.5">
                 🔔 Enviar notificaciones
               </button>

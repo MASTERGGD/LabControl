@@ -211,6 +211,30 @@ class TestAlertasTutoria:
         r = client.get("/tutoria/alertas", headers=auth_headers(tok))
         assert r.status_code == 200
 
+    def test_grupo_sin_programacion_no_genera_incumplimiento_y_respeta_periodo(self, client, db):
+        _tutoria_admin(db)
+        tok = get_token(client, "ta@test.mx", "Test1234!")
+        tutor = _usuario(db, "Tutor sin programación", "tutor.sin.programacion@test.mx", RolUsuario.DOCENTE)
+        creado = _crear_grupo(client, tok, tutor.id)
+        assert creado.status_code == 201
+
+        alertas = client.get(
+            "/tutoria/alertas?periodo=ENE-ABR-2026", headers=auth_headers(tok),
+        ).json()
+        assert not any(alerta["tipo"] == "SIN_SESION" for alerta in alertas)
+        assert all("ENE-ABR-2026" in f"{alerta.get('mensaje', '')} {alerta.get('detalle', '')}" for alerta in alertas)
+
+        otro_periodo = client.get(
+            "/tutoria/alertas?periodo=SEP-DIC 2026", headers=auth_headers(tok),
+        )
+        assert otro_periodo.status_code == 200
+        assert otro_periodo.json() == []
+        vista = client.get(
+            "/tutoria/alertas/vista-previa?periodo=SEP-DIC%202026", headers=auth_headers(tok),
+        )
+        assert vista.status_code == 200
+        assert vista.json()["total"] == 0
+
     def test_alumnos_en_riesgo(self, client, db):
         _tutoria_admin(db)
         tok = get_token(client, "ta@test.mx", "Test1234!")
