@@ -27,6 +27,7 @@ export default function ClaseAsistencia() {
   const [texto, setTexto] = useState('');
   const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [detalleExtemporaneoAbierto, setDetalleExtemporaneoAbierto] = useState(false);
   const [modalIncidenciaGrupo, setModalIncidenciaGrupo] = useState(false);
   const [incidenciaGrupo, setIncidenciaGrupo] = useState({ tipo: '', descripcion: '', requiere_seguimiento: false });
   const [bitacora, setBitacora] = useState({
@@ -176,12 +177,37 @@ export default function ClaseAsistencia() {
             <h1 className="text-2xl font-bold text-white">{clase.carga.actividad_nombre}</h1>
             <p className="text-sm text-slate-400">{clase.carga.grupo} · {clase.carga.carrera} · {clase.carga.espacio_nombre || 'Sin salón'} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${clase.estado === 'ABIERTA' ? 'bg-emerald-500/20 text-emerald-300' : clase.estado === 'CORRECCION' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-300'}`}>
-              {clase.es_extemporanea && clase.estado === 'ABIERTA' ? 'Captura extemporánea' : clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : 'Asistencia cerrada'}
+              {clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : 'Asistencia cerrada'}
             </span>
+            {clase.es_extemporanea && (
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-expanded={detalleExtemporaneoAbierto}
+                  aria-controls="detalle-captura-extemporanea"
+                  onClick={() => setDetalleExtemporaneoAbierto((abierto) => !abierto)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${isDay ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100' : 'border-blue-400/25 bg-blue-500/10 text-blue-300 hover:bg-blue-500/15'}`}
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9h.01M11 12h1v4h1m8-4a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                  Registro fuera de horario
+                  <svg className={`h-3 w-3 transition-transform ${detalleExtemporaneoAbierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" /></svg>
+                </button>
+                {detalleExtemporaneoAbierto && (
+                  <div id="detalle-captura-extemporanea" className={`absolute right-0 z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border p-4 text-left shadow-2xl ${isDay ? 'border-blue-200 bg-white text-slate-700' : 'border-blue-400/20 bg-slate-900 text-slate-300'}`} role="status">
+                    <p className={`text-sm font-semibold ${isDay ? 'text-blue-800' : 'text-blue-200'}`}>Asistencia registrada fuera de horario</p>
+                    <dl className="mt-3 space-y-2 text-xs">
+                      <div><dt className="inline text-slate-500">Clase: </dt><dd className="inline">{new Date(`${clase.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'medium' })} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</dd></div>
+                      <div><dt className="inline text-slate-500">Capturada: </dt><dd className="inline">{clase.capturada_extemporanea_en ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(`${clase.capturada_extemporanea_en}Z`)) : 'Sin hora registrada'}</dd></div>
+                      <div><dt className="inline text-slate-500">Motivo: </dt><dd className="inline">{clase.motivo_extemporaneo || 'Sin motivo registrado'}</dd></div>
+                    </dl>
+                  </div>
+                )}
+              </div>
+            )}
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
-            {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white">Corregir asistencia</button>}
+            {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
             <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento</button>
           </div>
         </div>
@@ -217,19 +243,6 @@ export default function ClaseAsistencia() {
           </div>
         )}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
-        {clase.es_extemporanea && (
-          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm">
-            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-900" aria-hidden="true">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.3 4.2 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold">Asistencia registrada fuera de horario</p>
-              <p className="mt-1 text-sm text-amber-900"><span className="font-semibold">Motivo:</span> {clase.motivo_extemporaneo}</p>
-            </div>
-          </div>
-        )}
         {!!clase.correcciones_asistencia?.length && (
           <section className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.05]">
             <button
