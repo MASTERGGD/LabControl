@@ -8,10 +8,11 @@ import { abrirClaseDocente } from '../utils/abrirClaseDocente';
 import { accionClaseDashboard } from '../utils/accionClaseDashboard';
 import { getApiErrorMessage } from '../utils/apiError';
 import { abreviarCarrera } from '../utils/resumenConsultaHorario';
+import { formatNombre } from '../utils/presentacion';
 import { MEXICO_TIME_ZONE } from '../utils/timezone';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+const toTitleCase = formatNombre;
 
 function saludar(nombre) {
   const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: MEXICO_TIME_ZONE, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));

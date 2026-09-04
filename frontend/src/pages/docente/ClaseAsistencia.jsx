@@ -4,6 +4,7 @@ import AdminLayout from '../../components/AdminLayout';
 import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
+import { formatCarrera, formatNombre } from '../../utils/presentacion';
 
 const ESTADOS = [
   ['PRESENTE', 'Presente', 'bg-emerald-600'],
@@ -181,7 +182,7 @@ export default function ClaseAsistencia() {
           <div>
             <button onClick={() => navigate('/docente/horario')} className="mb-2 text-sm text-slate-400 hover:text-white">← Mi horario</button>
             <h1 className="text-2xl font-bold text-white">{clase.carga.actividad_nombre}</h1>
-            <p className="text-sm text-slate-400">{clase.carga.grupo} · {clase.carga.carrera} · {clase.carga.espacio_nombre || 'Sin salón'} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</p>
+            <p className="text-sm text-slate-400">{clase.carga.grupo} · <span title={clase.carga.carrera}>{formatCarrera(clase.carga.carrera)}</span> · {clase.carga.espacio_nombre || 'Sin salón'} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${clase.estado === 'ABIERTA' ? 'bg-emerald-500/20 text-emerald-300' : clase.estado === 'CORRECCION' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-300'}`}>
@@ -300,14 +301,14 @@ export default function ClaseAsistencia() {
                   {indice + 1}
                 </span>
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-white">{alumno.nombre}</p>
+                  <p className="truncate font-medium text-white">{formatNombre(alumno.nombre)}</p>
                   <p className="text-xs text-slate-500">{alumno.matricula}</p>
                   {alumno.estado === 'JUSTIFICADA' && <span className="mt-1 inline-flex rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-300">Falta justificada por documento</span>}
                   <ContextoAlumnoDocente
                     compacto
                     cargaId={clase.carga.id}
                     alumnoId={alumno.alumno_id}
-                    nombre={alumno.nombre}
+                    nombre={formatNombre(alumno.nombre)}
                     contexto={contextos[String(alumno.alumno_id)]}
                     onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
                   />
@@ -402,7 +403,7 @@ export default function ClaseAsistencia() {
             <form onSubmit={guardarIncidenciaGrupo} onMouseDown={(e) => e.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
               <header className="flex items-start justify-between border-b border-white/10 px-5 py-4"><div><h2 className="font-semibold text-white">Nota de la clase</h2><p className="mt-1 text-xs text-slate-400">Deja constancia de algo que pasó en esta sesión.</p></div><button type="button" disabled={cerrando} onClick={() => setModalIncidenciaGrupo(false)} className="text-2xl text-slate-400">×</button></header>
               <div className="space-y-4 p-5">
-                <label className="block text-sm text-slate-300">Tipo de nota *<select required value={incidenciaGrupo.tipo} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, tipo: e.target.value, solicita_justificacion: e.target.value === 'SUSPENSION_INSTITUCIONAL' ? incidenciaGrupo.solicita_justificacion : false })} className="input-dark mt-1"><option value="" disabled>Selecciona el tipo</option><optgroup label="Del contexto"><option value="INFRAESTRUCTURA">Infraestructura, equipo o internet</option><option value="SUSPENSION_INSTITUCIONAL">Actividad o suspensión institucional</option><option value="CONTINGENCIA">Clima o contingencia</option></optgroup><optgroup label="Del grupo"><option value="ACADEMICA">Académica</option><option value="DISCIPLINA">Conducta general del grupo</option></optgroup><optgroup label="Urgente"><option value="SEGURIDAD">Seguridad</option></optgroup><option value="OTRA">Otra situación</option></select></label>
+                <label className="block text-sm text-slate-300">Tipo de nota *<select required value={incidenciaGrupo.tipo} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, tipo: e.target.value, solicita_justificacion: e.target.value === 'SUSPENSION_INSTITUCIONAL' ? incidenciaGrupo.solicita_justificacion : false })} className="input-dark mt-1"><option value="" disabled>Selecciona el tipo</option><optgroup label="Del contexto"><option value="SUSPENSION_INSTITUCIONAL">Actividad o suspensión institucional</option><option value="INFRAESTRUCTURA">Infraestructura, equipo o internet</option><option value="CONTINGENCIA">Clima o contingencia</option></optgroup><optgroup label="Del grupo"><option value="ACADEMICA">Académica</option><option value="DISCIPLINA">Conducta general del grupo</option></optgroup><optgroup label="Urgente"><option value="SEGURIDAD">Seguridad</option></optgroup><optgroup label="Otros"><option value="OTRA">Otra situación</option></optgroup></select></label>
                 {incidenciaGrupo.tipo === 'SEGURIDAD' && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200"><b>Notificación inmediata:</b> al guardar, Tutoría y Administración recibirán este aviso sin esperar al cierre de la clase.</div>}
                 <label className="block text-sm text-slate-300">Descripción *<textarea required minLength={5} maxLength={2000} rows={4} value={incidenciaGrupo.descripcion} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, descripcion: e.target.value })} className="input-dark mt-1" placeholder={incidenciaGrupo.tipo === 'DISCIPLINA' ? 'Describe el hecho observable y las acciones realizadas; evita calificativos sobre las personas.' : 'Describe qué ocurrió y qué acción inmediata se tomó.'} /></label>
                 <label className="flex items-start gap-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3 text-sm text-slate-200"><input type="checkbox" className="mt-1 accent-emerald-500" checked={incidenciaGrupo.requiere_seguimiento} onChange={(e) => setIncidenciaGrupo({ ...incidenciaGrupo, requiere_seguimiento: e.target.checked })} /><span><b>Notificar al tutor</b><span className="mt-1 block text-xs font-normal text-slate-400">Al cerrar la clase se enviará esta nota al tutor del grupo para seguimiento.</span></span></label>

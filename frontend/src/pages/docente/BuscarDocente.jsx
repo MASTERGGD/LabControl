@@ -6,6 +6,7 @@ import SelectDark from '../../components/SelectDark';
 import { usePeriodo } from '../../context/PeriodoContext';
 import { getApiErrorMessage } from '../../utils/apiError';
 import api from '../../hooks/useApi';
+import { formatNombre } from '../../utils/presentacion';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const texto = { color: 'var(--input-color)' };
@@ -23,7 +24,7 @@ function Actividad({ actividad, actual = false, pasada = false, porGrupo = false
     <p className="text-xs tabular-nums" style={secundario}>{actividad.hora_inicio}–{actividad.hora_fin}{actual && <span className="mt-1 block font-semibold" style={{ color: 'var(--accent-success-ui)' }}>En curso</span>}</p>
     <div><p className={`text-sm ${actual ? 'font-semibold' : ''}`} style={texto}>{actividad.actividad}</p>
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs" style={secundario}>
-        {porGrupo ? <span>{actividad.docente}</span> : <><span>{actividad.grupo}</span><Carrera nombre={actividad.carrera} /></>}
+        {porGrupo ? <span>{formatNombre(actividad.docente)}</span> : <><span>{actividad.grupo}</span><Carrera nombre={actividad.carrera} /></>}
         <span>· {privada ? 'Sin ubicación' : actividad.salon || 'Sin espacio asignado'}</span>
       </div>
     </div>
@@ -38,7 +39,7 @@ export function Resultado({ resultado, respuesta, porGrupo, automatico, onSemana
   return <article style={{ ...texto, ...borde }} className="border-b last:border-b-0">
     <button type="button" aria-expanded={abierto} onClick={() => setAbierto(v => !v)} className="grid w-full grid-cols-[12px_1fr_16px] items-center gap-x-3 gap-y-2 px-4 py-4 text-left hover:bg-white/[0.025] sm:grid-cols-[12px_1fr_minmax(140px,220px)_16px] sm:px-5">
       <span aria-hidden="true" className={`h-2.5 w-2.5 rounded-full ${resumen.color}`} />
-      <span className="min-w-0"><span className="text-sm font-bold">{porGrupo ? `Grupo ${resultado.nombre}` : resultado.nombre}</span>
+      <span className="min-w-0"><span className="text-sm font-bold">{porGrupo ? `Grupo ${resultado.nombre}` : formatNombre(resultado.nombre)}</span>
         {esDemo(resultado) && <span className="ml-2 rounded border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: 'var(--accent-warning-ui)' }}>Cuenta de prueba</span>}
         <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs" style={secundario}>{carreras.map(c => <Carrera key={c} nombre={c} />)}{identidad || (!carreras.length ? 'Sin adscripción registrada' : '')}</span>
       </span>

@@ -5,10 +5,10 @@ import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import SelectDark from "../../components/SelectDark";
 import RegistroSesionTutoria from "./RegistroSesionTutoria";
+import { formatCarrera, formatNombre } from "../../utils/presentacion";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-const toTitleCase = s =>
-  s ? s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase()) : s;
+const toTitleCase = formatNombre;
 
 const ESTADO_SEG = {
   SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-transparent text-slate-500 border-slate-600/60" },
@@ -743,7 +743,7 @@ export default function MisTutorados() {
                     ? "bg-blue-600 border-blue-500 text-white"
                     : "border-slate-600 text-slate-400 hover:text-white"
                 }`}>
-                {g.carrera} · {g.grupo} · {g.periodo}
+                <span title={g.carrera}>{formatCarrera(g.carrera)}</span> · {g.grupo} · {g.periodo}
               </button>
             ))}
           </div>
@@ -755,7 +755,7 @@ export default function MisTutorados() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <p className="font-semibold text-white">Grupo {grupoSel.cuatrimestre}° {grupoSel.grupo}</p>
-                <p className="text-xs text-slate-400">{grupoSel.carrera} · {grupoSel.periodo}</p>
+                <p className="text-xs text-slate-400"><span title={grupoSel.carrera}>{formatCarrera(grupoSel.carrera)}</span> · {grupoSel.periodo}</p>
               </div>
               <div className="flex gap-4 text-center">
                 <div>
