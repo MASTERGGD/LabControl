@@ -49,6 +49,25 @@ const ESTADO_INF = {
   RECIBIDO: { label: "Recibido",  cls: "bg-emerald-500/20 text-emerald-300" },
 };
 
+const estadoCumplimientoTutor = (tutor) => {
+  const vencidas = tutor.programadas_vencidas || 0;
+  const riesgo = tutor.alumnos_riesgo_sin_seguimiento || 0;
+  const canalizaciones = tutor.canalizaciones_abiertas || 0;
+  const informes = tutor.informes_pendientes || 0;
+
+  if (vencidas > 0) return { label: `${vencidas} ${vencidas === 1 ? "sesión vencida" : "sesiones vencidas"}`, tone: "red" };
+  if (riesgo > 0) return { label: `${riesgo} ${riesgo === 1 ? "alumno en riesgo" : "alumnos en riesgo"}`, tone: "red" };
+  if (canalizaciones > 0) return { label: `${canalizaciones} ${canalizaciones === 1 ? "canalización abierta" : "canalizaciones abiertas"}`, tone: "amber" };
+  if (informes > 0) return { label: `${informes} ${informes === 1 ? "informe pendiente" : "informes pendientes"}`, tone: "amber" };
+  if (tutor.cumplimiento_pct != null && tutor.cumplimiento_pct < 80) {
+    return { label: `${tutor.cumplimiento_pct}% de cumplimiento`, tone: "amber" };
+  }
+  if (tutor.semaforo === "SIN_PROGRAMACION" || tutor.sesiones_esperadas === 0) {
+    return { label: "Sin programación", tone: "slate" };
+  }
+  return { label: "Al día", tone: "green" };
+};
+
 // â”€â”€â”€ Stat Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StatCard({ label, value, icon, alert, hint, tone = "slate" }) {
   const { themeKey } = useTheme();
@@ -1837,19 +1856,6 @@ export default function TutoriaAdmin() {
                 alert={dash.canalizaciones_pendientes > 0} hint="Seguimiento F-DC-08" />
               <StatCard label="Informes por revisar" value={dash.informes_por_revisar} icon="I"
                 alert={dash.informes_por_revisar > 0} hint="Recepción F-DC-09" />
-              {dash.sesiones_por_tutor?.length > 0 && (
-                <div className="rounded-xl border border-slate-700/50 bg-slate-800/35 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Sesiones por tutor</p>
-                  <div className="space-y-2">
-                    {dash.sesiones_por_tutor.map(t => (
-                      <div key={t.tutor_id} className="flex items-center justify-between gap-3 text-xs">
-                        <span className="text-slate-300 truncate">{toTitleCase(t.tutor_nombre)}</span>
-                        <span className="text-slate-500 shrink-0">{t.sesiones} sesiones · {t.alumnos} alumnos</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </section>
           </div>
 
@@ -1885,7 +1891,7 @@ export default function TutoriaAdmin() {
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
               <div>
                 <h2 className="text-lg font-semibold">Cumplimiento por tutor</h2>
-                <p className="text-sm text-slate-400">Semáforo operativo: sesiones realizadas vs esperadas, informes, canalizaciones y alumnos de riesgo.</p>
+                <p className="text-sm text-slate-400">Sesiones realizadas frente a las programadas y motivo concreto de atención.</p>
               </div>
               <button onClick={() => setTab("programacion")}
                 className="text-xs px-3 py-1.5 rounded-lg border border-slate-600 text-slate-300 hover:bg-white/5">
@@ -1894,7 +1900,11 @@ export default function TutoriaAdmin() {
             </div>
             {dash.cumplimiento_tutores?.length > 0 ? (
               <div className="overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-white/[0.03] text-xs uppercase text-slate-400"><tr><th className="px-4 py-3">Tutor</th><th>Grupos / alumnos</th><th>Sesiones</th><th>Informes</th><th>Canalizaciones</th><th>Estado</th><th className="pr-4"></th></tr></thead><tbody className="divide-y divide-white/5">
-                {dash.cumplimiento_tutores.map(t => <tr key={t.tutor_id} className="hover:bg-white/[0.03]"><td className="px-4 py-3 font-medium text-white">{toTitleCase(t.tutor_nombre)}</td><td className="text-slate-300">{t.grupos} · {t.alumnos}</td><td className={t.programadas_vencidas > 0 ? 'font-semibold text-red-300' : 'text-slate-300'}>{t.sesiones_realizadas}/{t.sesiones_esperadas}{t.sesiones_esperadas === 0 && <span className="block text-xs font-normal text-slate-500">Sin programación</span>}</td><td className={t.informes_pendientes > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.informes_pendientes || '—'}</td><td className={t.canalizaciones_abiertas > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.canalizaciones_abiertas || '—'}</td><td><span className={`rounded-full px-2 py-1 text-xs font-semibold ${t.semaforo === 'ROJO' ? 'bg-red-500/15 text-red-300' : t.semaforo === 'AMARILLO' ? 'bg-amber-500/15 text-amber-300' : t.semaforo === 'VERDE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-400'}`}>{t.semaforo === 'SIN_PROGRAMACION' ? 'Sin programación' : t.semaforo}</span></td><td className="pr-4 text-right"><button type="button" onClick={() => abrirGruposTutor(t)} className="text-xs font-semibold text-blue-300">Ver →</button></td></tr>)}
+                {dash.cumplimiento_tutores.map(t => {
+                  const estado = estadoCumplimientoTutor(t);
+                  const estadoClase = estado.tone === 'red' ? 'bg-red-500/15 text-red-300' : estado.tone === 'amber' ? 'bg-amber-500/15 text-amber-300' : estado.tone === 'green' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-500/15 text-slate-400';
+                  return <tr key={t.tutor_id} className="hover:bg-white/[0.03]"><td className="px-4 py-3 font-medium text-white">{toTitleCase(t.tutor_nombre)}</td><td className="text-slate-300">{t.grupos} · {t.alumnos}</td><td className={t.programadas_vencidas > 0 ? 'font-semibold text-red-300' : 'text-slate-300'}>{t.sesiones_esperadas === 0 ? '—' : `${t.sesiones_realizadas}/${t.sesiones_esperadas}`}{t.sesiones_esperadas === 0 && <span className="block text-xs font-normal text-slate-500">Sin programación</span>}</td><td className={t.informes_pendientes > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.informes_pendientes || '—'}</td><td className={t.canalizaciones_abiertas > 0 ? 'text-amber-300' : 'text-slate-500'}>{t.canalizaciones_abiertas || '—'}</td><td><span className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${estadoClase}`}>{estado.label}</span></td><td className="pr-4 text-right"><button type="button" onClick={() => abrirGruposTutor(t)} className="text-xs font-semibold text-blue-300">Ver →</button></td></tr>;
+                })}
               </tbody></table></div>
             ) : (
               <p className="text-sm text-slate-500 text-center py-8">Aún no hay datos suficientes para calcular cumplimiento por tutor.</p>
