@@ -4,6 +4,12 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
   if (item.estado === 'NO_LECTIVA' || item.calendario?.requiere_asistencia === false || item.calendario?.permite_iniciar_clase === false) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
+  if (item.tipo_actividad === 'TUTORIA') {
+    return { texto: 'Iniciar tutoría', path: `/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion` };
+  }
+  if (item.tipo_actividad && item.tipo_actividad !== 'CLASE') {
+    return { texto: 'Ver horario', path: '/docente/horario' };
+  }
   if (item.clase_id) {
     return { texto: ['EN_CURSO', 'CORRECCION'].includes(item.estado) ? 'Continuar clase' : 'Ver clase', path: `/docente/clase/${item.clase_id}` };
   }

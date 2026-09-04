@@ -195,6 +195,8 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert seguimiento.status_code == 200, seguimiento.text
     assert seguimiento.json()["total_clases"] == 1
     assert seguimiento.json()["alumnos"][0]["justificada"] == 1
+    assert seguimiento.json()["muestra_suficiente"] is False
+    assert seguimiento.json()["alumnos_en_alerta"] == 0
 
     alumno_id = clase["alumnos"][0]["alumno_id"]
     registro = client.post(
@@ -244,6 +246,20 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert atendido.status_code == 200
     assert atendido.json()["estado"] == "CUMPLIDO_PARCIAL"
 
+    grupo_tutoria = GrupoTutorado(
+        tutor_id=docente.id, grupo_academico_id=grupo.id, carrera=grupo.carrera,
+        cuatrimestre=grupo.cuatrimestre, grupo=grupo.grupo, periodo=periodo.clave,
+        activo=True, estado="ACTIVO",
+    )
+    db.add(grupo_tutoria); db.flush()
+    db.add(CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_tutorado_id=grupo_tutoria.id,
+        tipo_actividad="TUTORIA", actividad_nombre="Tutoría grupal",
+        dia_semana=dia_hoy, hora_inicio="15:00", hora_fin="16:00",
+        estado="ACTIVO", activo=True,
+    ))
+    db.commit()
+
     dashboard = client.get("/docencia/dashboard", headers=headers)
     assert dashboard.status_code == 200, dashboard.text
     tablero = dashboard.json()
@@ -251,6 +267,8 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert tablero["resumen"]["clases_cerradas"] == 1
     assert tablero["jornada"][0]["materia"] == materia.nombre
     assert tablero["jornada"][0]["estado"] == "CERRADA"
+    assert any(item["tipo_actividad"] == "TUTORIA" for item in tablero["jornada"])
+    assert tablero["proxima_clase"]["tipo_actividad"] == "TUTORIA"
     assert tablero["grupos"][0]["total_alumnos"] == 2
     assert tablero["grupos"][0]["asistencia_promedio"] == 100.0
     assert tablero["grupos"][0]["clases_esperadas"] >= tablero["grupos"][0]["total_clases"]

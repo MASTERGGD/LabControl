@@ -1914,11 +1914,15 @@ def seguimiento_grupo(
             and (sum(calificaciones[-2:]) / 2) <= (sum(calificaciones[-4:-2]) / 2) - 1
         )
         alertas = []
-        if faltas_consecutivas >= 2:
+        # Una racha solo representa un patrón después de tres faltas y cuando
+        # existe al menos una sesión previa con otra condición. En las primeras
+        # sesiones, "faltó a todas" describe mejor el dato que una falsa tendencia.
+        if faltas_consecutivas >= 3 and faltas_consecutivas < total_clases:
             alertas.append({"tipo": "FALTAS_CONSECUTIVAS", "nivel": "ALTO" if faltas_consecutivas >= 3 else "MEDIO", "mensaje": f"{faltas_consecutivas} faltas consecutivas", "accion": "Contactar al alumno y documentar el motivo."})
-        riesgo_proyectado = total_clases >= 4 and ((asistio / (total_clases + 1)) * 100) < 80
-        if total_clases and (fila["porcentaje_asistencia"] < 80 or riesgo_proyectado):
-            alertas.append({"tipo": "RIESGO_INASISTENCIA", "nivel": "ALTO", "mensaje": "En riesgo por límite de inasistencias", "accion": "Revisar justificantes y canalizar a tutoría si corresponde."})
+        muestra_suficiente = total_clases >= 5
+        riesgo_proyectado = muestra_suficiente and ((asistio / (total_clases + 1)) * 100) < 80
+        if muestra_suficiente and (fila["porcentaje_asistencia"] < 80 or riesgo_proyectado):
+            alertas.append({"tipo": "RIESGO_INASISTENCIA", "nivel": "ALTO", "mensaje": f"Faltó a {fila['falta']} de {total_clases} clases", "accion": "Revisar justificantes y canalizar a tutoría si corresponde."})
         if calificaciones and (calificaciones[-1] < 7 or descenso):
             alertas.append({"tipo": "DESEMPENO", "nivel": "MEDIO", "mensaje": "Descenso o desempeño académico bajo", "accion": "Acordar una actividad de recuperación y fecha de revisión."})
         requiere_tutoria = any(r.tipo == "TUTORIA" and r.estado not in {"ATENDIDO", "CERRADO"} for r in regs_alumno)
@@ -1937,6 +1941,7 @@ def seguimiento_grupo(
         "carga": _serializar_carga(carga, db),
         "bloques_semanales": len(cargas_equivalentes),
         "total_clases": total_clases,
+        "muestra_suficiente": total_clases >= 5,
         "total_alumnos": len(filas),
         "promedio_asistencia": promedio,
         "alumnos_en_alerta": sum(1 for f in filas if f["alerta"]),
@@ -2634,13 +2639,13 @@ def dashboard_docente(
     cargas = db.query(CargaDocente).filter(
         CargaDocente.docente_id == current_user.id,
         CargaDocente.activo == True,
-        CargaDocente.tipo_actividad == "CLASE",
         CargaDocente.estado == "ACTIVO",
         CargaDocente.periodo_id == actual.id,
     ).order_by(CargaDocente.hora_inicio).all()
+    cargas_clase = [carga for carga in cargas if carga.tipo_actividad == "CLASE"]
     clases = db.query(ClaseDocente).filter(
-        ClaseDocente.carga_docente_id.in_([carga.id for carga in cargas]),
-    ).all() if cargas else []
+        ClaseDocente.carga_docente_id.in_([carga.id for carga in cargas_clase]),
+    ).all() if cargas_clase else []
     clase_por_carga_fecha = {
         (clase.carga_docente_id, clase.fecha): clase for clase in clases
     }
@@ -2663,6 +2668,11 @@ def dashboard_docente(
             }.get(clase.estado, clase.estado)
         elif not estado_fecha["requiere_asistencia"]:
             estado = "NO_LECTIVA"
+        elif carga.tipo_actividad != "CLASE":
+            hora_inicio = datetime.datetime.combine(
+                hoy, datetime.time.fromisoformat(carga.hora_inicio), tzinfo=MX,
+            )
+            estado = "EN_CURSO" if hora_inicio <= ahora <= hora_fin else "FINALIZADA" if ahora > hora_fin else "PROGRAMADA"
         elif ahora > hora_fin:
             estado = "SIN_REGISTRO"
         else:
@@ -2670,12 +2680,16 @@ def dashboard_docente(
         jornada.append({
             "carga_id": carga.id,
             "clase_id": clase.id if clase else None,
+            "tipo_actividad": carga.tipo_actividad,
+            "grupo_tutorado_id": carga.grupo_tutorado_id,
             "materia": carga.actividad_nombre,
             "grupo": (
                 f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
-                if carga.grupo_academico else "Sin grupo"
+                if carga.grupo_academico else
+                f"{carga.grupo_tutorado.cuatrimestre}° {carga.grupo_tutorado.grupo}"
+                if carga.grupo_tutorado else carga.tipo_actividad.title()
             ),
-            "carrera": carga.grupo_academico.carrera if carga.grupo_academico else None,
+            "carrera": carga.grupo_academico.carrera if carga.grupo_academico else carga.grupo_tutorado.carrera if carga.grupo_tutorado else None,
             "espacio": (
                 carga.laboratorio.nombre if carga.laboratorio
                 else carga.espacio_nombre or "Sin espacio"
@@ -2692,7 +2706,7 @@ def dashboard_docente(
     cargas_seguimiento = []
     claves_seguimiento = set()
     for carga in cargas:
-        if not carga.grupo_academico_id:
+        if carga.tipo_actividad != "CLASE" or not carga.grupo_academico_id:
             continue
         identidad_materia = (
             f"materia:{carga.materia_id}" if carga.materia_id
@@ -2799,10 +2813,10 @@ def dashboard_docente(
     ))
     pendientes_asistencia = sum(
         1 for item in jornada
-        if item["estado"] in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}
+        if item["tipo_actividad"] == "CLASE" and item["estado"] in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}
     )
     actividades_suspendidas_hoy = sum(1 for item in jornada if item["estado"] == "NO_LECTIVA")
-    clases_exigibles_hoy = sum(1 for item in jornada if item["estado"] != "NO_LECTIVA")
+    clases_exigibles_hoy = sum(1 for item in jornada if item["tipo_actividad"] == "CLASE" and item["estado"] != "NO_LECTIVA")
 
     # Próxima clase realmente lectiva. El horario semanal propone candidatos,
     # pero el calendario oficial decide si esa fecha exige asistencia.
@@ -2811,6 +2825,8 @@ def dashboard_docente(
         fecha_candidata = hoy + datetime.timedelta(days=desplazamiento)
         candidatas = []
         for carga in cargas:
+            if carga.tipo_actividad not in {"CLASE", "TUTORIA"}:
+                continue
             if carga.dia_semana != fecha_candidata.weekday():
                 continue
             estado_candidata = estado_fecha_academica(db, carga.periodo_id, fecha_candidata)
@@ -2826,12 +2842,16 @@ def dashboard_docente(
             inicio_candidata, carga_candidata = min(candidatas, key=lambda item: item[0])
             proxima_clase = {
                 "carga_id": carga_candidata.id,
+                "tipo_actividad": carga_candidata.tipo_actividad,
+                "grupo_tutorado_id": carga_candidata.grupo_tutorado_id,
                 "fecha": inicio_candidata.date().isoformat(),
                 "inicio": inicio_candidata.isoformat(),
                 "materia": carga_candidata.actividad_nombre,
                 "grupo": (
                     f"{carga_candidata.grupo_academico.cuatrimestre}° {carga_candidata.grupo_academico.grupo}"
-                    if carga_candidata.grupo_academico else "Sin grupo"
+                    if carga_candidata.grupo_academico else
+                    f"{carga_candidata.grupo_tutorado.cuatrimestre}° {carga_candidata.grupo_tutorado.grupo}"
+                    if carga_candidata.grupo_tutorado else "Sin grupo"
                 ),
                 "laboratorio_nombre": (
                     carga_candidata.laboratorio.nombre if carga_candidata.laboratorio
@@ -2847,6 +2867,8 @@ def dashboard_docente(
     for desplazamiento in range(7):
         fecha_semana = inicio_semana + datetime.timedelta(days=desplazamiento)
         for carga in cargas:
+            if carga.tipo_actividad != "CLASE":
+                continue
             if carga.dia_semana != fecha_semana.weekday():
                 continue
             estado_semana = estado_fecha_academica(db, carga.periodo_id, fecha_semana)

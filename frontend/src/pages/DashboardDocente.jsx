@@ -16,8 +16,7 @@ const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c
 function saludar(nombre) {
   const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: MEXICO_TIME_ZONE, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
   const prefijo = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
-  const primer = nombre?.split(' ')[0] ?? 'docente';
-  return { prefijo, nombre: primer };
+  return { prefijo, nombre: nombre || 'docente' };
 }
 
 function fmtCountdown(ms) {
@@ -148,13 +147,14 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
   const enCurso = tiempoRestante <= 0;
   const comienzaPronto = tiempoRestante > 0 && tiempoRestante <= 60 * 60_000;
   const referenciaFecha = esHoy ? 'hoy' : fechaClase === 'Mañana' ? 'mañana' : `el ${fechaClase}`;
+  const esTutoria = reservacion.tipo_actividad === 'TUTORIA';
 
   return (
     <div className="rounded-2xl border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-blue-500/3 p-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
-            {accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
+            {esTutoria ? (esHoy ? 'Próxima tutoría hoy' : 'Próxima tutoría') : accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
           </p>
           <p className="text-white font-bold text-base leading-tight">{reservacion.materia}</p>
           <p className="text-slate-400 text-sm mt-0.5">
@@ -174,7 +174,7 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
             </>
           ) : (
             <>
-              <p className="text-xs font-medium text-slate-500">Tu próxima clase es {referenciaFecha}</p>
+              <p className="text-xs font-medium text-slate-500">Tu próxima {esTutoria ? 'tutoría' : 'clase'} es {referenciaFecha}</p>
               <p className="mt-0.5 text-lg font-bold text-blue-300">{fmtHora(reservacion.hora_inicio)}–{fmtHora(reservacion.hora_fin)}</p>
             </>
           )}
@@ -227,6 +227,7 @@ export default function DashboardDocente() {
   const [operacion,     setOperacion]      = useState(null);
   const [ahora, setAhora] = useState(() => new Date());
   const [abriendo, setAbriendo] = useState(false);
+  const [mostrarAtencion, setMostrarAtencion] = useState(false);
   const aperturaEnCurso = useRef(false);
   const [errorClase, setErrorClase] = useState('');
   const [loading,       setLoading]        = useState(true);
@@ -289,7 +290,7 @@ export default function DashboardDocente() {
   }, [cargarDatos]);
 
   const jornada = operacion?.jornada || [];
-  const actual = jornada.find(item => item.estado === 'EN_CURSO' || item.estado === 'CORRECCION')
+  const actual = jornada.find(item => ['CLASE', 'TUTORIA'].includes(item.tipo_actividad) && (item.estado === 'EN_CURSO' || item.estado === 'CORRECCION'))
     || jornada.find(item => accionClaseDashboard(item, operacion?.fecha, ahora).iniciar);
   const claseDestacada = actual ? {
     ...actual, fecha: operacion.fecha,
@@ -303,6 +304,7 @@ export default function DashboardDocente() {
       : 'PROGRAMADA',
   } : null;
   const accionDestacada = claseDestacada && accionClaseDashboard(claseDestacada, claseDestacada.fecha, ahora);
+  const gruposConMuestra = (operacion?.grupos || []).filter(grupo => grupo.total_clases >= 5);
 
   const abrirDesdeInicio = async (item, fecha) => {
     if (aperturaEnCurso.current) return;
@@ -449,13 +451,13 @@ export default function DashboardDocente() {
           <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
             <div>
               <h2 className="font-bold text-white">Mi jornada de hoy</h2>
-              <p className="text-xs text-slate-500">Clases, espacios y estado de la asistencia.</p>
+              <p className="text-xs text-slate-500">Clases, tutorías y otras actividades de tu horario.</p>
             </div>
             <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">
-              <thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Hora</th><th>Materia</th><th>Grupo</th><th>Espacio</th><th>Estado</th><th className="pr-5 text-right"></th></tr></thead>
+              <thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Hora</th><th>Actividad</th><th>Grupo</th><th>Espacio</th><th>Estado</th><th className="pr-5 text-right"></th></tr></thead>
               <tbody className="divide-y divide-white/5">
                 {jornada.map(item => {
                   const accion = accionClaseDashboard(item, operacion.fecha, ahora);
@@ -464,6 +466,7 @@ export default function DashboardDocente() {
                     EN_CURSO: ['En curso', 'bg-emerald-500/15 text-emerald-300'],
                     CERRADA: ['Cerrada', 'bg-slate-500/15 text-slate-400'],
                     CORRECCION: ['En corrección', 'bg-amber-500/15 text-amber-300'],
+                    FINALIZADA: ['Finalizada', 'bg-slate-500/15 text-slate-400'],
                     SIN_REGISTRO: ['Sin registro', 'bg-red-500/15 text-red-300'],
                     NO_LECTIVA: [item.calendario?.motivo || 'Día no lectivo', 'bg-slate-500/15 text-slate-300'],
                   }[item.estado] || [item.estado, 'bg-slate-500/15 text-slate-400'];
@@ -480,7 +483,7 @@ export default function DashboardDocente() {
                 })}
               </tbody>
             </table>
-            {!loading && !operacion?.jornada.length && <p className="p-8 text-center text-sm text-slate-500">No tienes clases programadas para hoy.</p>}
+            {!loading && !operacion?.jornada.length && <p className="p-8 text-center text-sm text-slate-500">No tienes actividades programadas para hoy.</p>}
           </div>
         </div>}
 
@@ -514,18 +517,12 @@ export default function DashboardDocente() {
           </div>
 
           {!!operacion?.alumnos_prioritarios.length && <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
-            <div className="border-b border-white/8 px-5 py-4"><h2 className="font-bold text-white">Alumnos que requieren atención</h2><p className="text-xs text-slate-500">Prioridad calculada con asistencias y seguimiento.</p></div>
-            <div className="divide-y divide-white/5">
-              {operacion?.alumnos_prioritarios.slice(0, 5).map(alumno => (
-                <button key={`${alumno.carga_id}-${alumno.alumno_id}`} onClick={() => navigate(`/docente/seguimiento/${alumno.carga_id}/alumno/${alumno.alumno_id}`)} className="flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-white/3">
-                  <span className={`mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full ${alumno.prioridad === 'ALTA' ? 'bg-red-400' : 'bg-amber-400'}`} />
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold text-white">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.grupo} · {alumno.materia}</p><p className={`mt-1 text-xs ${alumno.prioridad === 'ALTA' ? 'text-red-300' : 'text-amber-300'}`}>{alumno.motivos[0]}</p></div>
-                  <span className="text-xs font-bold text-slate-400">{alumno.asistencia}%</span>
-                </button>
-              ))}
-            </div>
+            <button type="button" onClick={() => setMostrarAtencion(valor => !valor)} className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"><div><h2 className="font-bold text-white">{plural(operacion.alumnos_prioritarios.length, 'alumno requiere atención', 'alumnos requieren atención')}</h2><p className="text-xs text-slate-500">Información privada · {mostrarAtencion ? 'Ocultar' : 'Ver detalle'}</p></div><span className="text-slate-400">{mostrarAtencion ? '▲' : '▼'}</span></button>
+            {mostrarAtencion && <div className="overflow-x-auto border-t border-white/8"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-white/3 text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Alumno</th><th>Grupo / materia</th><th>Motivo</th><th>Faltas</th><th className="pr-5"></th></tr></thead><tbody className="divide-y divide-white/5">
+              {operacion.alumnos_prioritarios.slice(0, 5).map(alumno => <tr key={`${alumno.carga_id}-${alumno.alumno_id}`} className="hover:bg-white/3"><td className="px-5 py-3 font-semibold text-white">{toTitleCase(alumno.nombre)}</td><td className="text-slate-400">{alumno.grupo}<span className="block text-xs text-slate-500">{alumno.materia}</span></td><td className={alumno.prioridad === 'ALTA' ? 'text-red-300' : 'text-amber-300'}>{alumno.motivos[0]}</td><td className="text-slate-300">{alumno.faltas}</td><td className="pr-5 text-right"><button onClick={() => navigate(`/docente/seguimiento/${alumno.carga_id}/alumno/${alumno.alumno_id}`)} className="text-xs font-semibold text-emerald-400">Ver ficha →</button></td></tr>)}
+            </tbody></table></div>}
           </div>}
-          {!loading && !operacion?.alumnos_prioritarios.length && <p className="dashboard-surface rounded-xl border border-white/8 px-4 py-3 text-sm text-slate-500">Sin alumnos que requieran atención.</p>}
+          {!loading && !operacion?.alumnos_prioritarios.length && <p className="dashboard-surface rounded-xl border border-white/8 px-4 py-3 text-sm text-slate-500">{operacion?.grupos?.length > 0 && gruposConMuestra.length === 0 ? 'Aún no hay suficientes clases registradas para evaluar riesgo.' : 'Sin alumnos que requieran atención.'}</p>}
         </div>}
 
       </div>
