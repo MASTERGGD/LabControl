@@ -778,7 +778,7 @@ export default function MiHorarioDocente() {
                   </button>
                 )}
                 {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (
-                  <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${actividadPrincipal.grupo_tutorado_id}&accion=sesion`)} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Iniciar tutoría</button>
+                  <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${actividadPrincipal.grupo_tutorado_id}&accion=sesion`)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Registrar tutoría</button>
                 )}
                 {esNoLectiva(actividadPrincipal) && (
                   <button onClick={() => navigate('/calendario-academico')} className="rounded-xl border border-slate-500/30 bg-slate-500/10 px-4 py-2.5 text-sm font-semibold text-slate-300">
@@ -988,7 +988,7 @@ export default function MiHorarioDocente() {
                                   : 'Ventana de inicio finalizada'}
                             </button>
                           )}
-                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion`)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Iniciar tutoría</button>}
+                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion`)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Registrar tutoría</button>}
                           {esNoLectiva(item) && (
                             <button onClick={() => navigate('/calendario-academico')} className="rounded-lg border border-slate-500/30 px-3 py-2 text-xs font-semibold text-slate-300">
                               Ver calendario
