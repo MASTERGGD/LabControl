@@ -1333,6 +1333,15 @@ export default function TutoriaAdmin() {
     () => [...new Set(grupos.map(g => g.periodo).filter(Boolean))].sort().reverse(),
     [grupos]
   );
+  const gruposProgramacion = useMemo(
+    () => grupos.filter(g => !periodoPanel || g.periodo === periodoPanel),
+    [grupos, periodoPanel]
+  );
+  useEffect(() => {
+    if (nuevaProg.grupo_tutorado_id && !gruposProgramacion.some(g => String(g.id) === String(nuevaProg.grupo_tutorado_id))) {
+      setNuevaProg(p => ({ ...p, grupo_tutorado_id: "" }));
+    }
+  }, [gruposProgramacion, nuevaProg.grupo_tutorado_id]);
   const tutoresDisponibles = useMemo(
     () => [...new Map(grupos.filter(g => g.tutor_id).map(g => [g.tutor_id, g.tutor_nombre])).entries()]
       .map(([id, nombre]) => ({ id, nombre }))
@@ -1476,13 +1485,13 @@ export default function TutoriaAdmin() {
   const cargarProgramaciones = useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      if (filtroPeriodo) params.append("periodo", filtroPeriodo);
+      if (periodoPanel) params.append("periodo", periodoPanel);
       const { data } = await api.get(`/tutoria/programaciones?${params.toString()}`);
       setProgramaciones(data);
     } catch {
       showToast("Error al cargar programación de tutoría", "error");
     }
-  }, [filtroPeriodo, showToast]);
+  }, [periodoPanel, showToast]);
 
   const cargarDocumentosCtrl = useCallback(async () => {
     try {
@@ -2530,26 +2539,43 @@ export default function TutoriaAdmin() {
             <h2 className="text-lg font-semibold">Programación de sesiones tutoriales</h2>
             <p className="text-sm text-slate-400">Planea las sesiones esperadas y compáralas contra la evidencia F-DC-07 capturada.</p>
           </div>
-          <section className="rounded-2xl border border-white/10 bg-slate-900/40 p-4 grid grid-cols-1 lg:grid-cols-[1fr_170px_150px_1fr_auto] gap-3 items-end">
-            <select value={nuevaProg.grupo_tutorado_id} onChange={e => setNuevaProg(p => ({ ...p, grupo_tutorado_id: e.target.value }))}
-              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
-              <option value="">Grupo tutorado</option>
-              {grupos.map(g => <option key={g.id} value={g.id}>{g.carrera} · Grupo {g.grupo} · {g.periodo} · {g.tutor_nombre}</option>)}
-            </select>
-            <input type="date" value={nuevaProg.fecha_programada} onChange={e => setNuevaProg(p => ({ ...p, fecha_programada: e.target.value }))}
-              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200" />
-            <select value={nuevaProg.tipo_sesion} onChange={e => setNuevaProg(p => ({ ...p, tipo_sesion: e.target.value }))}
-              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
-              <option value="GRUPAL">Grupal</option>
-              <option value="INDIVIDUAL">Individual</option>
-            </select>
-            <input value={nuevaProg.objetivo} onChange={e => setNuevaProg(p => ({ ...p, objetivo: e.target.value }))}
-              placeholder="Objetivo de la sesión"
-              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200" />
-            <button onClick={crearProgramacion}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-semibold">
-              Programar
-            </button>
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-slate-900/40 p-4">
+            <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-12">
+              <label className="min-w-0 md:col-span-2 xl:col-span-8">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Grupo tutorado</span>
+                <select value={nuevaProg.grupo_tutorado_id} onChange={e => setNuevaProg(p => ({ ...p, grupo_tutorado_id: e.target.value }))}
+                  title={gruposProgramacion.find(g => String(g.id) === String(nuevaProg.grupo_tutorado_id))?.carrera || "Seleccionar grupo tutorado"}
+                  className="w-full min-w-0 truncate bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
+                  <option value="">Seleccionar grupo</option>
+                  {gruposProgramacion.map(g => <option key={g.id} value={g.id}>{g.carrera} · Grupo {g.grupo} · {g.tutor_nombre}</option>)}
+                </select>
+              </label>
+              <label className="min-w-0 xl:col-span-2">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Fecha</span>
+                <input type="date" value={nuevaProg.fecha_programada} onChange={e => setNuevaProg(p => ({ ...p, fecha_programada: e.target.value }))}
+                  className="w-full min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200" />
+              </label>
+              <label className="min-w-0 xl:col-span-2">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Tipo</span>
+                <select value={nuevaProg.tipo_sesion} onChange={e => setNuevaProg(p => ({ ...p, tipo_sesion: e.target.value }))}
+                  className="w-full min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200">
+                  <option value="GRUPAL">Grupal</option>
+                  <option value="INDIVIDUAL">Individual</option>
+                </select>
+              </label>
+              <label className="min-w-0 md:col-span-2 xl:col-span-10">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Objetivo de la sesión</span>
+                <input value={nuevaProg.objetivo} onChange={e => setNuevaProg(p => ({ ...p, objetivo: e.target.value }))}
+                  placeholder="Describe brevemente el propósito de la sesión"
+                  className="w-full min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200" />
+              </label>
+              <div className="flex items-end md:col-span-2 xl:col-span-2">
+                <button onClick={crearProgramacion}
+                  className="w-full px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-sm font-semibold">
+                  Programar sesión
+                </button>
+              </div>
+            </div>
           </section>
 
           <div className="rounded-2xl border border-white/10 bg-slate-900/40 overflow-hidden">
@@ -2558,11 +2584,9 @@ export default function TutoriaAdmin() {
                 <h3 className="font-semibold">Sesiones programadas</h3>
                 <p className="text-xs text-slate-500">{programaciones.length} registro(s)</p>
               </div>
-              <select value={filtroPeriodo} onChange={e => setFiltroPeriodo(e.target.value)}
-                className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-sm text-slate-200">
-                <option value="">Todos los periodos</option>
-                {periodosDisponibles.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <span className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-300">
+                {periodoPanel || "Periodo actual"}
+              </span>
             </div>
             <div className="divide-y divide-slate-800/80">
               {programaciones.map(p => (
@@ -2580,7 +2604,12 @@ export default function TutoriaAdmin() {
                   }`}>{p.estado}</span>
                 </div>
               ))}
-              {programaciones.length === 0 && <p className="p-8 text-center text-sm text-slate-500">No hay sesiones programadas.</p>}
+              {programaciones.length === 0 && (
+                <div className="p-8 text-center">
+                  <p className="text-sm font-medium text-slate-300">Aún no hay sesiones programadas para {periodoPanel || "el periodo actual"}.</p>
+                  <p className="mt-1 text-xs text-slate-500">Selecciona un grupo, una fecha y el objetivo para crear la primera sesión.</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
