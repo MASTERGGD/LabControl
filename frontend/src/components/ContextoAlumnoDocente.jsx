@@ -62,9 +62,9 @@ export default function ContextoAlumnoDocente({
         <button
           type="button"
           onClick={() => { setError(''); setAbierto(true); }}
-          className="rounded-lg border border-amber-500/25 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/15"
+          className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200"
         >
-          + Reportar
+          + Nota
         </button>
       </div>
 
@@ -78,15 +78,15 @@ export default function ContextoAlumnoDocente({
           >
             <header className="theme-divider flex shrink-0 items-start justify-between border-b px-5 py-4" style={{ background: 'var(--surface-panel)' }}>
               <div>
-                <h2 className="theme-title font-semibold">Registrar seguimiento</h2>
-                <p className="theme-muted mt-1 text-xs">{nombre} · Registra hechos y acciones concretas.</p>
+                <h2 className="theme-title font-semibold">Nota del alumno</h2>
+                <p className="theme-muted mt-1 text-xs">{nombre} · Deja constancia de hechos y acciones concretas.</p>
               </div>
               <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setAbierto(false)} className="theme-muted -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-2xl hover:bg-black/5">×</button>
             </header>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 overscroll-contain">
               <label className="block text-sm text-slate-300">Tipo de registro
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
-                  <option value="OBSERVACION">Observación o incidencia</option>
+                  <option value="OBSERVACION">Nota informativa</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
                 </select>
               </label>
@@ -132,7 +132,7 @@ export default function ContextoAlumnoDocente({
               <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={form.canalizar_tutor} onChange={(e) => setForm({ ...form, canalizar_tutor: e.target.checked })} />
-                  <span><b>Canalizar al tutor del grupo</b><span className="mt-1 block text-xs font-normal text-slate-400">Si el grupo no tiene tutor, se enviará al Responsable de Tutoría.</span></span>
+                  <span><b>Notificar al tutor del grupo</b><span className="mt-1 block text-xs font-normal text-slate-400">Si el grupo no tiene tutor, se enviará al Responsable de Tutoría.</span></span>
                 </label>
                 {form.canalizar_tutor && <label className="flex items-center gap-2 text-sm text-slate-300">
                   <input type="checkbox" checked={form.confidencial} onChange={(e) => setForm({ ...form, confidencial: e.target.checked })} />
@@ -144,7 +144,7 @@ export default function ContextoAlumnoDocente({
             </div>
             <footer className="theme-divider flex shrink-0 gap-3 border-t px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]" style={{ background: 'var(--surface-panel)' }}>
               <button type="button" disabled={guardando} onClick={() => setAbierto(false)} className="theme-text flex-1 rounded-xl border px-4 py-2.5 text-sm" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)' }}>Cancelar</button>
-              <button disabled={guardando || form.titulo.trim().length < 2} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y canalizar' : 'Guardar seguimiento'}</button>
+              <button disabled={guardando || form.titulo.trim().length < 2} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y notificar' : 'Guardar nota'}</button>
             </footer>
           </form>
         </div>,

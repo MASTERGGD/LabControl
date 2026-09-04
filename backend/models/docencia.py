@@ -67,6 +67,9 @@ class ClaseDocente(Base):
     incidencia_requiere_seguimiento = Column(
         Boolean, nullable=False, default=False, server_default=false(),
     )
+    incidencia_solicita_justificacion = Column(
+        Boolean, nullable=False, default=False, server_default=false(),
+    )
     tema_pendiente = Column(Text, nullable=True)
     es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
     motivo_extemporaneo = Column(Text, nullable=True)

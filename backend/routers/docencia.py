@@ -153,6 +153,7 @@ class CierreInput(BaseModel):
     incidencias: Optional[str] = Field(None, max_length=1500)
     incidencia_tipo: Optional[str] = Field(None, max_length=30)
     incidencia_requiere_seguimiento: Optional[bool] = None
+    incidencia_solicita_justificacion: Optional[bool] = None
     tema_pendiente: Optional[str] = Field(None, max_length=1000)
 
     @model_validator(mode="after")
@@ -161,12 +162,13 @@ class CierreInput(BaseModel):
             self.incidencia_tipo = (self.incidencia_tipo or "OTRA").upper()
             if self.incidencia_tipo not in {
                 "ACADEMICA", "DISCIPLINA", "INFRAESTRUCTURA",
-                "SUSPENSION_INSTITUCIONAL", "OTRA",
+                "SUSPENSION_INSTITUCIONAL", "CONTINGENCIA", "SEGURIDAD", "OTRA",
             }:
                 raise ValueError("Tipo de incidencia no válido")
         elif self.incidencias is not None:
             self.incidencia_tipo = None
             self.incidencia_requiere_seguimiento = False
+            self.incidencia_solicita_justificacion = False
         return self
 
 
@@ -275,12 +277,15 @@ class IncidenciaClaseInput(BaseModel):
     tipo: str
     descripcion: str = Field(..., min_length=5, max_length=2000)
     requiere_seguimiento: bool = False
+    solicita_justificacion: bool = False
 
     @model_validator(mode="after")
     def validar(self):
         self.tipo = self.tipo.upper()
-        if self.tipo not in {"ACADEMICA", "DISCIPLINA", "INFRAESTRUCTURA", "SUSPENSION_INSTITUCIONAL", "SEGURIDAD", "OTRA"}:
+        if self.tipo not in {"ACADEMICA", "DISCIPLINA", "INFRAESTRUCTURA", "SUSPENSION_INSTITUCIONAL", "CONTINGENCIA", "SEGURIDAD", "OTRA"}:
             raise ValueError("Tipo de incidencia no válido")
+        if self.solicita_justificacion and self.tipo != "SUSPENSION_INSTITUCIONAL":
+            raise ValueError("La justificación colectiva solo aplica a actividades o suspensiones institucionales")
         self.descripcion = self.descripcion.strip()
         return self
 
@@ -695,6 +700,7 @@ def _serializar_clase(clase: ClaseDocente):
             "incidencias": clase.incidencias,
             "incidencia_tipo": clase.incidencia_tipo,
             "incidencia_requiere_seguimiento": clase.incidencia_requiere_seguimiento,
+            "incidencia_solicita_justificacion": clase.incidencia_solicita_justificacion,
             "tema_pendiente": clase.tema_pendiente,
         },
         "carga": {
@@ -1721,6 +1727,7 @@ def cerrar_clase(
         "tema_impartido", "avance_planeacion", "actividades_realizadas",
         "tarea_asignada", "incidencias", "incidencia_tipo",
         "incidencia_requiere_seguimiento", "tema_pendiente",
+        "incidencia_solicita_justificacion",
     ):
         valor = getattr(data, campo)
         if valor is not None:
@@ -1751,7 +1758,7 @@ def cerrar_clase(
             "ACADEMICA": "ACADEMICO", "DISCIPLINA": "CONDUCTA",
         }.get(clase.incidencia_tipo, "OTRO")
         reporte.prioridad = "MEDIA"
-        reporte.titulo = f"Incidencia de clase · {clase.carga.actividad_nombre}"
+        reporte.titulo = f"Nota de clase · {clase.carga.actividad_nombre}"
         grupo_nombre = (
             f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
             if clase.carga.grupo_academico else "grupo sin identificar"
@@ -1774,8 +1781,8 @@ def cerrar_clase(
             for destinatario in destinatarios:
                 crear_notificacion(
                     db, destinatario.id, "tutoria_incidencia_clase",
-                    "Incidencia de clase que requiere seguimiento",
-                    f"{current_user.nombre} canalizó una incidencia de {clase.carga.actividad_nombre}, grupo {grupo_nombre}.",
+                    "Nota de clase que requiere seguimiento",
+                    f"{current_user.nombre} solicitó seguimiento para una nota de {clase.carga.actividad_nombre}, grupo {grupo_nombre}.",
                     "/docente/mis-tutorados?tab=reportes" if tutor else "/admin/tutoria?tab=reportes-tutor",
                     enviar_email=False,
                 )
@@ -1785,9 +1792,9 @@ def cerrar_clase(
             "tutor_id": tutor.id if tutor else None,
             "tutor_nombre": tutor.nombre if tutor else None,
             "mensaje": (
-                f"Incidencia canalizada a {tutor.nombre}."
+                f"Nota enviada a {tutor.nombre}."
                 if tutor else
-                "Incidencia registrada; el grupo no tiene tutor asignado y Tutoría fue notificada."
+                "Nota registrada; el grupo no tiene tutor asignado y Tutoría fue notificada."
             ),
         }
     db.commit()
@@ -1838,10 +1845,43 @@ def registrar_incidencia_clase(
         raise HTTPException(404, "Clase no encontrada")
     _validar_carga_actual(db, clase.carga)
     if clase.estado not in {"ABIERTA", "CORRECCION"}:
-        raise HTTPException(409, "La asistencia debe estar abierta para registrar una incidencia")
+        raise HTTPException(409, "La asistencia debe estar abierta para registrar una nota")
+    solicitar_antes = bool(clase.incidencia_solicita_justificacion)
+    seguridad_notificada = clase.incidencia_tipo == "SEGURIDAD"
     clase.incidencia_tipo = data.tipo
     clase.incidencias = data.descripcion
     clase.incidencia_requiere_seguimiento = data.requiere_seguimiento
+    clase.incidencia_solicita_justificacion = data.solicita_justificacion
+    grupo_nombre = (
+        f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
+        if clase.carga.grupo_academico else "grupo sin identificar"
+    )
+    if data.tipo == "SEGURIDAD" and not seguridad_notificada:
+        destinatarios = db.query(Usuario).filter(
+            Usuario.rol.in_([RolUsuario.TUTORIA_ADMIN, RolUsuario.SUPER_ADMIN]),
+            Usuario.activo == True,
+        ).all()
+        for destinatario in destinatarios:
+            crear_notificacion(
+                db, destinatario.id, "seguridad_nota_clase", "Nota urgente de seguridad",
+                f"{current_user.nombre} registró una situación de seguridad en {clase.carga.actividad_nombre}, grupo {grupo_nombre}: {data.descripcion[:220]}",
+                "/admin/tutoria", enviar_email=False,
+            )
+    if data.solicita_justificacion and not solicitar_antes:
+        responsables = db.query(Usuario).filter(
+            Usuario.rol == RolUsuario.SUPER_ADMIN, Usuario.activo == True,
+        ).all()
+        if current_user.departamento and current_user.departamento.responsable_id:
+            responsable = db.get(Usuario, current_user.departamento.responsable_id)
+            if responsable and responsable.activo and responsable.id != current_user.id:
+                responsables.append(responsable)
+        for destinatario in {usuario.id: usuario for usuario in responsables}.values():
+            crear_notificacion(
+                db, destinatario.id, "justificacion_colectiva_solicitada",
+                "Solicitud de justificación colectiva",
+                f"{current_user.nombre} solicita revisar la justificación de las faltas de {clase.carga.actividad_nombre}, grupo {grupo_nombre}, del {clase.fecha.isoformat()}.",
+                f"/docente/seguimiento?carga={clase.carga_docente_id}", enviar_email=False,
+            )
     db.commit()
     return _serializar_clase(clase)
 

@@ -129,6 +129,28 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert clase["resumen"]["total"] == 2
     asistencia_id = clase["alumnos"][0]["asistencia_id"]
 
+    nota = client.patch(
+        f"/docencia/clases/{clase['id']}/incidencia",
+        json={
+            "tipo": "SUSPENSION_INSTITUCIONAL",
+            "descripcion": "El grupo asistió a una actividad institucional.",
+            "requiere_seguimiento": False,
+            "solicita_justificacion": True,
+        },
+        headers=headers,
+    )
+    assert nota.status_code == 200, nota.text
+    assert nota.json()["bitacora"]["incidencia_solicita_justificacion"] is True
+    invalida = client.patch(
+        f"/docencia/clases/{clase['id']}/incidencia",
+        json={
+            "tipo": "ACADEMICA", "descripcion": "Nota académica del grupo.",
+            "solicita_justificacion": True,
+        },
+        headers=headers,
+    )
+    assert invalida.status_code == 422
+
     falta = client.patch(
         f"/docencia/clases/{clase['id']}/asistencia/{asistencia_id}",
         json={"estado": "FALTA", "observacion": "No asistió"},
