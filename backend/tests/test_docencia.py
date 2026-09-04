@@ -129,6 +129,12 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert clase["resumen"]["total"] == 2
     asistencia_id = clase["alumnos"][0]["asistencia_id"]
 
+    dashboard_abierto = client.get("/docencia/dashboard", headers=headers)
+    assert dashboard_abierto.status_code == 200, dashboard_abierto.text
+    pendiente = dashboard_abierto.json()["asistencias_pendientes"][0]
+    assert pendiente["clase_id"] == clase["id"]
+    assert pendiente["accion"] == "Continuar asistencia"
+
     nota = client.patch(
         f"/docencia/clases/{clase['id']}/incidencia",
         json={

@@ -55,3 +55,16 @@ test('al entrar durante la clase aparece el acceso aunque no haya próxima clase
   await act(async () => botones[1].click());
   expect(abrirClaseDocente).toHaveBeenCalledWith(api, mockNavigate, bloque);
 });
+
+test('el indicador de asistencia abre directamente la clase pendiente', async () => {
+  api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/dashboard' ? {
+    fecha: '2026-09-03',
+    resumen: { grupos_activos: 1, asistencias_pendientes: 1, acuerdos_pendientes: 0 },
+    asistencias_pendientes: [{ clase_id: 91, carga_id: 12, fecha: '2026-09-02', materia: 'Inteligencia artificial', accion: 'Continuar asistencia' }],
+    jornada: [], grupos: [], alumnos_prioritarios: [], proxima_clase: null,
+  } : [] }));
+  await act(async () => root.render(<DashboardDocente />));
+  const boton = [...host.querySelectorAll('button')].find(item => item.textContent.includes('Asistencias'));
+  await act(async () => boton.click());
+  expect(mockNavigate).toHaveBeenCalledWith('/docente/clase/91');
+});

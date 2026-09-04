@@ -2854,10 +2854,46 @@ def dashboard_docente(
         item["asistencia"],
         item["nombre"],
     ))
-    pendientes_asistencia = sum(
-        1 for item in jornada
-        if item["tipo_actividad"] == "CLASE" and item["estado"] in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}
-    )
+    # La tarjeta del panel debe poder abrir la captura concreta. Incluye clases
+    # que quedaron abiertas durante la ventana de recaptura, aunque no sean de hoy.
+    pendientes_asistencia_detalle = []
+    for clase in sorted(clases, key=lambda item: (item.fecha, item.id)):
+        if clase.estado not in {"ABIERTA", "CORRECCION"}:
+            continue
+        if clase.fecha < hoy - PLAZO_CAPTURA_EXTEMPORANEA:
+            continue
+        carga = next((item for item in cargas_clase if item.id == clase.carga_docente_id), None)
+        if not carga:
+            continue
+        pendientes_asistencia_detalle.append({
+            "clase_id": clase.id,
+            "carga_id": carga.id,
+            "fecha": clase.fecha.isoformat(),
+            "materia": carga.actividad_nombre,
+            "grupo": (
+                f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
+                if carga.grupo_academico else "Sin grupo"
+            ),
+            "estado": "CORRECCION" if clase.estado == "CORRECCION" else "ABIERTA",
+            "accion": "Continuar corrección" if clase.estado == "CORRECCION" else "Continuar asistencia",
+        })
+    clases_pendientes_ids = {item["clase_id"] for item in pendientes_asistencia_detalle}
+    for item in jornada:
+        if item["tipo_actividad"] != "CLASE" or item["estado"] not in {"EN_CURSO", "CORRECCION", "SIN_REGISTRO"}:
+            continue
+        if item["clase_id"] in clases_pendientes_ids:
+            continue
+        pendientes_asistencia_detalle.append({
+            "clase_id": item["clase_id"],
+            "carga_id": item["carga_id"],
+            "fecha": hoy.isoformat(),
+            "materia": item["materia"],
+            "grupo": item["grupo"],
+            "estado": item["estado"],
+            "accion": "Registrar asistencia" if item["estado"] == "SIN_REGISTRO" else "Continuar asistencia",
+        })
+    pendientes_asistencia_detalle.sort(key=lambda item: (item["fecha"], item["clase_id"] or 0))
+    pendientes_asistencia = len(pendientes_asistencia_detalle)
     actividades_suspendidas_hoy = sum(1 for item in jornada if item["estado"] == "NO_LECTIVA")
     clases_exigibles_hoy = sum(1 for item in jornada if item["tipo_actividad"] == "CLASE" and item["estado"] != "NO_LECTIVA")
 
@@ -2936,6 +2972,7 @@ def dashboard_docente(
             "acuerdos_vencidos": acuerdos_vencidos,
         },
         "jornada": jornada,
+        "asistencias_pendientes": pendientes_asistencia_detalle,
         "calendario_hoy": calendario_hoy,
         "proxima_clase": proxima_clase,
         "grupos": grupos,

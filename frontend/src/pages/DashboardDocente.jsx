@@ -306,6 +306,7 @@ export default function DashboardDocente() {
   } : null;
   const accionDestacada = claseDestacada && accionClaseDashboard(claseDestacada, claseDestacada.fecha, ahora);
   const gruposConMuestra = (operacion?.grupos || []).filter(grupo => grupo.total_clases >= 5);
+  const asistenciaPendiente = operacion?.asistencias_pendientes?.[0];
 
   const abrirDesdeInicio = async (item, fecha) => {
     if (aperturaEnCurso.current) return;
@@ -406,9 +407,9 @@ export default function DashboardDocente() {
             icon="asistencia"
             label="Asistencias"
             value={operacion?.resumen.asistencias_pendientes ?? '…'}
-            sub={operacion?.resumen.asistencias_pendientes > 0 ? 'Requieren registro o cierre' : 'Sin asistencias pendientes'}
+            sub={asistenciaPendiente ? `${asistenciaPendiente.accion} · ${asistenciaPendiente.materia} · ${asistenciaPendiente.fecha}` : 'Requieren registro o cierre'}
             urgent={operacion?.resumen.asistencias_pendientes > 0}
-            onClick={() => navigate('/docente/horario')}
+            onClick={() => navigate(asistenciaPendiente?.clase_id ? `/docente/clase/${asistenciaPendiente.clase_id}` : '/docente/horario')}
           />}
           {operacion?.resumen.acuerdos_pendientes > 0 && <StatCard
             icon="acuerdos"
