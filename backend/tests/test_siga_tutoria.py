@@ -198,6 +198,47 @@ class TestSesionesTutoria:
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
+    def test_sesion_grupal_cumple_programacion_y_crea_canalizacion(self, client, db):
+        tok, grupo_id, alum = self._setup(client, db)
+        programada = client.post("/tutoria/programaciones", json={
+            "grupo_tutorado_id": grupo_id,
+            "fecha_programada": "2026-09-03",
+            "tipo_sesion": "GRUPAL",
+            "objetivo": "Encuadre del periodo",
+        }, headers=auth_headers(tok))
+        assert programada.status_code == 201, programada.text
+
+        creada = client.post("/tutoria/sesiones", json={
+            "grupo_tutorado_id": grupo_id,
+            "programacion_id": programada.json()["id"],
+            "fecha": "2026-09-03",
+            "hora_inicio": "15:00",
+            "duracion_minutos": 60,
+            "lugar": "Salón 14",
+            "tipo_sesion": "GRUPAL",
+            "categoria": "ACADEMICO",
+            "tema": "Encuadre del cuatrimestre",
+            "acciones_preventivas": "Revisar avances en la siguiente sesión",
+            "registros": [{
+                "alumno_id": alum.id,
+                "asistio": True,
+                "requiere_canalizacion": True,
+                "canalizacion": {
+                    "area": "ASESORIA_ACADEMICA",
+                    "motivo": "Requiere apoyo en matemáticas",
+                },
+            }],
+        }, headers=auth_headers(tok))
+        assert creada.status_code == 201, creada.text
+        assert creada.json()["programacion_id"] == programada.json()["id"]
+
+        programaciones = client.get(
+            f"/tutoria/programaciones?grupo_id={grupo_id}", headers=auth_headers(tok)
+        ).json()
+        assert programaciones[0]["estado"] == "CUMPLIDA"
+        canalizaciones = client.get("/tutoria/canalizaciones", headers=auth_headers(tok)).json()
+        assert any(item["motivo"] == "Requiere apoyo en matemáticas" for item in canalizaciones)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Alertas y riesgo

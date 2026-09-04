@@ -4,7 +4,7 @@ Procedimiento P-DC-02 v08 · ISO 9001:2015 cláusula 8.5.1
 """
 from sqlalchemy import (
     Column, Integer, String, Boolean, Text,
-    DateTime, Date, ForeignKey, Float
+    DateTime, Date, Time, ForeignKey, Float
 )
 from database import Base
 import datetime
@@ -142,10 +142,19 @@ class SesionTutoria(Base):
     grupo_tutorado_id = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=False, index=True)
     tutor_id          = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     fecha             = Column(Date, nullable=False)
+    hora_inicio       = Column(Time, nullable=True)
+    duracion_minutos  = Column(Integer, nullable=True)
+    lugar             = Column(String(160), nullable=True)
     tipo_sesion       = Column(String(20), nullable=False, default="GRUPAL")
     # GRUPAL | INDIVIDUAL
+    categoria         = Column(String(20), nullable=True)
+    categoria_otro    = Column(String(160), nullable=True)
+    tema              = Column(Text, nullable=True)
+    acciones_preventivas = Column(Text, nullable=True)
     observaciones_generales = Column(Text)
+    creado_por        = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     creado_en         = Column(DateTime, default=_now)
+    actualizado_en    = Column(DateTime, default=_now, onupdate=_now)
     documento_codigo  = Column(String(20), default="F-DC-07")
     documento_version = Column(String(10), default="08")
     documento_efectivo = Column(Date, nullable=True)

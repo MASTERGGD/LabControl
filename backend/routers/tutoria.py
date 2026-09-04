@@ -84,6 +84,14 @@ class SesionTutoriaCreate(BaseModel):
     grupo_tutorado_id:       int
     fecha:                   str  = Field(..., description="YYYY-MM-DD")
     tipo_sesion:             str  = Field(default="GRUPAL")  # GRUPAL | INDIVIDUAL
+    programacion_id:         Optional[int] = None
+    hora_inicio:             Optional[str] = None
+    duracion_minutos:        Optional[int] = Field(default=None, ge=1, le=480)
+    lugar:                   Optional[str] = Field(default=None, max_length=160)
+    categoria:               Optional[str] = None
+    categoria_otro:          Optional[str] = Field(default=None, max_length=160)
+    tema:                    Optional[str] = None
+    acciones_preventivas:    Optional[str] = None
     observaciones_generales: Optional[str] = None
     registros: List[dict]   = Field(default=[])
     # [{alumno_id, asistio, tipo_academico, tipo_personal, tipo_otro,
@@ -2083,13 +2091,63 @@ def registrar_sesion(
     except ValueError:
         raise HTTPException(422, "Formato de fecha inválido. Use YYYY-MM-DD")
 
+    tipo_sesion = (data.tipo_sesion or "GRUPAL").upper()
+    if tipo_sesion not in {"GRUPAL", "INDIVIDUAL"}:
+        raise HTTPException(422, "Tipo de sesión inválido")
+    primer_registro = data.registros[0] if data.registros else {}
+    categoria_legacy = (
+        "ACADEMICO" if primer_registro.get("tipo_academico") else
+        "PERSONAL" if primer_registro.get("tipo_personal") else
+        "OTRO" if primer_registro.get("tipo_otro") else None
+    )
+    categoria = (data.categoria or categoria_legacy or "").upper() or None
+    tema_sesion = (data.tema or primer_registro.get("tema") or "").strip()
+    acciones_sesion = (data.acciones_preventivas or primer_registro.get("acciones_preventivas") or "").strip()
+    if categoria not in {None, "ACADEMICO", "PERSONAL", "OTRO"}:
+        raise HTTPException(422, "Categoría de sesión inválida")
+    if categoria == "OTRO" and not (data.categoria_otro or "").strip():
+        raise HTTPException(422, "Especifica la categoría Otro")
+    if data.registros and not tema_sesion:
+        raise HTTPException(422, "El tema tratado es obligatorio")
+    if tipo_sesion == "INDIVIDUAL" and len(data.registros) != 1:
+        raise HTTPException(422, "La sesión individual debe registrar exactamente un alumno")
+
+    hora_inicio = None
+    if data.hora_inicio:
+        try:
+            hora_inicio = datetime.time.fromisoformat(data.hora_inicio)
+        except ValueError:
+            raise HTTPException(422, "Formato de hora inválido. Use HH:MM")
+
+    programacion = None
+    if data.programacion_id:
+        programacion = db.query(ProgramacionSesionTutoria).filter(
+            ProgramacionSesionTutoria.id == data.programacion_id,
+            ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
+            ProgramacionSesionTutoria.tutor_id == g.tutor_id,
+            ProgramacionSesionTutoria.estado == "PROGRAMADA",
+        ).first()
+        if not programacion:
+            raise HTTPException(409, "La sesión programada ya no está disponible")
+        if tipo_sesion != "GRUPAL":
+            raise HTTPException(422, "Solo una sesión grupal puede cumplir la programación grupal")
+
     sesion = SesionTutoria(
         grupo_tutorado_id=data.grupo_tutorado_id,
         tutor_id=current_user.id if current_user.rol == RolUsuario.DOCENTE else g.tutor_id,
         fecha=fecha,
-        tipo_sesion=data.tipo_sesion,
+        hora_inicio=hora_inicio,
+        duracion_minutos=data.duracion_minutos,
+        lugar=(data.lugar or "").strip() or None,
+        tipo_sesion=tipo_sesion,
+        categoria=categoria,
+        categoria_otro=(data.categoria_otro or "").strip() or None,
+        tema=tema_sesion or None,
+        acciones_preventivas=acciones_sesion or None,
         observaciones_generales=data.observaciones_generales,
+        creado_por=current_user.id,
         creado_en=_now(),
+        actualizado_en=_now(),
     )
     doc = _documento_vigente(db, "F-DC-07")
     sesion.documento_codigo = doc["codigo"]
@@ -2100,24 +2158,57 @@ def registrar_sesion(
 
     # Guardar registros por alumno
     for r in data.registros:
-        db.add(RegistroSesionAlumno(
-            sesion_id=sesion.id,
-            alumno_id=r.get("alumno_id"),
-            asistio=r.get("asistio", True),
-            tipo_academico=r.get("tipo_academico", False),
-            tipo_personal=r.get("tipo_personal", False),
-            tipo_otro=r.get("tipo_otro", False),
-            requiere_canalizacion=r.get("requiere_canalizacion", False),
-            tema=r.get("tema"),
-            acciones_preventivas=r.get("acciones_preventivas"),
-            comentarios=r.get("comentarios"),
-        ))
+        alumno_id = r.get("alumno_id")
+        pertenece = db.query(AsignacionTutoria).filter(
+            AsignacionTutoria.grupo_tutorado_id == g.id,
+            AsignacionTutoria.alumno_id == alumno_id,
+            AsignacionTutoria.activo == True,
+        ).first()
+        if not pertenece:
+            raise HTTPException(422, "Uno de los alumnos no pertenece al grupo tutorado")
+        requiere_canalizacion = bool(r.get("requiere_canalizacion", False))
+        canalizacion_data = r.get("canalizacion") or {}
+        if requiere_canalizacion and (not str(canalizacion_data.get("area") or "").strip() or not str(canalizacion_data.get("motivo") or "").strip()):
+            raise HTTPException(422, "Toda canalización requiere área y motivo")
 
-    prog = db.query(ProgramacionSesionTutoria).filter(
-        ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
-        ProgramacionSesionTutoria.fecha_programada == fecha,
-        ProgramacionSesionTutoria.estado == "PROGRAMADA",
-    ).first()
+        registro = RegistroSesionAlumno(
+            sesion_id=sesion.id,
+            alumno_id=alumno_id,
+            asistio=r.get("asistio", True),
+            tipo_academico=categoria == "ACADEMICO",
+            tipo_personal=categoria == "PERSONAL",
+            tipo_otro=categoria == "OTRO",
+            requiere_canalizacion=requiere_canalizacion,
+            tema=tema_sesion or None,
+            acciones_preventivas=acciones_sesion or None,
+            comentarios=r.get("comentarios"),
+        )
+        db.add(registro)
+
+        if requiere_canalizacion:
+            area = str(canalizacion_data.get("area") or "").upper()
+            db.add(Canalizacion(
+                tutor_id=sesion.tutor_id,
+                alumno_id=alumno_id,
+                grupo_tutorado_id=g.id,
+                sesion_id=sesion.id,
+                tipo_psicologico=area == "PSICOLOGIA",
+                tipo_pedagogico=area in {"ASESORIA_ACADEMICA", "PEDAGOGIA"},
+                tipo_personal=area == "PERSONAL",
+                tipo_medico=area == "MEDICO",
+                modalidad="INDIVIDUAL",
+                motivo=str(canalizacion_data.get("motivo")).strip(),
+                estado="PENDIENTE",
+            ))
+
+    prog = programacion
+    if prog is None and tipo_sesion == "GRUPAL":
+        prog = db.query(ProgramacionSesionTutoria).filter(
+            ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
+            ProgramacionSesionTutoria.fecha_programada == fecha,
+            ProgramacionSesionTutoria.tipo_sesion == "GRUPAL",
+            ProgramacionSesionTutoria.estado == "PROGRAMADA",
+        ).first()
     if prog:
         prog.estado = "CUMPLIDA"
         prog.sesion_id = sesion.id
@@ -2136,7 +2227,15 @@ def registrar_sesion(
              "alumnos_registrados": len(data.registros),
          })
 
-    return {"id": sesion.id, "fecha": sesion.fecha.isoformat(), "tipo_sesion": sesion.tipo_sesion, "registros": len(data.registros)}
+    return {
+        "id": sesion.id,
+        "fecha": sesion.fecha.isoformat(),
+        "tipo_sesion": sesion.tipo_sesion,
+        "programacion_id": prog.id if prog else None,
+        "registros": len(data.registros),
+        "creado_por": current_user.id,
+        "creado_en": sesion.creado_en.isoformat() if sesion.creado_en else None,
+    }
 
 
 @router.get("/sesiones", summary="Sesiones de tutoría del tutor actual o todas (admin)")
@@ -2159,8 +2258,17 @@ def listar_sesiones(
             "id":                      s.id,
             "grupo_tutorado_id":       s.grupo_tutorado_id,
             "fecha":                   s.fecha.isoformat(),
+            "hora_inicio":             s.hora_inicio.isoformat(timespec="minutes") if s.hora_inicio else None,
+            "duracion_minutos":        s.duracion_minutos,
+            "lugar":                   s.lugar,
             "tipo_sesion":             s.tipo_sesion,
+            "categoria":               s.categoria,
+            "categoria_otro":          s.categoria_otro,
+            "tema":                    s.tema,
+            "acciones_preventivas":    s.acciones_preventivas,
             "observaciones_generales": s.observaciones_generales,
+            "creado_por":              s.creado_por,
+            "creado_en":               s.creado_en.isoformat() if s.creado_en else None,
             "total_registros":         len(registros),
             "asistentes":              sum(1 for r in registros if r.asistio),
             "con_canalizacion":        sum(1 for r in registros if r.requiere_canalizacion),

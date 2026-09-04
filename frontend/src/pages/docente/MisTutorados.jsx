@@ -4,7 +4,7 @@ import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import SelectDark from "../../components/SelectDark";
-import { todayISOInMexico } from "../../utils/timezone";
+import RegistroSesionTutoria from "./RegistroSesionTutoria";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const SEMAFORO = {
@@ -66,126 +66,6 @@ function PerfilCard({ perfil }) {
       {perfil.informacion_relevante && (
         <p className="text-xs text-amber-300 mt-1">📌 {perfil.informacion_relevante}</p>
       )}
-    </div>
-  );
-}
-
-// ─── Modal Registrar Sesión (F-DC-07) ────────────────────────────────────────
-function ModalSesion({ grupo, alumnos, onClose, onGuardado }) {
-  const { toast: showToast } = useToast();
-  const [fecha, setFecha] = useState(todayISOInMexico());
-  const [tipoSesion, setTipoSesion] = useState("GRUPAL");
-  const [observaciones, setObservaciones] = useState("");
-  const [registros, setRegistros] = useState(
-    alumnos.map(a => ({
-      alumno_id: a.id, nombre: a.nombre, matricula: a.matricula,
-      asistio: true, tipo_academico: false, tipo_personal: false, tipo_otro: false,
-      requiere_canalizacion: false, tema: "", acciones_preventivas: "", comentarios: "",
-    }))
-  );
-  const [loading, setLoading] = useState(false);
-
-  const upd = (idx, field, val) =>
-    setRegistros(rs => rs.map((r, i) => i === idx ? { ...r, [field]: val } : r));
-
-  const submit = async () => {
-    if (!fecha) { showToast("Indica la fecha de la sesión", "error"); return; }
-    setLoading(true);
-    try {
-      await api.post("/tutoria/sesiones", {
-        grupo_tutorado_id: grupo.id,
-        fecha, tipo_sesion: tipoSesion,
-        observaciones_generales: observaciones,
-        registros: registros.map(({ nombre, matricula, ...r }) => r),
-      });
-      showToast("Sesión F-DC-07 registrada correctamente", "success");
-      onGuardado();
-    } catch (e) {
-      showToast(e.response?.data?.detail || "Error al guardar sesión", "error");
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl my-4 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-bold text-white">📋 Registro de Sesión (F-DC-07)</h3>
-            <p className="text-xs text-slate-400">{grupo.carrera} · Grupo {grupo.grupo}</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-xl">✕</button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-          <div>
-            <label className="text-xs text-slate-400 mb-1 block">Fecha *</label>
-            <input type="date" value={fecha} onChange={e => setFecha(e.target.value)}
-              className="input-dark w-full text-sm" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 mb-1 block">Tipo de sesión</label>
-            <select value={tipoSesion} onChange={e => setTipoSesion(e.target.value)}
-              className="input-dark w-full text-sm">
-              <option value="GRUPAL">Grupal</option>
-              <option value="INDIVIDUAL">Individual</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-slate-400 mb-1 block">Observaciones generales</label>
-            <input value={observaciones} onChange={e => setObservaciones(e.target.value)}
-              className="input-dark w-full text-sm" placeholder="Opcional" />
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-400 font-medium mb-2 uppercase tracking-wide">Registro por alumno</p>
-        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-          {registros.map((r, idx) => (
-            <div key={r.alumno_id} className="bg-slate-800/60 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-white">
-                {toTitleCase(r.nombre)}
-                <span className="ml-1.5 text-xs" style={{ color: '#9CA3AF' }}>({r.matricula})</span>
-              </p>
-                <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
-                  <input type="checkbox" checked={r.asistio} onChange={e => upd(idx, "asistio", e.target.checked)}
-                    className="accent-blue-500" />
-                  Asistió
-                </label>
-              </div>
-              {r.asistio && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-3 text-xs">
-                    {[["tipo_academico","Académico"],["tipo_personal","Personal"],["tipo_otro","Otro"]].map(([k, l]) => (
-                      <label key={k} className="flex items-center gap-1 text-slate-300 cursor-pointer">
-                        <input type="checkbox" checked={r[k]} onChange={e => upd(idx, k, e.target.checked)} className="accent-blue-500" />
-                        {l}
-                      </label>
-                    ))}
-                    <label className={`flex items-center gap-1 cursor-pointer transition-colors ${r.requiere_canalizacion ? 'text-amber-300' : 'text-slate-400'}`}>
-                      <input type="checkbox" checked={r.requiere_canalizacion}
-                        onChange={e => upd(idx, "requiere_canalizacion", e.target.checked)} className="accent-amber-500" />
-                      Requiere canalización
-                    </label>
-                  </div>
-                  <input value={r.tema} onChange={e => upd(idx, "tema", e.target.value)}
-                    className="w-full text-xs rounded-lg px-3 py-2 bg-slate-900/60 border border-slate-600 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60"
-                    placeholder="Tema tratado" />
-                  <input value={r.acciones_preventivas} onChange={e => upd(idx, "acciones_preventivas", e.target.value)}
-                    className="w-full text-xs rounded-lg px-3 py-2 bg-slate-900/60 border border-slate-600 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500/60"
-                    placeholder="Acciones preventivas" />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="btn-ghost px-4 py-2 text-sm">Cancelar</button>
-          <button onClick={submit} disabled={loading} className="btn-blue px-5 py-2 text-sm">
-            {loading ? "Guardando…" : "Guardar sesión"}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -756,12 +636,18 @@ export default function MisTutorados() {
   useEffect(() => {
     if (!grupoSel) return;
     api.get(`/tutoria/grupos/${grupoSel.id}/alumnos`)
-      .then(({ data }) => { setAlumnos(data); if (searchParams.get("accion") === "sesion") setModal("sesion"); })
+      .then(({ data }) => {
+        setAlumnos(data);
+        if (searchParams.get("accion") === "sesion" || registrarGrupoId === grupoSel.id) {
+          setModal("sesion");
+          setRegistrarGrupoId(null);
+        }
+      })
       .catch(() => showToast("Error al cargar alumnos", "error"));
     api.get("/tutoria/canalizaciones")
       .then(({ data }) => setCanalizaciones(data))
       .catch(() => {});
-  }, [grupoSel]);
+  }, [grupoSel, registrarGrupoId]);
 
   const urgentes = pendientes?.resumen?.urgente || 0;
   const canPend  = canalizaciones.filter(c => c.estado === "PENDIENTE").length;
@@ -791,7 +677,11 @@ export default function MisTutorados() {
   const onRegistrarSesion = (grupoId) => {
     if (grupoId && grupoSel?.id !== grupoId) {
       const g = grupos.find(x => x.id === grupoId);
-      if (g) setGrupoSel(g);
+      if (g) {
+        setRegistrarGrupoId(grupoId);
+        setGrupoSel(g);
+        return;
+      }
     }
     setModal("sesion");
   };
@@ -833,6 +723,19 @@ export default function MisTutorados() {
     }
   };
 
+  if (modal === "sesion" && grupoSel) {
+    return (
+      <AdminLayout>
+        <RegistroSesionTutoria
+          grupo={grupoSel}
+          alumnos={alumnos}
+          onClose={() => setModal(null)}
+          onGuardado={recargarTodo}
+        />
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout>
       <div className="text-white">
@@ -845,8 +748,8 @@ export default function MisTutorados() {
           {grupoSel && (
             <div className="flex gap-2 flex-wrap">
               <button onClick={() => setModal("sesion")}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-medium">
-                📋 Registrar Sesión
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">
+                Registrar sesión
               </button>
               <button onClick={() => setModal("canalizar")}
                 className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-sm font-medium">
@@ -1072,11 +975,6 @@ export default function MisTutorados() {
         )}
 
         {/* Modales */}
-        {modal === "sesion" && grupoSel && (
-          <ModalSesion grupo={grupoSel} alumnos={alumnos}
-            onClose={() => setModal(null)}
-            onGuardado={recargarTodo} />
-        )}
         {modal === "canalizar" && grupoSel && (
           <ModalCanalizar alumnos={alumnos} grupoId={grupoSel.id}
             onClose={() => setModal(null)}
