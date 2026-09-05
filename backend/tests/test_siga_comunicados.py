@@ -173,6 +173,19 @@ class TestLecturaConfirmacion:
                         json={}, headers=auth_headers(tok_doc))
         assert r.status_code == 200
 
+    def test_leido_sigue_pendiente_hasta_confirmar(self, client, db):
+        com_id, tok_doc, _ = self._setup_publicado(client, db)
+        client.post(f"/comunicados/{com_id}/leer", json={}, headers=auth_headers(tok_doc))
+
+        pendientes = client.get("/comunicados/mis-comunicados?solo_pendientes=true", headers=auth_headers(tok_doc))
+        conteo = client.get("/comunicados/pendientes-count", headers=auth_headers(tok_doc))
+        assert any(item["id"] == com_id for item in pendientes.json())
+        assert conteo.json()["pendientes"] == 1
+
+        client.post(f"/comunicados/{com_id}/confirmar", json={}, headers=auth_headers(tok_doc))
+        pendientes = client.get("/comunicados/mis-comunicados?solo_pendientes=true", headers=auth_headers(tok_doc))
+        assert all(item["id"] != com_id for item in pendientes.json())
+
     def test_responder_comunicado(self, client, db):
         _admin(db)
         tok = get_token(client, "admin@test.mx", "Test1234!")

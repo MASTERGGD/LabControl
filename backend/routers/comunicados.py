@@ -761,7 +761,7 @@ def get_pendientes_count(
         if not _comunicado_aplica_a(c, usuario):
             continue
         lec = _get_lectura(db, c.id, usuario.id)
-        if lec is None or lec.leido_en is None:
+        if lec is None or lec.leido_en is None or (c.requiere_confirmacion and lec.confirmado_en is None):
             count += 1
     return {"pendientes": count}
 
@@ -790,7 +790,7 @@ def get_mis_comunicados(
         if not _comunicado_aplica_a(c, usuario):
             continue
         lec = _get_lectura(db, c.id, usuario.id)
-        if solo_pendientes and lec and lec.leido_en:
+        if solo_pendientes and lec and lec.leido_en and (not c.requiere_confirmacion or lec.confirmado_en):
             continue
         resultado.append(_serializar(c, lec))
     return resultado

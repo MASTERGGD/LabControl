@@ -58,6 +58,17 @@ const formatFecha = s => {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit' });
 };
+const avisoExpiracion = value => {
+  if (!value) return '';
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const vence = new Date(value); vence.setHours(0, 0, 0, 0);
+  const dias = Math.ceil((vence - hoy) / 86400000);
+  if (dias < 0) return 'Expirado';
+  if (dias === 0) return 'Expira hoy';
+  if (dias === 1) return 'Expira mañana';
+  if (dias <= 7) return `Expira en ${dias} días`;
+  return '';
+};
 
 const fueActualizado = comunicado => {
   if (!comunicado?.actualizado_en) return false;
@@ -84,19 +95,11 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
   useEffect(() => {
     let cancelado = false;
     const registrarVista = async () => {
-      if (leidoLocal && (!c.requiere_confirmacion || confirmadoLocal)) return;
+      if (leidoLocal) return;
       setActing(true);
       try {
-        if (c.requiere_confirmacion && !confirmadoLocal) {
-          await api.post(`/comunicados/${c.id}/confirmar`, {});
-          if (!cancelado) {
-            setLeidoLocal(true);
-            setConfirmadoLocal(true);
-          }
-        } else if (!leidoLocal) {
-          await api.post(`/comunicados/${c.id}/leer`, {});
-          if (!cancelado) setLeidoLocal(true);
-        }
+        await api.post(`/comunicados/${c.id}/leer`, {});
+        if (!cancelado) setLeidoLocal(true);
         if (!cancelado) onActualizado();
       } catch {
         // La vista no debe bloquear la lectura del contenido si falla el registro.
@@ -107,6 +110,20 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
     registrarVista();
     return () => { cancelado = true; };
   }, [c.id, c.requiere_confirmacion, confirmadoLocal, leidoLocal, onActualizado]);
+
+  const confirmarLectura = async () => {
+    if (!c.requiere_confirmacion || confirmadoLocal) return;
+    setActing(true);
+    try {
+      await api.post(`/comunicados/${c.id}/confirmar`, {});
+      setLeidoLocal(true);
+      setConfirmadoLocal(true);
+      showToast('Lectura confirmada', 'success');
+      onActualizado();
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'No se pudo confirmar la lectura', 'error');
+    } finally { setActing(false); }
+  };
 
   const confirmarLecturaSilenciosa = async () => {
     if (!c.requiere_confirmacion || confirmadoLocal) return;
@@ -464,12 +481,12 @@ function DrawerDetalle({ comunicado: c, onClose, onActualizado }) {
           )}
         </div>
 
-        {/* Footer acciones */}
-        <div className="hidden">
-          <p className="text-center text-xs text-slate-500 py-1">
-            {acting ? 'Registrando vista...' : c.requiere_confirmacion ? 'Vista y confirmación registradas automáticamente.' : 'Vista registrada automáticamente.'}
-          </p>
-        </div>
+        {c.requiere_confirmacion && !confirmadoLocal && <div className="border-t border-white/10 bg-slate-900 p-4">
+          <p className="mb-3 text-xs text-slate-400">Confirma después de revisar el contenido y sus archivos adjuntos.</p>
+          <button type="button" onClick={confirmarLectura} disabled={acting} className="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+            {acting ? 'Registrando…' : 'Confirmar lectura'}
+          </button>
+        </div>}
       </div>
     </div>
   );
@@ -495,10 +512,7 @@ export default function MisComunicados() {
       const abrirPendiente = urlParams.get('abrir') === 'pendiente';
       const abrirId = urlParams.get('id') ? parseInt(urlParams.get('id')) : null;
 
-      // Si viene un ID específico desde notificación, cargar todos para encontrarlo
-      const forzarTodos = Boolean(abrirId);
-      const params = (!forzarTodos && filtro === 'pendientes') ? '?solo_pendientes=true' : '';
-      const { data } = await api.get(`/comunicados/mis-comunicados${params}`);
+      const { data } = await api.get('/comunicados/mis-comunicados');
       setComunicados(data);
 
       if (abrirId) {
@@ -515,7 +529,7 @@ export default function MisComunicados() {
       }
     } catch { showToast('Error al cargar comunicados', 'error'); }
     finally { setLoading(false); }
-  }, [filtro, location.search, navigate]);
+  }, [location.search, navigate]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -529,7 +543,16 @@ export default function MisComunicados() {
     });
   };
 
+  const pendientesCount = comunicados.filter(c => !c.leido || (c.requiere_confirmacion && !c.confirmado)).length;
+  const categoriasDisponibles = Object.entries(comunicados.reduce((acc, c) => {
+    acc[c.categoria] = (acc[c.categoria] || 0) + 1;
+    return acc;
+  }, {})).sort((a, b) => (CATEGORIAS[a[0]]?.l || a[0]).localeCompare(CATEGORIAS[b[0]]?.l || b[0], 'es'));
+  const hayFiltros = Boolean(filtroCat || filtroPrio || busqueda.trim());
+  const limpiarFiltros = () => { setFiltroCat(''); setFiltroPrio(''); setBusqueda(''); };
+
   const filtrados = comunicados.filter(c => {
+    if (filtro === 'pendientes' && c.leido && (!c.requiere_confirmacion || c.confirmado)) return false;
     if (filtroCat  && c.categoria !== filtroCat)   return false;
     if (filtroPrio && c.prioridad !== filtroPrio)   return false;
     if (busqueda.trim()) {
@@ -539,6 +562,12 @@ export default function MisComunicados() {
       if (!enTitulo && !enContenido) return false;
     }
     return true;
+  }).sort((a, b) => {
+    if (Boolean(a.fijado) !== Boolean(b.fijado)) return a.fijado ? -1 : 1;
+    const urgentePendienteA = a.prioridad === 'URGENTE' && (!a.leido || (a.requiere_confirmacion && !a.confirmado));
+    const urgentePendienteB = b.prioridad === 'URGENTE' && (!b.leido || (b.requiere_confirmacion && !b.confirmado));
+    if (urgentePendienteA !== urgentePendienteB) return urgentePendienteA ? -1 : 1;
+    return new Date(b.fecha_publicacion || b.creado_en) - new Date(a.fecha_publicacion || a.creado_en);
   });
 
   // Separar urgentes del resto
@@ -557,10 +586,17 @@ export default function MisComunicados() {
 
         {/* Filtros */}
         <div className="flex flex-wrap gap-3 items-center">
+          {/* Búsqueda */}
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#9CA3AF' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/></svg>
+            <input type="text" aria-label="Buscar comunicados" placeholder="Buscar comunicados" value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark !py-1.5 !text-sm pl-7 pr-3 w-56" style={{ paddingLeft: 30, paddingRight: busqueda ? 28 : 12 }} />
+            {busqueda && <button type="button" onClick={() => setBusqueda('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-white" aria-label="Limpiar búsqueda">✕</button>}
+          </div>
+
           {/* Estado */}
           <div className="flex gap-1 glass rounded-xl p-1">
             {[
-              { k: 'pendientes', l: 'Pendientes' },
+              { k: 'pendientes', l: `Pendientes (${pendientesCount})` },
               { k: 'todos',      l: 'Todos'      },
             ].map(({ k, l }) => (
               <button key={k} onClick={() => setFiltro(k)}
@@ -575,8 +611,8 @@ export default function MisComunicados() {
             style={{ maxWidth: 200 }}
             value={filtroCat} onChange={e => setFiltroCat(e.target.value)}>
             <option value="">Todas las categorías</option>
-            {Object.entries(CATEGORIAS).map(([v, c]) =>
-              <option key={v} value={v}>{c.l}</option>
+            {categoriasDisponibles.map(([v, count]) =>
+              <option key={v} value={v}>{CATEGORIAS[v]?.l || v} ({count})</option>
             )}
           </select>
 
@@ -584,34 +620,11 @@ export default function MisComunicados() {
           <select className="input-dark !py-1.5 !text-sm"
             style={{ maxWidth: 160 }}
             value={filtroPrio} onChange={e => setFiltroPrio(e.target.value)}>
-            <option value="">Toda prioridad</option>
-            <option value="URGENTE">🔴 Urgente</option>
-            <option value="IMPORTANTE">🟡 Importante</option>
-            <option value="INFORMATIVO">⚪ Informativo</option>
+            <option value="">Todas las prioridades</option>
+            <option value="URGENTE">Urgente</option>
+            <option value="IMPORTANTE">Importante</option>
+            <option value="INFORMATIVO">Informativo</option>
           </select>
-
-          {/* Búsqueda */}
-          <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#9CA3AF' }}
-              fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M21 21l-4.35-4.35M17 11A6 6 0 105 11a6 6 0 0012 0z"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Buscar..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              className="input-dark !py-1.5 !text-sm pl-7 pr-3 w-44"
-              style={{ paddingLeft: 30, paddingRight: busqueda ? 28 : 12 }}
-            />
-            {busqueda && (
-              <button onClick={() => setBusqueda('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">
-                ✕
-              </button>
-            )}
-          </div>
         </div>
 
         {loading ? (
@@ -620,15 +633,14 @@ export default function MisComunicados() {
           </div>
         ) : filtrados.length === 0 ? (
           <div className="glass rounded-2xl p-12 2xl:p-16 text-center space-y-3">
-            <div className="text-5xl">📭</div>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-slate-500/30 text-slate-400" aria-hidden="true">—</div>
             <p className="text-white font-semibold">
-              {filtro === 'pendientes' ? 'Sin comunicados pendientes' : 'Sin comunicados'}
+              {hayFiltros ? 'Ningún comunicado coincide con los filtros' : filtro === 'pendientes' ? 'No tienes comunicados pendientes' : 'No tienes comunicados dirigidos a ti'}
             </p>
             <p className="text-slate-400 text-sm">
-              {filtro === 'pendientes'
-                ? 'Estás al día. No tienes comunicados sin leer.'
-                : 'No hay comunicados disponibles.'}
+              {hayFiltros ? 'Prueba con otros criterios o limpia los filtros.' : filtro === 'pendientes' ? 'Estás al día: no hay mensajes sin leer ni confirmaciones pendientes.' : 'Cuando una institución publique un aviso para tu cuenta, aparecerá aquí.'}
             </p>
+            {hayFiltros && <button type="button" onClick={limpiarFiltros} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-white/5">Limpiar filtros</button>}
           </div>
         ) : (
           <div className="space-y-6">
@@ -679,6 +691,7 @@ function TarjetaComunicado({ c, onClick }) {
   const prio = PRIORIDAD_CFG[c.prioridad] || PRIORIDAD_CFG.INFORMATIVO;
   const isUrgente = c.prioridad === 'URGENTE' && !c.leido;
   const actualizado = fueActualizado(c);
+  const expiraPronto = avisoExpiracion(c.fecha_expiracion);
 
   const colorTitulo  = isDay ? '#0F172A' : '#FFFFFF';
   const colorCuerpo  = isDay ? '#475569' : '#D1D5DB';
@@ -702,6 +715,8 @@ function TarjetaComunicado({ c, onClick }) {
             {!c.leido && (
               <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" title="No leído" />
             )}
+            {c.fijado && <span className="rounded-full border border-slate-400/30 bg-slate-500/10 px-2 py-0.5 text-xs text-slate-500">Fijado</span>}
+            {expiraPronto && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-600">{expiraPronto}</span>}
             {c.requiere_confirmacion && !c.confirmado && c.leido && (
               <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
                 Pendiente confirmar
@@ -723,7 +738,7 @@ function TarjetaComunicado({ c, onClick }) {
               </span>
             )}
           </div>
-          <p className="font-semibold text-sm truncate" style={{ color: colorTitulo }}>
+          <p className={`${c.leido ? 'font-medium' : 'font-bold'} text-sm truncate`} style={{ color: colorTitulo }}>
             {toTitleCase(c.titulo)}
           </p>
           <p className="text-xs mt-0.5 truncate" style={{ color: colorCuerpo }}>{c.contenido}</p>
