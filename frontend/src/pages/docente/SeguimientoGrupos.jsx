@@ -282,12 +282,20 @@ export default function SeguimientoGrupos() {
                 </tbody>
               </table>
             </div>
-            <div className="glass rounded-2xl p-5">
-              <h2 className="mb-3 font-semibold text-white">Sesiones recientes</h2>
-              <div className="grid gap-2 md:grid-cols-2">
-                {datos.clases.map((c) => <button key={c.id} onClick={() => navigate(`/docente/clase/${c.id}`)} className="flex items-center justify-between rounded-xl bg-white/5 p-3 text-left hover:bg-white/10"><span><b className="text-white">{c.fecha}</b><small className="block text-slate-400">{c.resumen.presente} presentes · {c.resumen.falta} faltas</small></span><span className="text-slate-400">Ver →</span></button>)}
-                {!datos.clases.length && <p className="text-sm text-slate-400">Aún no hay clases registradas.</p>}
-              </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    buscar: `${cargaActual?.actividad_nombre || ''} ${cargaActual?.grupo || ''}`.trim(),
+                    vista: 'MATERIA',
+                  });
+                  navigate(`/docente/historial-clases?${params.toString()}`);
+                }}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5"
+              >
+                Ver historial de esta materia →
+              </button>
             </div>
           </>
         )}

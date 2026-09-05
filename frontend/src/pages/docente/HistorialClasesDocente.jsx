@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 
@@ -115,16 +115,17 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
 
 export default function HistorialClasesDocente() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [clases, setClases] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
-  const [busqueda, setBusqueda] = useState('');
+  const [busqueda, setBusqueda] = useState(() => searchParams.get('buscar') || '');
   const [periodo, setPeriodo] = useState('TODOS');
   const [estado, setEstado] = useState('TODOS');
   const [filtroEspecial, setFiltroEspecial] = useState('TODAS');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
-  const [vista, setVista] = useState('CRONOLOGICA');
+  const [vista, setVista] = useState(() => searchParams.get('vista') === 'MATERIA' ? 'MATERIA' : 'CRONOLOGICA');
   const [pagina, setPagina] = useState(1);
   const [abiertaId, setAbiertaId] = useState(null);
   const [grupoAbierto, setGrupoAbierto] = useState(null);
