@@ -85,6 +85,14 @@ const EMPTY_FORM = {
 
 const toStartOfDay = value => value ? `${value}T00:00:00` : null;
 const toEndOfDay = value => value ? `${value}T23:59:59` : null;
+const fechaEnDias = dias => {
+  const fecha = new Date();
+  fecha.setDate(fecha.getDate() + dias);
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+};
+const fechaLarga = value => value
+  ? new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+  : '';
 const isFutureDate = value => value && new Date(value) > new Date();
 const isPastDate = value => value && new Date(value) <= new Date();
 const rangoPeriodo = value => {
@@ -194,6 +202,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         area_emisora: esTutorAdmin ? 'Tutoría' : EMPTY_FORM.area_emisora,
         dest_tipo: EMPTY_FORM.dest_tipo,
         dest_roles: EMPTY_FORM.dest_roles,
+        fecha_expiracion: fechaEnDias(30),
         departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
           ? (usuarioActual?.departamento_id || '')
           : '',
@@ -549,6 +558,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               <label className="block text-sm text-slate-400 mb-1">Fecha de expiración</label>
               <input type="date" className="input-dark" value={form.fecha_expiracion}
                 onChange={e => set('fecha_expiracion', e.target.value)} />
+              {!comunicado && <p className="mt-1 text-xs text-slate-500">Sugerimos 30 días para mantener limpio el panel; puedes cambiarla o dejarla vacía.</p>}
             </div>
           </div>
 
@@ -788,7 +798,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 ['Contenido', form.contenido, 1],
                 ['Emisor', nombreDepartamentoEmisor, 1],
                 ['Destinatarios', descripcionAudiencia, 2],
-                ['Vigencia', `${form.fecha_publicacion ? `Publica el ${form.fecha_publicacion}` : 'Publicación inmediata'} · ${form.fecha_expiracion ? `expira el ${form.fecha_expiracion}` : 'sin expiración'}`, 3],
+                ['Categoría y prioridad', `${CAT_MAP[form.categoria]?.l || form.categoria} · ${PRIO_MAP[form.prioridad]?.l || form.prioridad}`, 3],
+                ['Vigencia', `${form.fecha_publicacion ? `Publica el ${fechaLarga(form.fecha_publicacion)}` : 'Publicación inmediata'} · ${form.fecha_expiracion ? `expira el ${fechaLarga(form.fecha_expiracion)}` : 'sin expiración'}`, 3],
                 ['Opciones', [form.requiere_confirmacion && 'Confirmación de lectura', form.requiere_retroalimentacion && 'Retroalimentación', form.notificar_email && 'Aviso por correo', form.fijado && 'Fijado arriba'].filter(Boolean).join(' · ') || 'Sin opciones adicionales', 3],
                 ['Adjuntos', adjuntosNuevos.length ? adjuntosNuevos.map(file => file.name).join(', ') : 'Sin archivos adjuntos', 3],
               ].map(([etiqueta, valor, pasoEditar]) => <div key={etiqueta} className="grid grid-cols-[120px_1fr_auto] gap-3 p-3"><dt className="text-slate-500">{etiqueta}</dt><dd className={`text-slate-300 ${etiqueta === 'Contenido' ? 'whitespace-pre-wrap' : ''}`}>{valor}</dd><button type="button" onClick={() => setPaso(pasoEditar)} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Editar</button></div>)}
