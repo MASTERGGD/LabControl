@@ -51,7 +51,7 @@ export default function ClaseAsistencia() {
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => {
     if (!redireccionAutomatica || !cierreConfirmado) return undefined;
-    const temporizador = window.setTimeout(() => navigate('/docente'), 3500);
+    const temporizador = window.setTimeout(() => navigate('/docente/horario'), 5000);
     return () => window.clearTimeout(temporizador);
   }, [cierreConfirmado, navigate, redireccionAutomatica]);
 
@@ -215,7 +215,7 @@ export default function ClaseAsistencia() {
             )}
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
-            <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento</button>
+            {clase.estado === 'CERRADA' && <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento del grupo</button>}
           </div>
         </div>
 
@@ -246,12 +246,12 @@ export default function ClaseAsistencia() {
                     {r.presente} {r.presente === 1 ? 'presente' : 'presentes'} · {r.falta} {r.falta === 1 ? 'falta' : 'faltas'} · {r.retardo} {r.retardo === 1 ? 'retardo' : 'retardos'}{r.justificada ? ` · ${r.justificada} ${r.justificada === 1 ? 'justificada' : 'justificadas'}` : ''}
                   </p>
                   {cierreConfirmado.detalle && <p className={`mt-1 text-xs ${isDay ? 'text-emerald-700' : 'text-emerald-200/70'}`}>{cierreConfirmado.detalle}</p>}
-                  {redireccionAutomatica && <p className={`mt-1 text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Volverás al inicio en unos segundos.</p>}
+                  {redireccionAutomatica && <p className={`mt-1 text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Volverás a tu horario en unos segundos.</p>}
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => setRedireccionAutomatica(false)} disabled={!redireccionAutomatica} className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 ${isDay ? 'border-emerald-300 bg-white text-emerald-900' : 'border-white/15 text-slate-300'}`}>Permanecer aquí</button>
-                <button type="button" onClick={() => navigate('/docente')} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Ir al inicio</button>
+                <button type="button" onClick={() => navigate('/docente/horario')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${isDay ? 'border-emerald-300 bg-white text-emerald-900' : 'border-white/15 text-slate-300'}`}>Volver al horario</button>
+                <button type="button" onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Ver seguimiento del grupo</button>
               </div>
             </div>
           </div>
