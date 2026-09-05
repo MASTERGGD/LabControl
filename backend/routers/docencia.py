@@ -177,6 +177,11 @@ class CorreccionInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
 
 
+class ReclasificarNoImpartidaInput(BaseModel):
+    motivo: str = Field(..., min_length=5, max_length=500)
+    requiere_reposicion: bool = False
+
+
 class JustificacionMultipleInput(BaseModel):
     fecha_inicio: datetime.date
     fecha_fin: datetime.date
@@ -668,6 +673,10 @@ def _serializar_clase(clase: ClaseDocente):
         "motivo": linea, "docente": clase.carga.docente.nombre if clase.carga.docente else None,
         "creado_en": None,
     } for indice, linea in enumerate(correcciones_legacy))
+    tema_normalizado = (clase.tema_impartido or "").strip().lower()
+    requiere_revision_clasificacion = clase.estado == "CERRADA" and any(
+        frase in tema_normalizado for frase in ("no se impart", "no impartida", "no hubo clase")
+    )
     return {
         "id": clase.id,
         "fecha": clase.fecha.isoformat(),
@@ -693,6 +702,7 @@ def _serializar_clase(clase: ClaseDocente):
             clase.capturada_extemporanea_en.isoformat()
             if clase.capturada_extemporanea_en else None
         ),
+        "requiere_revision_clasificacion": requiere_revision_clasificacion,
         "bitacora": {
             "tema_impartido": clase.tema_impartido,
             "avance_planeacion": clase.avance_planeacion,
@@ -1849,6 +1859,41 @@ def habilitar_correccion(
     ))
     clase.estado = "CORRECCION"
     db.commit()
+    return _serializar_clase(clase)
+
+
+@router.post("/clases/{clase_id}/no-impartida")
+def reclasificar_clase_no_impartida(
+    clase_id: int,
+    data: ReclasificarNoImpartidaInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    _validar_carga_actual(db, clase.carga)
+    if clase.estado not in {"ABIERTA", "CORRECCION", "CERRADA"}:
+        raise HTTPException(409, "Esta clase no se puede reclasificar")
+    estado_anterior = clase.estado
+    db.add(CorreccionAsistenciaDocente(
+        clase_docente_id=clase.id,
+        docente_id=current_user.id,
+        tipo="CLASIFICACION",
+        estado_anterior=estado_anterior,
+        estado_nuevo="NO_IMPARTIDA",
+        motivo=data.motivo.strip(),
+    ))
+    clase.estado = "NO_IMPARTIDA"
+    clase.fin = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+    clase.motivo_no_impartida = data.motivo.strip()
+    clase.declarada_no_impartida_en = datetime.datetime.utcnow()
+    clase.estado_reposicion = "PENDIENTE" if data.requiere_reposicion else "NO_REQUERIDA"
+    db.commit()
+    db.refresh(clase)
     return _serializar_clase(clase)
 
 

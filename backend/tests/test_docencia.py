@@ -124,6 +124,16 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     assert seguimiento_abierto.json()["clases_sin_cerrar"] == [{
         "id": abierta.id, "fecha": "2026-09-11", "estado": "ABIERTA",
     }]
+    reclasificada = client.post(
+        f"/docencia/clases/{abierta.id}/no-impartida", headers=headers,
+        json={"motivo": "Suspensión institucional confirmada", "requiere_reposicion": False},
+    )
+    assert reclasificada.status_code == 200, reclasificada.text
+    assert reclasificada.json()["estado"] == "NO_IMPARTIDA"
+    assert reclasificada.json()["motivo_no_impartida"] == "Suspensión institucional confirmada"
+    seguimiento_reclasificado = client.get(f"/docencia/seguimiento/{nueva.id}", headers=headers)
+    assert seguimiento_reclasificado.json()["total_clases"] == 0
+    assert seguimiento_reclasificado.json()["clases_sin_cerrar"] == []
 
 
 def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):

@@ -26,6 +26,7 @@ export default function ClaseAsistencia() {
   const [cerrando, setCerrando] = useState(false);
   const [modal, setModal] = useState(null);
   const [texto, setTexto] = useState('');
+  const [requiereReposicion, setRequiereReposicion] = useState(false);
   const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [detalleExtemporaneoAbierto, setDetalleExtemporaneoAbierto] = useState(false);
@@ -135,6 +136,29 @@ export default function ClaseAsistencia() {
     }
   };
 
+  const marcarNoImpartida = async () => {
+    if (texto.trim().length < 5) {
+      setError('Escribe el motivo por el que no se impartió la clase.');
+      return;
+    }
+    setCerrando(true);
+    try {
+      const { data } = await api.post(`/docencia/clases/${claseId}/no-impartida`, {
+        motivo: texto.trim(), requiere_reposicion: requiereReposicion,
+      });
+      setClase(data);
+      setModal(null);
+      setTexto('');
+      setRequiereReposicion(false);
+      setMensaje('Clase registrada como no impartida. Ya no cuenta en la asistencia.');
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo reclasificar la clase.');
+    } finally {
+      setCerrando(false);
+    }
+  };
+
   const abrirIncidenciaGrupo = () => {
     setIncidenciaGrupo({
       tipo: clase.bitacora?.incidencia_tipo || '',
@@ -215,6 +239,7 @@ export default function ClaseAsistencia() {
             )}
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
+            {['ABIERTA', 'CORRECCION', 'CERRADA'].includes(clase.estado) && <button onClick={() => { setTexto(''); setRequiereReposicion(false); setModal('no-impartida'); }} className="rounded-xl border border-slate-500/30 px-4 py-2.5 text-sm font-semibold text-slate-400 hover:bg-white/5">Marcar no impartida</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento del grupo</button>}
           </div>
         </div>
@@ -345,10 +370,12 @@ export default function ClaseAsistencia() {
             <div className={`max-h-[94vh] w-full overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl ${modal === 'cerrar' ? 'max-w-4xl' : 'max-w-lg'}`}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white">{modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar clase'}</h2>
+                  <h2 className="text-lg font-bold text-white">{modal === 'corregir' ? 'Habilitar corrección' : modal === 'no-impartida' ? 'Registrar clase no impartida' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar clase'}</h2>
                   <p className="mt-1 text-sm text-slate-400">
                     {modal === 'corregir'
                       ? 'Indica por qué necesitas modificarla. El motivo quedará registrado.'
+                      : modal === 'no-impartida'
+                        ? 'La sesión quedará documentada y se excluirá de los cálculos de asistencia.'
                       : clase.estado === 'CORRECCION'
                         ? 'Actualiza la información necesaria. La modificación quedará registrada en la bitácora.'
                         : 'Registra lo trabajado durante la sesión. Después podrás realizar correcciones dejando un motivo.'}
@@ -356,10 +383,11 @@ export default function ClaseAsistencia() {
                 </div>
                 <button onClick={() => setModal(null)} className="text-2xl text-slate-400 hover:text-white">×</button>
               </div>
-              {modal === 'corregir' ? (
+              {modal === 'corregir' || modal === 'no-impartida' ? (
                 <>
-                  <label className="mt-5 block text-sm font-medium text-slate-300">Motivo de la corrección *</label>
-                  <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-emerald-500" placeholder="Ej. El alumno presentó su justificante después del cierre." />
+                  <label className="mt-5 block text-sm font-medium text-slate-300">{modal === 'no-impartida' ? 'Motivo de la clase no impartida *' : 'Motivo de la corrección *'}</label>
+                  <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-emerald-500" placeholder={modal === 'no-impartida' ? 'Ej. Suspensión institucional o falta de condiciones para impartir la clase.' : 'Ej. El alumno presentó su justificante después del cierre.'} />
+                  {modal === 'no-impartida' && <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 p-3 text-sm text-slate-300"><input type="checkbox" checked={requiereReposicion} onChange={(e) => setRequiereReposicion(e.target.checked)} className="mt-0.5 accent-emerald-500"/><span><b>Requiere reposición</b><span className="mt-1 block text-xs font-normal text-slate-500">Quedará pendiente para programarla desde Mi horario docente.</span></span></label>}
                 </>
               ) : (
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -398,8 +426,8 @@ export default function ClaseAsistencia() {
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setModal(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
-                <button disabled={cerrando || (modal !== 'corregir' && (!bitacora.tema_impartido.trim() || (clase.estado !== 'CORRECCION' && !asistenciaRevisada)))} onClick={modal === 'corregir' ? corregir : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
-                  {cerrando ? 'Guardando...' : modal === 'corregir' ? 'Habilitar corrección' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar y guardar'}
+                <button disabled={cerrando || ((modal === 'corregir' || modal === 'no-impartida') ? texto.trim().length < 5 : (!bitacora.tema_impartido.trim() || (clase.estado !== 'CORRECCION' && !asistenciaRevisada)))} onClick={modal === 'corregir' ? corregir : modal === 'no-impartida' ? marcarNoImpartida : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                  {cerrando ? 'Guardando...' : modal === 'corregir' ? 'Habilitar corrección' : modal === 'no-impartida' ? 'Confirmar no impartida' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar y guardar'}
                 </button>
               </div>
             </div>
