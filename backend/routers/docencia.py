@@ -1051,12 +1051,33 @@ def actualizar_carga(
     grupo_tutoria = _validar_asignacion_tutoria(db, data, current_user.id, periodo)
     if grupo_tutoria:
         data.actividad_nombre = f"Tutoría grupal · {grupo_tutoria.cuatrimestre}° {grupo_tutoria.grupo}"
+    tiene_historial = db.query(ClaseDocente.id).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+    ).first() is not None
     cambia_laboratorio = any(
         getattr(carga, campo) != getattr(data, campo)
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
     )
     if cambia_laboratorio:
         _cancelar_reservas_carga(db, carga.id)
+    if tiene_historial:
+        # Una carga ya utilizada es parte del acta histórica de sus clases. Crear
+        # una nueva versión evita que un cambio de día u hora convierta una clase
+        # cerrada del horario anterior en la sesión pendiente del horario nuevo.
+        carga.activo = False
+        carga.estado = "RETIRADO"
+        nueva_carga = CargaDocente(
+            docente_id=current_user.id,
+            estado="BORRADOR",
+            **data.model_dump(),
+        )
+        db.add(nueva_carga)
+        db.flush()
+        avisos = _advertencias(db, nueva_carga, nueva_carga.id)
+        avisos.insert(0, "Se conservó el horario anterior en el historial y se creó una nueva versión.")
+        _commit_asignacion(db)
+        db.refresh(nueva_carga)
+        return {"carga": _serializar_carga(nueva_carga, db), "advertencias": avisos}
     for campo, valor in data.model_dump().items():
         setattr(carga, campo, valor)
     carga.estado = "BORRADOR"

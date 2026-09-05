@@ -5,6 +5,7 @@ import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatDateInMexico, formatDateTimeInMexico } from '../../utils/timezone';
+import { formatCarrera, formatNombre } from '../../utils/presentacion';
 
 const TABS = [
   ['resumen', 'Resumen'],
@@ -14,7 +15,7 @@ const TABS = [
   ['evaluaciones', 'Evaluaciones'],
   ['acuerdos', 'Acuerdos'],
   ['tutoria', 'Tutoría'],
-  ['timeline', 'Línea de tiempo'],
+  ['timeline', 'Historial'],
 ];
 
 const SEMAFORO = {
@@ -145,7 +146,7 @@ function Resumen({ data, setTab }) {
         <Kpi label="Prom. evidencias" value={r.promedio_evidencias} hint="No oficial" tone="text-violet-400" />
         <Kpi label="Materias en riesgo" value={r.materias_riesgo} hint={!r.base_suficiente ? 'Clasificación académica preliminar' : 'Según asistencia y evidencias disponibles'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
       </div>
-      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.materias_inscritas} {r.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</span> · <span className={r.acuerdos_pendientes ? 'text-amber-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span> · {r.canalizaciones_activas} canalizaciones activas</Panel>
+      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.materias_inscritas} {r.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</span> · <span className={r.acuerdos_pendientes ? 'text-amber-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span> · {r.canalizaciones_activas} canalizaciones activas</Panel>
 
       {(tendencias || calidad) && (
         <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]">
@@ -227,10 +228,19 @@ function Resumen({ data, setTab }) {
 function Asistencia({ data }) {
   const materias = data.materias;
   const [excluirJustificadas, setExcluirJustificadas] = useState(true);
+  const [mostrarAnalisis, setMostrarAnalisis] = useState(false);
   const patron = data.patrones_asistencia?.[
     excluirJustificadas ? 'excluyendo_justificadas' : 'incluyendo_justificadas'
   ];
   const max = Math.max(100, ...materias.map(m => m.porcentaje_asistencia || 0));
+  const confianzaBaja = patron?.resumen?.confianza === 'BAJA';
+  const hayDesglose = Boolean(patron && [
+    patron.resumen.faltas,
+    patron.resumen.faltas_tempranas,
+    patron.resumen.dias_ausencia_parcial,
+    patron.resumen.dias_ausencia_completa,
+    patron.resumen.primera_hora_ausente_luego_asistio,
+  ].some(Number));
   const tonoConfianza = {
     ALTA: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
     MEDIA: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
@@ -250,15 +260,16 @@ function Asistencia({ data }) {
         <div className="mt-5 space-y-4">
           {materias.map(m => {
             const porcentaje = m.porcentaje_asistencia || 0;
-            const color = porcentaje < 80 ? 'bg-red-500' : porcentaje < 90 ? 'bg-amber-500' : 'bg-emerald-500';
+            const muestraInsuficiente = Number(m.clases_registradas || 0) < 3;
+            const color = muestraInsuficiente ? 'bg-slate-400' : porcentaje < 80 ? 'bg-red-500' : porcentaje < 90 ? 'bg-amber-500' : 'bg-emerald-500';
             return (
               <div key={m.clave}>
                 <div className="mb-1 flex items-center justify-between gap-4 text-sm">
                   <div className="min-w-0"><p className="truncate font-medium">{m.materia}</p><p className="text-[10px] text-slate-500">{m.docente}</p></div>
-                  <span className="shrink-0 font-bold">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : 'Sin datos'}</span>
+                  <span className={`shrink-0 font-bold ${muestraInsuficiente ? 'text-slate-400' : ''}`}>{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : 'Sin datos'}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${color}`} style={{ width: `${porcentaje * 100 / max}%` }} /></div>
-                <div className="mt-1 flex gap-3 text-[10px] text-slate-500"><span>{m.presente} presentes</span><span>{m.falta} faltas</span><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span></div>
+                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>{m.clases_registradas || 0} clases registradas</span>{muestraInsuficiente && m.porcentaje_asistencia != null && <span className="font-semibold text-slate-400">Muestra insuficiente</span>}<span>{m.presente} presentes</span><span>{m.falta} faltas</span><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span></div>
               </div>
             );
           })}
@@ -285,49 +296,26 @@ function Asistencia({ data }) {
               </div>
               <p className="mt-2 text-sm text-slate-400">{patron.resumen.hallazgo}</p>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {hayDesglose ? <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               <Kpi label="Registros analizados" value={patron.resumen.registros_analizados} />
               <Kpi label="Faltas analizadas" value={patron.resumen.faltas} tone="text-red-400" />
               <Kpi label="Faltas tempranas" value={patron.resumen.faltas_tempranas} hint={`${patron.resumen.porcentaje_faltas_tempranas}% del total`} tone="text-orange-400" />
               <Kpi label="Ausencias parciales" value={patron.resumen.dias_ausencia_parcial} tone="text-amber-400" />
               <Kpi label="Ausencias completas" value={patron.resumen.dias_ausencia_completa} tone="text-red-400" />
               <Kpi label="Faltó y entró después" value={patron.resumen.primera_hora_ausente_luego_asistio} tone="text-violet-400" />
-            </div>
+            </div> : <p className="mt-4 rounded-lg bg-slate-500/[0.06] px-4 py-3 text-sm text-slate-500">{patron.resumen.registros_analizados} registros analizados · sin ausencias que desglosar.</p>}
+            {confianzaBaja && <button type="button" onClick={() => setMostrarAnalisis(value => !value)} className="mt-4 text-sm font-semibold text-emerald-500 hover:text-emerald-400">{mostrarAnalisis ? 'Ocultar análisis detallado' : 'Ver análisis detallado'}</button>}
           </Panel>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel className="overflow-hidden">
-              <div className="px-5 py-4">
-                <h2 className="font-semibold">Desempeño por bloque horario</h2>
-                <p className="text-xs text-slate-500">Identifica los horarios con mayor concentración de faltas o retardos.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[620px] text-left text-sm">
-                  <thead className="bg-white/[0.035] text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Horario</th><th className="text-center">Clases</th><th className="text-center">Faltas</th><th className="text-center">Retardos</th><th className="pr-5 text-right">Asistencia</th></tr></thead>
-                  <tbody className="divide-y divide-white/5">
-                    {patron.bloques.map(bloque => (
-                      <tr key={`${bloque.hora_inicio}-${bloque.hora_fin}`}>
-                        <td className="px-5 py-3 font-semibold">{bloque.hora_inicio}–{bloque.hora_fin}</td>
-                        <td className="text-center">{bloque.total}</td>
-                        <td className="text-center text-red-400">{bloque.falta}</td>
-                        <td className="text-center text-amber-400">{bloque.retardo}</td>
-                        <td className="pr-5 text-right font-bold">{bloque.porcentaje_asistencia}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!patron.bloques.length && <p className="p-8 text-center text-sm text-slate-500">No hay registros suficientes.</p>}
-              </div>
-            </Panel>
-
+          {(!confianzaBaja || mostrarAnalisis) && <>
             <Panel className="overflow-hidden">
               <div className="px-5 py-4">
                 <h2 className="font-semibold">Mapa semanal</h2>
                 <p className="text-xs text-slate-500">Porcentaje de asistencia acumulado por día y horario.</p>
               </div>
               <div className="overflow-x-auto p-4 pt-0">
-                <table className="w-full min-w-[620px] border-separate border-spacing-1 text-xs">
-                  <thead><tr><th className="p-2 text-left text-slate-500">Día</th>{patron.bloques.map(b => <th key={`${b.hora_inicio}-${b.hora_fin}`} className="p-2 text-center text-slate-500">{b.hora_inicio}</th>)}</tr></thead>
+                <table className="w-full min-w-[760px] border-separate border-spacing-1 text-xs">
+                  <thead><tr><th className="p-2 text-left text-slate-500">Día</th>{patron.bloques.map(b => <th key={`${b.hora_inicio}-${b.hora_fin}`} className="min-w-[110px] whitespace-nowrap p-2 text-center text-slate-500">{b.hora_inicio}–{b.hora_fin}</th>)}</tr></thead>
                   <tbody>
                     {patron.mapa_semanal.map(dia => (
                       <tr key={dia.dia_num}>
@@ -344,7 +332,6 @@ function Asistencia({ data }) {
                 <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>🟢 90–100%</span><span>🟡 70–89%</span><span>🔴 Menor a 70%</span><span>Gris: sin clase registrada</span></div>
               </div>
             </Panel>
-          </div>
 
           <Panel className="overflow-hidden">
             <div className="px-5 py-4">
@@ -367,6 +354,7 @@ function Asistencia({ data }) {
               {!patron.ausencias_parciales.length && <p className="p-8 text-center text-sm text-slate-500">No se detectaron días con ausencia parcial.</p>}
             </div>
           </Panel>
+          </>}
         </>
       )}
     </div>
@@ -897,7 +885,7 @@ export default function ExpedienteAcademico() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">Seguimiento institucional</p>
             <h1 className="mt-1 text-2xl font-bold">{alumnoId ? 'Expediente del alumno' : 'Panorama académico'}</h1>
-            <p className="mt-1 text-sm text-slate-500">{alumnoId ? (data?.alumno?.nombre || 'Consulta académica individual') : 'Seguimiento por grupo y acceso al expediente individual de cada alumno.'}</p>
+            <p className="mt-1 text-sm text-slate-500">{alumnoId ? (formatNombre(data?.alumno?.nombre) || 'Consulta académica individual') : 'Seguimiento por grupo y acceso al expediente individual de cada alumno.'}</p>
           </div>
           <div className="relative w-full max-w-md">
             <label className="text-xs font-semibold text-slate-500">{alumnoId ? (usuario?.rol === 'DOCENTE' ? 'Buscar otro de mis tutorados' : 'Buscar otro alumno en la institución') : 'Búsqueda directa de alumno'}</label>
@@ -906,8 +894,8 @@ export default function ExpedienteAcademico() {
               <Panel className="absolute right-0 top-full z-30 mt-2 max-h-80 w-full overflow-y-auto shadow-2xl">
                 {alumnos.map(alumno => (
                   <button key={alumno.id} onClick={() => seleccionar(alumno.id)} className={`w-full border-b px-4 py-3 text-left ${isDay ? 'border-slate-100 hover:bg-slate-50' : 'border-white/5 hover:bg-white/5'}`}>
-                    <p className="text-sm font-semibold">{alumno.nombre}</p>
-                    <p className="text-xs text-slate-500">{alumno.matricula} · {alumno.cuatrimestre}° {alumno.grupo} · {alumno.carrera}</p>
+                    <p className="text-sm font-semibold">{formatNombre(alumno.nombre)}</p>
+                    <p className="text-xs text-slate-500">{alumno.matricula} · {alumno.cuatrimestre}° {alumno.grupo} · <span title={alumno.carrera}>{formatCarrera(alumno.carrera)}</span></p>
                   </button>
                 ))}
                 {!alumnos.length && <p className="p-5 text-center text-sm text-slate-500">No se encontraron alumnos.</p>}
@@ -987,16 +975,16 @@ export default function ExpedienteAcademico() {
               <div className="space-y-5">
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div><h2 className="text-2xl font-bold normal-case">{data.alumno.nombre}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · {data.alumno.carrera} · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia configurada' : 'materias configuradas'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {data.tutoria.tutor_nombre || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('acuerdos')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Revisar acuerdos</button><button onClick={() => setTab('tutoria')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Seguimiento tutorial</button><button onClick={() => setModalPdf(true)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Generar PDF</button></div></div>
+                    <div><h2 className="text-2xl font-bold normal-case">{formatNombre(data.alumno.nombre)}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · <span title={data.alumno.carrera}>{formatCarrera(data.alumno.carrera)}</span> · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {formatNombre(data.tutoria.tutor_nombre) || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('tutoria')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Registrar o revisar tutoría</button><button onClick={() => setTab('acuerdos')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Revisar acuerdos</button><button onClick={() => setModalPdf(true)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Generar PDF</button></div></div>
                     <div className="flex flex-wrap gap-3">
                       <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Riesgo integral · periodo</p>
-                        <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.semaforo]?.text}>{data.resumen.semaforo === 'ROJO' ? '▲' : data.resumen.semaforo === 'AMARILLO' ? '●' : data.resumen.semaforo === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{SEMAFORO[data.resumen.semaforo]?.label}</span></div>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Señales en el periodo</p>
+                        <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.semaforo]?.text}>{data.resumen.semaforo === 'ROJO' ? '▲' : data.resumen.semaforo === 'AMARILLO' ? '●' : data.resumen.semaforo === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{data.resumen.semaforo === 'VERDE' ? 'Sin señales en el periodo' : SEMAFORO[data.resumen.semaforo]?.label}</span></div>
                       </div>
                       {data.resumen.alerta_inmediata && (
                         <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.box}`}>
-                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Alerta inmediata · registros recientes</p>
-                          <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}>{data.resumen.alerta_inmediata.nivel === 'ROJO' ? '▲' : data.resumen.alerta_inmediata.nivel === 'AMARILLO' ? '●' : data.resumen.alerta_inmediata.nivel === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}`}>{SEMAFORO[data.resumen.alerta_inmediata.nivel]?.label}</span></div>
+                          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Cambios recientes</p>
+                          <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}>{data.resumen.alerta_inmediata.nivel === 'ROJO' ? '▲' : data.resumen.alerta_inmediata.nivel === 'AMARILLO' ? '●' : data.resumen.alerta_inmediata.nivel === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.text}`}>{data.resumen.alerta_inmediata.nivel === 'VERDE' ? 'Sin cambios recientes' : SEMAFORO[data.resumen.alerta_inmediata.nivel]?.label}</span></div>
                           <p className="mt-1 max-w-xs text-[10px] text-slate-500">{data.resumen.alerta_inmediata.razones?.[0]}</p>
                         </div>
                       )}

@@ -20,6 +20,61 @@ from models.tutoria import GrupoTutorado
 from tests.conftest import auth_headers, get_token
 
 
+def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db):
+    docente = Usuario(
+        nombre="Docente Version Horario", email="version.horario@test.mx",
+        password_hash=hashear_password("Docente123!"), rol=RolUsuario.DOCENTE, activo=True,
+    )
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add_all([docente, periodo])
+    db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera="TIEID", cuatrimestre=1, grupo="A", activo=True,
+    )
+    materia = CatalogoMateria(
+        nombre="Programación", carrera="TIEID", cuatrimestre_oficial=1,
+        periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, materia])
+    db.flush()
+    carga = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        materia_id=materia.id, tipo_actividad="CLASE", actividad_nombre=materia.nombre,
+        dia_semana=3, hora_inicio="14:00", hora_fin="16:00", estado="ACTIVO", activo=True,
+    )
+    db.add(carga)
+    db.flush()
+    clase = ClaseDocente(
+        carga_docente_id=carga.id, fecha=datetime.date(2026, 9, 3), estado="CERRADA",
+    )
+    db.add(clase)
+    db.commit()
+
+    headers = auth_headers(get_token(client, docente.email, "Docente123!"))
+    respuesta = client.put(
+        f"/docencia/horario/{carga.id}", headers=headers,
+        json={
+            "periodo_id": periodo.id, "grupo_academico_id": grupo.id,
+            "materia_id": materia.id, "grupo_tutorado_id": None,
+            "tipo_actividad": "CLASE", "actividad_nombre": materia.nombre,
+            "dia_semana": 4, "hora_inicio": "08:00", "hora_fin": "09:45",
+            "espacio_nombre": "Salón 2", "laboratorio_id": None,
+            "uso_laboratorio": "SOLO_AULA", "observaciones": None,
+        },
+    )
+
+    assert respuesta.status_code == 200, respuesta.text
+    nueva_id = respuesta.json()["carga"]["id"]
+    assert nueva_id != carga.id
+    db.refresh(carga)
+    db.refresh(clase)
+    nueva = db.get(CargaDocente, nueva_id)
+    assert carga.activo is False and carga.estado == "RETIRADO"
+    assert clase.carga_docente_id == carga.id and clase.estado == "CERRADA"
+    assert nueva.activo is True and nueva.estado == "BORRADOR"
+    assert nueva.dia_semana == 4 and nueva.hora_inicio == "08:00"
+
+
 def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     reloj = {
         "ahora": datetime.datetime(2026, 8, 24, 7, 30, tzinfo=ZoneInfo("America/Mexico_City")),
