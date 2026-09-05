@@ -74,6 +74,30 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     assert nueva.activo is True and nueva.estado == "BORRADOR"
     assert nueva.dia_semana == 4 and nueva.hora_inicio == "08:00"
 
+    nueva.estado = "ACTIVO"
+    no_impartida = ClaseDocente(
+        carga_docente_id=nueva.id, fecha=datetime.date(2026, 9, 4),
+        estado="NO_IMPARTIDA", motivo_no_impartida="El horario aún no estaba vigente",
+    )
+    db.add(no_impartida)
+    db.commit()
+    seguimiento = client.get(f"/docencia/seguimiento/{nueva.id}", headers=headers)
+    assert seguimiento.status_code == 200, seguimiento.text
+    assert seguimiento.json()["total_clases"] == 0
+    assert seguimiento.json()["clases_sin_cerrar"] == []
+
+    abierta = ClaseDocente(
+        carga_docente_id=nueva.id, fecha=datetime.date(2026, 9, 11), estado="ABIERTA",
+    )
+    db.add(abierta)
+    db.commit()
+    seguimiento_abierto = client.get(f"/docencia/seguimiento/{nueva.id}", headers=headers)
+    assert seguimiento_abierto.status_code == 200, seguimiento_abierto.text
+    assert seguimiento_abierto.json()["total_clases"] == 0
+    assert seguimiento_abierto.json()["clases_sin_cerrar"] == [{
+        "id": abierta.id, "fecha": "2026-09-11", "estado": "ABIERTA",
+    }]
+
 
 def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     reloj = {

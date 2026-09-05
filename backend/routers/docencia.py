@@ -1923,9 +1923,21 @@ def seguimiento_grupo(
         raise HTTPException(404, "Carga docente con grupo no encontrada")
     cargas_equivalentes = _cargas_equivalentes(db, carga)
     carga_ids = [item.id for item in cargas_equivalentes]
-    clases = db.query(ClaseDocente).filter(
+    clases_historial = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id.in_(carga_ids),
     ).order_by(ClaseDocente.fecha.desc()).all()
+    clases_sin_cerrar = [
+        clase for clase in clases_historial
+        if clase.estado in {"ABIERTA", "CORRECCION"}
+    ]
+    # Los registros NO_IMPARTIDA y las reposiciones aún PROGRAMADA documentan
+    # decisiones del calendario, pero no son sesiones de asistencia. Una clase
+    # ABIERTA tampoco entra al porcentaje hasta que el docente termina la captura.
+    clases = [
+        clase for clase in clases_historial
+        if clase.estado in {"CERRADA", "CORRECCION"}
+        and not clase.motivo_no_impartida
+    ]
     inscripciones = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
         InscripcionAlumno.estado == "ACTIVO",
@@ -2011,7 +2023,7 @@ def seguimiento_grupo(
         "alumnos_en_alerta": sum(1 for f in filas if f["alerta"]),
         "clases_sin_cerrar": [
             {"id": c.id, "fecha": c.fecha.isoformat(), "estado": c.estado}
-            for c in clases if c.estado != "CERRADA"
+            for c in clases_sin_cerrar
         ],
         "alumnos": filas,
         "clases": [_serializar_clase(c) for c in clases[:12]],
