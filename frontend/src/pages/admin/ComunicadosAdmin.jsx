@@ -276,11 +276,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     return [];
   }, [form.dest_tipo, form.dest_roles, form.dest_departamentos, form.dest_usuarios, usuarios]);
   const totalDestinatarios = new Set(destinatariosCalculados.map(u => u.id)).size;
+  const audienciaValida = buildDestinatarios().length > 0 && totalDestinatarios > 0;
 
   const avanzar = () => {
     setError('');
     if (paso === 1 && (!form.titulo.trim() || !form.contenido.trim())) { setError('Completa el título y el contenido.'); return; }
-    if (paso === 2 && !buildDestinatarios().length) { setError('Selecciona al menos un destinatario.'); return; }
+    if (paso === 1 && !emisorValido) { setError('Selecciona el departamento emisor.'); return; }
+    if (paso === 2 && !audienciaValida) { setError('Selecciona al menos un destinatario activo.'); return; }
     if (paso === 3 && form.fecha_publicacion && form.fecha_expiracion && form.fecha_expiracion < form.fecha_publicacion) { setError('La expiración debe ser posterior a la publicación.'); return; }
     setPaso(p => Math.min(4, p + 1));
   };
@@ -292,6 +294,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     if (!form.contenido.trim()) { setError('El contenido es obligatorio'); return; }
     const destinatarios = buildDestinatarios();
     if (!destinatarios.length)  { setError('Define al menos un destinatario'); return; }
+    if (!comunicado && e.nativeEvent.submitter?.value === 'PUBLICAR' && !emisorValido) { setError('Define el departamento emisor antes de publicar.'); return; }
 
     setSaving(true); setError('');
     try {
@@ -390,10 +393,24 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const rolesDisponibles = esTutorAdmin ? ROLES_OPTS.filter(r => r.v === 'DOCENTE') : ROLES_OPTS;
   const tiposDestinatario = esTutorAdmin ? ['ROL','USUARIO'] : ['TODOS','ROL','DEPARTAMENTO','USUARIO'];
   const departamentoAsignado = departamentos.find(dep => dep.id === Number(usuarioActual?.departamento_id));
-  const nombreDepartamentoEmisor = usuarioActual?.departamento_nombre
-    || departamentoAsignado?.nombre
+  const departamentoEmisorSeleccionado = esAdministrativo
+    ? departamentoAsignado
+    : departamentos.find(dep => dep.id === Number(form.departamento_emisor_id));
+  const nombreDepartamentoEmisor = esTutorAdmin ? 'Tutoría' : usuarioActual?.departamento_nombre
+    || departamentoEmisorSeleccionado?.nombre
     || 'Departamento no asignado';
-  const claveDepartamentoEmisor = usuarioActual?.departamento_clave || departamentoAsignado?.clave;
+  const claveDepartamentoEmisor = usuarioActual?.departamento_clave || departamentoEmisorSeleccionado?.clave;
+  const emisorValido = esTutorAdmin || (esAdministrativo && Boolean(usuarioActual?.departamento_id)) || Boolean(form.departamento_emisor_id);
+  const descripcionAudiencia = form.dest_tipo === 'TODOS'
+    ? 'Todos los usuarios activos'
+    : form.dest_tipo === 'ROL'
+      ? `Por rol · ${rolesDisponibles.filter(r => form.dest_roles.includes(r.v)).map(r => r.l).join(', ') || 'Sin roles seleccionados'}`
+      : form.dest_tipo === 'DEPARTAMENTO'
+        ? `Por departamento · ${departamentos.filter(d => form.dest_departamentos.includes(String(d.id))).map(d => d.nombre).join(', ') || 'Sin departamentos seleccionados'}`
+        : form.dest_tipo === 'USUARIO'
+          ? `Usuarios específicos · ${form.dest_usuarios.map(u => u.nombre).join(', ') || 'Sin usuarios seleccionados'}`
+          : 'Sin destinatarios';
+  const etiquetaConteo = totalDestinatarios === 1 ? 'persona' : 'personas';
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -426,7 +443,23 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               placeholder="Escribe el contenido del comunicado…" required />
           </div>
 
-          {!comunicado && <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] p-4 text-sm text-blue-200"><b>Emisor:</b> {esTutorAdmin ? 'Tutoría' : nombreDepartamentoEmisor}<span className="mt-1 block text-xs text-slate-400">Se obtiene de tu cuenta y queda registrado con el comunicado.</span></div>}
+          {!comunicado && (esTutorAdmin || esAdministrativo ? (
+            <div className={`rounded-xl border p-4 text-sm ${emisorValido ? 'border-blue-500/20 bg-blue-500/[0.07] text-blue-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+              <b>Emisor:</b> {nombreDepartamentoEmisor}
+              <span className="mt-1 block text-xs text-slate-400">Se obtiene de tu cuenta y queda registrado con el comunicado.</span>
+              {!emisorValido && <span className="mt-2 block text-xs text-amber-300">Tu cuenta necesita un departamento asignado antes de publicar.</span>}
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Departamento emisor *</label>
+              <select className="input-dark" value={form.departamento_emisor_id}
+                onChange={e => set('departamento_emisor_id', e.target.value)} required>
+                <option value="" disabled>Selecciona el departamento emisor</option>
+                {departamentos.map(dep => <option key={dep.id} value={dep.id}>{dep.nombre} ({dep.clave})</option>)}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">El origen seleccionado aparecerá en el comunicado y en la bitácora.</p>
+            </div>
+          ))}
           </div>
 
           {/* Categoría + Prioridad */}
@@ -459,7 +492,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               disabled={esTutorAdmin} />
           </div>
 
-          <div className={!comunicado && paso !== 3 ? 'hidden' : ''}>{esTutorAdmin ? (
+          {comunicado && <div>{esTutorAdmin ? (
             <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300">
                 Emisión de Tutoría
@@ -497,7 +530,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 ))}
               </select>
             </div>
-          )}</div>
+          )}</div>}
 
           {/* Fechas */}
           <div className={`${!comunicado && paso !== 3 ? 'hidden' : 'grid'} grid-cols-2 gap-3`}>
@@ -613,7 +646,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                     ? 'Todos los docentes'
                     : esTutorAdmin && t === 'USUARIO'
                       ? 'Docentes específicos'
-                      : t === 'TODOS' ? 'Todos los usuarios' : t === 'ROL' ? 'Por rol' : t === 'DEPARTAMENTO' ? 'Por departamento' : 'Usuarios específicos'}
+                      : t === 'TODOS' ? `Todos los usuarios (${usuarios.length.toLocaleString('es-MX')})` : t === 'ROL' ? `Por rol${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : t === 'DEPARTAMENTO' ? `Por departamento${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : `Usuarios específicos${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}`}
                 </button>
               ))}
             </div>
@@ -741,10 +774,27 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 </div>
               </div>
             )}
-            {!!form.dest_tipo && <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4"><b className="text-2xl text-emerald-400">{totalDestinatarios}</b><span className="ml-1 text-sm text-slate-300">personas recibirán este comunicado</span><p className="mt-1 text-xs text-slate-400">Conteo de usuarios activos, sin duplicados.</p></div>}
+            {!!form.dest_tipo && <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">{totalDestinatarios === 1 && form.dest_tipo === 'USUARIO' ? <b className="text-emerald-300">Se enviará a {form.dest_usuarios[0]?.nombre}</b> : <><b className="text-2xl text-emerald-400">{totalDestinatarios.toLocaleString('es-MX')}</b><span className="ml-1 text-sm text-slate-300">{etiquetaConteo} recibirán este comunicado</span></>}<p className="mt-1 text-xs text-slate-400">Conteo de usuarios activos, sin duplicados.</p></div>}
           </div>
 
-          {!comunicado && paso === 4 && <div className="space-y-4"><div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4"><b className="text-2xl text-emerald-400">{totalDestinatarios}</b><span className="ml-1 text-sm text-slate-300">personas</span><p className="mt-1 text-xs text-slate-400">{form.notificar_email ? `${totalDestinatarios} recibirán además un aviso por correo.` : 'El comunicado aparecerá en su panel de SIGA.'}</p></div><dl className="divide-y divide-white/10 rounded-xl border border-white/10 text-sm"><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Título</dt><dd className="font-semibold text-white">{form.titulo}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Contenido</dt><dd className="whitespace-pre-wrap text-slate-300">{form.contenido}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Emisor</dt><dd className="text-slate-300">{esTutorAdmin ? 'Tutoría' : nombreDepartamentoEmisor}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Opciones</dt><dd className="text-slate-300">{[form.requiere_confirmacion && 'Confirmación de lectura', form.notificar_email && 'Aviso por correo', form.fijado && 'Fijado arriba'].filter(Boolean).join(' · ') || 'Sin opciones adicionales'}</dd></div></dl>{totalDestinatarios >= 100 && <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-slate-200"><input type="checkbox" checked={confirmacionMasiva} onChange={e => setConfirmacionMasiva(e.target.checked)} className="mt-1 accent-emerald-500"/><span><b>Entiendo que se publicará para {totalDestinatarios.toLocaleString('es-MX')} personas.</b><span className="mt-1 block text-xs text-slate-400">Después puede archivarse, pero la entrega ya realizada queda registrada.</span></span></label>}</div>}
+          {!comunicado && paso === 4 && <div className="space-y-4">
+            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+              <b className="text-2xl text-emerald-400">{totalDestinatarios.toLocaleString('es-MX')}</b><span className="ml-1 text-sm text-slate-300">{etiquetaConteo}</span>
+              <p className="mt-1 text-xs text-slate-400">{form.notificar_email ? `${totalDestinatarios.toLocaleString('es-MX')} ${totalDestinatarios === 1 ? 'recibirá' : 'recibirán'} además un aviso por correo.` : 'El comunicado aparecerá en su panel de SIGA.'}</p>
+            </div>
+            <dl className="divide-y divide-white/10 rounded-xl border border-white/10 text-sm">
+              {[
+                ['Título', form.titulo, 1],
+                ['Contenido', form.contenido, 1],
+                ['Emisor', nombreDepartamentoEmisor, 1],
+                ['Destinatarios', descripcionAudiencia, 2],
+                ['Vigencia', `${form.fecha_publicacion ? `Publica el ${form.fecha_publicacion}` : 'Publicación inmediata'} · ${form.fecha_expiracion ? `expira el ${form.fecha_expiracion}` : 'sin expiración'}`, 3],
+                ['Opciones', [form.requiere_confirmacion && 'Confirmación de lectura', form.requiere_retroalimentacion && 'Retroalimentación', form.notificar_email && 'Aviso por correo', form.fijado && 'Fijado arriba'].filter(Boolean).join(' · ') || 'Sin opciones adicionales', 3],
+                ['Adjuntos', adjuntosNuevos.length ? adjuntosNuevos.map(file => file.name).join(', ') : 'Sin archivos adjuntos', 3],
+              ].map(([etiqueta, valor, pasoEditar]) => <div key={etiqueta} className="grid grid-cols-[120px_1fr_auto] gap-3 p-3"><dt className="text-slate-500">{etiqueta}</dt><dd className={`text-slate-300 ${etiqueta === 'Contenido' ? 'whitespace-pre-wrap' : ''}`}>{valor}</dd><button type="button" onClick={() => setPaso(pasoEditar)} className="text-xs font-semibold text-emerald-400 hover:text-emerald-300">Editar</button></div>)}
+            </dl>
+            {totalDestinatarios >= 100 && <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-slate-200"><input type="checkbox" checked={confirmacionMasiva} onChange={e => setConfirmacionMasiva(e.target.checked)} className="mt-1 accent-emerald-500"/><span><b>Entiendo que se publicará para {totalDestinatarios.toLocaleString('es-MX')} personas.</b><span className="mt-1 block text-xs text-slate-400">Después puede archivarse, pero la entrega ya realizada queda registrada.</span></span></label>}
+          </div>}
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
@@ -754,8 +804,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               Cancelar
             </button>
             {!comunicado && paso > 1 && <button type="button" onClick={() => setPaso(p => p - 1)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300">← Anterior</button>}
-            {!comunicado && paso < 4 && <button type="button" onClick={avanzar} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white">Siguiente →</button>}
-            {!comunicado && paso === 4 && <><button type="submit" value="BORRADOR" disabled={saving} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 disabled:opacity-50">Guardar borrador</button><button type="submit" value="PUBLICAR" disabled={saving || (totalDestinatarios >= 100 && !confirmacionMasiva)} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{saving ? 'Publicando…' : form.notificar_email ? 'Publicar y notificar' : 'Publicar'}</button></>}
+            {!comunicado && paso < 4 && <button type="button" onClick={avanzar} disabled={(paso === 1 && (!form.titulo.trim() || !form.contenido.trim() || !emisorValido)) || (paso === 2 && !audienciaValida)} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">Siguiente →</button>}
+            {!comunicado && paso === 4 && <><button type="submit" value="BORRADOR" disabled={saving} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 disabled:opacity-50">Guardar borrador</button><button type="submit" value="PUBLICAR" disabled={saving || !emisorValido || !audienciaValida || (totalDestinatarios >= 100 && !confirmacionMasiva)} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{saving ? 'Publicando…' : form.notificar_email ? 'Publicar y notificar' : 'Publicar'}</button></>}
             {comunicado && <button type="submit" disabled={saving} className="btn-blue disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar cambios'}</button>}
           </div>
         </form>
