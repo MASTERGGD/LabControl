@@ -49,9 +49,9 @@ const minutosDeHora = (hora = '00:00') => {
   return (horas * 60) + minutos;
 };
 
-const estadoActividad = (item, minutoActual) => {
+export const estadoActividad = (item, minutoActual) => {
   if (item.calendario && !item.calendario.requiere_asistencia) return 'NO_LECTIVA';
-  if (item.clase_estado === 'CERRADA') return 'FINALIZADA';
+  if (['CERRADA', 'NO_IMPARTIDA'].includes(item.clase_estado)) return 'FINALIZADA';
   if (['ABIERTA', 'CORRECCION'].includes(item.clase_estado)) return 'EN_CURSO';
   if (minutoActual < minutosDeHora(item.hora_inicio)) return 'PROXIMA';
   if (minutoActual <= minutosDeHora(item.hora_fin)) return 'ACTUAL';
@@ -673,8 +673,10 @@ export default function MiHorarioDocente() {
         ? 'Tu siguiente actividad'
         : 'Última actividad de hoy';
   const textoAccionClase = (item) => (
-    item.clase_estado === 'CERRADA'
-      ? 'Ver o corregir asistencia'
+    item.clase_estado === 'NO_IMPARTIDA'
+      ? 'Ver registro'
+      : item.clase_estado === 'CERRADA'
+        ? 'Ver o corregir asistencia'
       : item.clase_id
         ? 'Continuar clase'
         : item.estado_reserva_laboratorio === 'RESERVADO'

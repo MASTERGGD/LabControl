@@ -186,7 +186,7 @@ export default function ClaseAsistencia() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ${clase.estado === 'ABIERTA' ? 'bg-emerald-500/20 text-emerald-300' : clase.estado === 'CORRECCION' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-500/20 text-slate-300'}`}>
-              {clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : 'Asistencia cerrada'}
+              {clase.estado === 'ABIERTA' ? 'Clase en curso' : clase.estado === 'CORRECCION' ? 'Corrigiendo asistencia' : clase.estado === 'NO_IMPARTIDA' ? 'Clase no impartida' : 'Asistencia cerrada'}
             </span>
             {clase.es_extemporanea && (
               <div className="relative">
@@ -219,11 +219,18 @@ export default function ClaseAsistencia() {
           </div>
         </div>
 
-        <div className={`grid grid-cols-2 gap-3 ${clase.estado === 'ABIERTA' ? 'md:grid-cols-4' : 'md:grid-cols-5'}`}>
+        {clase.estado === 'NO_IMPARTIDA' && (
+          <div className={`rounded-2xl border px-5 py-4 ${isDay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-500/25 bg-slate-500/[0.07] text-slate-300'}`}>
+            <p className="font-semibold">Esta sesión quedó registrada como no impartida.</p>
+            <p className="mt-1 text-sm text-slate-500">{clase.motivo_no_impartida || 'No requiere captura de asistencia.'}</p>
+          </div>
+        )}
+
+        {clase.estado !== 'NO_IMPARTIDA' && <div className={`grid grid-cols-2 gap-3 ${clase.estado === 'ABIERTA' ? 'md:grid-cols-4' : 'md:grid-cols-5'}`}>
           {[['Total', r.total], ['Presentes', r.presente], ['Faltas', r.falta], ['Retardos', r.retardo], ...(clase.estado === 'ABIERTA' ? [] : [['Justificadas', r.justificada]])].map(([etiqueta, valor]) => (
             <div key={etiqueta} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{valor}</p><p className="text-xs text-slate-400">{etiqueta}</p></div>
           ))}
-        </div>
+        </div>}
 
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {cierreConfirmado && (
@@ -282,7 +289,7 @@ export default function ClaseAsistencia() {
             </div>}
           </section>
         )}
-        <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
+        {clase.estado !== 'NO_IMPARTIDA' && <div className="glass mx-auto w-full max-w-[1150px] overflow-hidden rounded-2xl">
           <div className="flex flex-col gap-3 border-b border-white/10 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div><h2 className="font-semibold text-white">Lista del grupo</h2>
             <p className="text-xs text-slate-400">Todos comienzan como presentes; marca únicamente faltas y retardos. Las faltas se justifican después, desde Seguimiento de grupos, con el documento validado por División de Carrera.</p></div>
@@ -329,7 +336,7 @@ export default function ClaseAsistencia() {
             ))}
             {clase.alumnos.length === 0 && <p className="p-8 text-center text-sm text-slate-400">Este grupo todavía no tiene alumnos inscritos.</p>}
           </div>
-        </div>
+        </div>}
         {modal && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"

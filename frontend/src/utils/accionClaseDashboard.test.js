@@ -1,5 +1,6 @@
 import { accionClaseDashboard } from './accionClaseDashboard';
 import { abrirClaseDocente } from './abrirClaseDocente';
+import { estadoActividad } from '../pages/docente/MiHorarioDocente';
 
 const item = { carga_id: 12, estado: 'PROGRAMADA', hora_inicio: '10:15', hora_fin: '12:00' };
 const fecha = '2026-09-03';
@@ -28,6 +29,9 @@ test('continúa una clase abierta y consulta una cerrada sin volver a iniciarla'
   expect(accion('13:00:00', { clase_id: 8, estado: 'EN_CURSO' })).toEqual({ texto: 'Continuar clase', path: '/docente/clase/8' });
   expect(accion('10:15:00', { clase_id: 8, estado: 'CERRADA' }).texto).toBe('Ver clase');
   expect(accion('12:10:00', { estado: 'SIN_REGISTRO' }).iniciar).toBe(true);
+});
+test('una clase no impartida permanece finalizada aunque su horario haya vencido', () => {
+  expect(estadoActividad({ clase_estado: 'NO_IMPARTIDA', hora_inicio: '14:00', hora_fin: '16:00' }, 21 * 60)).toBe('FINALIZADA');
 });
 test('inicia una clase de aula y navega directamente al registro', async () => {
   const api = { post: jest.fn().mockResolvedValue({ data: { id: 8 } }) };
