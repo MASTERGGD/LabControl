@@ -497,19 +497,25 @@ def _ids_alumnos_accesibles(db: Session, usuario: Usuario):
     """IDs visibles: únicamente tutorados para DOCENTE; acceso global institucional."""
     if _acceso_institucional(db, usuario):
         return None
-    if usuario.rol == RolUsuario.DOCENTE:
-        tutorados = {
-            row[0] for row in (
-                db.query(AsignacionTutoria.alumno_id)
-                .join(GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id)
-                .filter(
-                    GrupoTutorado.tutor_id == usuario.id,
-                    GrupoTutorado.activo == True,
-                    AsignacionTutoria.activo == True,
-                ).distinct().all()
-            )
-        }
+    # La asignación tutorial activa es el hecho que concede acceso. El usuario
+    # puede tener LAB_ADMIN u otro rol principal y ejercer además como tutor.
+    tutorados = {
+        row[0] for row in (
+            db.query(AsignacionTutoria.alumno_id)
+            .join(GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id)
+            .filter(
+                GrupoTutorado.tutor_id == usuario.id,
+                GrupoTutorado.activo == True,
+                AsignacionTutoria.activo == True,
+            ).distinct().all()
+        )
+    }
+    if tutorados:
         return tutorados
+    # Un docente sin grupo tutorado puede abrir el módulo, pero no obtiene
+    # alumnos ni expedientes. Los demás roles sin permiso reciben 403.
+    if usuario.rol == RolUsuario.DOCENTE:
+        return set()
     raise HTTPException(403, "No tienes autorización para consultar el expediente académico")
 
 
@@ -1376,12 +1382,18 @@ def timeline_alumno(
 @router.get("/alumnos/{alumno_id}", summary="Expediente académico integral del alumno")
 def expediente_alumno(
     alumno_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
     sincronizar_grupos_tutoria(db)
     db.commit()
     alumno = _obtener_alumno_autorizado(db, alumno_id, current_user)
+    registrar(
+        db, Accion.CONSULTAR_EXPEDIENTE, Recurso.ALUMNO,
+        usuario=current_user, recurso_id=alumno.id, request=request,
+        detalle={"origen": "EXPEDIENTE_ACADEMICO", "alcance": "ACADEMICO"},
+    )
     grupo, cargas = _grupo_y_cargas(db, alumno)
     materias = _agrupar_materias(db, alumno, cargas)
 
@@ -1777,7 +1789,7 @@ def exportar_expediente_alumno_pdf(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    data = expediente_alumno(alumno_id, db, current_user)
+    data = expediente_alumno(alumno_id, request, db, current_user)
     ahora = datetime.datetime.now(MX_TIMEZONE)
     folio = f"EXP-{data['alumno']['matricula']}-{ahora.strftime('%Y%m%d-%H%M%S')}"
     salida = _crear_pdf_expediente(data, current_user.nombre, folio, {

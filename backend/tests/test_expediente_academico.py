@@ -382,6 +382,8 @@ def test_trayectoria_agrupa_inscripciones_equivalentes_y_conserva_movimientos(cl
 
 def test_solo_tutor_asignado_consulta_expediente(client, db):
     reportante, tutor, alumno, carga, _ = _escenario(db)
+    # El rol principal no debe bloquear una asignación tutorial vigente.
+    tutor.rol = RolUsuario.LAB_ADMIN
     ajeno = Usuario(
         nombre="Docente ajeno", email="ajeno@utecan.edu.mx",
         password_hash=hashear_password("Ajeno123!"), rol=RolUsuario.DOCENTE, activo=True,
@@ -428,6 +430,12 @@ def test_solo_tutor_asignado_consulta_expediente(client, db):
         headers=auth_headers(get_token(client, tutor.email, "Tutor123!")),
     )
     assert detalle_tutor.status_code == 200
+    auditoria = db.query(AuditLog).filter(
+        AuditLog.accion == "CONSULTAR_EXPEDIENTE",
+        AuditLog.usuario_id == tutor.id,
+        AuditLog.recurso_id == alumno.id,
+    ).first()
+    assert auditoria is not None
 
     denegado = client.get(
         f"/expediente-academico/alumnos/{alumno.id}",

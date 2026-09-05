@@ -841,7 +841,10 @@ def alumnos_grupo(
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == grupo_id).first()
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
-    if current_user.rol == RolUsuario.DOCENTE and g.tutor_id != current_user.id:
+    acceso_institucional = current_user.rol in {
+        RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN, RolUsuario.SERVICIOS_ESCOLARES,
+    }
+    if not acceso_institucional and g.tutor_id != current_user.id:
         raise HTTPException(403, "No tienes acceso a este grupo")
 
     asignaciones = db.query(AsignacionTutoria).filter(
@@ -888,14 +891,15 @@ def alumnos_grupo(
         resultado.append({
             **_ser_alumno_basico(alumno),
             "asignacion_id":          a.id,
-            "perfil_socioeconomico":  perfil_d if current_user.rol != RolUsuario.DOCENTE else None,
-            "tiene_perfil_socioeconomico": bool(perfil_d),
-            "semaforo_vulnerabilidad": _semaforo(perfil_d) if current_user.rol != RolUsuario.DOCENTE else None,
+            "perfil_socioeconomico":  perfil_d if acceso_institucional else None,
+            "tiene_perfil_socioeconomico": bool(perfil_d) if acceso_institucional else None,
+            "semaforo_vulnerabilidad": _semaforo(perfil_d) if acceso_institucional else None,
             "estado_seguimiento":     a.estado_seguimiento,
             "estado_observaciones":   a.estado_observaciones,
             "estado_actualizado_en":  a.estado_actualizado_en.isoformat() if a.estado_actualizado_en else None,
             "asistencia_global": asistencia_global,
             "registros_asistencia": registros_asistencia,
+            "materias_con_asistencia": sum(1 for m in materias if m["asistencias_registradas"] > 0),
             "muestra_asistencia_suficiente": registros_asistencia >= MINIMO_CLASES_SEMAFORO,
             "materias_riesgo": materias_riesgo,
             "ultima_sesion": ultima_sesion.fecha.isoformat() if ultima_sesion else None,

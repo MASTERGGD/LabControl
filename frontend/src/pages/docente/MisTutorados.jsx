@@ -646,7 +646,7 @@ export default function MisTutorados() {
   const TABS = [
     { id: "agenda",         label: "Agenda",         badge: urgentes > 0 ? urgentes : null,  badgeColor: "bg-red-500" },
     { id: "alumnos",        label: "Mi Grupo",        badge: null },
-    { id: "sesiones",       label: "Sesiones",        badge: null },
+    { id: "sesiones",       label: "Tutorías",        badge: null },
     { id: "informe",        label: "Informe F-DC-09", badge: null },
     { id: "reportes",       label: "Reportes recibidos", badge: reportesPend || null, badgeColor: "bg-red-500" },
     { id: "canalizaciones", label: "Canalizaciones",  badge: canPend > 0 ? canPend : null, badgeColor: "bg-amber-500" },
@@ -763,8 +763,8 @@ export default function MisTutorados() {
                   <p className="text-xs text-slate-400">Alumnos</p>
                 </div>
                 <div>
-                  <p className={`text-xl font-bold ${grupoSel.sesiones_programadas ? 'text-emerald-400' : 'text-slate-400'}`}>{grupoSel.sesiones_programadas ? `${grupoSel.sesiones_realizadas} / ${grupoSel.sesiones_programadas}` : 'Sin programar'}</p>
-                  <p className="text-xs text-slate-400">Sesiones registradas</p>
+                  <p className={`text-xl font-bold ${grupoSel.sesiones_programadas ? 'text-emerald-400' : 'text-slate-400'}`}>{grupoSel.sesiones_programadas ? `${grupoSel.sesiones_realizadas} de ${grupoSel.sesiones_programadas}` : 'Sin programar'}</p>
+                  <p className="text-xs text-slate-400">Tutorías realizadas</p>
                 </div>
               </div>
             </div>
@@ -804,7 +804,7 @@ export default function MisTutorados() {
             <div className="flex flex-col gap-3 border-b border-white/10 p-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <h2 className="font-semibold">Seguimiento de alumnos</h2>
-                <p className="mt-1 text-xs text-slate-400">{alumnos.length} alumnos · {alumnos.filter(a => a.requiere_atencion).length} requieren atención · {alumnos.filter(a => a.tiene_perfil_socioeconomico).length} estudios socioeconómicos registrados</p>
+                <p className="mt-1 text-xs text-slate-400">{alumnos.length} alumnos · {alumnos.filter(a => a.requiere_atencion).length} requieren atención · asistencia consolidada de todas sus materias</p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                 <label className="sr-only" htmlFor="buscar-tutorado">Buscar alumno</label>
@@ -813,14 +813,14 @@ export default function MisTutorados() {
                 <select id="filtrar-tutorados" value={filtroAlumnos} onChange={e => setFiltroAlumnos(e.target.value)} className="input-dark sm:w-52">
                   <option value="TODOS">Todos los alumnos</option>
                   <option value="ATENCION">Requieren atención</option>
-                  <option value="SIN_SESION">Sin sesión tutorial</option>
+                  <option value="SIN_SESION">Sin tutoría registrada</option>
                   <option value="CANALIZADOS">Con canalización abierta</option>
                 </select>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-white/[0.035] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th className="px-4 py-3">Matrícula</th><th className="px-4 py-3">Asistencia</th><th className="px-4 py-3">En riesgo</th><th className="px-4 py-3">Última sesión</th><th className="px-4 py-3">Atención</th><th className="px-5 py-3 text-right">Acciones</th></tr></thead>
+                <thead className="bg-white/[0.035] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th className="px-4 py-3">Matrícula</th><th className="px-4 py-3">Asistencia global</th><th className="px-4 py-3">Materias en riesgo</th><th className="px-4 py-3">Última tutoría</th><th className="px-4 py-3">Alertas abiertas</th><th className="px-5 py-3 text-right">Acción</th></tr></thead>
                 <tbody className="divide-y divide-white/5">
                   {alumnosFiltrados.map(a => {
                     const est = a.estado_seguimiento || "SIN_SEGUIMIENTO";
@@ -828,11 +828,11 @@ export default function MisTutorados() {
                     return <tr key={a.id} className={`transition hover:bg-white/[0.035] ${a.requiere_atencion ? 'bg-amber-500/[0.025]' : ''}`}>
                       <td className="px-5 py-3.5"><p className="font-medium text-white">{toTitleCase(a.nombre)}</p>{est !== "SIN_SEGUIMIENTO" && <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] ${ESTADO_SEG[est]?.cls}`}>{ESTADO_SEG[est]?.label}</span>}</td>
                       <td className="px-4 py-3.5 text-slate-400">{a.matricula}</td>
-                      <td className="px-4 py-3.5">{a.muestra_asistencia_suficiente ? <div><span className={`font-semibold ${a.asistencia_global < 80 ? 'text-amber-300' : 'text-emerald-300'}`}>{a.asistencia_global}%</span><p className="text-[11px] text-slate-500">{a.registros_asistencia} clases</p></div> : <div><span className="text-slate-400">Sin evaluación</span><p className="text-[11px] text-slate-500">{a.registros_asistencia || 0} de 3 clases mínimas</p></div>}</td>
+                      <td className="px-4 py-3.5">{a.muestra_asistencia_suficiente ? <div><span className={`font-semibold ${a.asistencia_global < 80 ? 'text-amber-300' : 'text-emerald-300'}`}>{a.asistencia_global}%</span><p className="text-[11px] text-slate-500">{a.registros_asistencia} clases · {a.materias_con_asistencia} {a.materias_con_asistencia === 1 ? 'materia' : 'materias'}</p></div> : <div><span className="text-slate-400">Sin evaluación</span><p className="text-[11px] text-slate-500">{a.registros_asistencia || 0} de 3 clases mínimas</p></div>}</td>
                       <td className="px-4 py-3.5">{a.materias_riesgo ? <span className="rounded-full bg-red-500/15 px-2 py-1 text-xs font-semibold text-red-300">{a.materias_riesgo} {a.materias_riesgo === 1 ? 'materia' : 'materias'}</span> : <span className="text-slate-600">—</span>}</td>
-                      <td className="px-4 py-3.5 text-slate-300">{a.ultima_sesion ? new Date(`${a.ultima_sesion}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : <span className="text-slate-500">Sin sesiones</span>}</td>
+                      <td className="px-4 py-3.5 text-slate-300">{a.ultima_sesion ? new Date(`${a.ultima_sesion}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : <span className="text-slate-500">Sin tutorías</span>}</td>
                       <td className="px-4 py-3.5">{pendientesAlumno ? <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-300">{pendientesAlumno} pendiente{pendientesAlumno === 1 ? '' : 's'}</span> : <span className="text-slate-600">—</span>}</td>
-                      <td className="px-5 py-3.5"><div className="flex justify-end gap-2"><button type="button" onClick={() => { setCanalizarAlumnoId(a.id); setModal("canalizar"); }} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5 hover:text-white">Canalizar</button><button type="button" onClick={() => navigate(`/expediente-academico?alumno=${a.id}`)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10">Ver expediente ›</button></div></td>
+                      <td className="px-5 py-3.5 text-right"><button type="button" onClick={() => navigate(`/expediente-academico?alumno=${a.id}`)} className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10">Ver expediente ›</button></td>
                     </tr>;
                   })}
                 </tbody>
