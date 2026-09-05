@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 import openpyxl
+from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
@@ -1971,8 +1972,8 @@ def seguimiento_grupo(
     for fila in alumnos.values():
         asistio = fila["presente"] + fila["retardo"] + fila["justificada"]
         fila["porcentaje_asistencia"] = round(
-            (asistio / total_clases * 100) if total_clases else 0, 1
-        )
+            asistio / total_clases * 100, 1
+        ) if total_clases else None
         estados_recientes = []
         for clase in clases:
             asistencia = next((a for a in clase.asistencias if a.alumno_id == fila["alumno_id"]), None)
@@ -2012,7 +2013,7 @@ def seguimiento_grupo(
     filas.sort(key=lambda x: x["nombre"])
     promedio = round(
         sum(f["porcentaje_asistencia"] for f in filas) / len(filas), 1
-    ) if filas else 0
+    ) if filas and total_clases else None
     return {
         "carga": _serializar_carga(carga, db),
         "bloques_semanales": len(cargas_equivalentes),
@@ -2595,10 +2596,16 @@ def exportar_seguimiento_excel(
     ws = wb.active
     ws.title = "Concentrado"
     grupo = carga.grupo_academico
+    ahora_mx = _ahora_mx()
+    fecha_corte = ahora_mx.date()
     ws.append(["SIGA · Concentrado de asistencia"])
-    ws.append(["Materia", carga.actividad_nombre, "Grupo", f"{grupo.cuatrimestre}° {grupo.grupo}"])
-    ws.append(["Carrera", grupo.carrera, "Periodo", carga.periodo.clave if carga.periodo else ""])
-    ws.append([])
+    ws.append(["Materia", carga.actividad_nombre, "Grupo", f"{grupo.cuatrimestre}° {grupo.grupo}", "Docente", current_user.nombre])
+    ws.append(["Carrera", grupo.carrera, "", "", "Periodo", carga.periodo.clave if carga.periodo else ""])
+    leyenda = "P = Presente · F = Falta · R = Retardo · J = Justificada"
+    if clases:
+        ws.append([leyenda])
+    else:
+        ws.append([f"Sin clases registradas en el periodo al {fecha_corte.strftime('%d/%m/%Y')} · {leyenda}"])
     encabezados = ["Matrícula", "Alumno"] + [clase.fecha.strftime("%d/%m/%Y") for clase in clases] + ["P", "F", "R", "J", "% asistencia"]
     ws.append(encabezados)
     abreviatura = {"PRESENTE": "P", "FALTA": "F", "RETARDO": "R", "JUSTIFICADA": "J"}
@@ -2606,29 +2613,82 @@ def exportar_seguimiento_excel(
         estados = [por_clase[clase.id].get(alumno.id, "") for clase in clases]
         conteos = {estado: estados.count(estado) for estado in ESTADOS_ASISTENCIA}
         asistio = conteos["PRESENTE"] + conteos["RETARDO"] + conteos["JUSTIFICADA"]
-        porcentaje = round(asistio * 100 / len(estados), 1) if estados else None
+        porcentaje = asistio / len(estados) if estados else None
         nombre = f"{alumno.apellido_paterno} {alumno.apellido_materno} {alumno.nombres}".strip()
         ws.append([alumno.matricula, nombre] + [abreviatura.get(e, "") for e in estados] + [
             conteos["PRESENTE"], conteos["FALTA"], conteos["RETARDO"], conteos["JUSTIFICADA"], porcentaje,
         ])
+    primera_fila_alumnos = 6
+    ultima_fila_alumnos = ws.max_row
+    total_presentes = sum(1 for clase in clases for asistencia in clase.asistencias if asistencia.estado == "PRESENTE")
+    total_faltas = sum(1 for clase in clases for asistencia in clase.asistencias if asistencia.estado == "FALTA")
+    total_retardos = sum(1 for clase in clases for asistencia in clase.asistencias if asistencia.estado == "RETARDO")
+    total_justificadas = sum(1 for clase in clases for asistencia in clase.asistencias if asistencia.estado == "JUSTIFICADA")
+    promedio_grupo = (
+        sum((a["PRESENTE"] + a["RETARDO"] + a["JUSTIFICADA"]) / len(clases) for a in [
+            {estado: [por_clase[c.id].get(alumno.id, "") for c in clases].count(estado) for estado in ESTADOS_ASISTENCIA}
+            for alumno in alumnos
+        ]) / len(alumnos)
+        if clases and alumnos else None
+    )
+    total_col = len(encabezados)
+    ws.append(["Resumen", f"{len(alumnos)} alumnos"] + [""] * len(clases) + [
+        total_presentes, total_faltas, total_retardos, total_justificadas, promedio_grupo,
+    ])
+    fila_resumen = ws.max_row
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(2, len(encabezados)))
+    ws.merge_cells(start_row=3, start_column=2, end_row=3, end_column=4)
     ws["A1"].font = Font(size=16, bold=True, color="FFFFFF")
     ws["A1"].fill = PatternFill("solid", fgColor="047857")
     ws["A1"].alignment = Alignment(horizontal="center")
+    ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=max(2, len(encabezados)))
+    ws["A4"].font = Font(italic=True, color="64748B")
+    ws["A4"].alignment = Alignment(wrap_text=True)
     for cell in ws[5]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="0F766E")
         cell.alignment = Alignment(horizontal="center", wrap_text=True)
     ws.freeze_panes = "C6"
-    ws.auto_filter.ref = f"A5:{get_column_letter(len(encabezados))}{ws.max_row}"
+    ws.auto_filter.ref = f"A5:{get_column_letter(len(encabezados))}{max(5, ultima_fila_alumnos)}"
     ws.column_dimensions["A"].width = 16
-    ws.column_dimensions["B"].width = 38
+    ws.column_dimensions["B"].width = 44
     for index in range(3, len(encabezados) + 1):
         ws.column_dimensions[get_column_letter(index)].width = 12
+    ws.column_dimensions[get_column_letter(total_col)].width = 15
+    for fila in range(primera_fila_alumnos, ultima_fila_alumnos + 1):
+        ws.cell(fila, total_col).number_format = "0.0%"
+    ws.cell(fila_resumen, total_col).number_format = "0.0%"
+    for cell in ws[fila_resumen]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="E2E8F0")
+    if len(clases) >= 3 and ultima_fila_alumnos >= primera_fila_alumnos:
+        rango_porcentaje = f"{get_column_letter(total_col)}{primera_fila_alumnos}:{get_column_letter(total_col)}{ultima_fila_alumnos}"
+        ws.conditional_formatting.add(
+            rango_porcentaje,
+            CellIsRule(operator="lessThan", formula=["0.8"], fill=PatternFill("solid", fgColor="FECACA")),
+        )
+
+    info = wb.create_sheet("Información")
+    info.append(["Información de generación", "Valor"])
+    info.append(["Docente", current_user.nombre])
+    info.append(["Exportado por", current_user.nombre])
+    info.append(["Generado", ahora_mx.replace(tzinfo=None)])
+    info.append(["Fecha de corte", fecha_corte])
+    info.append(["Periodo", carga.periodo.clave if carga.periodo else ""])
+    info.append(["Formato", "Concentrado de asistencia SIGA"])
+    info.append(["Versión", "1"])
+    info.append(["Leyenda", leyenda])
+    info["B4"].number_format = "dd/mm/yyyy hh:mm"
+    info["B5"].number_format = "dd/mm/yyyy"
+    info.column_dimensions["A"].width = 24
+    info.column_dimensions["B"].width = 58
+    for cell in info[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="047857")
     salida = io.BytesIO()
     wb.save(salida)
     salida.seek(0)
-    nombre = _nombre_archivo(f"Asistencia_{carga.actividad_nombre}_{grupo.cuatrimestre}_{grupo.grupo}")
+    nombre = _nombre_archivo(f"Asistencia_{carga.actividad_nombre}_{grupo.cuatrimestre}{grupo.grupo}_{fecha_corte.isoformat()}")
     return StreamingResponse(
         salida,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

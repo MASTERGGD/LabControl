@@ -1,6 +1,9 @@
 import datetime
+import io
+import re
 from zoneinfo import ZoneInfo
 
+import openpyxl
 import routers.docencia as docencia_router
 
 from dependencies import hashear_password
@@ -37,6 +40,16 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     )
     db.add_all([grupo, materia])
     db.flush()
+    alumno = CatalogoAlumno(
+        matricula="UTC-VERSION", apellido_paterno="Pérez", apellido_materno="López",
+        nombres="Ana María", carrera="TIEID", cuatrimestre=1, grupo="A",
+        periodo=periodo.clave, activo=True,
+    )
+    db.add(alumno)
+    db.flush()
+    db.add(InscripcionAlumno(
+        alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO",
+    ))
     carga = CargaDocente(
         docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
         materia_id=materia.id, tipo_actividad="CLASE", actividad_nombre=materia.nombre,
@@ -84,7 +97,21 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     seguimiento = client.get(f"/docencia/seguimiento/{nueva.id}", headers=headers)
     assert seguimiento.status_code == 200, seguimiento.text
     assert seguimiento.json()["total_clases"] == 0
+    assert seguimiento.json()["promedio_asistencia"] is None
+    assert seguimiento.json()["alumnos"][0]["porcentaje_asistencia"] is None
     assert seguimiento.json()["clases_sin_cerrar"] == []
+
+    exportado = client.get(f"/docencia/seguimiento/{nueva.id}/exportar.xlsx", headers=headers)
+    assert exportado.status_code == 200, exportado.text
+    assert re.search(r"_\d{4}-\d{2}-\d{2}\.xlsx", exportado.headers["content-disposition"])
+    libro = openpyxl.load_workbook(io.BytesIO(exportado.content))
+    hoja = libro["Concentrado"]
+    assert hoja.freeze_panes == "C6"
+    assert hoja["A4"].value.startswith("Sin clases registradas en el periodo")
+    assert hoja["G5"].value == "% asistencia"
+    assert hoja["G6"].value is None
+    assert libro["Información"]["B2"].value == docente.nombre
+    assert libro["Información"]["B8"].value == "1"
 
     abierta = ClaseDocente(
         carga_docente_id=nueva.id, fecha=datetime.date(2026, 9, 11), estado="ABIERTA",

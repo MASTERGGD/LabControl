@@ -4,6 +4,7 @@ import AdminLayout from '../../components/AdminLayout';
 import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
 import { usePeriodo } from '../../context/PeriodoContext';
+import { formatAsistencia, formatNombre } from '../../utils/presentacion';
 
 const fechaLocal = (fecha) => [
   fecha.getFullYear(),
@@ -62,6 +63,7 @@ export default function SeguimientoGrupos() {
   }, [seleccion]);
 
   const cargaActual = useMemo(() => cargas.find((c) => String(c.id) === seleccion), [cargas, seleccion]);
+  const asistenciaGrupo = formatAsistencia(datos?.promedio_asistencia, datos?.total_clases);
 
   const exportarConcentrado = async () => {
     try {
@@ -213,7 +215,7 @@ export default function SeguimientoGrupos() {
         {datos && (
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {[['Sesiones registradas', datos.total_clases], ['Alumnos', datos.total_alumnos], ['Promedio del grupo', `${datos.promedio_asistencia}%`], ['Alumnos en alerta', datos.alumnos_en_alerta]].map(([label, value]) => (
+              {[['Sesiones registradas', datos.total_clases], ['Alumnos', datos.total_alumnos], ['Promedio del grupo', asistenciaGrupo.texto], ['Alumnos en alerta', datos.alumnos_en_alerta]].map(([label, value]) => (
                 <div key={label} className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{value}</p><p className="text-xs text-slate-400">{label}</p></div>
               ))}
             </div>
@@ -234,14 +236,14 @@ export default function SeguimientoGrupos() {
               {datos.alumnos.map((a) => (
                 <article key={a.alumno_id} className="glass rounded-2xl p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0"><p className="truncate font-semibold text-white">{a.nombre}</p><p className="text-xs text-slate-500">{a.matricula}</p></div>
-                    <span className={`shrink-0 rounded-full px-3 py-1 text-sm font-bold ${a.porcentaje_asistencia < 80 ? 'bg-red-500/15 text-red-300' : 'bg-emerald-500/15 text-emerald-300'}`}>{a.porcentaje_asistencia}%</span>
+                    <div className="min-w-0"><p className="truncate font-semibold text-white">{formatNombre(a.nombre)}</p><p className="text-xs text-slate-500">{a.matricula}</p></div>
+                    <span className={`shrink-0 rounded-full bg-slate-500/10 px-3 py-1 text-sm font-bold ${formatAsistencia(a.porcentaje_asistencia, datos.total_clases).clase}`}>{formatAsistencia(a.porcentaje_asistencia, datos.total_clases).texto}</span>
                   </div>
                   <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs">
-                    {[['Presentes', a.presente, 'text-emerald-400'], ['Faltas', a.falta, 'text-red-400'], ['Retardos', a.retardo, 'text-amber-400'], ['Justif.', a.justificada, 'text-blue-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/5 p-2"><b className={`block text-base ${tone}`}>{value}</b><span className="text-[10px] text-slate-500">{label}</span></div>)}
+                    {[['Presentes', a.presente, 'text-emerald-400'], ['Faltas', a.falta, 'text-red-400'], ['Retardos', a.retardo, 'text-amber-400'], ['Justif.', a.justificada, 'text-blue-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/5 p-2"><b className={`block text-base ${value ? tone : 'text-slate-500'}`}>{value}</b><span className="text-[10px] text-slate-500">{label}</span></div>)}
                   </div>
                   <div className="mt-3 rounded-xl bg-white/[0.025] p-3">
-                    {a.alertas?.length ? a.alertas.map((alerta) => <div key={alerta.tipo} className="mb-2 last:mb-0"><p className="text-xs font-semibold text-red-300">{alerta.mensaje}</p><p className="text-xs text-slate-400">{alerta.accion}</p></div>) : <p className="text-xs text-emerald-400">Sin alertas activas</p>}
+                    {a.alertas?.length ? a.alertas.map((alerta) => <div key={alerta.tipo} className="mb-2 last:mb-0"><p className="text-xs font-semibold text-red-300">{alerta.mensaje}</p><p className="text-xs text-slate-400">{alerta.accion}</p></div>) : <p className="text-xs text-slate-500">—</p>}
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {esPeriodoActual && a.falta > 0 ? <button onClick={() => abrirJustificacion(a)} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-300">Justificar faltas</button> : <span />}
@@ -256,15 +258,15 @@ export default function SeguimientoGrupos() {
                 <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Alertas y acción sugerida</th><th></th></tr></thead>
                 <tbody className="divide-y divide-white/5">
                   {datos.alumnos.map((a) => <tr key={a.alumno_id}>
-                    <td className="px-5 py-3"><p className="font-medium text-white">{a.nombre}</p><p className="text-xs text-slate-500">{a.matricula}</p></td>
-                    <td className="text-emerald-400">{a.presente}</td><td className="text-red-400">{a.falta}</td><td className="text-amber-400">{a.retardo}</td><td className="text-blue-400">{a.justificada}</td>
-                    <td className="font-semibold text-white">{a.porcentaje_asistencia}%</td>
+                    <td className="px-5 py-3"><p className="font-medium text-white">{formatNombre(a.nombre)}</p><p className="text-xs text-slate-500">{a.matricula}</p></td>
+                    <td className={a.presente ? 'text-emerald-400' : 'text-slate-500'}>{a.presente}</td><td className={a.falta ? 'text-red-400' : 'text-slate-500'}>{a.falta}</td><td className={a.retardo ? 'text-amber-400' : 'text-slate-500'}>{a.retardo}</td><td className={a.justificada ? 'text-blue-400' : 'text-slate-500'}>{a.justificada}</td>
+                    <td className={`font-semibold ${formatAsistencia(a.porcentaje_asistencia, datos.total_clases).clase}`}>{formatAsistencia(a.porcentaje_asistencia, datos.total_clases).corto}</td>
                     <td className="max-w-sm py-3 pr-4">
                       {a.alertas?.length ? (
                         <div className="space-y-2">
                           {a.alertas.map((alerta) => <div key={alerta.tipo}><p className="text-xs font-semibold text-red-300">{alerta.mensaje}</p><p className="text-xs text-slate-400">{alerta.accion}</p></div>)}
                         </div>
-                      ) : <span className="text-xs text-emerald-400">Sin alertas activas</span>}
+                      ) : <span className="text-xs text-slate-500">—</span>}
                     </td>
                     <td className="pr-5">
                       <div className="flex items-center justify-end gap-2">
