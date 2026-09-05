@@ -392,19 +392,20 @@ export default function ClaseAsistencia() {
               ) : (
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <label className="text-sm font-medium text-slate-300 sm:col-span-2">Tema impartido *
-                    <input required value={bitacora.tema_impartido} onChange={(e) => setBitacora({ ...bitacora, tema_impartido: e.target.value })} className="input-dark mt-1" placeholder="Ej. Evaluación primaria del paciente" />
+                    <input required spellCheck="true" value={bitacora.tema_impartido} onChange={(e) => setBitacora({ ...bitacora, tema_impartido: e.target.value })} className="input-dark mt-1" placeholder="Ej. Evaluación primaria del paciente" />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Este texto formará parte del registro oficial de la clase.</span>
                   </label>
-                  <label className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm font-medium text-slate-300 sm:col-span-2">Avance respecto a la planeación <span className="font-normal text-slate-500">(Opcional)</span>
+                  <label className="rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm font-medium text-slate-300 sm:col-span-2">Cumplimiento de lo planeado para la sesión <span className="font-normal text-slate-500">(Opcional)</span>
                     <div className="mt-3 flex items-center gap-4">
                       <input type="range" min="0" max="100" step="5" value={bitacora.avance_planeacion} onChange={(e) => setBitacora({ ...bitacora, avance_planeacion: e.target.value })} className="flex-1" />
                       <span className="w-14 rounded-lg bg-emerald-500/10 px-2 py-1.5 text-center font-semibold text-emerald-400">{bitacora.avance_planeacion}%</span>
                     </div>
                   </label>
                   <label className="text-sm font-medium text-slate-300">Actividades realizadas <span className="font-normal text-slate-500">(Opcional)</span>
-                    <textarea value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Práctica, ejercicio o dinámica" />
+                    <textarea spellCheck="true" value={bitacora.actividades_realizadas} onChange={(e) => setBitacora({ ...bitacora, actividades_realizadas: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Práctica, ejercicio o dinámica" />
                   </label>
                   <label className="text-sm font-medium text-slate-300">Pendiente para la siguiente clase <span className="font-normal text-slate-500">(Opcional)</span>
-                    <textarea value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Ej. Retomar normalización y revisar el ejercicio pendiente" />
+                    <textarea spellCheck="true" value={bitacora.tema_pendiente} onChange={(e) => setBitacora({ ...bitacora, tema_pendiente: e.target.value })} rows={3} className="input-dark mt-1 min-h-[96px] resize-y" placeholder="Ej. Retomar normalización y revisar el ejercicio pendiente" />
                     <span className="mt-1 block text-xs font-normal text-slate-500">Anota el tema que debe retomarse o el trabajo que conviene revisar al comenzar la próxima sesión.</span>
                   </label>
                   {clase.estado !== 'CORRECCION' && (

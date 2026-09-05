@@ -651,6 +651,13 @@ def _serializar_clase(clase: ClaseDocente):
     observacion_limpia = "\n".join(
         linea for linea in observaciones if not linea.startswith("[Correcci")
     ).strip() or None
+    if (
+        clase.estado == "NO_IMPARTIDA"
+        and observacion_limpia
+        and clase.motivo_no_impartida
+        and observacion_limpia.strip().lower() == f"clase no impartida: {clase.motivo_no_impartida}".lower()
+    ):
+        observacion_limpia = None
     correcciones = [{
         "id": correccion.id,
         "tipo": correccion.tipo,
@@ -1353,7 +1360,7 @@ def declarar_clase_no_impartida(
         fin=datetime.datetime.utcnow(),
         motivo_no_impartida=data.motivo.strip(),
         declarada_no_impartida_en=datetime.datetime.utcnow(),
-        observacion_general=f"Clase no impartida: {data.motivo.strip()}",
+        observacion_general=None,
         tema_pendiente=(data.tema or "").strip() or None,
         estado_reposicion="PENDIENTE" if data.requiere_reposicion else "NO_REQUERIDA",
     )

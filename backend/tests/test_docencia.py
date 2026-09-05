@@ -91,6 +91,7 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     no_impartida = ClaseDocente(
         carga_docente_id=nueva.id, fecha=datetime.date(2026, 9, 4),
         estado="NO_IMPARTIDA", motivo_no_impartida="El horario aún no estaba vigente",
+        observacion_general="Clase no impartida: El horario aún no estaba vigente",
     )
     db.add(no_impartida)
     db.commit()
@@ -100,6 +101,9 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     assert seguimiento.json()["promedio_asistencia"] is None
     assert seguimiento.json()["alumnos"][0]["porcentaje_asistencia"] is None
     assert seguimiento.json()["clases_sin_cerrar"] == []
+    detalle_no_impartida = client.get(f"/docencia/clases/{no_impartida.id}", headers=headers)
+    assert detalle_no_impartida.status_code == 200
+    assert detalle_no_impartida.json()["observacion_general"] is None
 
     exportado = client.get(f"/docencia/seguimiento/{nueva.id}/exportar.xlsx", headers=headers)
     assert exportado.status_code == 200, exportado.text
