@@ -71,6 +71,7 @@ class TestCrudComunicados:
         assert docente.id in ids
         assert administrativo.id in ids
         assert inactivo.id not in ids
+        assert all("departamento_id" in item for item in r.json())
 
     def test_crear_comunicado(self, client, db):
         _admin(db)

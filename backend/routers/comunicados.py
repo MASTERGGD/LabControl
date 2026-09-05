@@ -833,6 +833,7 @@ def listar_destinatarios_comunicado(
             "email": destinatario.email,
             "numero_empleado": destinatario.numero_empleado,
             "rol": destinatario.rol.value,
+            "departamento_id": destinatario.departamento_id,
             "departamento_nombre": departamento.nombre if departamento else None,
         })
     return resultado

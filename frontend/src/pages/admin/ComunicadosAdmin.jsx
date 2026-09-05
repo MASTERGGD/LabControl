@@ -80,7 +80,7 @@ const EMPTY_FORM = {
   requiere_confirmacion: false, requiere_retroalimentacion: false, notificar_email: false, fijado: false,
   area_emisora: '', departamento_emisor_id: '',
   fecha_publicacion: '', fecha_expiracion: '', fecha_limite_respuesta: '',
-  dest_tipo: 'TODOS', dest_roles: [], dest_usuarios: [], dest_departamentos: [],
+  dest_tipo: '', dest_roles: [], dest_usuarios: [], dest_departamentos: [],
 };
 
 const toStartOfDay = value => value ? `${value}T00:00:00` : null;
@@ -143,6 +143,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const [cargandoUsuarios, setCargandoUsuarios] = useState(false);
   const [errorUsuarios, setErrorUsuarios] = useState('');
   const [adjuntosNuevos, setAdjuntosNuevos] = useState([]);
+  const [paso, setPaso] = useState(1);
+  const [confirmacionMasiva, setConfirmacionMasiva] = useState(false);
 
   const esTutorAdmin = usuarioActual?.rol === 'TUTORIA_ADMIN';
   const fechaPublicacionBloqueada = comunicado?.estado === 'PUBLICADO' && !isFutureDate(comunicado?.fecha_publicacion);
@@ -190,8 +192,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         ...EMPTY_FORM,
         categoria: EMPTY_FORM.categoria,
         area_emisora: esTutorAdmin ? 'Tutoría' : EMPTY_FORM.area_emisora,
-        dest_tipo: esTutorAdmin ? 'ROL' : EMPTY_FORM.dest_tipo,
-        dest_roles: esTutorAdmin ? ['DOCENTE'] : EMPTY_FORM.dest_roles,
+        dest_tipo: EMPTY_FORM.dest_tipo,
+        dest_roles: EMPTY_FORM.dest_roles,
         departamento_emisor_id: usuarioActual?.rol === 'ADMINISTRATIVO'
           ? (usuarioActual?.departamento_id || '')
           : '',
@@ -265,8 +267,27 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     return [];
   };
 
+  const destinatariosCalculados = useMemo(() => {
+    if (!form.dest_tipo) return [];
+    if (form.dest_tipo === 'TODOS') return usuarios;
+    if (form.dest_tipo === 'ROL') return usuarios.filter(u => form.dest_roles.includes(u.rol));
+    if (form.dest_tipo === 'DEPARTAMENTO') return usuarios.filter(u => form.dest_departamentos.includes(String(u.departamento_id)));
+    if (form.dest_tipo === 'USUARIO') return form.dest_usuarios;
+    return [];
+  }, [form.dest_tipo, form.dest_roles, form.dest_departamentos, form.dest_usuarios, usuarios]);
+  const totalDestinatarios = new Set(destinatariosCalculados.map(u => u.id)).size;
+
+  const avanzar = () => {
+    setError('');
+    if (paso === 1 && (!form.titulo.trim() || !form.contenido.trim())) { setError('Completa el título y el contenido.'); return; }
+    if (paso === 2 && !buildDestinatarios().length) { setError('Selecciona al menos un destinatario.'); return; }
+    if (paso === 3 && form.fecha_publicacion && form.fecha_expiracion && form.fecha_expiracion < form.fecha_publicacion) { setError('La expiración debe ser posterior a la publicación.'); return; }
+    setPaso(p => Math.min(4, p + 1));
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
+    if (!comunicado && paso < 4) { avanzar(); return; }
     if (!form.titulo.trim())    { setError('El título es obligatorio');   return; }
     if (!form.contenido.trim()) { setError('El contenido es obligatorio'); return; }
     const destinatarios = buildDestinatarios();
@@ -308,6 +329,10 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         await api.post(`/comunicados/${guardado.id}/adjuntos`, fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+      }
+      if (e.nativeEvent.submitter?.value === 'PUBLICAR' && !comunicado) {
+        await api.post(`/comunicados/${guardado.id}/publicar`);
+        showToast('Comunicado publicado' + (form.notificar_email ? ' y notificado' : ''), 'success');
       }
       onSaved();
     } catch (err) {
@@ -374,9 +399,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="glass w-full max-w-2xl shadow-glass animate-fadeUp overflow-y-auto max-h-[92vh]">
         <div className="sticky top-0 z-10 px-6 py-4 border-b border-white/5 bg-slate-900/95 backdrop-blur-xl flex items-center justify-between">
-          <h3 className="font-semibold text-white">
-            {comunicado ? '✏️ Editar comunicado' : '📢 Nuevo comunicado'}
-          </h3>
+          <div><h3 className="font-semibold text-white">{comunicado ? 'Editar comunicado' : 'Nuevo comunicado'}</h3>{!comunicado && <p className="mt-1 text-xs text-slate-400">Paso {paso} de 4 · {['Contenido', 'elige quién lo recibe', 'opciones de publicación', 'revisa antes de publicar'][paso - 1]}</p>}</div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
@@ -385,6 +408,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {!comunicado && <nav className="grid grid-cols-4 border-b border-white/10" aria-label="Pasos del comunicado">{['Contenido', 'Destinatarios', 'Opciones', 'Revisar'].map((etiqueta, indice) => <button key={etiqueta} type="button" onClick={() => indice + 1 < paso && setPaso(indice + 1)} className={`border-b-2 px-2 py-3 text-xs font-semibold ${paso === indice + 1 ? 'border-emerald-400 text-emerald-300' : indice + 1 < paso ? 'border-transparent text-emerald-400' : 'border-transparent text-slate-500'}`}>{indice + 1 < paso ? '✓ ' : `${indice + 1} `}{etiqueta}</button>)}</nav>}
+          <div className={!comunicado && paso !== 1 ? 'hidden' : 'contents'}>
           {/* Título */}
           <div>
             <label className="block text-sm text-slate-400 mb-1">Título *</label>
@@ -401,8 +426,11 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               placeholder="Escribe el contenido del comunicado…" required />
           </div>
 
+          {!comunicado && <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.07] p-4 text-sm text-blue-200"><b>Emisor:</b> {esTutorAdmin ? 'Tutoría' : nombreDepartamentoEmisor}<span className="mt-1 block text-xs text-slate-400">Se obtiene de tu cuenta y queda registrado con el comunicado.</span></div>}
+          </div>
+
           {/* Categoría + Prioridad */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`${!comunicado && paso !== 3 ? 'hidden' : 'grid'} grid-cols-2 gap-3`}>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Categoría</label>
               <select className="input-dark" value={form.categoria}
@@ -423,7 +451,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
           </div>
 
           {/* Área emisora */}
-          <div>
+          <div className={!comunicado ? 'hidden' : ''}>
             <label className="block text-sm text-slate-400 mb-1">Área emisora</label>
             <input className="input-dark" value={form.area_emisora}
               onChange={e => set('area_emisora', e.target.value)}
@@ -431,7 +459,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               disabled={esTutorAdmin} />
           </div>
 
-          {esTutorAdmin ? (
+          <div className={!comunicado && paso !== 3 ? 'hidden' : ''}>{esTutorAdmin ? (
             <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-cyan-300">
                 Emisión de Tutoría
@@ -469,10 +497,10 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 ))}
               </select>
             </div>
-          )}
+          )}</div>
 
           {/* Fechas */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`${!comunicado && paso !== 3 ? 'hidden' : 'grid'} grid-cols-2 gap-3`}>
             <div>
               <label className="block text-sm text-slate-400 mb-1">Fecha de publicación</label>
               <input type="date" className="input-dark" value={form.fecha_publicacion}
@@ -492,14 +520,14 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
           </div>
 
           {/* Requiere confirmación */}
-          <label className="flex items-center gap-3 cursor-pointer">
+          <label className={`${!comunicado && paso !== 3 ? 'hidden' : 'flex'} items-center gap-3 cursor-pointer`}>
             <input type="checkbox" className="w-4 h-4 accent-blue-500"
               checked={form.requiere_confirmacion}
               onChange={e => set('requiere_confirmacion', e.target.checked)} />
             <span className="text-sm text-slate-300">Requiere confirmación de lectura</span>
           </label>
 
-          <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4">
+          <label className={`${!comunicado && paso !== 3 ? 'hidden' : 'flex'} items-start gap-3 cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4`}>
             <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500"
               checked={form.notificar_email}
               onChange={e => set('notificar_email', e.target.checked)} />
@@ -516,7 +544,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
             </span>
           </label>
 
-          <div className="space-y-3 bg-white/5 rounded-xl p-4">
+          <div className={`${!comunicado && paso !== 3 ? 'hidden' : 'block'} space-y-3 bg-white/5 rounded-xl p-4`}>
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" className="w-4 h-4 accent-blue-500"
                 checked={form.requiere_retroalimentacion}
@@ -538,7 +566,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
             </label>
           </div>
 
-          <div className="space-y-3 bg-white/5 rounded-xl p-4">
+          <div className={`${!comunicado && paso !== 3 ? 'hidden' : 'block'} space-y-3 bg-white/5 rounded-xl p-4`}>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Adjuntos</p>
               <p className="text-xs text-slate-500 mt-1">PDF, JPG, PNG o WEBP. Máximo 5 MB por archivo.</p>
@@ -571,7 +599,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
           </div>
 
           {/* Destinatarios */}
-          <div className="space-y-3 bg-white/5 rounded-xl p-4">
+          <div className={`${!comunicado && paso !== 2 ? 'hidden' : 'block'} space-y-3 bg-white/5 rounded-xl p-4`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Destinatarios</p>
             <div className="flex gap-2 flex-wrap">
               {tiposDestinatario.map(t => (
@@ -589,6 +617,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 </button>
               ))}
             </div>
+            {!form.dest_tipo && <p className="text-sm text-slate-400">Elige conscientemente quién recibirá el comunicado; ninguna audiencia viene seleccionada por defecto.</p>}
             {form.dest_tipo === 'ROL' && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {rolesDisponibles.map(r => (
@@ -712,7 +741,10 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 </div>
               </div>
             )}
+            {!!form.dest_tipo && <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4"><b className="text-2xl text-emerald-400">{totalDestinatarios}</b><span className="ml-1 text-sm text-slate-300">personas recibirán este comunicado</span><p className="mt-1 text-xs text-slate-400">Conteo de usuarios activos, sin duplicados.</p></div>}
           </div>
+
+          {!comunicado && paso === 4 && <div className="space-y-4"><div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4"><b className="text-2xl text-emerald-400">{totalDestinatarios}</b><span className="ml-1 text-sm text-slate-300">personas</span><p className="mt-1 text-xs text-slate-400">{form.notificar_email ? `${totalDestinatarios} recibirán además un aviso por correo.` : 'El comunicado aparecerá en su panel de SIGA.'}</p></div><dl className="divide-y divide-white/10 rounded-xl border border-white/10 text-sm"><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Título</dt><dd className="font-semibold text-white">{form.titulo}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Contenido</dt><dd className="whitespace-pre-wrap text-slate-300">{form.contenido}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Emisor</dt><dd className="text-slate-300">{esTutorAdmin ? 'Tutoría' : nombreDepartamentoEmisor}</dd></div><div className="grid grid-cols-[140px_1fr] gap-3 p-3"><dt className="text-slate-500">Opciones</dt><dd className="text-slate-300">{[form.requiere_confirmacion && 'Confirmación de lectura', form.notificar_email && 'Aviso por correo', form.fijado && 'Fijado arriba'].filter(Boolean).join(' · ') || 'Sin opciones adicionales'}</dd></div></dl>{totalDestinatarios >= 100 && <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-slate-200"><input type="checkbox" checked={confirmacionMasiva} onChange={e => setConfirmacionMasiva(e.target.checked)} className="mt-1 accent-emerald-500"/><span><b>Entiendo que se publicará para {totalDestinatarios.toLocaleString('es-MX')} personas.</b><span className="mt-1 block text-xs text-slate-400">Después puede archivarse, pero la entrega ya realizada queda registrada.</span></span></label>}</div>}
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
@@ -721,9 +753,10 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
               className="px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm">
               Cancelar
             </button>
-            <button type="submit" disabled={saving} className="btn-blue disabled:opacity-50">
-              {saving ? 'Guardando…' : comunicado ? 'Guardar cambios' : 'Crear comunicado'}
-            </button>
+            {!comunicado && paso > 1 && <button type="button" onClick={() => setPaso(p => p - 1)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300">← Anterior</button>}
+            {!comunicado && paso < 4 && <button type="button" onClick={avanzar} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white">Siguiente →</button>}
+            {!comunicado && paso === 4 && <><button type="submit" value="BORRADOR" disabled={saving} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-300 disabled:opacity-50">Guardar borrador</button><button type="submit" value="PUBLICAR" disabled={saving || (totalDestinatarios >= 100 && !confirmacionMasiva)} className="rounded-xl bg-emerald-600 px-5 py-2 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{saving ? 'Publicando…' : form.notificar_email ? 'Publicar y notificar' : 'Publicar'}</button></>}
+            {comunicado && <button type="submit" disabled={saving} className="btn-blue disabled:opacity-50">{saving ? 'Guardando…' : 'Guardar cambios'}</button>}
           </div>
         </form>
       </div>
