@@ -21,7 +21,7 @@ from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
 from models.docencia import CargaDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
-import datetime, io, json, openpyxl
+import calendar, datetime, io, json, openpyxl, re
 from pathlib import Path
 from routers.notificaciones import crear_notificacion
 from services.tutoria_sync import sincronizar_grupos_tutoria
@@ -43,6 +43,17 @@ router = APIRouter(prefix="/tutoria", tags=["Tutoría"])
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+
+def _cierre_bimestre(periodo: str, bimestre: int) -> Optional[datetime.date]:
+    """Último día del bimestre según la clave institucional del periodo."""
+    match = re.search(r"(ENE-ABR|MAY-AGO|SEP-DIC)[ -]+(\d{4})", (periodo or "").upper())
+    if not match or bimestre not in {1, 2}:
+        return None
+    mes_inicio = {"ENE-ABR": 1, "MAY-AGO": 5, "SEP-DIC": 9}[match.group(1)]
+    mes_cierre = mes_inicio + (1 if bimestre == 1 else 3)
+    anio = int(match.group(2))
+    return datetime.date(anio, mes_cierre, calendar.monthrange(anio, mes_cierre)[1])
 
 def _notificar_responsables(db: Session, tipo: str, titulo: str, mensaje: str, url: str = None):
     """Envia notificaciones solo a responsables del proceso de Tutoria."""
@@ -2011,7 +2022,7 @@ def mis_pendientes(
         return {
             "sesiones_vencidas": [], "sesiones_proximas": [],
             "alumnos_riesgo": [], "canalizaciones_pendientes": [],
-            "informes_borrador": [],
+            "informes_borrador": [], "informes_en_curso": [],
             "resumen": {"urgente": 0, "pendiente": 0},
         }
 
@@ -2096,17 +2107,26 @@ def mis_pendientes(
 
     # ── Informes en BORRADOR ──────────────────────────────────────────────────
     informes_borrador = []
+    informes_en_curso = []
     for inf in db.query(InformeBimestral).filter(
         InformeBimestral.tutor_id == current_user.id,
         InformeBimestral.estado   == "BORRADOR",
     ).all():
         g = next((x for x in grupos if x.id == inf.grupo_tutorado_id), None)
-        informes_borrador.append({
+        cierre = _cierre_bimestre(inf.periodo, inf.bimestre)
+        item = {
             "informe_id":  inf.id,
             "grupo_label": f"{g.carrera} Gr.{g.grupo}" if g else "Grupo",
             "periodo":     inf.periodo,
             "bimestre":    inf.bimestre,
-        })
+            "fecha_cierre": cierre.isoformat() if cierre else None,
+        }
+        # Durante el bimestre el informe puede acumular datos, pero todavía no
+        # constituye una obligación pendiente de envío.
+        if cierre and hoy <= cierre:
+            informes_en_curso.append(item)
+        else:
+            informes_borrador.append(item)
 
     urgente   = len(sesiones_vencidas) + len(alumnos_riesgo)
     pendiente = len(sesiones_proximas) + len(canalizaciones_pendientes) + len(informes_borrador)
@@ -2117,6 +2137,7 @@ def mis_pendientes(
         "alumnos_riesgo":          alumnos_riesgo,
         "canalizaciones_pendientes": canalizaciones_pendientes,
         "informes_borrador":       informes_borrador,
+        "informes_en_curso":       informes_en_curso,
         "resumen": {"urgente": urgente, "pendiente": pendiente},
     }
 

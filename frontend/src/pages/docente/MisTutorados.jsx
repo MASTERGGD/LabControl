@@ -292,19 +292,24 @@ function TabAgenda({ pendientes, grupos, onRegistrarSesion, onCanalizar }) {
 
   const { sesiones_vencidas = [], sesiones_proximas = [],
           alumnos_riesgo = [], canalizaciones_pendientes = [],
-          informes_borrador = [], resumen = {} } = pendientes;
+          informes_borrador = [], informes_en_curso = [], resumen = {} } = pendientes;
 
   const todo = sesiones_vencidas.length + alumnos_riesgo.length +
                sesiones_proximas.length + canalizaciones_pendientes.length +
                informes_borrador.length;
 
-  if (todo === 0) return (
-    <div className="text-center py-16">
-      <p className="text-4xl mb-3">✅</p>
-      <p className="text-white font-semibold text-lg">¡Todo al día!</p>
+  if (todo === 0) return <div className="space-y-4 py-8">
+    <div className="text-center py-8">
+      <p className="text-emerald-500 text-2xl font-bold">✓</p>
+      <p className="text-white font-semibold text-lg">Todo al día</p>
       <p className="text-slate-400 text-sm mt-1">No tienes pendientes urgentes esta semana.</p>
     </div>
-  );
+    {informes_en_curso.map(inf => <div key={inf.informe_id} className="rounded-xl border border-blue-500/25 bg-blue-500/[0.07] p-4">
+      <p className="text-sm font-semibold text-blue-300">Bimestre {inf.bimestre} en curso</p>
+      <p className="mt-1 text-sm text-slate-300">{inf.grupo_label} · el F-DC-09 todavía no está pendiente.</p>
+      {inf.fecha_cierre && <p className="mt-1 text-xs text-slate-500">Disponible para revisión al cierre del {new Date(`${inf.fecha_cierre}T12:00:00`).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}.</p>}
+    </div>)}
+  </div>;
 
   const Section = ({ emoji, title, color, children }) => (
     <div className="space-y-2">
@@ -583,7 +588,7 @@ export default function MisTutorados() {
     try {
       const { data } = await api.get("/tutoria/mis-pendientes");
       setPendientes(data);
-    } catch { setPendientes({ sesiones_vencidas: [], sesiones_proximas: [], alumnos_riesgo: [], canalizaciones_pendientes: [], informes_borrador: [], resumen: {} }); }
+    } catch { setPendientes({ sesiones_vencidas: [], sesiones_proximas: [], alumnos_riesgo: [], canalizaciones_pendientes: [], informes_borrador: [], informes_en_curso: [], resumen: {} }); }
   }, []);
 
   useEffect(() => {

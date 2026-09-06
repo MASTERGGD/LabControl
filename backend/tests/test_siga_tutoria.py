@@ -117,6 +117,24 @@ class TestGruposTutoria:
         }, headers=auth_headers(tok))
         assert r.status_code == 422
 
+    def test_informe_del_bimestre_en_curso_no_es_pendiente(self, client, db):
+        _tutoria_admin(db)
+        tok_admin = get_token(client, "ta@test.mx", "Test1234!")
+        tutor = _usuario(db, "Tutor", "tutor@test.mx", RolUsuario.DOCENTE)
+        grupo = client.post("/tutoria/grupos", json={
+            "tutor_id": tutor.id, "carrera": "Ingeniería en TI",
+            "cuatrimestre": 3, "grupo": "A", "periodo": "SEP-DIC 2099",
+        }, headers=auth_headers(tok_admin))
+        grupo_id = grupo.json()["id"]
+        tok_tutor = get_token(client, "tutor@test.mx", "Test1234!")
+        creado = client.get(f"/tutoria/grupos/{grupo_id}/informe/1", headers=auth_headers(tok_tutor))
+        assert creado.status_code == 200
+
+        agenda = client.get("/tutoria/mis-pendientes", headers=auth_headers(tok_tutor)).json()
+        assert agenda["informes_borrador"] == []
+        assert agenda["informes_en_curso"][0]["informe_id"] == creado.json()["id"]
+        assert agenda["resumen"]["pendiente"] == 0
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # Alumnos en grupo
