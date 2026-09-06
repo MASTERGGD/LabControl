@@ -36,6 +36,7 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
   const [guardadoEn, setGuardadoEn] = useState(draft?.guardadoEn || null);
   const [dirty, setDirty] = useState(Boolean(draft));
   const [loading, setLoading] = useState(false);
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
 
   const updateForm = patch => { setForm(current => ({ ...current, ...patch })); setDirty(true); };
   const updateRecord = (index, patch) => {
@@ -78,7 +79,10 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
   const selectedSchedule = programaciones.find(item => String(item.id) === String(form.programacion_id));
 
   const leave = () => {
-    if (dirty && !window.confirm("Hay cambios guardados como borrador. ¿Deseas salir del registro?")) return;
+    if (dirty) {
+      setConfirmarSalida(true);
+      return;
+    }
     onClose();
   };
 
@@ -182,10 +186,32 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
         </footer>
       </section>
       <p className="px-2 text-xs text-slate-500">Trazabilidad digital: el registro conserva usuario autenticado, fecha y hora de creación y versión vigente del F-DC-07.</p>
+      {confirmarSalida && <ModalSalida
+        onContinuar={() => setConfirmarSalida(false)}
+        onSalir={() => { setConfirmarSalida(false); onClose(); }}
+      />}
     </div>
   );
 }
 
 function Field({ label, children, wide = false }) {
   return <label className={wide ? "md:col-span-2" : ""}><span className="mb-1 block text-xs font-medium text-slate-400">{label}</span>{children}</label>;
+}
+
+function ModalSalida({ onContinuar, onSalir }) {
+  return <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="titulo-salir-tutoria" onMouseDown={event => { if (event.target === event.currentTarget) onContinuar(); }}>
+    <div className="w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl" style={{ background: 'var(--main-bg)', borderColor: 'var(--topbar-border)', color: 'var(--main-text)' }}>
+      <div className="p-6">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v4m0 4h.01M10.3 3.7 2.8 17a2 2 0 0 0 1.74 3h14.92a2 2 0 0 0 1.74-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>
+        </div>
+        <h2 id="titulo-salir-tutoria" className="mt-4 text-lg font-bold">¿Salir del registro?</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">Tus cambios están guardados como borrador en este equipo. Puedes volver y continuar el registro después.</p>
+      </div>
+      <div className="flex flex-col-reverse gap-2 border-t p-4 sm:flex-row sm:justify-end" style={{ borderColor: 'var(--topbar-border)' }}>
+        <button type="button" onClick={onSalir} className="rounded-xl border px-4 py-2.5 text-sm font-semibold text-slate-500 hover:bg-slate-500/10" style={{ borderColor: 'var(--topbar-border)' }}>Salir del registro</button>
+        <button type="button" autoFocus onClick={onContinuar} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Seguir editando</button>
+      </div>
+    </div>
+  </div>;
 }
