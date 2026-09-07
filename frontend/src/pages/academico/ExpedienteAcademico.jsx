@@ -102,7 +102,7 @@ function MateriasTable({ materias, compact = false }) {
           <tr>
             <th className="px-4 py-3">Materia</th>
             <th className="px-4 py-3">Docente</th>
-            <th className="px-4 py-3 text-center">Evidencias</th>
+            <th className="px-4 py-3 text-center">Evaluaciones</th>
             <th className="px-4 py-3 text-center">Clases</th>
             <th className="px-4 py-3 text-center">Promedio</th>
             <th className="px-4 py-3 text-center">Asistencia</th>
@@ -138,13 +138,14 @@ function Resumen({ data, setTab }) {
   const alertas = data.materias.filter(m => ['RIESGO_ALTO', 'RIESGO_MEDIO'].includes(m.estado));
   const tendencias = r.tendencias_asistencia;
   const calidad = r.calidad_datos;
+  const hayClasificacionMaterias = data.materias.some(m => ['RIESGO_ALTO', 'RIESGO_MEDIO', 'REGULAR'].includes(m.estado));
   const tonoVariacion = valor => valor == null ? 'text-slate-500' : valor < 0 ? 'text-red-400' : valor > 0 ? 'text-emerald-400' : 'text-slate-400';
   return (
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_con_asistencia} de ${r.minimo_clases_semaforo} clases mínimas para emitir semáforo`} tone={!r.base_suficiente ? 'text-slate-500' : r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
-        <Kpi label="Prom. evidencias" value={r.promedio_evidencias} hint="No oficial" tone="text-violet-400" />
-        <Kpi label="Materias en riesgo" value={r.materias_riesgo} hint={!r.base_suficiente ? 'Clasificación académica preliminar' : 'Según asistencia y evidencias disponibles'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
+        <Kpi label="Promedio de evaluaciones" value={r.promedio_evidencias} hint="Calificaciones internas; no oficiales" tone="text-violet-400" />
+        <Kpi label="Materias en riesgo" value={hayClasificacionMaterias ? r.materias_riesgo : 'Sin información'} hint={hayClasificacionMaterias ? 'Según asistencia y evaluaciones disponibles' : 'Faltan clases o evaluaciones para clasificarlas'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
       </div>
       <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.materias_inscritas} {r.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</span> · <span className={r.acuerdos_pendientes ? 'text-amber-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span> · {r.canalizaciones_activas} canalizaciones activas</Panel>
 
@@ -173,7 +174,7 @@ function Resumen({ data, setTab }) {
               {calidad.advertencias.map((advertencia, index) => <div key={index} className={`rounded-lg border px-3 py-2 text-xs ${advertencia.startsWith('Sin advertencias') ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>{advertencia}</div>)}
             </div>
             {!!calidad.materias_sin_asistencia.length && <p className="mt-3 text-[10px] text-slate-500"><b>Sin asistencias:</b> {calidad.materias_sin_asistencia.join(', ')}</p>}
-            {!!calidad.materias_sin_evidencias.length && <p className="mt-2 text-[10px] text-slate-500"><b>Sin evidencias:</b> {calidad.materias_sin_evidencias.join(', ')}</p>}
+            {!!calidad.materias_sin_evidencias.length && <p className="mt-2 text-[10px] text-slate-500"><b>Sin evaluaciones o calificaciones:</b> {calidad.materias_sin_evidencias.join(', ')}</p>}
           </Panel>}
         </div>
       )}
@@ -205,7 +206,7 @@ function Resumen({ data, setTab }) {
                 <Badge className={ESTADO_MATERIA[m.estado]}>{labelEstado(m.estado)}</Badge>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div><b className="block text-base">{m.promedio_evidencias ?? '—'}</b><span className="text-slate-500">Evidencias</span></div>
+                <div><b className="block text-base">{m.promedio_evidencias ?? '—'}</b><span className="text-slate-500">Evaluaciones</span></div>
                 <div><b className="block text-base">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</b><span className="text-slate-500">Asistencia</span></div>
                 <div><b className="block text-base text-red-400">{m.falta}</b><span className="text-slate-500">Faltas</span></div>
               </div>

@@ -369,7 +369,7 @@ def _calidad_datos(
         )
     if materias_sin_evidencias:
         advertencias.append(
-            f"{len(materias_sin_evidencias)} {'materia' if len(materias_sin_evidencias) == 1 else 'materias'} sin evidencias registradas"
+            f"{len(materias_sin_evidencias)} {'materia' if len(materias_sin_evidencias) == 1 else 'materias'} sin evaluaciones o calificaciones registradas"
         )
     if not advertencias:
         advertencias.append("Sin advertencias de captura en el periodo actual")
