@@ -521,6 +521,7 @@ export default function FichaAlumnoDocente() {
               <label className="block text-sm text-slate-300">Tipo
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, calificacion: '', fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
                   <option value="OBSERVACION">Observación docente</option>
+                  <option value="CALIFICACION">Evaluación / calificación</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
                   <option value="TUTORIA">Enviar reporte al tutor del grupo</option>
                 </select>
@@ -530,6 +531,7 @@ export default function FichaAlumnoDocente() {
               </label>
               {form.tipo === 'CALIFICACION' && <label className="mt-3 block text-sm text-slate-300">Calificación
                 <input required type="number" min="0" max="10" step="0.1" value={form.calificacion} onChange={(e) => setForm({ ...form, calificacion: e.target.value })} className="input-dark mt-1" />
+                <span className="mt-1 block text-xs text-slate-500">Esta evaluación se mostrará en el expediente como evidencia académica interna; no es necesario adjuntar fotos ni documentos.</span>
               </label>}
               {form.tipo === 'TUTORIA' && (
                 <div className="mt-3 space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
