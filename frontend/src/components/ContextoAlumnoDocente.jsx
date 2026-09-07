@@ -9,7 +9,7 @@ const FORM_INICIAL = {
 };
 
 export default function ContextoAlumnoDocente({
-  cargaId, alumnoId, nombre, contexto, onEnviada, compacto = false,
+  cargaId, alumnoId, nombre, contexto, onEnviada, compacto = false, permitirNota = true,
 }) {
   const [abierto, setAbierto] = useState(false);
   const [form, setForm] = useState(FORM_INICIAL);
@@ -59,16 +59,18 @@ export default function ContextoAlumnoDocente({
         {contexto.riesgo_global && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">Riesgo global</span>}
         {contexto.seguimiento_activo && <span className="rounded-full bg-violet-500/15 px-2 py-1 text-[10px] font-semibold text-violet-300">En seguimiento</span>}
         {!tieneIndicadores && !compacto && <span className="text-xs text-emerald-400">Sin alertas institucionales activas</span>}
-        <button
-          type="button"
-          onClick={() => { setError(''); setAbierto(true); }}
-          className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200"
-        >
-          + Nota
-        </button>
+        {permitirNota && (
+          <button
+            type="button"
+            onClick={() => { setError(''); setAbierto(true); }}
+            className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200"
+          >
+            + Nota rápida
+          </button>
+        )}
       </div>
 
-      {abierto && createPortal(
+      {permitirNota && abierto && createPortal(
         <div className="fixed inset-0 z-[1000] flex items-end justify-center bg-slate-950/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={() => !guardando && setAbierto(false)}>
           <form
             onSubmit={enviar}

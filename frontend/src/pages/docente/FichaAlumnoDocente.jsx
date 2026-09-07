@@ -270,6 +270,7 @@ export default function FichaAlumnoDocente() {
                   alumnoId={alumnoId}
                   nombre={datos.alumno.nombre}
                   contexto={contexto}
+                  permitirNota={false}
                   onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
                 />
               </div>
