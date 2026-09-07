@@ -1758,6 +1758,17 @@ def cerrar_clase(
     _validar_carga_actual(db, clase.carga)
     if clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia ya está cerrada")
+    tema_propuesto = (
+        data.tema_impartido
+        if data.tema_impartido is not None
+        else clase.tema_impartido
+    )
+    tema_normalizado = (tema_propuesto or "").strip().lower()
+    if any(frase in tema_normalizado for frase in ("no se impart", "no impartida", "no hubo clase")):
+        raise HTTPException(
+            409,
+            "El tema indica que no hubo clase. Usa 'Marcar no impartida' en lugar de cerrar la asistencia como impartida.",
+        )
     clase.estado = "CERRADA"
     clase.fin = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
     if data.observacion_general:

@@ -342,6 +342,7 @@ export default function ClaseAsistencia() {
                     alumnoId={alumno.alumno_id}
                     nombre={formatNombre(alumno.nombre)}
                     contexto={contextos[String(alumno.alumno_id)]}
+                    permitirNota={['ABIERTA', 'CORRECCION'].includes(clase.estado)}
                     onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
                   />
                 </div>

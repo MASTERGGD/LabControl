@@ -283,6 +283,13 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
         headers=headers,
     )
     assert falta.status_code == 200, falta.text
+    cierre_inconsistente = client.post(
+        f"/docencia/clases/{clase['id']}/cerrar",
+        json={"tema_impartido": "No se impartió"},
+        headers=headers,
+    )
+    assert cierre_inconsistente.status_code == 409
+    assert "Marcar no impartida" in cierre_inconsistente.json()["detail"]
     cerrada = client.post(
         f"/docencia/clases/{clase['id']}/cerrar",
         json={

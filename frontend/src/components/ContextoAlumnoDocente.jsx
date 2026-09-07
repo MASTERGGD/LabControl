@@ -65,7 +65,7 @@ export default function ContextoAlumnoDocente({
             onClick={() => { setError(''); setAbierto(true); }}
             className="rounded-lg border border-white/15 px-2.5 py-1 text-[10px] font-semibold text-slate-400 hover:bg-white/5 hover:text-slate-200"
           >
-            + Nota rápida
+            + Seguimiento del alumno
           </button>
         )}
       </div>
@@ -80,8 +80,8 @@ export default function ContextoAlumnoDocente({
           >
             <header className="theme-divider flex shrink-0 items-start justify-between border-b px-5 py-4" style={{ background: 'var(--surface-panel)' }}>
               <div>
-                <h2 className="theme-title font-semibold">Nota del alumno</h2>
-                <p className="theme-muted mt-1 text-xs">{nombre} · Deja constancia de hechos y acciones concretas.</p>
+                <h2 className="theme-title font-semibold">Seguimiento del alumno</h2>
+                <p className="theme-muted mt-1 text-xs">{nombre} · Se guardará con la fecha y hora actuales en el historial de la materia.</p>
               </div>
               <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setAbierto(false)} className="theme-muted -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-2xl hover:bg-black/5">×</button>
             </header>
