@@ -84,7 +84,11 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
   } : { ...VACIO, ...preseleccion });
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
-  const [materiaBusqueda, setMateriaBusqueda] = useState(actividad?.actividad_nombre || '');
+  const [materiaBusqueda, setMateriaBusqueda] = useState(() => (
+    catalogos.materias.find((materia) => String(materia.id) === String(actividad?.materia_id))?.nombre
+    || actividad?.actividad_nombre
+    || ''
+  ));
   const [buscadorMateriaAbierto, setBuscadorMateriaAbierto] = useState(false);
   const [disponibilidadLab, setDisponibilidadLab] = useState(null);
   const [verificandoLab, setVerificandoLab] = useState(false);
@@ -129,6 +133,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     .filter((fin) => fin > form.hora_inicio);
   const crearPayload = () => ({
     ...form,
+    actividad_nombre: esClase ? (materiaSeleccionada?.nombre || '') : form.actividad_nombre,
     periodo_id: Number(periodoId),
     grupo_academico_id: esClase && form.grupo_academico_id ? Number(form.grupo_academico_id) : null,
     materia_id: esClase && form.materia_id ? Number(form.materia_id) : null,
@@ -334,9 +339,11 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
               {(catalogos.grupos_tutorados || []).length === 1 && <p className="mt-1.5 text-xs text-emerald-400">✓ Tu grupo tutorado fue seleccionado automáticamente.</p>}
             </div>
           )}
-          <label className={`text-sm text-slate-300 ${esClase ? 'sm:col-span-2' : ''}`}>Nombre de la actividad *
-            <input required readOnly={esTutoria} className="input-dark mt-1 w-full read-only:opacity-70" value={form.actividad_nombre} onChange={(e) => cambiar('actividad_nombre', e.target.value)} placeholder={esClase ? 'Nombre de la materia' : 'Ej. Tutoría grupal'} />
-          </label>
+          {!esClase && (
+            <label className="text-sm text-slate-300 sm:col-span-2">Nombre de la actividad *
+              <input required readOnly={esTutoria} className="input-dark mt-1 w-full read-only:opacity-70" value={form.actividad_nombre} onChange={(e) => cambiar('actividad_nombre', e.target.value)} placeholder="Ej. Tutoría grupal" />
+            </label>
+          )}
           <label className="text-sm text-slate-300">Hora de inicio
             <input required readOnly={Boolean(preseleccion)} type="time" className="input-dark mt-1 w-full read-only:opacity-70" value={form.hora_inicio} onChange={(e) => cambiar('hora_inicio', e.target.value)} />
           </label>
