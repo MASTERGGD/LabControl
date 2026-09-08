@@ -6,16 +6,30 @@ import { abrirClaseDocente } from '../../utils/abrirClaseDocente';
 import { usePeriodo } from '../../context/PeriodoContext';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const PERIODOS_UTECAN = [
+const PERIODOS_ESCOLARIZADOS = [
   { numero: 1, inicio: '08:00', fin: '09:00' },
   { numero: 2, inicio: '09:00', fin: '09:45' },
-  { numero: 3, inicio: '10:15', fin: '11:00', recesoAntes: true },
+  { numero: 3, inicio: '10:15', fin: '11:00', recesoAntes: ['09:45', '10:15'] },
   { numero: 4, inicio: '11:00', fin: '12:00' },
   { numero: 5, inicio: '12:00', fin: '13:00' },
   { numero: 6, inicio: '13:00', fin: '14:00' },
   { numero: 7, inicio: '14:00', fin: '15:00' },
   { numero: 8, inicio: '15:00', fin: '16:00' },
 ];
+const PERIODOS_SABATINOS = [
+  { numero: 1, inicio: '08:00', fin: '09:00' },
+  { numero: 2, inicio: '09:00', fin: '09:45' },
+  { numero: 3, inicio: '10:15', fin: '11:00', recesoAntes: ['09:45', '10:15'] },
+  { numero: 4, inicio: '11:00', fin: '12:00' },
+  { numero: 5, inicio: '12:00', fin: '13:00' },
+  { numero: 6, inicio: '13:00', fin: '13:45' },
+  { numero: 7, inicio: '14:15', fin: '15:00', recesoAntes: ['13:45', '14:15'] },
+  { numero: 8, inicio: '15:00', fin: '16:00' },
+  { numero: 9, inicio: '16:00', fin: '17:00' },
+  { numero: 10, inicio: '17:00', fin: '18:00' },
+];
+const periodosParaDia = (dia) => Number(dia) === 5 ? PERIODOS_SABATINOS : PERIODOS_ESCOLARIZADOS;
+const recesosParaDia = (dia) => periodosParaDia(dia).flatMap((periodo) => periodo.recesoAntes ? [periodo.recesoAntes] : []);
 const TIPOS = [
   ['CLASE', 'Clase'],
   ['TUTORIA', 'Tutoría'],
@@ -129,7 +143,8 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
       )) === indice
     ))
     .slice(0, 10);
-  const finalesDisponibles = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))]
+  const periodosDia = periodosParaDia(form.dia_semana);
+  const finalesDisponibles = [...new Set(periodosDia.map((periodo) => periodo.fin))]
     .filter((fin) => fin > form.hora_inicio);
   const crearPayload = () => ({
     ...form,
@@ -143,8 +158,21 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
 
   const cambiar = (campo, valor) => {
     setForm((actual) => {
+      if (campo === 'dia_semana') {
+        const periodosActuales = periodosParaDia(actual.dia_semana);
+        const nuevosPeriodos = periodosParaDia(valor);
+        const indiceActual = periodosActuales.findIndex((periodo) => periodo.inicio === actual.hora_inicio);
+        const indiceEquivalente = indiceActual < 0 ? 0 : Math.min(indiceActual, nuevosPeriodos.length - 1);
+        const periodoEquivalente = nuevosPeriodos[indiceEquivalente];
+        return {
+          ...actual,
+          dia_semana: valor,
+          hora_inicio: periodoEquivalente.inicio,
+          hora_fin: periodoEquivalente.fin,
+        };
+      }
       if (campo === 'hora_inicio' && actual.hora_fin <= valor) {
-        const siguienteFin = [...new Set(PERIODOS_UTECAN.map((periodo) => periodo.fin))].find((fin) => fin > valor);
+        const siguienteFin = periodosParaDia(actual.dia_semana).map((periodo) => periodo.fin).find((fin) => fin > valor);
         return { ...actual, hora_inicio: valor, hora_fin: siguienteFin || actual.hora_fin };
       }
       return { ...actual, [campo]: valor };
@@ -186,12 +214,17 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     setBuscadorMateriaAbierto(false);
   };
   const duracion = (fin) => {
-    const incluyeReceso = form.hora_inicio < '10:15' && fin > '09:45';
-    const total = minutosDeHora(fin) - minutosDeHora(form.hora_inicio) - (incluyeReceso ? 30 : 0);
+    const recesosIncluidos = recesosParaDia(form.dia_semana).filter(([inicioReceso, finReceso]) => (
+      form.hora_inicio < finReceso && fin > inicioReceso
+    ));
+    const minutosReceso = recesosIncluidos.reduce((total, [inicioReceso, finReceso]) => (
+      total + Math.max(0, Math.min(minutosDeHora(fin), minutosDeHora(finReceso)) - Math.max(minutosDeHora(form.hora_inicio), minutosDeHora(inicioReceso)))
+    ), 0);
+    const total = minutosDeHora(fin) - minutosDeHora(form.hora_inicio) - minutosReceso;
     const horas = Math.floor(total / 60);
     const minutos = total % 60;
     const tiempoClase = [horas ? `${horas} h` : '', minutos ? `${minutos} min` : ''].filter(Boolean).join(' ');
-    return `${tiempoClase}${incluyeReceso ? ' de clase + receso' : ''}`;
+    return `${tiempoClase}${recesosIncluidos.length ? ` de clase + ${recesosIncluidos.length === 1 ? 'receso' : `${recesosIncluidos.length} recesos`}` : ''}`;
   };
 
   useEffect(() => {
@@ -530,6 +563,53 @@ export default function MiHorarioDocente() {
     && item.hora_inicio < periodo.fin
     && item.hora_fin > periodo.inicio
   ));
+  const contenidoCeldaHorario = (diaIndice, periodo) => {
+    if (!periodo) {
+      return <div className="flex min-h-24 items-center justify-center rounded-xl bg-white/[0.015] text-[10px] font-semibold uppercase tracking-wider text-slate-700">Sin periodo</div>;
+    }
+    const item = actividadEnPeriodo(diaIndice, periodo);
+    const comienzaAqui = item?.hora_inicio === periodo.inicio;
+    if (item && comienzaAqui) {
+      return (
+        <article className={`min-h-24 rounded-xl border p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
+          <div className="flex items-start justify-between gap-1">
+            <span className="text-xs font-bold text-emerald-300">{item.hora_inicio}–{item.hora_fin}</span>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
+          </div>
+          <p className="mt-1 text-sm font-semibold text-white">{item.actividad_nombre}</p>
+          <p className="text-xs text-slate-400">{item.grupo || item.tipo_actividad}</p>
+          <p className="truncate text-xs text-slate-500">{item.espacio_nombre || 'Sin salón'}</p>
+          {item.laboratorio_id && <p className={`mt-1 text-[10px] font-semibold ${item.estado_reserva_laboratorio === 'RESERVADO' ? 'text-blue-300' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'text-amber-300' : 'text-red-300'}`}>{item.estado_reserva_laboratorio === 'RESERVADO' ? 'Lab reservado' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'Lab en disputa' : 'Lab sin reservar'}</p>}
+          {esPeriodoActual && <div className="mt-2 flex gap-2 text-[11px]">
+            {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
+            <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>
+            <button onClick={() => setActividadARetirar(item)} className="text-red-300">Retirar</button>
+          </div>}
+        </article>
+      );
+    }
+    if (item) {
+      return (
+        <div className={`flex min-h-24 flex-col justify-center rounded-xl border border-dashed p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
+          <p className={`text-[10px] font-bold uppercase tracking-wide ${TIPO_TEXTO[item.tipo_actividad]}`}>↳ Continúa</p>
+          <p className="mt-1 line-clamp-2 text-xs font-semibold text-white">{item.actividad_nombre}</p>
+          <p className="mt-1 font-mono text-[10px] text-slate-400">{periodo.inicio}–{periodo.fin}</p>
+          <p className="truncate text-[10px] text-slate-500">{item.grupo || item.tipo_actividad}</p>
+        </div>
+      );
+    }
+    return (
+      <button
+        type="button"
+        disabled={cargando || !esPeriodoActual}
+        onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaIndice, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
+        className="group flex min-h-24 w-full flex-col items-start rounded-xl border border-dashed border-emerald-500/20 p-3 text-left transition hover:border-emerald-400/60 hover:bg-emerald-500/10"
+      >
+        <span className="font-mono text-xs text-emerald-400">{periodo.inicio}–{periodo.fin}</span>
+        <span className="mt-auto text-xs text-slate-600 group-hover:text-emerald-300">+ Agregar actividad</span>
+      </button>
+    );
+  };
   const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
   const abrirConfirmacionCarga = (carga) => {
@@ -824,7 +904,7 @@ export default function MiHorarioDocente() {
             ))}
           </div>
           <div className="space-y-2">
-            {PERIODOS_UTECAN.map((periodo) => {
+            {periodosParaDia(diaMovil).map((periodo) => {
               const item = actividadEnPeriodo(diaMovil, periodo);
               const comienzaAqui = item?.hora_inicio === periodo.inicio;
               if (item && !comienzaAqui) return null;
@@ -832,7 +912,7 @@ export default function MiHorarioDocente() {
                 <Fragment key={periodo.numero}>
                   {periodo.recesoAntes && (
                     <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-center text-xs font-semibold text-amber-400">
-                      Receso · 09:45–10:15
+                      Receso · {periodo.recesoAntes[0]}–{periodo.recesoAntes[1]}
                     </div>
                   )}
                   {item ? (
@@ -878,66 +958,48 @@ export default function MiHorarioDocente() {
               </tr>
             </thead>
             <tbody>
-              {PERIODOS_UTECAN.map((periodo) => (
-                <Fragment key={periodo.numero}>
-                  {periodo.recesoAntes && (
+              {PERIODOS_SABATINOS.map((periodoSabatino, indice) => {
+                const periodoEscolarizado = PERIODOS_ESCOLARIZADOS[indice];
+                const horariosCoinciden = periodoEscolarizado
+                  && periodoEscolarizado.inicio === periodoSabatino.inicio
+                  && periodoEscolarizado.fin === periodoSabatino.fin;
+                return (
+                <Fragment key={periodoSabatino.numero}>
+                  {indice === 2 && (
                     <tr className="border-y border-white/10 bg-amber-500/5">
                       <td />
                       <td colSpan={6} className="p-2 text-center text-xs font-medium tracking-widest text-amber-300">☕ RECESO · 09:45–10:15</td>
                     </tr>
                   )}
+                  {indice === 6 && (
+                    <tr className="border-y border-white/10 bg-amber-500/5">
+                      <td className="p-2 text-center font-mono text-[10px] text-amber-300">13:45–14:15</td>
+                      <td colSpan={5} className="p-2 text-center text-[10px] uppercase tracking-wider text-slate-600">La jornada escolarizada continúa normalmente</td>
+                      <td className="border-l border-white/10 p-2 text-center text-xs font-medium tracking-wider text-amber-300">☕ RECESO SABATINO</td>
+                    </tr>
+                  )}
                   <tr className="border-b border-white/10">
                     <td className="p-4 align-top">
-                      <p className="font-mono text-sm font-bold text-white">{periodo.inicio}</p>
-                      <p className="font-mono text-xs text-slate-500">{periodo.fin}</p>
+                      {horariosCoinciden ? (
+                        <><p className="font-mono text-sm font-bold text-white">{periodoSabatino.inicio}</p><p className="font-mono text-xs text-slate-500">{periodoSabatino.fin}</p></>
+                      ) : (
+                        <div className="space-y-1 text-[10px]">
+                          {periodoEscolarizado && <p className="font-mono text-slate-400"><b className="text-slate-300">L–V</b> {periodoEscolarizado.inicio}–{periodoEscolarizado.fin}</p>}
+                          <p className="font-mono text-emerald-400"><b>SÁB</b> {periodoSabatino.inicio}–{periodoSabatino.fin}</p>
+                        </div>
+                      )}
                     </td>
                     {DIAS.map((dia, diaIndice) => {
-                      const item = actividadEnPeriodo(diaIndice, periodo);
-                      const comienzaAqui = item?.hora_inicio === periodo.inicio;
+                      const periodo = periodosParaDia(diaIndice)[indice];
                       return (
-                        <td key={`${dia}-${periodo.numero}`} className="border-l border-white/10 p-2 align-top">
-                          {item ? (
-                            comienzaAqui ? (
-                              <article className={`min-h-24 rounded-xl border p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
-                                <div className="flex items-start justify-between gap-1">
-                                  <span className="text-xs font-bold text-emerald-300">{item.hora_inicio}–{item.hora_fin}</span>
-                                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${item.estado === 'ACTIVO' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{item.estado}</span>
-                                </div>
-                                <p className="mt-1 text-sm font-semibold text-white">{item.actividad_nombre}</p>
-                                <p className="text-xs text-slate-400">{item.grupo || item.tipo_actividad}</p>
-                                <p className="truncate text-xs text-slate-500">{item.espacio_nombre || 'Sin salón'}</p>
-                                {item.laboratorio_id && <p className={`mt-1 text-[10px] font-semibold ${item.estado_reserva_laboratorio === 'RESERVADO' ? 'text-blue-300' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'text-amber-300' : 'text-red-300'}`}>{item.estado_reserva_laboratorio === 'RESERVADO' ? 'Lab reservado' : item.estado_reserva_laboratorio === 'EN_DISPUTA' ? 'Lab en disputa' : 'Lab sin reservar'}</p>}
-                                {esPeriodoActual && <div className="mt-2 flex gap-2 text-[11px]">
-                                  {item.estado !== 'ACTIVO' && <button onClick={() => activar(item.id)} className="text-emerald-300">Activar</button>}
-                                  <button onClick={() => setModal({ tipo: 'editar', actividad: item })} className="text-blue-300">Editar</button>
-                                  <button onClick={() => setActividadARetirar(item)} className="text-red-300">Retirar</button>
-                                </div>}
-                              </article>
-                            ) : (
-                              <div className={`flex min-h-24 flex-col justify-center rounded-xl border border-dashed p-3 ${TIPO_ESTILO[item.tipo_actividad]}`}>
-                                <p className={`text-[10px] font-bold uppercase tracking-wide ${TIPO_TEXTO[item.tipo_actividad]}`}>↳ Continúa</p>
-                                <p className="mt-1 line-clamp-2 text-xs font-semibold text-white">{item.actividad_nombre}</p>
-                                <p className="mt-1 font-mono text-[10px] text-slate-400">{periodo.inicio}–{periodo.fin}</p>
-                                <p className="truncate text-[10px] text-slate-500">{item.grupo || item.tipo_actividad}</p>
-                              </div>
-                            )
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={cargando || !esPeriodoActual}
-                              onClick={() => setModal({ tipo: 'nuevo', preseleccion: { dia_semana: diaIndice, hora_inicio: periodo.inicio, hora_fin: periodo.fin } })}
-                              className="group flex min-h-24 w-full flex-col items-start rounded-xl border border-dashed border-emerald-500/20 p-3 text-left transition hover:border-emerald-400/60 hover:bg-emerald-500/10"
-                            >
-                              <span className="font-mono text-xs text-emerald-400">{periodo.inicio}–{periodo.fin}</span>
-                              <span className="mt-auto text-xs text-slate-600 group-hover:text-emerald-300">+ Agregar actividad</span>
-                            </button>
-                          )}
+                        <td key={`${dia}-${indice}`} className="border-l border-white/10 p-2 align-top">
+                          {contenidoCeldaHorario(diaIndice, periodo)}
                         </td>
                       );
                     })}
                   </tr>
                 </Fragment>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>

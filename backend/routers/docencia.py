@@ -381,7 +381,8 @@ def _slots_para_carga(db: Session, data: CargaInput):
         if slot.hora_fin <= cursor:
             continue
         if slot.hora_inicio > cursor:
-            if not (cursor == "09:45" and slot.hora_inicio == "10:15"):
+            recesos_oficiales = {("09:45", "10:15"), ("13:45", "14:15")}
+            if (cursor, slot.hora_inicio) not in recesos_oficiales:
                 return candidatos, "COBERTURA_INCOMPLETA"
         seleccionados.append(slot)
         cursor = max(cursor, slot.hora_fin)

@@ -531,6 +531,12 @@ def test_periodos_sabado_hasta_18_sin_extender_escolarizado(client, db):
         assert bloques[0] == ("08:00", "09:00")
         assert bloques[-1][1] == ("18:00" if dia == 5 else "16:00")
         assert ("09:00", "09:45") in bloques and ("10:15", "11:00") in bloques
+        if dia == 5:
+            assert ("13:00", "13:45") in bloques
+            assert ("14:15", "15:00") in bloques
+            assert ("13:00", "14:00") not in bloques
+        else:
+            assert ("13:00", "14:00") in bloques
         assert all(a[1] <= b[0] for a, b in zip(bloques, bloques[1:]))
     repetida = client.post("/horarios/periodos-utecan", json=payload, headers=headers)
     assert repetida.json()["creados"] == 0

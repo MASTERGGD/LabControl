@@ -12,7 +12,7 @@ const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const HORAS = [
   '07:00','08:00','09:00','09:45',
   '10:00','10:15','11:00','12:00',
-  '13:00','14:00','15:00','16:00',
+  '13:00','13:45','14:00','14:15','15:00','16:00',
   '17:00','18:00','19:00','20:00',
 ];
 
@@ -26,12 +26,20 @@ const ESTADOS_CUMPLIMIENTO = [
 const PERIODOS_UTECAN = [
   { n: 1, inicio: '08:00', fin: '09:00' },
   { n: 2, inicio: '09:00', fin: '09:45' },
-  { n: 3, inicio: '10:15', fin: '11:00', receso: true },
+  { n: 3, inicio: '10:15', fin: '11:00', receso: ['09:45', '10:15'] },
   { n: 4, inicio: '11:00', fin: '12:00' },
   { n: 5, inicio: '12:00', fin: '13:00' },
   { n: 6, inicio: '13:00', fin: '14:00' },
   { n: 7, inicio: '14:00', fin: '15:00' },
   { n: 8, inicio: '15:00', fin: '16:00' },
+];
+const PERIODOS_SABATINOS = [
+  ...PERIODOS_UTECAN.slice(0, 5),
+  { n: 6, inicio: '13:00', fin: '13:45' },
+  { n: 7, inicio: '14:15', fin: '15:00', receso: ['13:45', '14:15'] },
+  { n: 8, inicio: '15:00', fin: '16:00' },
+  { n: 9, inicio: '16:00', fin: '17:00' },
+  { n: 10, inicio: '17:00', fin: '18:00' },
 ];
 
 // ─── Modal horario individual ──────────────────────────────────────────────────
@@ -341,7 +349,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
   const [error, setError]     = useState('');
 
   const periodosVisibles = dias.includes(5)
-    ? [...PERIODOS_UTECAN, { n: 9, inicio: '16:00', fin: '17:00' }, { n: 10, inicio: '17:00', fin: '18:00' }]
+    ? PERIODOS_SABATINOS
     : PERIODOS_UTECAN;
   const totalTurnos = dias.reduce((total, dia) => total + (dia === 5 ? 10 : 8), 0);
 
@@ -409,7 +417,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
                         {p.receso && (
                           <tr className="bg-amber-900/20">
                             <td colSpan={4} className="px-3 py-1.5 text-amber-500 text-xs italic">
-                              ☕ Receso 9:45 – 10:15
+                              ☕ Receso {p.receso[0]} – {p.receso[1]}
                             </td>
                           </tr>
                         )}

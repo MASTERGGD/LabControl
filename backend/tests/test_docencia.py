@@ -23,6 +23,34 @@ from models.tutoria import GrupoTutorado
 from tests.conftest import auth_headers, get_token
 
 
+def test_laboratorio_acepta_bloque_sabatino_a_traves_del_segundo_receso(db):
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    laboratorio = Laboratorio(nombre="Laboratorio sabatino", categoria="COMPUTO", activo=True)
+    db.add_all([periodo, laboratorio])
+    db.flush()
+    db.add_all([
+        HorarioDisponible(
+            laboratorio_id=laboratorio.id, dia_semana=5, hora_inicio=inicio,
+            hora_fin=fin, cuatrimestre=periodo.clave, activo=True,
+        )
+        for inicio, fin in (("13:00", "13:45"), ("14:15", "15:00"))
+    ])
+    db.commit()
+    carga = docencia_router.CargaInput(
+        periodo_id=periodo.id, grupo_academico_id=1, materia_id=1,
+        tipo_actividad="CLASE", actividad_nombre="Clase sabatina",
+        dia_semana=5, hora_inicio="13:00", hora_fin="15:00",
+        laboratorio_id=laboratorio.id,
+    )
+
+    slots, problema = docencia_router._slots_para_carga(db, carga)
+
+    assert problema is None
+    assert [(slot.hora_inicio, slot.hora_fin) for slot in slots] == [
+        ("13:00", "13:45"), ("14:15", "15:00"),
+    ]
+
+
 def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db):
     docente = Usuario(
         nombre="Docente Version Horario", email="version.horario@test.mx",

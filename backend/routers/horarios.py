@@ -535,7 +535,7 @@ def bulk_horarios(
 
 # ─── Períodos estándar UTECAN ─────────────────────────────────────────────────
 
-# Mapa oficial de períodos académicos UTECAN (sin receso 9:45-10:15)
+# Mapa oficial de períodos académicos UTECAN para la jornada escolarizada.
 PERIODOS_UTECAN = [
     ("08:00", "09:00"),   # Período 1
     ("09:00", "09:45"),   # Período 2
@@ -547,7 +547,20 @@ PERIODOS_UTECAN = [
     ("15:00", "16:00"),   # Período 8
 ]
 
-PERIODOS_SABATINOS = PERIODOS_UTECAN + [("16:00", "17:00"), ("17:00", "18:00")]
+# La jornada sabatina tiene un segundo receso de 13:45 a 14:15. Por eso no
+# puede construirse simplemente agregando dos turnos a la jornada escolarizada.
+PERIODOS_SABATINOS = [
+    ("08:00", "09:00"),
+    ("09:00", "09:45"),
+    ("10:15", "11:00"),
+    ("11:00", "12:00"),
+    ("12:00", "13:00"),
+    ("13:00", "13:45"),
+    ("14:15", "15:00"),
+    ("15:00", "16:00"),
+    ("16:00", "17:00"),
+    ("17:00", "18:00"),
+]
 
 
 class PeriodosUtecanCreate(BaseModel):
