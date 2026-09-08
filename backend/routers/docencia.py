@@ -1528,6 +1528,7 @@ def reposiciones_pendientes(db: Session = Depends(get_db), current_user: Usuario
             f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
             if clase.carga.grupo_academico else None
         ),
+        "carrera": clase.carga.grupo_academico.carrera if clase.carga.grupo_academico else None,
         "hora_inicio": clase.carga.hora_inicio,
         "hora_fin": clase.carga.hora_fin,
         "motivo": clase.motivo_no_impartida,

@@ -1083,7 +1083,7 @@ export default function MiHorarioDocente() {
           <form onSubmit={guardarReposicion} onMouseDown={(e) => e.stopPropagation()} className="glass w-full max-w-lg overflow-hidden rounded-2xl border border-blue-500/20 shadow-2xl">
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-blue-300">Evento de una sola fecha</p><h2 className="mt-1 text-lg font-bold text-white">Programar reposición</h2><p className="mt-1 text-sm text-slate-400">No modifica el horario oficial recurrente.</p></div><button type="button" onClick={() => setModalReposicion(null)} className="text-2xl text-slate-400">×</button></header>
             <div className="grid gap-4 p-5 sm:grid-cols-2">
-              <label className="text-sm text-slate-300 sm:col-span-2">Clase no impartida pendiente<select className="input-dark mt-1.5" value={modalReposicion.clase_id} onChange={(e) => abrirReposicion(reposicionesPendientes.find((item) => String(item.clase_id) === e.target.value))}>{reposicionesPendientes.map((item) => <option key={item.clase_id} value={item.clase_id}>{item.fecha_original} · {item.materia} · {item.grupo}</option>)}</select></label>
+              <label className="text-sm text-slate-300 sm:col-span-2">Clase no impartida pendiente<select className="input-dark mt-1.5" value={modalReposicion.clase_id} onChange={(e) => abrirReposicion(reposicionesPendientes.find((item) => String(item.clase_id) === e.target.value))}>{reposicionesPendientes.map((item) => <option key={item.clase_id} value={item.clase_id}>{item.fecha_original} · {item.hora_inicio}–{item.hora_fin} · {item.materia} · {item.grupo} · {item.carrera}</option>)}</select></label>
               <label className="text-sm text-slate-300">Fecha original no impartida<input readOnly type="date" value={formReposicion.fecha_original} className="input-dark mt-1.5 cursor-not-allowed opacity-70" /></label>
               <label className="text-sm text-slate-300">Fecha de reposición<input required type="date" min={new Date().toISOString().slice(0, 10)} value={formReposicion.fecha} onChange={(e) => setFormReposicion({ ...formReposicion, fecha: e.target.value })} className="input-dark mt-1.5" /></label>
               <label className="text-sm text-slate-300">Hora de inicio<input required type="time" value={formReposicion.hora_inicio} onChange={(e) => setFormReposicion({ ...formReposicion, hora_inicio: e.target.value })} className="input-dark mt-1.5" /></label>
@@ -1195,7 +1195,7 @@ export default function MiHorarioDocente() {
                 >
                   {extemporaneas.map((item) => (
                     <option key={`${item.carga_id}-${item.fecha}`} value={`${item.carga_id}|${item.fecha}`}>
-                      {item.fecha} · {item.hora_inicio} · {item.materia} · {item.grupo}
+                      {item.fecha} · {item.hora_inicio}–{item.hora_fin} · {item.materia} · {item.grupo} · {item.carrera}
                     </option>
                   ))}
                 </select>
@@ -1203,6 +1203,7 @@ export default function MiHorarioDocente() {
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] p-4">
                 <p className="font-semibold text-white">{modalExtemporanea.materia}</p>
                 <p className="mt-1 text-sm text-slate-300">{modalExtemporanea.fecha} · {modalExtemporanea.hora_inicio}–{modalExtemporanea.hora_fin} · {modalExtemporanea.grupo}</p>
+                <p className="mt-1 text-xs text-slate-400">{modalExtemporanea.carrera}</p>
                 <p className="mt-1 text-xs text-amber-300">{resolucionPendiente === 'IMPARTIDA' ? 'La asistencia quedará identificada como captura extemporánea.' : 'La clase original quedará registrada como no impartida.'}</p>
               </div>
               <fieldset className="grid grid-cols-1 gap-2 sm:grid-cols-2">

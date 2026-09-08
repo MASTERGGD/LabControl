@@ -659,6 +659,8 @@ def test_captura_extemporanea_solo_dentro_de_7_dias(client, db, monkeypatch):
         (vencida.id, "2026-07-31"),
         (vigente.id, "2026-07-30"),
     ]
+    assert all(item["grupo"] == "3° A" for item in disponibles.json())
+    assert all(item["carrera"] == "TIEID" for item in disponibles.json())
 
     creada = client.post(
         f"/docencia/horario/{vigente.id}/captura-extemporanea",
@@ -973,6 +975,8 @@ def test_reposicion_es_evento_unico_y_no_modifica_horario(client, db):
     pendientes = client.get("/docencia/reposiciones/pendientes", headers=headers)
     assert pendientes.status_code == 200
     assert pendientes.json()[0]["clase_id"] == original.id
+    assert pendientes.json()[0]["grupo"] == "9° A"
+    assert pendientes.json()[0]["carrera"] == "TIEID"
     fecha_reposicion = hoy + datetime.timedelta(days=1)
     respuesta = client.post(f"/docencia/horario/{carga.id}/reposiciones", headers=headers, json={
         "fecha_original": fecha_original.isoformat(), "fecha": fecha_reposicion.isoformat(),
