@@ -3,10 +3,19 @@ import { createPortal } from 'react-dom';
 import api from '../hooks/useApi';
 
 const FORM_INICIAL = {
-  tipo: 'OBSERVACION', categoria_reporte: 'ACADEMICO', prioridad_reporte: 'BAJA',
+  tipo: 'OBSERVACION', categoria_reporte: 'ACADEMICO', prioridad_reporte: '',
   titulo: '', detalle: '', canalizar_tutor: false, confidencial: false,
   fecha_limite: '', fecha_revision: '',
 };
+const MOTIVOS_REPORTE = [
+  ['RIESGO_REPROBACION', 'Riesgo de reprobación', 'ACADEMICO'],
+  ['BAJO_DESEMPENO', 'Bajo desempeño académico', 'ACADEMICO'],
+  ['REGULARIZACION', 'Regularización académica', 'ACADEMICO'],
+  ['INASISTENCIAS', 'Inasistencias recurrentes', 'ASISTENCIA'],
+  ['CONDUCTA', 'Conducta o convivencia', 'CONDUCTA'],
+  ['SITUACION_PERSONAL', 'Situación personal', 'PERSONAL'],
+  ['OTRO', 'Otra situación', 'OTRO'],
+];
 
 export default function ContextoAlumnoDocente({
   cargaId, alumnoId, nombre, contexto, onEnviada, compacto = false, permitirNota = true,
@@ -101,26 +110,24 @@ export default function ContextoAlumnoDocente({
                 </select>
               </label>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="text-sm text-slate-300">Categoría
-                  <select value={form.categoria_reporte} onChange={(e) => setForm({ ...form, categoria_reporte: e.target.value })} className="input-dark mt-1">
-                    <option value="ACADEMICO">Académico, participación o logro</option>
-                    <option value="ASISTENCIA">Asistencia recurrente</option>
-                    <option value="CONDUCTA">Conducta o convivencia</option>
-                    <option value="PERSONAL">Situación personal</option>
-                    <option value="OTRO">Otra situación</option>
+                <label className="text-sm text-slate-300">Motivo del registro *
+                  <select required value={form.titulo} onChange={(e) => {
+                    const motivo = MOTIVOS_REPORTE.find(([, etiqueta]) => etiqueta === e.target.value);
+                    setForm({ ...form, titulo: e.target.value, categoria_reporte: motivo?.[2] || 'OTRO' });
+                  }} className="input-dark mt-1">
+                    <option value="">Selecciona un motivo</option>
+                    {MOTIVOS_REPORTE.map(([clave, etiqueta]) => <option key={clave} value={etiqueta}>{etiqueta}</option>)}
                   </select>
                 </label>
-                <label className="text-sm text-slate-300">Prioridad
+                <label className="text-sm text-slate-300">Prioridad *
                   <select value={form.prioridad_reporte} onChange={(e) => setForm({ ...form, prioridad_reporte: e.target.value })} className="input-dark mt-1">
+                    <option value="">Selecciona una prioridad</option>
                     <option value="BAJA">Informativo</option>
                     <option value="MEDIA">Requiere seguimiento</option>
                     <option value="ALTA">Urgente</option>
                   </select>
                 </label>
               </div>
-              <label className="block text-sm text-slate-300">Título
-                <input required minLength={2} maxLength={180} value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="input-dark mt-1" placeholder="Resumen breve de lo ocurrido" />
-              </label>
               {form.tipo === 'ACUERDO' && !form.canalizar_tutor && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-sm text-slate-300">Fecha límite
                   <input required type="date" value={form.fecha_limite} onChange={(e) => setForm({ ...form, fecha_limite: e.target.value })} className="input-dark mt-1" />
@@ -129,16 +136,20 @@ export default function ContextoAlumnoDocente({
                   <input required type="date" min={form.fecha_limite || undefined} value={form.fecha_revision} onChange={(e) => setForm({ ...form, fecha_revision: e.target.value })} className="input-dark mt-1" />
                 </label>
               </div>}
-              <label className="block text-sm text-slate-300">Detalle
+              <label className="block text-sm text-slate-300">¿Qué observaste y qué acción realizaste con el alumno? {form.canalizar_tutor && '*'}
                 <textarea
+                  required={form.canalizar_tutor}
                   rows={4}
+                  minLength={form.canalizar_tutor ? 5 : undefined}
                   maxLength={2000}
+                  spellCheck="true"
                   value={form.detalle}
                   onChange={(e) => setForm({ ...form, detalle: e.target.value })}
                   className="input-dark mt-1"
                   placeholder="Describe únicamente hechos observables, acciones realizadas o acuerdos."
                 />
               </label>
+              <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">Revisa la redacción antes de guardar: este texto formará parte del registro institucional. Los problemas de inscripción deben comunicarse a Servicios Escolares.</p>
               <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={form.canalizar_tutor} onChange={(e) => setForm({ ...form, canalizar_tutor: e.target.checked })} />
@@ -154,7 +165,7 @@ export default function ContextoAlumnoDocente({
             </div>
             <footer className="theme-divider flex shrink-0 gap-3 border-t px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]" style={{ background: 'var(--surface-panel)' }}>
               <button type="button" disabled={guardando} onClick={() => setAbierto(false)} className="theme-text flex-1 rounded-xl border px-4 py-2.5 text-sm" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)' }}>Cancelar</button>
-              <button disabled={guardando || form.titulo.trim().length < 2} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y notificar' : 'Guardar nota'}</button>
+              <button disabled={guardando || form.titulo.trim().length < 2 || !form.prioridad_reporte || (form.canalizar_tutor && form.detalle.trim().length < 5)} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y notificar' : 'Guardar nota'}</button>
             </footer>
           </form>
         </div>,

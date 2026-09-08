@@ -48,6 +48,28 @@ const ESTADO_INF = {
   ENVIADO:  { label: "Enviado",   cls: "bg-blue-500/20 text-blue-300" },
   RECIBIDO: { label: "Recibido",  cls: "bg-emerald-500/20 text-emerald-300" },
 };
+const ESTADO_REPORTE = {
+  SIN_TUTOR: { label: "Sin tutor", cls: "bg-red-500/15 text-red-400" },
+  ENVIADO: { label: "Enviado", cls: "bg-blue-500/15 text-blue-400" },
+  RECIBIDO: { label: "Visto por el tutor", cls: "bg-cyan-500/15 text-cyan-400" },
+  EN_SEGUIMIENTO: { label: "En seguimiento", cls: "bg-amber-500/15 text-amber-400" },
+  CANALIZADO: { label: "Canalizado", cls: "bg-purple-500/15 text-purple-400" },
+  ATENDIDO: { label: "Atendido", cls: "bg-emerald-500/15 text-emerald-400" },
+  CERRADO: { label: "Cerrado", cls: "bg-slate-500/15 text-slate-400" },
+};
+const CATEGORIA_REPORTE = {
+  ACADEMICO: "Académico", ASISTENCIA: "Asistencia", CONDUCTA: "Conducta",
+  PERSONAL: "Situación personal", OTRO: "Otro",
+};
+const fechaReporte = (valor) => valor ? new Date(valor.endsWith?.("Z") ? valor : `${valor}Z`) : null;
+const antiguedadReporte = (valor) => {
+  const fecha = fechaReporte(valor);
+  if (!fecha || Number.isNaN(fecha.getTime())) return "Sin fecha";
+  const dias = Math.max(0, Math.floor((Date.now() - fecha.getTime()) / 86400000));
+  if (dias === 0) return "Hoy";
+  if (dias === 1) return "Hace 1 día";
+  return `Hace ${dias} días`;
+};
 
 const estadoCumplimientoTutor = (tutor) => {
   const vencidas = tutor.programadas_vencidas || 0;
@@ -1317,6 +1339,9 @@ export default function TutoriaAdmin() {
   const [canalizaciones, setCanalizaciones] = useState([]);
   const [reportesTutor, setReportesTutor] = useState([]);
   const [asignandoReporte, setAsignandoReporte] = useState({});
+  const [filtroEstadoReporte, setFiltroEstadoReporte] = useState("PENDIENTES");
+  const [busquedaReportesTutor, setBusquedaReportesTutor] = useState("");
+  const [resultadoCierreReporte, setResultadoCierreReporte] = useState("");
   const [informes, setInformes] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [modal, setModal] = useState(null); // null | "grupo" | "importar" | {type:"atender", can}
@@ -1472,6 +1497,22 @@ export default function TutoriaAdmin() {
     } catch { showToast('No se pudieron procesar las alertas', 'error'); }
   };
 
+  const cerrarReporteInstitucional = async (e) => {
+    e.preventDefault();
+    if (resultadoCierreReporte.trim().length < 5) return;
+    try {
+      await api.put(`/tutoria/reportes-tutor/${modal.reporte.id}/estado`, {
+        estado: "CERRADO", resultado: resultadoCierreReporte.trim(),
+      });
+      setModal(null);
+      setResultadoCierreReporte("");
+      showToast("Reporte cerrado con resultado institucional", "success");
+      cargarReportesTutor();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo cerrar el reporte", "error");
+    }
+  };
+
   const cargarReporteGeneral = useCallback(async () => {
     try {
       const params = new URLSearchParams();
@@ -1617,6 +1658,23 @@ export default function TutoriaAdmin() {
     && (!filtroTutor || String(g.tutor_id) === String(filtroTutor))
     && (filtroAsignacion === "TODOS" || (filtroAsignacion === "CON_TUTOR" ? Boolean(g.tutor_id) : !g.tutor_id))
   ), [grupos, filtroAsignacion, filtroCarrera, filtroPeriodo, filtroTutor]);
+
+  const reportesTutorFiltrados = useMemo(() => {
+    const pendientes = new Set(["SIN_TUTOR", "ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"]);
+    const texto = busquedaReportesTutor.trim().toLocaleLowerCase("es");
+    return reportesTutor.filter(reporte => {
+      const coincideEstado = filtroEstadoReporte === "TODOS"
+        || (filtroEstadoReporte === "PENDIENTES" ? pendientes.has(reporte.estado) : reporte.estado === filtroEstadoReporte);
+      const coincideTexto = !texto || [reporte.alumno_nombre, reporte.matricula, reporte.materia, reporte.reportado_por, reporte.tutor_destinatario, reporte.titulo]
+        .some(valor => String(valor || "").toLocaleLowerCase("es").includes(texto));
+      return coincideEstado && coincideTexto;
+    });
+  }, [busquedaReportesTutor, filtroEstadoReporte, reportesTutor]);
+  const lotesReportes = useMemo(() => reportesTutor.reduce((acumulado, reporte) => {
+    const clave = [reporte.reportado_por, reporte.tutor_destinatario, reporte.materia, String(reporte.creado_en || "").slice(0, 10)].join("|");
+    acumulado[clave] = (acumulado[clave] || 0) + 1;
+    return acumulado;
+  }, {}), [reportesTutor]);
 
   const gruposOrdenados = useMemo(() => [...gruposFiltrados].sort((a, b) => {
     const numericos = new Set(["cuatrimestre", "total_alumnos", "sesiones_realizadas"]);
@@ -2173,39 +2231,45 @@ export default function TutoriaAdmin() {
 
       {/* â”€â”€ CANALIZACIONES â”€â”€ */}
       {tab === "reportes-tutor" && (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-lg font-semibold">Reportes enviados por docentes</h2>
-            <p className="text-sm text-slate-400">Supervisión del flujo docente → tutor. Los casos sin tutor requieren asignación.</p>
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div><h2 className="text-lg font-semibold">Reportes enviados por docentes</h2><p className="text-sm text-slate-400">Supervisa recepción, seguimiento y resolución. Los casos sin tutor requieren asignación.</p></div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-lg bg-red-500/10 px-3 py-2 text-red-400">{reportesTutor.filter(r => r.estado === "SIN_TUTOR").length} sin tutor</span>
+              <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">{reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"].includes(r.estado)).length} pendientes</span>
+            </div>
           </div>
-          {reportesTutor.map(r => (
-            <article key={r.id} className={`rounded-xl border p-4 ${r.estado === "SIN_TUTOR" ? "border-red-500/30 bg-red-500/[0.07]" : isDay ? "border-slate-200 bg-white" : "border-slate-700/50 bg-slate-800/60"}`}>
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
-                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-400">{r.categoria}</span>
-                    <span className={r.prioridad === "ALTA" ? "text-red-400" : "text-slate-500"}>Prioridad {r.prioridad}</span>
-                    {r.confidencial && <span className="text-purple-400">Confidencial</span>}
-                  </div>
-                  <h3 className="mt-1 font-semibold">{r.titulo}</h3>
-                  <p className="text-sm text-slate-400">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || "sin identificar"}` : `${r.alumno_nombre} · ${r.matricula}`} · {r.materia || "Sin materia"}</p>
-                  <p className="text-xs text-slate-500">Reportó: {r.reportado_por} · Tutor: {r.tutor_destinatario || "Sin asignar"}</p>
-                  {r.detalle && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}
-                </div>
-                <span className={`text-xs font-semibold ${r.estado === "SIN_TUTOR" ? "text-red-400" : "text-amber-400"}`}>{r.estado.replaceAll("_", " ")}</span>
-              </div>
-              {r.estado === "SIN_TUTOR" && (
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
-                  <select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark max-w-md">
-                    <option value="">Seleccionar grupo tutorado del alumno</option>
-                    {grupos.map(g => <option key={g.id} value={g.id}>{g.carrera} · {g.grupo} · {g.periodo} · {g.tutor_nombre}</option>)}
-                  </select>
-                  <button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Asignar y notificar</button>
-                </div>
-              )}
-            </article>
-          ))}
-          {reportesTutor.length === 0 && <p className="py-8 text-center text-sm text-slate-500">Todavía no hay reportes de docentes.</p>}
+          <div className={`grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(240px,1fr)_220px] ${isDay ? "border-slate-200 bg-white" : "border-white/10 bg-white/[0.025]"}`}>
+            <input value={busquedaReportesTutor} onChange={e => setBusquedaReportesTutor(e.target.value)} className="input-dark" placeholder="Buscar alumno, matrícula, materia, docente o tutor" />
+            <select value={filtroEstadoReporte} onChange={e => setFiltroEstadoReporte(e.target.value)} className="input-dark">
+              <option value="PENDIENTES">Pendientes de atención</option><option value="TODOS">Todos los estados</option><option value="SIN_TUTOR">Sin tutor</option><option value="ENVIADO">Enviados</option><option value="RECIBIDO">Vistos por el tutor</option><option value="EN_SEGUIMIENTO">En seguimiento</option><option value="CANALIZADO">Canalizados</option><option value="ATENDIDO">Atendidos</option><option value="CERRADO">Cerrados</option>
+            </select>
+          </div>
+          <div className={`hidden overflow-x-auto rounded-xl border md:block ${isDay ? "border-slate-200 bg-white" : "border-white/10"}`}>
+            <table className="w-full min-w-[1100px] text-left text-sm">
+              <thead className="border-b border-white/10 bg-white/[0.025] text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-3">Alumno y motivo</th><th className="px-4 py-3">Origen</th><th className="px-4 py-3">Tutor</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3 text-right">Acciones</th></tr></thead>
+              <tbody className="divide-y divide-white/5">
+                {reportesTutorFiltrados.map(r => {
+                  const estado = ESTADO_REPORTE[r.estado] || { label: toTitleCase(r.estado), cls: "bg-slate-500/15 text-slate-400" };
+                  const detalleRepetido = r.detalle?.trim().toLocaleUpperCase("es") === r.titulo?.trim().toLocaleUpperCase("es");
+                  const dias = fechaReporte(r.creado_en) ? Math.floor((Date.now() - fechaReporte(r.creado_en).getTime()) / 86400000) : 0;
+                  const atrasado = ["ENVIADO", "RECIBIDO"].includes(r.estado) && dias >= 3;
+                  const claveLote = [r.reportado_por, r.tutor_destinatario, r.materia, String(r.creado_en || "").slice(0, 10)].join("|");
+                  const totalLote = lotesReportes[claveLote] || 1;
+                  return <tr key={r.id} className={atrasado ? "bg-amber-500/[0.05]" : "hover:bg-white/[0.025]"}>
+                    <td className="max-w-[330px] px-4 py-3"><p className={`font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre} <span className="font-normal text-slate-500">· {r.matricula}</span></p><p className={`mt-0.5 text-xs font-medium ${isDay ? "text-slate-700" : "text-slate-300"}`}>{r.titulo}</p>{r.detalle && !detalleRepetido && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{r.detalle}</p>}</td>
+                    <td className="px-4 py-3"><p className={isDay ? "text-slate-700" : "text-slate-300"}>{r.materia || "Sin materia"}</p><p className="text-xs text-slate-500">{r.reportado_por}</p><span className="mt-1 inline-flex rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-500">{CATEGORIA_REPORTE[r.categoria] || toTitleCase(r.categoria)}</span>{totalLote > 1 && <span className="ml-1 mt-1 inline-flex rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-400">{totalLote} reportes del mismo envío</span>}</td>
+                    <td className={`px-4 py-3 ${isDay ? "text-slate-700" : "text-slate-300"}`}>{r.tutor_destinatario || <span className="font-semibold text-red-400">Sin asignar</span>}</td>
+                    <td className="px-4 py-3"><p className={atrasado ? "font-semibold text-amber-400" : "text-slate-300"}>{antiguedadReporte(r.creado_en)}</p><p className="text-xs text-slate-500">{fechaReporte(r.creado_en)?.toLocaleString("es-MX") || "Sin fecha"}</p></td>
+                    <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado.cls}`}>{estado.label}</span><p className={`mt-1 text-[10px] ${r.prioridad === "ALTA" ? "font-bold text-red-400" : "text-slate-500"}`}>Prioridad {toTitleCase(r.prioridad)}</p></td>
+                    <td className="px-4 py-3"><div className="flex justify-end gap-2">{r.estado === "SIN_TUTOR" ? <><select aria-label={`Asignar tutor a ${r.alumno_nombre}`} value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark max-w-44 text-xs"><option value="">Seleccionar grupo</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white">Asignar</button></> : !["CERRADO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs text-slate-300">Cerrar institucionalmente</button>}</div></td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="space-y-2 md:hidden">{reportesTutorFiltrados.map(r => { const estado = ESTADO_REPORTE[r.estado] || {}; return <article key={r.id} className={`rounded-xl border p-4 ${r.estado === "SIN_TUTOR" ? "border-red-500/30 bg-red-500/[0.06]" : isDay ? "border-slate-200 bg-white" : "border-white/10"}`}><div className="flex justify-between gap-3"><div><p className={`font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre}</p><p className="text-xs text-slate-500">{r.matricula} · {r.materia}</p></div><span className={`h-fit rounded-full px-2 py-1 text-[10px] font-semibold ${estado.cls}`}>{estado.label}</span></div><p className={`mt-3 text-sm font-medium ${isDay ? "text-slate-800" : "text-slate-200"}`}>{r.titulo}</p><p className="mt-1 text-xs text-slate-500">Tutor: {r.tutor_destinatario || "Sin asignar"} · {antiguedadReporte(r.creado_en)}</p>{r.detalle && r.detalle.trim().toLocaleUpperCase("es") !== r.titulo.trim().toLocaleUpperCase("es") && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}{r.estado === "SIN_TUTOR" ? <div className="mt-3 grid gap-2"><select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark"><option value="">Seleccionar grupo tutorado</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.carrera} · {g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Asignar y notificar</button></div> : !["CERRADO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="mt-3 rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-400">Cerrar institucionalmente</button>}</article>; })}</div>
+          {reportesTutorFiltrados.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay reportes que coincidan con los filtros.</p>}
         </div>
       )}
 
@@ -2840,6 +2904,15 @@ export default function TutoriaAdmin() {
       {modal?.type === "atender" && (
         <ModalAtenderCan can={modal.can} onClose={() => setModal(null)}
           onAtendida={() => { setModal(null); cargarCanalizaciones(); cargarDash(); }} />
+      )}
+      {modal?.type === "cerrar-reporte" && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={() => setModal(null)}>
+          <form onSubmit={cerrarReporteInstitucional} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl">
+            <header className="border-b border-white/10 p-5"><h2 className="font-semibold">Cerrar reporte institucionalmente</h2><p className="mt-1 text-xs text-slate-400">{modal.reporte.alumno_nombre} · {modal.reporte.titulo}</p></header>
+            <div className="space-y-3 p-5"><p className="text-sm text-amber-300">Usa esta acción solo cuando exista evidencia de atención o el caso deba cerrarse administrativamente.</p><label className="block text-sm text-slate-300">Resultado y justificación *<textarea required minLength={5} rows={5} spellCheck="true" value={resultadoCierreReporte} onChange={e => setResultadoCierreReporte(e.target.value)} className="input-dark mt-1" placeholder="Describe la atención realizada o el motivo del cierre" /></label></div>
+            <footer className="flex justify-end gap-2 border-t border-white/10 p-4"><button type="button" onClick={() => setModal(null)} className="rounded-lg border border-white/10 px-4 py-2 text-sm">Cancelar</button><button disabled={resultadoCierreReporte.trim().length < 5} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-700">Registrar cierre</button></footer>
+          </form>
+        </div>
       )}
       {modalSeguimiento && (
         <ModalSeguimientoAlumno
