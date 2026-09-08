@@ -5,7 +5,7 @@ import api from '../hooks/useApi';
 const FORM_INICIAL = {
   tipo: 'OBSERVACION', categoria_reporte: 'ACADEMICO', prioridad_reporte: '',
   titulo: '', detalle: '', canalizar_tutor: false, confidencial: false,
-  fecha_limite: '', fecha_revision: '',
+  fecha_limite: '', fecha_revision: '', solicitar_reunion: false,
 };
 const MOTIVOS_REPORTE = [
   ['RIESGO_REPROBACION', 'Riesgo de reprobación', 'ACADEMICO'],
@@ -48,6 +48,7 @@ export default function ContextoAlumnoDocente({
         categoria_reporte: form.categoria_reporte,
         prioridad_reporte: form.prioridad_reporte,
         confidencial: form.confidencial,
+        solicitar_reunion: form.solicitar_reunion,
       });
       setAbierto(false);
       setForm(FORM_INICIAL);
@@ -141,14 +142,16 @@ export default function ContextoAlumnoDocente({
                   required={form.canalizar_tutor}
                   rows={4}
                   minLength={form.canalizar_tutor ? 5 : undefined}
-                  maxLength={2000}
+                  maxLength={800}
                   spellCheck="true"
                   value={form.detalle}
                   onChange={(e) => setForm({ ...form, detalle: e.target.value })}
                   className="input-dark mt-1"
                   placeholder="Describe únicamente hechos observables, acciones realizadas o acuerdos."
                 />
+                <span className={`mt-1 block text-right text-xs ${form.detalle.length >= 650 ? 'text-amber-400' : 'text-slate-500'}`}>{form.detalle.length}/800</span>
               </label>
+              {form.detalle.length >= 650 && <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.06] px-3 py-2 text-xs text-blue-200"><p>Si el caso requiere más contexto, registra aquí un resumen factual.</p>{form.canalizar_tutor && <label className="mt-2 flex items-center gap-2 font-semibold"><input type="checkbox" checked={form.solicitar_reunion} onChange={e => setForm({ ...form, solicitar_reunion: e.target.checked })} />Solicitar una reunión rastreable con el tutor</label>}</div>}
               <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">Revisa la redacción antes de guardar: este texto formará parte del registro institucional. Los problemas de inscripción deben comunicarse a Servicios Escolares.</p>
               <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
                 <label className="flex items-start gap-3 text-sm text-slate-200">

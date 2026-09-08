@@ -897,7 +897,7 @@ def alumnos_grupo(
         ).count()
         reportes_abiertos = db.query(ReporteTutor).filter(
             ReporteTutor.alumno_id == alumno.id,
-            ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"]),
+            ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO"]),
         ).count()
         resultado.append({
             **_ser_alumno_basico(alumno),
@@ -2390,6 +2390,7 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "clase_docente_id": reporte.clase_docente_id,
         "categoria": reporte.categoria,
         "prioridad": reporte.prioridad,
+        "prioridad_confirmada": bool(reporte.prioridad_confirmada),
         "titulo": reporte.titulo,
         "detalle": reporte.detalle,
         "confidencial": reporte.confidencial,
@@ -2400,6 +2401,8 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "recibido_en": reporte.recibido_en.isoformat() if reporte.recibido_en else None,
         "actualizado_en": reporte.actualizado_en.isoformat() if reporte.actualizado_en else None,
         "cerrado_en": reporte.cerrado_en.isoformat() if reporte.cerrado_en else None,
+        "ultimo_recordatorio_en": reporte.ultimo_recordatorio_en.isoformat() if reporte.ultimo_recordatorio_en else None,
+        "reasignado_en": reporte.reasignado_en.isoformat() if reporte.reasignado_en else None,
     }
 
 
@@ -2448,20 +2451,22 @@ def actualizar_reporte_tutor(
     if not puede_atender:
         raise HTTPException(403, "Solo el tutor destinatario puede atender este reporte")
     estado = data.estado.upper()
-    validos = {"RECIBIDO", "EN_SEGUIMIENTO", "ATENDIDO", "CERRADO"}
+    validos = {"RECIBIDO", "EN_SEGUIMIENTO", "ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"}
     if estado not in validos:
         raise HTTPException(422, "Estado de reporte no válido")
-    if estado in {"ATENDIDO", "CERRADO"} and not (data.resultado or "").strip():
+    if estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"} and not (data.resultado or "").strip():
         raise HTTPException(422, "Debes registrar el resultado de la atención")
+    if estado == "CERRADO_ADMINISTRATIVO" and current_user.rol not in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN}:
+        raise HTTPException(403, "Solo el Responsable de Tutoría puede realizar un cierre administrativo")
 
     ahora = _now()
     reporte.estado = estado
     reporte.resultado = (data.resultado or "").strip() or reporte.resultado
     if estado == "RECIBIDO" and not reporte.recibido_en:
         reporte.recibido_en = ahora
-    if estado in {"ATENDIDO", "CERRADO"}:
+    if estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"}:
         reporte.cerrado_en = ahora
-        if reporte.seguimiento_docente_id:
+        if estado != "CERRADO_ADMINISTRATIVO" and reporte.seguimiento_docente_id:
             seguimiento = db.query(SeguimientoAlumnoDocente).filter(
                 SeguimientoAlumnoDocente.id == reporte.seguimiento_docente_id
             ).first()
@@ -2505,15 +2510,54 @@ def asignar_reporte_tutor(
     ).first()
     if not asignacion:
         raise HTTPException(409, "El alumno no está asignado a ese grupo tutorado")
+    tutor_anterior_id = reporte.tutor_destinatario_id
+    estado_anterior = reporte.estado
     reporte.grupo_tutorado_id = grupo.id
     reporte.tutor_destinatario_id = grupo.tutor_id
-    reporte.estado = "ENVIADO"
+    reporte.estado = "REUNION_SOLICITADA" if estado_anterior == "REUNION_SOLICITADA" else "ENVIADO"
+    reporte.reasignado_en = _now()
+    reporte.reasignado_por_id = current_user.id
+    if tutor_anterior_id and tutor_anterior_id != grupo.tutor_id:
+        _notificar_usuario(
+            db, tutor_anterior_id, "tutoria_reporte_reasignado", "Reporte reasignado",
+            f"El reporte “{reporte.titulo}” fue reasignado a otro tutor por el Responsable de Tutoría.",
+            "/docente/mis-tutorados?tab=reportes",
+        )
     _notificar_usuario(
         db, grupo.tutor_id, "tutoria_reporte",
         "Nuevo reporte asignado",
         f"Se te asignó el reporte “{reporte.titulo}”.",
         "/docente/mis-tutorados?tab=reportes",
     )
+    db.commit()
+    return _ser_reporte_tutor(reporte, db)
+
+
+@router.post("/reportes-tutor/{reporte_id}/recordar", summary="Recordar al tutor un reporte pendiente")
+def recordar_reporte_tutor(
+    reporte_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_resp_roles),
+):
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).first()
+    if not reporte:
+        raise HTTPException(404, "Reporte no encontrado")
+    if not reporte.tutor_destinatario_id:
+        raise HTTPException(409, "Asigna un tutor antes de enviar un recordatorio")
+    if reporte.estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANALIZADO"}:
+        raise HTTPException(409, "El reporte ya no requiere recordatorio")
+    ahora = _now()
+    if reporte.ultimo_recordatorio_en and ahora - reporte.ultimo_recordatorio_en < datetime.timedelta(hours=48):
+        disponible = reporte.ultimo_recordatorio_en + datetime.timedelta(hours=48)
+        raise HTTPException(409, f"Ya se envió un recordatorio. Podrás repetirlo después de {disponible.isoformat()}")
+    _notificar_usuario(
+        db, reporte.tutor_destinatario_id, "tutoria_reporte_recordatorio",
+        "Reporte pendiente de atención",
+        f"El reporte “{reporte.titulo}” continúa pendiente. Revisa y actualiza su seguimiento.",
+        "/docente/mis-tutorados?tab=reportes",
+    )
+    reporte.ultimo_recordatorio_en = ahora
+    reporte.ultimo_recordatorio_por_id = current_user.id
     db.commit()
     return _ser_reporte_tutor(reporte, db)
 

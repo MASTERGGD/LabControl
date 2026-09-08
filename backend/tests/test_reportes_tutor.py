@@ -99,6 +99,47 @@ def test_docente_envia_reporte_y_tutor_lo_cierra(client, db):
     assert "seguimiento semanal" in seguimiento.resultado_atencion
 
 
+def test_responsable_recuerda_y_cierra_sin_contar_como_atencion(client, db):
+    reportante, tutor, alumno, carga, _ = _escenario(db)
+    responsable = Usuario(
+        nombre="Responsable de Tutoría", email="responsable.flujo@test.mx",
+        password_hash=hashear_password("Responsable123!"),
+        rol=RolUsuario.TUTORIA_ADMIN, activo=True,
+    )
+    db.add(responsable)
+    db.commit()
+    creado = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/registros",
+        headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
+        json={
+            "tipo": "TUTORIA", "titulo": "Riesgo de reprobación",
+            "detalle": "No entregó las dos actividades más recientes.",
+            "categoria_reporte": "ACADEMICO", "prioridad_reporte": "MEDIA",
+            "solicitar_reunion": True,
+        },
+    )
+    assert creado.status_code == 200, creado.text
+    reporte = db.query(ReporteTutor).one()
+    assert reporte.estado == "REUNION_SOLICITADA"
+    headers = auth_headers(get_token(client, responsable.email, "Responsable123!"))
+
+    recordado = client.post(f"/tutoria/reportes-tutor/{reporte.id}/recordar", headers=headers)
+    assert recordado.status_code == 200, recordado.text
+    assert recordado.json()["ultimo_recordatorio_en"] is not None
+    repetido = client.post(f"/tutoria/reportes-tutor/{reporte.id}/recordar", headers=headers)
+    assert repetido.status_code == 409
+
+    cerrado = client.put(
+        f"/tutoria/reportes-tutor/{reporte.id}/estado", headers=headers,
+        json={"estado": "CERRADO_ADMINISTRATIVO", "resultado": "Registro duplicado verificado por Tutoría."},
+    )
+    assert cerrado.status_code == 200, cerrado.text
+    assert cerrado.json()["estado"] == "CERRADO_ADMINISTRATIVO"
+    seguimiento = db.query(SeguimientoAlumnoDocente).one()
+    db.refresh(seguimiento)
+    assert seguimiento.estado != "ATENDIDO"
+
+
 def test_cierre_con_incidencia_canaliza_al_tutor_sin_duplicar(client, db):
     reportante, tutor, _, carga, grupo_tutorado = _escenario(db)
     clase = ClaseDocente(
@@ -297,7 +338,8 @@ def test_vista_contextual_oculta_detalles_y_alerta_temprana_llega_al_tutor(clien
     )
     assert contexto.status_code == 200, contexto.text
     datos = contexto.json()
-    assert datos["canalizacion_activa"] is True
+    # Una canalización creada por el tutor no se expone al docente de materia.
+    assert datos["canalizacion_activa"] is False
     assert datos["tutor_asignado"] == tutor.nombre
     assert "motivo" not in datos
     assert "tipo_psicologico" not in datos
@@ -319,6 +361,7 @@ def test_vista_contextual_oculta_detalles_y_alerta_temprana_llega_al_tutor(clien
     assert reporte.categoria == "CONDUCTA"
     assert reporte.tutor_destinatario_id == tutor.id
     assert reporte.prioridad == "MEDIA"
+    assert reporte.prioridad_confirmada is True
 
     repetida = client.post(
         f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/alerta-temprana",

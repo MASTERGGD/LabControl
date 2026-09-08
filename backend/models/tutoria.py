@@ -204,6 +204,7 @@ class ReporteTutor(Base):
 
     categoria       = Column(String(30), nullable=False, default="ACADEMICO")
     prioridad       = Column(String(15), nullable=False, default="MEDIA")
+    prioridad_confirmada = Column(Boolean, nullable=False, default=False)
     titulo          = Column(String(180), nullable=False)
     detalle         = Column(Text, nullable=True)
     confidencial    = Column(Boolean, nullable=False, default=False)
@@ -215,6 +216,10 @@ class ReporteTutor(Base):
     recibido_en    = Column(DateTime, nullable=True)
     actualizado_en = Column(DateTime, default=_now, onupdate=_now, nullable=False)
     cerrado_en     = Column(DateTime, nullable=True)
+    ultimo_recordatorio_en = Column(DateTime, nullable=True)
+    ultimo_recordatorio_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    reasignado_en = Column(DateTime, nullable=True)
+    reasignado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
 
 class Canalizacion(Base):

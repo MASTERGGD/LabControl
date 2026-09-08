@@ -92,7 +92,7 @@ def _resumen_carga(db, carga):
     reportes = db.query(ReporteTutor).filter(ReporteTutor.carga_docente_id == carga.id).all()
     abiertas = sum(1 for c in clases if c.estado in {"ABIERTA", "CORRECCION"})
     incidencias = sum(1 for c in clases if c.incidencia_requiere_seguimiento)
-    reportes_pendientes = sum(1 for r in reportes if r.estado not in {"ATENDIDO", "CERRADO", "CANCELADO"})
+    reportes_pendientes = sum(1 for r in reportes if r.estado not in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANCELADO"})
     return {
         "clases_registradas": len(clases),
         "clases_cerradas": sum(1 for c in clases if c.estado == "CERRADA"),

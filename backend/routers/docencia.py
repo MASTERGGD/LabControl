@@ -211,6 +211,7 @@ class SeguimientoInput(BaseModel):
     categoria_reporte: str = Field("ACADEMICO", max_length=30)
     prioridad_reporte: str = Field("MEDIA", max_length=15)
     confidencial: bool = False
+    solicitar_reunion: bool = False
 
     @model_validator(mode="after")
     def validar(self):
@@ -1809,6 +1810,7 @@ def cerrar_clase(
             "ACADEMICA": "ACADEMICO", "DISCIPLINA": "CONDUCTA",
         }.get(clase.incidencia_tipo, "OTRO")
         reporte.prioridad = "MEDIA"
+        reporte.prioridad_confirmada = True
         reporte.titulo = f"Nota de clase · {clase.carga.actividad_nombre}"
         grupo_nombre = (
             f"{clase.carga.grupo_academico.cuatrimestre}° {clase.carga.grupo_academico.grupo}"
@@ -2171,7 +2173,7 @@ def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoA
         ReporteTutor.alumno_id == alumno.id,
         ReporteTutor.reportado_por_id == docente_id,
         ReporteTutor.carga_docente_id.in_(carga_ids),
-        ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "CANALIZADO", "SIN_TUTOR"]),
+        ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO", "CANALIZADO", "SIN_TUTOR"]),
     ).first() is not None if carga_ids else False
     desde = datetime.datetime.utcnow() - datetime.timedelta(days=7)
     alerta_reciente = db.query(ReporteTutor).filter(
@@ -2179,7 +2181,7 @@ def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoA
         ReporteTutor.reportado_por_id == docente_id,
         ReporteTutor.carga_docente_id == carga.id,
         ReporteTutor.creado_en >= desde,
-        ReporteTutor.estado.notin_(["CERRADO", "ATENDIDO", "CANCELADO"]),
+        ReporteTutor.estado.notin_(["CERRADO", "CERRADO_ADMINISTRATIVO", "ATENDIDO", "CANCELADO"]),
     ).order_by(ReporteTutor.creado_en.desc()).first()
     asignacion = db.query(AsignacionTutoria).filter(
         AsignacionTutoria.alumno_id == alumno.id,
@@ -2269,7 +2271,7 @@ def crear_alerta_temprana(
         ReporteTutor.carga_docente_id == carga.id,
         ReporteTutor.categoria == categoria,
         ReporteTutor.creado_en >= desde,
-        ReporteTutor.estado.notin_(["CERRADO", "ATENDIDO", "CANCELADO"]),
+        ReporteTutor.estado.notin_(["CERRADO", "CERRADO_ADMINISTRATIVO", "ATENDIDO", "CANCELADO"]),
     ).first()
     if duplicado:
         raise HTTPException(409, "Ya enviaste una alerta similar durante los últimos 7 días. Puedes revisar su estado en la ficha del alumno.")
@@ -2301,6 +2303,7 @@ def crear_alerta_temprana(
         seguimiento_docente_id=registro.id,
         categoria=categoria,
         prioridad=prioridad,
+        prioridad_confirmada=True,
         titulo=titulo,
         detalle=detalle,
         confidencial=data.senal in {"SITUACION_PERSONAL", "OTRO"},
@@ -2562,10 +2565,11 @@ def registrar_seguimiento_alumno(
             seguimiento_docente_id=registro.id,
             categoria=data.categoria_reporte,
             prioridad=data.prioridad_reporte,
+            prioridad_confirmada=True,
             titulo=data.titulo.strip(),
             detalle=data.detalle,
             confidencial=data.confidencial,
-            estado="ENVIADO" if tutor else "SIN_TUTOR",
+            estado=("REUNION_SOLICITADA" if data.solicitar_reunion else "ENVIADO") if tutor else "SIN_TUTOR",
         )
         db.add(reporte)
         db.flush()
@@ -2574,8 +2578,8 @@ def registrar_seguimiento_alumno(
         if tutor:
             crear_notificacion(
                 db, tutor.id, "tutoria_reporte",
-                "Nuevo reporte de un docente",
-                f"{current_user.nombre} reportó un caso de {alumno_nombre}: {data.titulo.strip()}.",
+                    "Solicitud de reunión de un docente" if data.solicitar_reunion else "Nuevo reporte de un docente",
+                    f"{current_user.nombre} {'solicitó una reunión sobre' if data.solicitar_reunion else 'reportó un caso de'} {alumno_nombre}: {data.titulo.strip()}.",
                 "/docente/mis-tutorados?tab=reportes", enviar_email=False,
             )
         else:

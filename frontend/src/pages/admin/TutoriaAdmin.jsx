@@ -8,6 +8,7 @@ import { usePeriodo } from "../../context/PeriodoContext";
 import { todayISOInMexico } from "../../utils/timezone";
 
 const toTitleCase = s => !s ? '' : s.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase());
+const normalizarComparacion = valor => String(valor || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es").replace(/\s+/g, " ").trim();
 
 const formatearCarrera = (valor) => {
   const palabrasBreves = new Set(["a", "de", "del", "e", "el", "en", "la", "las", "los", "o", "para", "por", "y"]);
@@ -52,10 +53,12 @@ const ESTADO_REPORTE = {
   SIN_TUTOR: { label: "Sin tutor", cls: "bg-red-500/15 text-red-400" },
   ENVIADO: { label: "Enviado", cls: "bg-blue-500/15 text-blue-400" },
   RECIBIDO: { label: "Visto por el tutor", cls: "bg-cyan-500/15 text-cyan-400" },
+  REUNION_SOLICITADA: { label: "Reunión solicitada", cls: "bg-indigo-500/15 text-indigo-400" },
   EN_SEGUIMIENTO: { label: "En seguimiento", cls: "bg-amber-500/15 text-amber-400" },
   CANALIZADO: { label: "Canalizado", cls: "bg-purple-500/15 text-purple-400" },
   ATENDIDO: { label: "Atendido", cls: "bg-emerald-500/15 text-emerald-400" },
   CERRADO: { label: "Cerrado", cls: "bg-slate-500/15 text-slate-400" },
+  CERRADO_ADMINISTRATIVO: { label: "Cierre administrativo", cls: "bg-slate-500/15 text-slate-500" },
 };
 const CATEGORIA_REPORTE = {
   ACADEMICO: "Académico", ASISTENCIA: "Asistencia", CONDUCTA: "Conducta",
@@ -1452,6 +1455,7 @@ export default function TutoriaAdmin() {
     try {
       await api.put(`/tutoria/reportes-tutor/${reporte.id}/asignar`, { grupo_tutorado_id: grupoId });
       showToast("Reporte enviado al tutor del grupo", "success");
+      setModal(null);
       cargarReportesTutor();
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo asignar el reporte", "error");
@@ -1502,7 +1506,7 @@ export default function TutoriaAdmin() {
     if (resultadoCierreReporte.trim().length < 5) return;
     try {
       await api.put(`/tutoria/reportes-tutor/${modal.reporte.id}/estado`, {
-        estado: "CERRADO", resultado: resultadoCierreReporte.trim(),
+        estado: "CERRADO_ADMINISTRATIVO", resultado: resultadoCierreReporte.trim(),
       });
       setModal(null);
       setResultadoCierreReporte("");
@@ -1510,6 +1514,16 @@ export default function TutoriaAdmin() {
       cargarReportesTutor();
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo cerrar el reporte", "error");
+    }
+  };
+
+  const recordarTutor = async (reporte) => {
+    try {
+      await api.post(`/tutoria/reportes-tutor/${reporte.id}/recordar`);
+      showToast("Recordatorio enviado al tutor", "success");
+      cargarReportesTutor();
+    } catch (err) {
+      showToast(err.response?.data?.detail || "No se pudo enviar el recordatorio", "error");
     }
   };
 
@@ -1660,14 +1674,20 @@ export default function TutoriaAdmin() {
   ), [grupos, filtroAsignacion, filtroCarrera, filtroPeriodo, filtroTutor]);
 
   const reportesTutorFiltrados = useMemo(() => {
-    const pendientes = new Set(["SIN_TUTOR", "ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"]);
+    const pendientes = new Set(["SIN_TUTOR", "ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO"]);
     const texto = busquedaReportesTutor.trim().toLocaleLowerCase("es");
+    const prioridad = { ALTA: 3, MEDIA: 2, BAJA: 1 };
     return reportesTutor.filter(reporte => {
       const coincideEstado = filtroEstadoReporte === "TODOS"
         || (filtroEstadoReporte === "PENDIENTES" ? pendientes.has(reporte.estado) : reporte.estado === filtroEstadoReporte);
       const coincideTexto = !texto || [reporte.alumno_nombre, reporte.matricula, reporte.materia, reporte.reportado_por, reporte.tutor_destinatario, reporte.titulo]
         .some(valor => String(valor || "").toLocaleLowerCase("es").includes(texto));
       return coincideEstado && coincideTexto;
+    }).sort((a, b) => {
+      if (a.estado === "SIN_TUTOR" && b.estado !== "SIN_TUTOR") return -1;
+      if (b.estado === "SIN_TUTOR" && a.estado !== "SIN_TUTOR") return 1;
+      const porAntiguedad = (fechaReporte(a.creado_en)?.getTime() || 0) - (fechaReporte(b.creado_en)?.getTime() || 0);
+      return porAntiguedad || (prioridad[b.prioridad] || 0) - (prioridad[a.prioridad] || 0);
     });
   }, [busquedaReportesTutor, filtroEstadoReporte, reportesTutor]);
   const lotesReportes = useMemo(() => reportesTutor.reduce((acumulado, reporte) => {
@@ -2235,14 +2255,14 @@ export default function TutoriaAdmin() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div><h2 className="text-lg font-semibold">Reportes enviados por docentes</h2><p className="text-sm text-slate-400">Supervisa recepción, seguimiento y resolución. Los casos sin tutor requieren asignación.</p></div>
             <div className="flex flex-wrap gap-2 text-xs">
-              <span className="rounded-lg bg-red-500/10 px-3 py-2 text-red-400">{reportesTutor.filter(r => r.estado === "SIN_TUTOR").length} sin tutor</span>
-              <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">{reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"].includes(r.estado)).length} pendientes</span>
+              <span className={`rounded-lg px-3 py-2 ${reportesTutor.some(r => r.estado === "SIN_TUTOR") ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-500"}`}>{reportesTutor.filter(r => r.estado === "SIN_TUTOR").length} sin tutor</span>
+              <span className="rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">{reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO"].includes(r.estado)).length} pendientes</span>
             </div>
           </div>
           <div className={`grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(240px,1fr)_220px] ${isDay ? "border-slate-200 bg-white" : "border-white/10 bg-white/[0.025]"}`}>
             <input value={busquedaReportesTutor} onChange={e => setBusquedaReportesTutor(e.target.value)} className="input-dark" placeholder="Buscar alumno, matrícula, materia, docente o tutor" />
             <select value={filtroEstadoReporte} onChange={e => setFiltroEstadoReporte(e.target.value)} className="input-dark">
-              <option value="PENDIENTES">Pendientes de atención</option><option value="TODOS">Todos los estados</option><option value="SIN_TUTOR">Sin tutor</option><option value="ENVIADO">Enviados</option><option value="RECIBIDO">Vistos por el tutor</option><option value="EN_SEGUIMIENTO">En seguimiento</option><option value="CANALIZADO">Canalizados</option><option value="ATENDIDO">Atendidos</option><option value="CERRADO">Cerrados</option>
+              <option value="PENDIENTES">Pendientes de atención</option><option value="TODOS">Todos los estados</option><option value="SIN_TUTOR">Sin tutor</option><option value="ENVIADO">Enviados</option><option value="RECIBIDO">Vistos por el tutor</option><option value="REUNION_SOLICITADA">Reunión solicitada</option><option value="EN_SEGUIMIENTO">En seguimiento</option><option value="CANALIZADO">Canalizados</option><option value="ATENDIDO">Atendidos</option><option value="CERRADO">Cerrados por atención</option><option value="CERRADO_ADMINISTRATIVO">Cierres administrativos</option>
             </select>
           </div>
           <div className={`hidden overflow-x-auto rounded-xl border md:block ${isDay ? "border-slate-200 bg-white" : "border-white/10"}`}>
@@ -2251,24 +2271,25 @@ export default function TutoriaAdmin() {
               <tbody className="divide-y divide-white/5">
                 {reportesTutorFiltrados.map(r => {
                   const estado = ESTADO_REPORTE[r.estado] || { label: toTitleCase(r.estado), cls: "bg-slate-500/15 text-slate-400" };
-                  const detalleRepetido = r.detalle?.trim().toLocaleUpperCase("es") === r.titulo?.trim().toLocaleUpperCase("es");
+                  const detalleRepetido = normalizarComparacion(r.detalle) === normalizarComparacion(r.titulo);
                   const dias = fechaReporte(r.creado_en) ? Math.floor((Date.now() - fechaReporte(r.creado_en).getTime()) / 86400000) : 0;
-                  const atrasado = ["ENVIADO", "RECIBIDO"].includes(r.estado) && dias >= 3;
+                  const atrasado = ["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA"].includes(r.estado) && dias >= 3;
                   const claveLote = [r.reportado_por, r.tutor_destinatario, r.materia, String(r.creado_en || "").slice(0, 10)].join("|");
                   const totalLote = lotesReportes[claveLote] || 1;
+                  const recordatorioReciente = fechaReporte(r.ultimo_recordatorio_en) && Date.now() - fechaReporte(r.ultimo_recordatorio_en).getTime() < 48 * 3600000;
                   return <tr key={r.id} className={atrasado ? "bg-amber-500/[0.05]" : "hover:bg-white/[0.025]"}>
                     <td className="max-w-[330px] px-4 py-3"><p className={`font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre} <span className="font-normal text-slate-500">· {r.matricula}</span></p><p className={`mt-0.5 text-xs font-medium ${isDay ? "text-slate-700" : "text-slate-300"}`}>{r.titulo}</p>{r.detalle && !detalleRepetido && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{r.detalle}</p>}</td>
                     <td className="px-4 py-3"><p className={isDay ? "text-slate-700" : "text-slate-300"}>{r.materia || "Sin materia"}</p><p className="text-xs text-slate-500">{r.reportado_por}</p><span className="mt-1 inline-flex rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-500">{CATEGORIA_REPORTE[r.categoria] || toTitleCase(r.categoria)}</span>{totalLote > 1 && <span className="ml-1 mt-1 inline-flex rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-400">{totalLote} reportes del mismo envío</span>}</td>
                     <td className={`px-4 py-3 ${isDay ? "text-slate-700" : "text-slate-300"}`}>{r.tutor_destinatario || <span className="font-semibold text-red-400">Sin asignar</span>}</td>
-                    <td className="px-4 py-3"><p className={atrasado ? "font-semibold text-amber-400" : "text-slate-300"}>{antiguedadReporte(r.creado_en)}</p><p className="text-xs text-slate-500">{fechaReporte(r.creado_en)?.toLocaleString("es-MX") || "Sin fecha"}</p></td>
-                    <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado.cls}`}>{estado.label}</span><p className={`mt-1 text-[10px] ${r.prioridad === "ALTA" ? "font-bold text-red-400" : "text-slate-500"}`}>Prioridad {toTitleCase(r.prioridad)}</p></td>
-                    <td className="px-4 py-3"><div className="flex justify-end gap-2">{r.estado === "SIN_TUTOR" ? <><select aria-label={`Asignar tutor a ${r.alumno_nombre}`} value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark max-w-44 text-xs"><option value="">Seleccionar grupo</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white">Asignar</button></> : !["CERRADO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs text-slate-300">Cerrar institucionalmente</button>}</div></td>
+                    <td className="px-4 py-3" title={fechaReporte(r.creado_en)?.toLocaleString("es-MX") || "Sin fecha"}><p className={atrasado ? "font-semibold text-amber-400" : isDay ? "text-slate-700" : "text-slate-300"}>{antiguedadReporte(r.creado_en)}{dias === 0 && fechaReporte(r.creado_en) ? `, ${fechaReporte(r.creado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}` : ""}</p></td>
+                    <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado.cls}`}>{estado.label}</span><p className={`mt-1 text-[10px] ${r.prioridad_confirmada && r.prioridad === "ALTA" ? "font-bold text-red-400" : "text-slate-500"}`}>{r.prioridad_confirmada ? `Prioridad ${toTitleCase(r.prioridad)}` : "Prioridad no confirmada"}</p></td>
+                    <td className="px-4 py-3"><div className="flex justify-end gap-2"><button onClick={() => setModal({ type: "detalle-reporte", reporte: r })} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white">Ver</button>{r.tutor_destinatario && !["CERRADO", "CERRADO_ADMINISTRATIVO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <button disabled={recordatorioReciente} onClick={() => recordarTutor(r)} className="rounded-lg border border-amber-500/30 px-3 py-1.5 text-xs text-amber-500 disabled:border-slate-300 disabled:text-slate-400">{recordatorioReciente ? `Recordado ${antiguedadReporte(r.ultimo_recordatorio_en).toLowerCase()}` : "Recordar"}</button>}</div></td>
                   </tr>;
                 })}
               </tbody>
             </table>
           </div>
-          <div className="space-y-2 md:hidden">{reportesTutorFiltrados.map(r => { const estado = ESTADO_REPORTE[r.estado] || {}; return <article key={r.id} className={`rounded-xl border p-4 ${r.estado === "SIN_TUTOR" ? "border-red-500/30 bg-red-500/[0.06]" : isDay ? "border-slate-200 bg-white" : "border-white/10"}`}><div className="flex justify-between gap-3"><div><p className={`font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre}</p><p className="text-xs text-slate-500">{r.matricula} · {r.materia}</p></div><span className={`h-fit rounded-full px-2 py-1 text-[10px] font-semibold ${estado.cls}`}>{estado.label}</span></div><p className={`mt-3 text-sm font-medium ${isDay ? "text-slate-800" : "text-slate-200"}`}>{r.titulo}</p><p className="mt-1 text-xs text-slate-500">Tutor: {r.tutor_destinatario || "Sin asignar"} · {antiguedadReporte(r.creado_en)}</p>{r.detalle && r.detalle.trim().toLocaleUpperCase("es") !== r.titulo.trim().toLocaleUpperCase("es") && <p className="mt-2 text-sm text-slate-400">{r.detalle}</p>}{r.estado === "SIN_TUTOR" ? <div className="mt-3 grid gap-2"><select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark"><option value="">Seleccionar grupo tutorado</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.carrera} · {g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Asignar y notificar</button></div> : !["CERRADO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="mt-3 rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-400">Cerrar institucionalmente</button>}</article>; })}</div>
+          <div className="space-y-2 md:hidden">{reportesTutorFiltrados.map(r => { const estado = ESTADO_REPORTE[r.estado] || {}; return <article key={r.id} className={`rounded-xl border p-4 ${r.estado === "SIN_TUTOR" ? "border-red-500/30 bg-red-500/[0.06]" : isDay ? "border-slate-200 bg-white" : "border-white/10"}`}><div className="flex justify-between gap-3"><div><p className={`font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre}</p><p className="text-xs text-slate-500">{r.matricula} · {r.materia}</p></div><span className={`h-fit rounded-full px-2 py-1 text-[10px] font-semibold ${estado.cls}`}>{estado.label}</span></div><p className={`mt-3 text-sm font-medium ${isDay ? "text-slate-800" : "text-slate-200"}`}>{r.titulo}</p><p className="mt-1 text-xs text-slate-500">Tutor: {r.tutor_destinatario || "Sin asignar"} · {antiguedadReporte(r.creado_en)}</p><button onClick={() => setModal({ type: "detalle-reporte", reporte: r })} className="mt-3 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Ver reporte</button></article>; })}</div>
           {reportesTutorFiltrados.length === 0 && <p className="py-8 text-center text-sm text-slate-500">No hay reportes que coincidan con los filtros.</p>}
         </div>
       )}
@@ -2905,6 +2926,12 @@ export default function TutoriaAdmin() {
         <ModalAtenderCan can={modal.can} onClose={() => setModal(null)}
           onAtendida={() => { setModal(null); cargarCanalizaciones(); cargarDash(); }} />
       )}
+      {modal?.type === "detalle-reporte" && (() => {
+        const r = modal.reporte;
+        const estado = ESTADO_REPORTE[r.estado] || { label: toTitleCase(r.estado), cls: "bg-slate-500/15 text-slate-400" };
+        const recordatorioReciente = fechaReporte(r.ultimo_recordatorio_en) && Date.now() - fechaReporte(r.ultimo_recordatorio_en).getTime() < 48 * 3600000;
+        return <div className="fixed inset-0 z-[80] bg-slate-950/55" onMouseDown={() => setModal(null)}><aside onMouseDown={e => e.stopPropagation()} className={`ml-auto flex h-full w-full max-w-xl flex-col shadow-2xl ${isDay ? "bg-white" : "bg-slate-900"}`}><header className="flex items-start justify-between border-b border-white/10 p-5"><div><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado.cls}`}>{estado.label}</span><h2 className={`mt-2 text-lg font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.alumno_nombre}</h2><p className="text-xs text-slate-500">{r.matricula} · {r.materia}</p></div><button onClick={() => setModal(null)} className="text-2xl text-slate-400" aria-label="Cerrar detalle">×</button></header><div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5"><section><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Motivo</p><p className={`mt-1 font-medium ${isDay ? "text-slate-800" : "text-slate-200"}`}>{r.titulo}</p>{r.detalle && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-400">{r.detalle}</p>}</section><section className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 p-4 text-sm"><div><p className="text-xs text-slate-500">Reportó</p><p>{r.reportado_por}</p></div><div><p className="text-xs text-slate-500">Tutor actual</p><p>{r.tutor_destinatario || "Sin asignar"}</p></div><div><p className="text-xs text-slate-500">Fecha de envío</p><p title={fechaReporte(r.creado_en)?.toLocaleString("es-MX")}>{antiguedadReporte(r.creado_en)}</p></div><div><p className="text-xs text-slate-500">Prioridad</p><p>{r.prioridad_confirmada ? toTitleCase(r.prioridad) : "No confirmada (registro histórico)"}</p></div></section><section><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Trazabilidad</p><ol className="mt-2 space-y-2 border-l border-slate-600 pl-4 text-sm"><li><b>Enviado</b><span className="block text-xs text-slate-500">{fechaReporte(r.creado_en)?.toLocaleString("es-MX")}</span></li>{r.recibido_en && <li><b>Visto por el tutor</b><span className="block text-xs text-slate-500">{fechaReporte(r.recibido_en)?.toLocaleString("es-MX")}</span></li>}{r.ultimo_recordatorio_en && <li><b>Recordatorio enviado</b><span className="block text-xs text-slate-500">{fechaReporte(r.ultimo_recordatorio_en)?.toLocaleString("es-MX")}</span></li>}{r.reasignado_en && <li><b>Reasignado</b><span className="block text-xs text-slate-500">{fechaReporte(r.reasignado_en)?.toLocaleString("es-MX")}</span></li>}{r.cerrado_en && <li><b>{estado.label}</b><span className="block text-xs text-slate-500">{fechaReporte(r.cerrado_en)?.toLocaleString("es-MX")}</span></li>}</ol></section>{r.resultado && <section className="rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-300"><b>Resultado:</b><p className="mt-1 whitespace-pre-wrap">{r.resultado}</p></section>}</div>{!["CERRADO", "CERRADO_ADMINISTRATIVO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <footer className="space-y-2 border-t border-white/10 p-4"><div className="flex gap-2"><select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark min-w-0 flex-1"><option value="">{r.tutor_destinatario ? "Seleccionar otro tutor" : "Asignar tutor"}</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">{r.tutor_destinatario ? "Reasignar" : "Asignar"}</button></div><div className="flex justify-between gap-2">{r.tutor_destinatario && <button disabled={recordatorioReciente} onClick={() => recordarTutor(r)} className="rounded-lg border border-amber-500/30 px-3 py-2 text-xs text-amber-400 disabled:text-slate-500">{recordatorioReciente ? `Recordado ${antiguedadReporte(r.ultimo_recordatorio_en).toLowerCase()}` : "Recordar al tutor"}</button>}<button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="ml-auto rounded-lg px-3 py-2 text-xs text-slate-500">Cierre administrativo</button></div></footer>}</aside></div>;
+      })()}
       {modal?.type === "cerrar-reporte" && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={() => setModal(null)}>
           <form onSubmit={cerrarReporteInstitucional} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl">

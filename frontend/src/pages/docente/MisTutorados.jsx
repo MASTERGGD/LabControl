@@ -16,12 +16,19 @@ const ESTADO_SEG = {
   CANALIZADO:      { label: "Canalizado",      cls: "bg-purple-500/20 text-purple-300 border-purple-500/40" },
   ATENDIDO:        { label: "Atendido",        cls: "bg-blue-500/20 text-blue-300 border-blue-500/40" },
   CERRADO:         { label: "Cerrado",         cls: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" },
+  CERRADO_ADMINISTRATIVO: { label: "Cierre administrativo", cls: "bg-slate-500/20 text-slate-400 border-slate-500/40" },
 };
 
 const ESTADO_CAN = {
   PENDIENTE:      { label: "Pendiente",      cls: "text-red-400" },
   EN_SEGUIMIENTO: { label: "En seguimiento", cls: "text-amber-400" },
   ATENDIDA:       { label: "Atendida",       cls: "text-emerald-400" },
+};
+const ESTADO_REPORTE = {
+  SIN_TUTOR: "Sin tutor", ENVIADO: "Enviado", RECIBIDO: "Visto por el tutor",
+  REUNION_SOLICITADA: "Reunión solicitada",
+  EN_SEGUIMIENTO: "En seguimiento", CANALIZADO: "Canalizado", ATENDIDO: "Atendido",
+  CERRADO: "Cerrado", CERRADO_ADMINISTRATIVO: "Cierre administrativo",
 };
 
 const CATEGORIAS_F09 = {
@@ -622,7 +629,7 @@ export default function MisTutorados() {
 
   const urgentes = pendientes?.resumen?.urgente || 0;
   const canPend  = canalizaciones.filter(c => c.estado === "PENDIENTE").length;
-  const reportesPend = reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO"].includes(r.estado)).length;
+  const reportesPend = reportesTutor.filter(r => ["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO"].includes(r.estado)).length;
   const alumnosFiltrados = useMemo(() => {
     const termino = busquedaAlumno.trim().toLocaleLowerCase("es-MX");
     return alumnos
@@ -874,7 +881,7 @@ export default function MisTutorados() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
                       <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-300">{r.categoria}</span>
-                      <span className={`rounded-full px-2 py-0.5 ${r.prioridad === "ALTA" ? "bg-red-500/20 text-red-300" : "bg-white/5 text-slate-400"}`}>Prioridad {r.prioridad}</span>
+                      <span className={`rounded-full px-2 py-0.5 ${r.prioridad_confirmada && r.prioridad === "ALTA" ? "bg-red-500/20 text-red-300" : "bg-white/5 text-slate-400"}`}>{r.prioridad_confirmada ? `Prioridad ${toTitleCase(r.prioridad)}` : "Prioridad no confirmada"}</span>
                       {r.confidencial && <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-purple-300">Confidencial</span>}
                     </div>
                     <h3 className="mt-2 font-semibold text-white">{r.titulo}</h3>
@@ -884,14 +891,17 @@ export default function MisTutorados() {
                     {r.resultado && <p className="mt-3 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-200"><b>Resultado:</b> {r.resultado}</p>}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold text-amber-300">{r.estado.replaceAll("_", " ")}</p>
+                    <p className="text-xs font-semibold text-amber-300">{ESTADO_REPORTE[r.estado] || toTitleCase(r.estado)}</p>
                     <p className="mt-1 text-xs text-slate-500">{r.creado_en ? new Date(r.creado_en).toLocaleString("es-MX") : ""}</p>
                   </div>
                 </div>
-                {!["ATENDIDO", "CERRADO", "CANALIZADO"].includes(r.estado) && (
+                <div className="mt-4 grid grid-cols-4 gap-1 text-center text-[10px]">
+                  {[["Enviado", true], ["Visto", Boolean(r.recibido_en)], ["Seguimiento", ["REUNION_SOLICITADA", "EN_SEGUIMIENTO", "CANALIZADO", "ATENDIDO", "CERRADO"].includes(r.estado)], ["Resuelto", ["CANALIZADO", "ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"].includes(r.estado)]].map(([etiqueta, completo]) => <div key={etiqueta}><div className={"mb-1 h-1 rounded-full " + (completo ? "bg-emerald-500" : "bg-slate-700")} /><span className={completo ? "text-emerald-400" : "text-slate-600"}>{etiqueta}</span></div>)}
+                </div>
+                {!["ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANALIZADO"].includes(r.estado) && (
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
                     {r.estado === "ENVIADO" && <button onClick={() => cambiarEstadoReporte(r, "RECIBIDO")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold">Confirmar recepción</button>}
-                    {["ENVIADO", "RECIBIDO"].includes(r.estado) && <button onClick={() => cambiarEstadoReporte(r, "EN_SEGUIMIENTO")} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold">Iniciar seguimiento</button>}
+                    {["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA"].includes(r.estado) && <button onClick={() => cambiarEstadoReporte(r, "EN_SEGUIMIENTO")} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold">Iniciar seguimiento</button>}
                     <button onClick={() => { setAtenderReporte(r); setResultadoReporte(""); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold">Resolver y cerrar</button>
                     {!r.es_reporte_grupal && <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>}
                   </div>
