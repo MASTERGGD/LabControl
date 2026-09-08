@@ -147,17 +147,16 @@ def _estado_materia(
     clases_registradas: int = MINIMO_CLASES_SEMAFORO,
     evidencias_registradas: int = 0,
 ) -> str:
-    if clases_registradas == 0 and evidencias_registradas == 0:
+    """Clasifica el seguimiento preventivo solo con asistencia del cuatrimestre."""
+    if clases_registradas == 0:
         return "SIN_DATOS"
-    if clases_registradas < MINIMO_CLASES_SEMAFORO and evidencias_registradas == 0:
+    if clases_registradas < MINIMO_CLASES_SEMAFORO:
         return "BASE_INSUFICIENT"
-    if ((porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO)
-            or (promedio is not None and promedio < UMBRAL_PROMEDIO_RIESGO)):
+    if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO:
         return "RIESGO_ALTO"
-    if ((porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION)
-            or (promedio is not None and promedio < UMBRAL_PROMEDIO_ATENCION)):
+    if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION:
         return "RIESGO_MEDIO"
-    if porcentaje is not None or promedio is not None:
+    if porcentaje is not None:
         return "REGULAR"
     return "SIN_DATOS"
 
@@ -233,10 +232,6 @@ def _clasificar_panorama(
         razones_riesgo.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_RIESGO:g}%)")
     elif porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION:
         razones_atencion.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_ATENCION:g}%)")
-    if promedio is not None and promedio < UMBRAL_PROMEDIO_RIESGO:
-        razones_riesgo.append(f"Promedio de evidencias de {promedio} (menor a {UMBRAL_PROMEDIO_RIESGO:g})")
-    elif promedio is not None and promedio < UMBRAL_PROMEDIO_ATENCION:
-        razones_atencion.append(f"Promedio de evidencias de {promedio} (menor a {UMBRAL_PROMEDIO_ATENCION:g})")
     if racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
         razones_riesgo.append(f"{racha['cantidad']} faltas consecutivas en {racha['materia']}")
     elif racha["cantidad"] >= UMBRAL_RACHA_ATENCION:
@@ -250,8 +245,8 @@ def _clasificar_panorama(
     # registro. Los porcentajes académicos necesitan una base mínima para no
     # convertir una sola clase en un semáforo definitivo.
     if registros_asistencia < MINIMO_CLASES_SEMAFORO and not acuerdos_pendientes and not reportes_abiertos:
-        if registros_asistencia == 0 and promedio is None:
-            return "SIN_DATOS", ["Sin asistencias ni evidencias registradas"]
+        if registros_asistencia == 0:
+            return "SIN_DATOS", ["Sin asistencias registradas"]
         return "BASE_INSUFICIENT", [
             f"Base preliminar: {registros_asistencia} de {MINIMO_CLASES_SEMAFORO} clases mínimas"
         ]
@@ -260,8 +255,8 @@ def _clasificar_panorama(
         return "RIESGO", razones_riesgo + razones_atencion
     if razones_atencion:
         return "ATENCION", razones_atencion
-    if porcentaje is None and promedio is None:
-        return "SIN_DATOS", ["Sin asistencias ni evidencias registradas"]
+    if porcentaje is None:
+        return "SIN_DATOS", ["Sin asistencias registradas"]
     return "REGULAR", ["Sin indicadores preventivos en los registros disponibles"]
 
 
@@ -352,10 +347,6 @@ def _calidad_datos(
         materia["materia"] for materia in materias
         if materia["asistencias_registradas"] == 0
     ]
-    materias_sin_evidencias = [
-        materia["materia"] for materia in materias
-        if materia["evaluaciones_registradas"] == 0
-    ]
     actualizaciones_asistencia = [
         asistencia.actualizado_en for asistencia in asistencias
         if asistencia.actualizado_en
@@ -367,10 +358,6 @@ def _calidad_datos(
         advertencias.append(
             f"{len(materias_sin_asistencia)} {'materia' if len(materias_sin_asistencia) == 1 else 'materias'} sin asistencias capturadas"
         )
-    if materias_sin_evidencias:
-        advertencias.append(
-            f"{len(materias_sin_evidencias)} {'materia' if len(materias_sin_evidencias) == 1 else 'materias'} sin evaluaciones o calificaciones registradas"
-        )
     if not advertencias:
         advertencias.append("Sin advertencias de captura en el periodo actual")
     return {
@@ -378,7 +365,7 @@ def _calidad_datos(
         "ultima_clase": max((clase.fecha for clase in clases), default=None).isoformat() if clases else None,
         "ultima_actualizacion_asistencia": _iso_utc(max(actualizaciones_asistencia)) if actualizaciones_asistencia else None,
         "materias_sin_asistencia": materias_sin_asistencia,
-        "materias_sin_evidencias": materias_sin_evidencias,
+        "materias_sin_evidencias": [],
         "advertencias": advertencias,
     }
 
@@ -691,8 +678,7 @@ def _semaforo(materias, acuerdos, reportes):
     reportes_altos = sum(
         1 for r in reportes if r.estado in ESTADOS_ABIERTOS and r.prioridad == "ALTA"
     )
-    total_evaluaciones = sum(m["evaluaciones_registradas"] for m in materias)
-    base_suficiente = total_regs >= MINIMO_CLASES_SEMAFORO or total_evaluaciones > 0
+    base_suficiente = total_regs >= MINIMO_CLASES_SEMAFORO
 
     if base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
         razones.append(f"Asistencia global crítica de {asistencia_global}%")
@@ -722,7 +708,7 @@ def _semaforo(materias, acuerdos, reportes):
             razones.append("Existen indicadores académicos que requieren observación")
     elif not base_suficiente:
         nivel = "GRIS"
-        razones.append(f"Base preliminar: {total_regs} de {MINIMO_CLASES_SEMAFORO} clases mínimas y sin evidencias")
+        razones.append(f"Base preliminar: {total_regs} de {MINIMO_CLASES_SEMAFORO} asistencias mínimas")
     else:
         nivel = "VERDE"
         razones.append("Sin indicadores críticos en los registros disponibles")
@@ -1287,7 +1273,9 @@ def timeline_alumno(
 
     if tipo in {"TODOS", "EVALUACION", "ACUERDO"} and (carga_ids or not materia_clave):
         tipos_seguimiento = []
-        if tipo in {"TODOS", "EVALUACION"}:
+        # Las calificaciones se conservan para consulta histórica explícita,
+        # pero no forman parte del historial preventivo del cuatrimestre.
+        if tipo == "EVALUACION":
             tipos_seguimiento.append("CALIFICACION")
         if tipo in {"TODOS", "ACUERDO"}:
             tipos_seguimiento.append("ACUERDO")
@@ -1562,7 +1550,7 @@ def expediente_alumno(
             "reportes_abiertos": sum(1 for r in reportes if r.estado in ESTADOS_ABIERTOS),
             "canalizaciones_activas": sum(1 for c in canalizaciones if c.estado in {"PENDIENTE", "EN_SEGUIMIENTO"}),
             "semaforo": nivel, "razones_semaforo": razones,
-            "base_suficiente": len(asistencias_patron) >= MINIMO_CLASES_SEMAFORO or total_evaluaciones > 0,
+            "base_suficiente": len(asistencias_patron) >= MINIMO_CLASES_SEMAFORO,
             "clases_con_asistencia": len(asistencias_patron),
             "minimo_clases_semaforo": MINIMO_CLASES_SEMAFORO,
             "alerta_inmediata": alerta_inmediata,
@@ -1682,7 +1670,7 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
         estado = {"ROJO": "RIESGO ALTO", "AMARILLO": "REQUIERE ATENCIÓN", "VERDE": "SEGUIMIENTO REGULAR", "GRIS": "INFORMACIÓN INSUFICIENT"}.get(resumen["semaforo"], resumen["semaforo"])
         kpis = [
             ["Estado integral", Paragraph(estado, estilos["normal"]), "Asistencia", f"{_numero_pdf(resumen['asistencia_global'])}%" if resumen["asistencia_global"] is not None else "—"],
-            ["Promedio de evidencias", resumen["promedio_evidencias"] if resumen["promedio_evidencias"] is not None else "—", "Materias en riesgo", resumen["materias_riesgo"] if resumen.get("base_suficiente") else "—"],
+            ["Asistencias registradas", resumen["clases_con_asistencia"], "Materias en riesgo", resumen["materias_riesgo"] if resumen.get("base_suficiente") else "—"],
             ["Acuerdos pendientes", resumen["acuerdos_pendientes"], "Reportes abiertos", resumen["reportes_abiertos"]],
         ]
         tabla_kpis = Table(kpis, colWidths=[3.5 * cm, 5.8 * cm, 3.5 * cm, 5.8 * cm])
@@ -1690,20 +1678,20 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
         contenido.extend([tabla_kpis, Spacer(1, 0.15 * cm), Paragraph("<b>Fundamento del estado:</b> " + " · ".join(escape(r) for r in resumen["razones_semaforo"]), estilos["normal"])])
         calidad = resumen.get("calidad_datos") or {}
         if calidad.get("advertencias"):
-            contenido.append(Paragraph("<b>Calidad de datos:</b> " + " · ".join(escape(a) for a in calidad["advertencias"]), estilos["pequeno"]))
+            contenido.append(Paragraph("<b>Actualización de asistencia:</b> " + " · ".join(escape(a) for a in calidad["advertencias"]), estilos["pequeno"]))
 
     if opciones.get("materias", True):
         contenido.append(Paragraph("Panorama por materia", estilos["seccion"]))
-        filas = [["Materia", "Docente", "Clases", "Evid.", "Prom.", "Asist.", "Faltas", "Consec.", "Estado"]]
+        filas = [["Materia", "Docente", "Clases", "Asist.", "Faltas", "Consec.", "Estado"]]
         etiquetas_estado = {"RIESGO_ALTO": "Riesgo alto", "RIESGO_MEDIO": "Requiere atención", "REGULAR": "Regular", "BASE_INSUFICIENT": "Base insuficiente", "SIN_DATOS": "Sin información"}
         for materia in data.get("materias", []):
             filas.append([
                 Paragraph(escape(materia["materia"]), estilos["pequeno"]), Paragraph(escape(materia.get("docente") or "—"), estilos["pequeno"]),
-                materia["clases_registradas"], materia["evaluaciones_registradas"], materia["promedio_evidencias"] if materia["promedio_evidencias"] is not None else "—",
-                f"{_numero_pdf(materia['porcentaje_asistencia'])}%" if materia["porcentaje_asistencia"] is not None else "—", materia["falta"], materia.get("faltas_consecutivas") if materia.get("faltas_consecutivas") is not None else "—",
+                materia["clases_registradas"], f"{_numero_pdf(materia['porcentaje_asistencia'])}%" if materia["porcentaje_asistencia"] is not None else "—",
+                materia["falta"], materia.get("faltas_consecutivas") if materia.get("faltas_consecutivas") is not None else "—",
                 Paragraph(etiquetas_estado.get(materia["estado"], materia["estado"]), estilos["pequeno"]),
             ])
-        tabla_materias = Table(filas, repeatRows=1, colWidths=[4.0 * cm, 3.25 * cm, 1.25 * cm, 1.15 * cm, 1.15 * cm, 1.3 * cm, 1.05 * cm, 1.15 * cm, 2.3 * cm])
+        tabla_materias = Table(filas, repeatRows=1, colWidths=[5.0 * cm, 4.0 * cm, 1.7 * cm, 1.8 * cm, 1.4 * cm, 1.6 * cm, 3.1 * cm])
         tabla_materias.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), verde), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 6.7), ("GRID", (0, 0), (-1, -1), 0.3, borde), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, claro]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (2, 1), (-1, -1), "CENTER"), ("PADDING", (0, 0), (-1, -1), 4)]))
         contenido.append(tabla_materias)
 

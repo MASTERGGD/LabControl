@@ -12,7 +12,6 @@ const TABS = [
   ['trayectoria', 'Trayectoria'],
   ['materias', 'Materias'],
   ['asistencia', 'Asistencia'],
-  ['evaluaciones', 'Evaluaciones'],
   ['acuerdos', 'Acuerdos'],
   ['tutoria', 'Tutoría'],
   ['timeline', 'Historial'],
@@ -102,9 +101,7 @@ function MateriasTable({ materias, compact = false }) {
           <tr>
             <th className="px-4 py-3">Materia</th>
             <th className="px-4 py-3">Docente</th>
-            <th className="px-4 py-3 text-center">Evaluaciones</th>
             <th className="px-4 py-3 text-center">Clases</th>
-            <th className="px-4 py-3 text-center">Promedio</th>
             <th className="px-4 py-3 text-center">Asistencia</th>
             <th className="px-4 py-3 text-center">Faltas</th>
             <th className="px-4 py-3 text-center">Consecutivas</th>
@@ -116,9 +113,7 @@ function MateriasTable({ materias, compact = false }) {
             <tr key={m.clave} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
               <td className={`px-4 py-3 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{m.materia}</td>
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
-              <td className="px-4 py-3 text-center">{m.evaluaciones_registradas}</td>
               <td className="px-4 py-3 text-center">{m.clases_registradas}</td>
-              <td className="px-4 py-3 text-center font-semibold">{m.promedio_evidencias ?? '—'}</td>
               <td className="px-4 py-3 text-center">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
               <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>
@@ -144,8 +139,8 @@ function Resumen({ data, setTab }) {
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         <Kpi label="Asistencia global" value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_con_asistencia} de ${r.minimo_clases_semaforo} clases mínimas para emitir semáforo`} tone={!r.base_suficiente ? 'text-slate-500' : r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
-        <Kpi label="Promedio de evaluaciones" value={r.promedio_evidencias} hint="Calificaciones internas; no oficiales" tone="text-violet-400" />
-        <Kpi label="Materias en riesgo" value={hayClasificacionMaterias ? r.materias_riesgo : 'Sin información'} hint={hayClasificacionMaterias ? 'Según asistencia y evaluaciones disponibles' : 'Faltan clases o evaluaciones para clasificarlas'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
+        <Kpi label="Materias en riesgo" value={hayClasificacionMaterias ? r.materias_riesgo : 'Sin información'} hint={hayClasificacionMaterias ? 'Según asistencia y seguimiento disponible' : 'Faltan asistencias para clasificarlas'} tone={r.materias_riesgo ? 'text-red-400' : 'text-slate-500'} />
+        <Kpi label="Reportes abiertos" value={r.reportes_abiertos} hint="Casos docentes o tutoriales pendientes de atención" tone={r.reportes_abiertos ? 'text-amber-500' : 'text-emerald-500'} />
       </div>
       <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.materias_inscritas} {r.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</span> · <span className={r.acuerdos_pendientes ? 'text-amber-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span> · {r.canalizaciones_activas} canalizaciones activas</Panel>
 
@@ -168,13 +163,12 @@ function Resumen({ data, setTab }) {
             </div>}
           </Panel>}
           {calidad && <Panel className="p-5">
-            <h2 className="font-semibold">Vigencia y calidad de datos</h2>
+            <h2 className="font-semibold">Actualización de asistencia</h2>
             <p className="mt-1 text-xs text-slate-500">Última clase: {fmt(calidad.ultima_clase)}{calidad.ultima_actualizacion_asistencia ? ` · Asistencia actualizada: ${fmtFechaHora(calidad.ultima_actualizacion_asistencia)}` : ''}</p>
             <div className="mt-4 space-y-2">
               {calidad.advertencias.map((advertencia, index) => <div key={index} className={`rounded-lg border px-3 py-2 text-xs ${advertencia.startsWith('Sin advertencias') ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>{advertencia}</div>)}
             </div>
             {!!calidad.materias_sin_asistencia.length && <p className="mt-3 text-[10px] text-slate-500"><b>Sin asistencias:</b> {calidad.materias_sin_asistencia.join(', ')}</p>}
-            {!!calidad.materias_sin_evidencias.length && <p className="mt-2 text-[10px] text-slate-500"><b>Sin evaluaciones o calificaciones:</b> {calidad.materias_sin_evidencias.join(', ')}</p>}
           </Panel>}
         </div>
       )}
@@ -205,8 +199,7 @@ function Resumen({ data, setTab }) {
                 </div>
                 <Badge className={ESTADO_MATERIA[m.estado]}>{labelEstado(m.estado)}</Badge>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div><b className="block text-base">{m.promedio_evidencias ?? '—'}</b><span className="text-slate-500">Evaluaciones</span></div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-center text-xs">
                 <div><b className="block text-base">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</b><span className="text-slate-500">Asistencia</span></div>
                 <div><b className="block text-base text-red-400">{m.falta}</b><span className="text-slate-500">Faltas</span></div>
               </div>
@@ -362,28 +355,6 @@ function Asistencia({ data }) {
   );
 }
 
-function Evaluaciones({ data }) {
-  const evaluaciones = data.materias.flatMap(m => m.evaluaciones.map(e => ({ ...e, materia: m.materia })));
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-4 text-sm text-blue-200">{data.nota_calificaciones}</div>
-      <Panel className="overflow-hidden">
-        <div className="px-5 py-4"><h2 className="font-semibold">Evidencias registradas por docentes</h2><p className="text-xs text-slate-500">Evaluaciones internas disponibles hasta este momento.</p></div>
-        <div className="divide-y divide-white/5">
-          {evaluaciones.map(e => (
-            <div key={`${e.materia}-${e.id}`} className="grid gap-2 px-5 py-4 sm:grid-cols-[1fr_160px_90px] sm:items-center">
-              <div><p className="font-medium">{e.titulo}</p><p className="text-xs text-slate-500">{e.materia}{e.detalle ? ` · ${e.detalle}` : ''}</p></div>
-              <p className="text-xs text-slate-500">{fmt(e.fecha)}</p>
-              <p className={`text-xl font-bold ${e.calificacion < 7 ? 'text-red-400' : 'text-emerald-400'}`}>{e.calificacion}</p>
-            </div>
-          ))}
-          {!evaluaciones.length && <p className="p-8 text-center text-sm text-slate-500">Todavía no hay evidencias de calificación registradas.</p>}
-        </div>
-      </Panel>
-    </div>
-  );
-}
-
 function Acuerdos({ acuerdos, onDeleted, puedeDepurar = false }) {
   const [materia, setMateria] = useState('TODAS');
   const [estado, setEstado] = useState('TODOS');
@@ -533,7 +504,7 @@ function Timeline({ alumnoId, materias }) {
     <div className="space-y-4">
       <Panel className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="text-xs font-semibold text-slate-500">Tipo de evento<select value={tipo} onChange={cambiarFiltro(setTipo)} className="input-dark mt-1 w-full"><option value="TODOS">Todos</option><option value="ASISTENCIA">Asistencia excepcional</option><option value="EVALUACION">Evaluaciones</option><option value="ACUERDO">Acuerdos</option><option value="REPORTE">Reportes</option><option value="TUTORIA">Tutoría</option></select></label>
+          <label className="text-xs font-semibold text-slate-500">Tipo de evento<select value={tipo} onChange={cambiarFiltro(setTipo)} className="input-dark mt-1 w-full"><option value="TODOS">Todos</option><option value="ASISTENCIA">Asistencia excepcional</option><option value="ACUERDO">Acuerdos</option><option value="REPORTE">Reportes</option><option value="TUTORIA">Tutoría</option></select></label>
           <label className="text-xs font-semibold text-slate-500">Materia<select value={materiaClave} onChange={cambiarFiltro(setMateriaClave)} className="input-dark mt-1 w-full"><option value="">Todas las materias</option>{materias.map(materia => <option key={materia.clave} value={materia.clave}>{materia.materia}</option>)}</select></label>
           <label className="text-xs font-semibold text-slate-500">Desde<input type="date" value={fechaInicio} max={fechaFin || undefined} onChange={cambiarFiltro(setFechaInicio)} className="input-dark mt-1 w-full" /></label>
           <label className="text-xs font-semibold text-slate-500">Hasta<input type="date" value={fechaFin} min={fechaInicio || undefined} onChange={cambiarFiltro(setFechaFin)} className="input-dark mt-1 w-full" /></label>
@@ -542,7 +513,7 @@ function Timeline({ alumnoId, materias }) {
       </Panel>
       <Panel className="p-5">
         <h2 className="font-semibold">Línea de tiempo académica</h2>
-        <p className="mt-1 text-xs text-slate-500">Asistencia excepcional, evaluaciones, acuerdos y seguimiento tutorial.</p>
+        <p className="mt-1 text-xs text-slate-500">Asistencia excepcional, acuerdos, reportes y seguimiento tutorial.</p>
         {error && <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {loading && <p className="py-8 text-center text-sm text-slate-500">Consultando movimientos…</p>}
         {!loading && <div className="mt-5 space-y-0">
@@ -629,7 +600,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
       <div className={`rounded-xl border px-4 py-3 text-xs ${baseSuficiente ? 'border-blue-500/20 bg-blue-500/[0.06] text-blue-400' : 'border-slate-500/30 bg-slate-500/[0.06] text-slate-500'}`}>{materiaSeleccionada ? `Indicadores de ${materiaSeleccionada.nombre}.` : 'Indicadores consolidados de todas las materias.'} {baseSuficiente ? `${r.clases_registradas} clases registradas.` : `Base preliminar: ${r.clases_registradas} de ${r.minimo_clases_semaforo} clases mínimas; los porcentajes aún no generan semáforo.`}</div>
       <div className="grid gap-3 md:grid-cols-3">
         <Kpi label={materiaSeleccionada ? 'Asistencia de la materia' : 'Asistencia global'} value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_registradas} clase(s) registrada(s) · Presente, retardo o justificada sobre pases capturados`} tone={!baseSuficiente ? 'text-slate-500' : r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
-        <Kpi label="Alumnos en riesgo" value={r.alumnos_riesgo} hint={baseSuficiente ? 'Según asistencia, evidencias y rachas disponibles' : 'El semáforo académico espera evidencia suficiente'} tone={r.alumnos_riesgo ? 'text-red-400' : 'text-slate-500'} />
+        <Kpi label="Alumnos en riesgo" value={r.alumnos_riesgo} hint={baseSuficiente ? 'Según asistencia, rachas y seguimientos disponibles' : 'El semáforo espera suficientes asistencias'} tone={r.alumnos_riesgo ? 'text-red-400' : 'text-slate-500'} />
         <Kpi
           label="Listas completas"
           value={r.cobertura_asistencia_detalle ? `${r.cobertura_asistencia_detalle.registros_capturados} de ${r.cobertura_asistencia_detalle.registros_esperados}` : '—'}
@@ -639,7 +610,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
           tone="text-blue-400"
         />
       </div>
-      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.total_alumnos} alumnos</span> · <span className={r.alumnos_atencion ? 'text-amber-500' : ''}>{r.alumnos_atencion} requieren atención</span> · {r.base_insuficiente} con base insuficiente · {r.sin_datos} sin información · <span className={r.acuerdos_pendientes ? 'text-orange-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · Promedio de evidencias: {r.promedio_evidencias ?? 'sin captura'} <span className="text-xs">(no oficial)</span></Panel>
+      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.total_alumnos} alumnos</span> · <span className={r.alumnos_atencion ? 'text-amber-500' : ''}>{r.alumnos_atencion} requieren atención</span> · {r.base_insuficiente} con base insuficiente · {r.sin_datos} sin información · <span className={r.acuerdos_pendientes ? 'text-orange-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span></Panel>
 
       {cumplimiento && <Panel className="p-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -692,7 +663,6 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
               <tr>
                 <th className="px-5 py-3">Alumno</th>
                 <th className="px-3 py-3 text-center">Asistencia</th>
-                <th className="px-3 py-3 text-center">Promedio</th>
                 <th className="px-3 py-3 text-center">Faltas</th>
                 <th className="px-3 py-3 text-center">Consecutivas</th>
                 <th className="px-3 py-3 text-center">Pendientes</th>
@@ -709,7 +679,6 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
                     {!!alumno.razones_estado?.length && <p className="mt-1 max-w-md text-[10px] leading-4 text-slate-500">{alumno.razones_estado.slice(0, 2).join(' · ')}</p>}
                   </td>
                   <td className={`px-3 py-3 text-center font-bold ${alumno.estado === 'BASE_INSUFICIENT' ? 'text-slate-500' : alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td>
-                  <td className={`px-3 py-3 text-center font-bold ${alumno.promedio_evidencias != null && alumno.promedio_evidencias < 7 ? 'text-red-400' : ''}`}>{alumno.promedio_evidencias ?? '—'}</td>
                   <td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td>
                   <td className="px-3 py-3 text-center">{alumno.faltas_consecutivas || '—'}</td>
                   <td className="px-3 py-3 text-center">{alumno.acuerdos_pendientes + alumno.reportes_abiertos}</td>
@@ -1001,7 +970,6 @@ export default function ExpedienteAcademico() {
                 {tab === 'trayectoria' && <Trayectoria trayectoria={data.trayectoria_academica} />}
                 {tab === 'materias' && <Panel className="overflow-hidden"><div className="px-5 py-4"><h2 className="font-semibold">Materias del cuatrimestre</h2><p className="text-xs text-slate-500">Resultados calculados a partir de registros disponibles en SIGA.</p></div><MateriasTable materias={data.materias} /></Panel>}
                 {tab === 'asistencia' && <Asistencia data={data} />}
-                {tab === 'evaluaciones' && <Evaluaciones data={data} />}
                 {tab === 'acuerdos' && <Acuerdos acuerdos={data.acuerdos} puedeDepurar={['SUPER_ADMIN', 'ADMINISTRATIVO', 'TUTORIA_ADMIN', 'SERVICIOS_ESCOLARES'].includes(usuario?.rol)} onDeleted={id => setData(actual => ({ ...actual, acuerdos: actual.acuerdos.filter(a => a.id !== id), resumen: { ...actual.resumen, acuerdos_pendientes: Math.max(0, actual.resumen.acuerdos_pendientes - (actual.acuerdos.find(a => a.id === id)?.estado === 'PENDIENTE' ? 1 : 0)) } }))} />}
                 {tab === 'tutoria' && <Tutoria tutoria={data.tutoria} />}
                 {tab === 'timeline' && <Timeline alumnoId={data.alumno.id} materias={data.materias} />}
@@ -1012,7 +980,7 @@ export default function ExpedienteAcademico() {
         {modalPdf && data && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
             <Panel className="w-full max-w-lg p-6 shadow-2xl">
-              <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">Generar expediente PDF</h2><p className="mt-1 text-sm text-slate-500">El resumen, la calidad de datos y el panorama por materia siempre se incluyen.</p></div><button onClick={() => setModalPdf(false)} className="text-2xl text-slate-500">×</button></div>
+              <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">Generar expediente PDF</h2><p className="mt-1 text-sm text-slate-500">El resumen, la actualización de asistencia y el panorama por materia siempre se incluyen.</p></div><button onClick={() => setModalPdf(false)} className="text-2xl text-slate-500">×</button></div>
               <div className="mt-5 space-y-3">
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked readOnly disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Resumen y panorama por materia</b><span className="text-xs text-slate-500">Obligatorio para conservar el contexto del documento.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.acuerdos} onChange={e => setOpcionesPdf(actual => ({ ...actual, acuerdos: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Acuerdos de seguimiento</b><span className="text-xs text-slate-500">Incluye compromisos, estado y fecha de revisión.</span></span></label>

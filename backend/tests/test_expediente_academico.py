@@ -63,8 +63,14 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     assert _estado_materia(79.9, 9.0) == "RIESGO_ALTO"
     assert _estado_materia(80.0, 7.0) == "RIESGO_MEDIO"
     assert _estado_materia(90.0, 8.0) == "REGULAR"
+    assert _estado_materia(100.0, 5.0) == "REGULAR"
     assert _estado_materia(100.0, None, 1, 0) == "BASE_INSUFICIENT"
     assert _estado_materia(None, None, 0, 0) == "SIN_DATOS"
+    sin_riesgo_por_calificacion, razones_sin_calificacion = _clasificar_panorama(
+        100.0, 5.0, {"cantidad": 0, "materia": None}, 0, 0, 4,
+    )
+    assert sin_riesgo_por_calificacion == "REGULAR"
+    assert all("Promedio" not in razon for razon in razones_sin_calificacion)
     nivel_preliminar, razones_preliminar, asistencia_preliminar = _semaforo([{
         "asistencias_registradas": 1, "presente": 1, "retardo": 0,
         "justificada": 0, "evaluaciones_registradas": 0,
@@ -72,7 +78,7 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     }], [], [])
     assert asistencia_preliminar == 100.0
     assert nivel_preliminar == "GRIS"
-    assert "1 de 3 clases" in razones_preliminar[0]
+    assert "1 de 3 asistencias" in razones_preliminar[0]
 
 
 def test_tendencias_usan_la_ultima_clase_como_fecha_de_referencia():
@@ -318,7 +324,13 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert evento_asistencia["fecha"].endswith("-06:00")
     evento_acuerdo = next(evento for evento in timeline_data["items"] if evento["tipo"] == "ACUERDO")
     assert evento_acuerdo["fecha"].endswith("Z")
-    assert any(evento["tipo"] == "EVALUACION" for evento in timeline_data["items"])
+    assert all(evento["tipo"] != "EVALUACION" for evento in timeline_data["items"])
+    timeline_historico = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}/timeline",
+        params={"tipo": "EVALUACION", "pagina": 1, "limite": 10}, headers=admin_headers,
+    )
+    assert timeline_historico.status_code == 200, timeline_historico.text
+    assert any(evento["tipo"] == "EVALUACION" for evento in timeline_historico.json()["items"])
 
     solo_evaluaciones = client.get(
         f"/expediente-academico/alumnos/{alumno.id}/timeline",
