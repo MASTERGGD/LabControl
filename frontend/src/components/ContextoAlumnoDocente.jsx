@@ -50,13 +50,21 @@ export default function ContextoAlumnoDocente({
     }
   };
 
-  const tieneIndicadores = contexto.canalizacion_activa || contexto.riesgo_global || contexto.seguimiento_activo;
+  const tieneIndicadores = contexto.canalizacion_activa || contexto.riesgo_materia || contexto.seguimiento_activo;
+  const motivosRiesgo = contexto.motivos_riesgo || [];
+  const etiquetaRiesgo = motivosRiesgo.length === 1
+    ? motivosRiesgo[0] === 'ASISTENCIA' ? 'Asistencia baja en tu materia' : 'Bajo desempeño en tu materia'
+    : 'Riesgo en tu materia';
 
   return (
     <>
       <div className={`flex flex-wrap items-center gap-1.5 ${compacto ? 'mt-1.5' : ''}`}>
         {contexto.canalizacion_activa && <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-semibold text-blue-300">Canalización activa</span>}
-        {contexto.riesgo_global && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">Riesgo global</span>}
+        {contexto.riesgo_materia && (
+          <span title="Este indicador se calcula únicamente con tus clases y seguimientos de esta materia." className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-300">
+            {etiquetaRiesgo}
+          </span>
+        )}
         {contexto.seguimiento_activo && <span className="rounded-full bg-violet-500/15 px-2 py-1 text-[10px] font-semibold text-violet-300">En seguimiento</span>}
         {!tieneIndicadores && !compacto && <span className="text-xs text-emerald-400">Sin alertas institucionales activas</span>}
         {permitirNota && (

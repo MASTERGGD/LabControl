@@ -19,7 +19,7 @@ from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente,
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
 )
-from models.tutoria import GrupoTutorado
+from models.tutoria import GrupoTutorado, ReporteTutor
 from tests.conftest import auth_headers, get_token
 
 
@@ -49,6 +49,66 @@ def test_laboratorio_acepta_bloque_sabatino_a_traves_del_segundo_receso(db):
     assert [(slot.hora_inicio, slot.hora_fin) for slot in slots] == [
         ("13:00", "13:45"), ("14:15", "15:00"),
     ]
+
+
+def test_contexto_docente_no_expone_riesgo_de_otra_materia(db):
+    docentes = [Usuario(
+        nombre=nombre, email=correo, password_hash=hashear_password("Docente123!"),
+        rol=RolUsuario.DOCENTE, activo=True,
+    ) for nombre, correo in (("Docente Matemáticas", "mate.riesgo@test.mx"), ("Docente Inglés", "ingles.riesgo@test.mx"))]
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add_all([*docentes, periodo])
+    db.flush()
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera="TIEID", cuatrimestre=1, grupo="A", activo=True)
+    materias = [
+        CatalogoMateria(nombre="Matemáticas", carrera="TIEID", cuatrimestre_oficial=1, periodo=periodo.clave, activo=True),
+        CatalogoMateria(nombre="Inglés", carrera="TIEID", cuatrimestre_oficial=1, periodo=periodo.clave, activo=True),
+    ]
+    alumno = CatalogoAlumno(
+        matricula="UTC-RIESGO-01", apellido_paterno="Ramírez", apellido_materno="Vázquez",
+        nombres="Jason", carrera="TIEID", cuatrimestre=1, grupo="A", periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, *materias, alumno])
+    db.flush()
+    cargas = [CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        materia_id=materia.id, tipo_actividad="CLASE", actividad_nombre=materia.nombre,
+        dia_semana=indice, hora_inicio="08:00", hora_fin="09:00", estado="ACTIVO", activo=True,
+    ) for indice, (docente, materia) in enumerate(zip(docentes, materias))]
+    db.add_all(cargas)
+    db.flush()
+    for dia in range(1, 5):
+        clase = ClaseDocente(carga_docente_id=cargas[0].id, fecha=datetime.date(2026, 9, dia), estado="CERRADA")
+        db.add(clase)
+        db.flush()
+        db.add(AsistenciaDocente(clase_docente_id=clase.id, alumno_id=alumno.id, estado="FALTA"))
+    seguimiento = docencia_router.SeguimientoAlumnoDocente(
+        docente_id=docentes[0].id, carga_docente_id=cargas[0].id, alumno_id=alumno.id,
+        tipo="CALIFICACION", titulo="Evaluación parcial", calificacion=6, estado="REGISTRADO",
+    )
+    db.add(seguimiento)
+    db.flush()
+    db.add(ReporteTutor(
+        alumno_id=alumno.id, reportado_por_id=docentes[0].id, carga_docente_id=cargas[0].id,
+        seguimiento_docente_id=seguimiento.id, categoria="ACADEMICO", prioridad="MEDIA",
+        titulo="Bajo desempeño", estado="ENVIADO",
+    ))
+    db.commit()
+
+    contexto_otro_docente = docencia_router._contexto_alumno_docente(
+        db, cargas[1], alumno, docentes[1].id,
+    )
+    contexto_reportante = docencia_router._contexto_alumno_docente(
+        db, cargas[0], alumno, docentes[0].id,
+    )
+
+    assert contexto_otro_docente["riesgo_global"] is False
+    assert contexto_otro_docente["riesgo_materia"] is False
+    assert contexto_otro_docente["motivos_riesgo"] == []
+    assert contexto_otro_docente["seguimiento_activo"] is False
+    assert contexto_reportante["riesgo_materia"] is True
+    assert set(contexto_reportante["motivos_riesgo"]) == {"ASISTENCIA", "DESEMPENO"}
+    assert contexto_reportante["seguimiento_activo"] is True
 
 
 def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db):

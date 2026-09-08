@@ -2133,13 +2133,10 @@ def _cargas_equivalentes(db: Session, carga: CargaDocente):
 
 
 def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoAlumno, docente_id: int):
-    cargas_grupo = db.query(CargaDocente).filter(
-        CargaDocente.grupo_academico_id == carga.grupo_academico_id,
-        CargaDocente.periodo_id == carga.periodo_id,
-        CargaDocente.activo == True,
-        CargaDocente.tipo_actividad == "CLASE",
-    ).all()
-    carga_ids = [item.id for item in cargas_grupo]
+    # El contexto mostrado a un docente debe limitarse a su propia materia. El
+    # panorama consolidado del alumno corresponde al tutor y a Tutoría.
+    cargas_materia = _cargas_equivalentes(db, carga)
+    carga_ids = [item.id for item in cargas_materia]
     clases = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id.in_(carga_ids),
     ).all() if carga_ids else []
@@ -2149,25 +2146,33 @@ def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoA
         AsistenciaDocente.clase_docente_id.in_(clase_ids),
     ).all() if clase_ids else []
     asistio = sum(1 for item in asistencias if item.estado in {"PRESENTE", "RETARDO", "JUSTIFICADA"})
-    porcentaje_global = (asistio / len(asistencias) * 100) if asistencias else 100
+    porcentaje_materia = (asistio / len(asistencias) * 100) if asistencias else 100
     calificacion_baja = db.query(SeguimientoAlumnoDocente.id).filter(
         SeguimientoAlumnoDocente.alumno_id == alumno.id,
         SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
         SeguimientoAlumnoDocente.tipo == "CALIFICACION",
         SeguimientoAlumnoDocente.calificacion < 7,
     ).first() if carga_ids else None
-    riesgo_global = bool(
-        (len(asistencias) >= 4 and porcentaje_global < 80)
-        or calificacion_baja
-    )
-    canalizacion_activa = db.query(Canalizacion.id).filter(
+    motivos_riesgo = []
+    if len(asistencias) >= 4 and porcentaje_materia < 80:
+        motivos_riesgo.append("ASISTENCIA")
+    if calificacion_baja:
+        motivos_riesgo.append("DESEMPENO")
+    riesgo_materia = bool(motivos_riesgo)
+    canalizacion_activa = db.query(Canalizacion.id).join(
+        ReporteTutor, ReporteTutor.canalizacion_id == Canalizacion.id,
+    ).filter(
         Canalizacion.alumno_id == alumno.id,
         Canalizacion.estado.in_(["PENDIENTE", "EN_SEGUIMIENTO"]),
-    ).first() is not None
+        ReporteTutor.reportado_por_id == docente_id,
+        ReporteTutor.carga_docente_id.in_(carga_ids),
+    ).first() is not None if carga_ids else False
     reporte_activo = db.query(ReporteTutor.id).filter(
         ReporteTutor.alumno_id == alumno.id,
+        ReporteTutor.reportado_por_id == docente_id,
+        ReporteTutor.carga_docente_id.in_(carga_ids),
         ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "EN_SEGUIMIENTO", "CANALIZADO", "SIN_TUTOR"]),
-    ).first() is not None
+    ).first() is not None if carga_ids else False
     desde = datetime.datetime.utcnow() - datetime.timedelta(days=7)
     alerta_reciente = db.query(ReporteTutor).filter(
         ReporteTutor.alumno_id == alumno.id,
@@ -2190,7 +2195,11 @@ def _contexto_alumno_docente(db: Session, carga: CargaDocente, alumno: CatalogoA
     ).first() if grupo_tutorado else None
     return {
         "alumno_id": alumno.id,
-        "riesgo_global": riesgo_global,
+        # Se conserva en falso durante la transición para que clientes antiguos
+        # dejen de mostrar información consolidada de otras materias.
+        "riesgo_global": False,
+        "riesgo_materia": riesgo_materia,
+        "motivos_riesgo": motivos_riesgo,
         "canalizacion_activa": canalizacion_activa,
         "seguimiento_activo": reporte_activo,
         "tutor_asignado": tutor.nombre if tutor else None,
