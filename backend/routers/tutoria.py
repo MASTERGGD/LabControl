@@ -926,6 +926,7 @@ def alumnos_grupo(
         estado_riesgo, motivos_riesgo = _clasificar_panorama(
             asistencia_global, None, racha, 0, reportes_abiertos,
             registros_asistencia, cobertura, semana_academica,
+            faltas=sum(m.get("falta", 0) for m in materias),
         )
         resultado.append({
             **_ser_alumno_basico(alumno),

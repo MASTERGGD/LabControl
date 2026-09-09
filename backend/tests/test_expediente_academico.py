@@ -60,7 +60,10 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     assert preliminar == "BASE_INSUFICIENT"
     assert "1 de 3 clases" in razones_preliminares[0]
 
-    assert _estado_materia(79.9, 9.0) == "RIESGO_ALTO"
+    assert _estado_materia(66.7, None, 3, 0, faltas=1) == "RIESGO_MEDIO"
+    assert _estado_materia(75.0, None, 4, 0, faltas=1) == "RIESGO_MEDIO"
+    assert _estado_materia(79.9, 9.0, 5, 0, faltas=1) == "RIESGO_ALTO"
+    assert _estado_materia(66.7, None, 3, 0, faltas=2) == "RIESGO_ALTO"
     assert _estado_materia(80.0, 7.0) == "RIESGO_MEDIO"
     assert _estado_materia(90.0, 8.0) == "REGULAR"
     assert _estado_materia(100.0, 5.0) == "REGULAR"
@@ -248,7 +251,8 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     vista_grupo = panorama.json()
     assert vista_grupo["resumen"]["total_alumnos"] == 1
     assert vista_grupo["resumen"]["asistencia_global"] == 66.7
-    assert vista_grupo["resumen"]["alumnos_riesgo"] == 1
+    assert vista_grupo["resumen"]["alumnos_riesgo"] == 0
+    assert vista_grupo["resumen"]["alumnos_atencion"] == 1
     assert vista_grupo["resumen"]["cobertura_asistencia"] == 100.0
     assert vista_grupo["resumen"]["cobertura_asistencia_detalle"] == {
         "registros_capturados": 3,
@@ -260,7 +264,7 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert vista_grupo["resumen"]["cumplimiento_sesiones"]["disponible"] is False
     assert vista_grupo["resumen"]["cumplimiento_sesiones"]["estado"] == "SIN_CALENDARIO"
     assert vista_grupo["alumnos"][0]["id"] == alumno.id
-    assert vista_grupo["alumnos"][0]["estado"] == "RIESGO"
+    assert vista_grupo["alumnos"][0]["estado"] == "ATENCION"
     assert vista_grupo["paginacion"]["total"] == 1
     assert vista_grupo["alcance"] == "GRUPO"
     assert len(vista_grupo["materias"]) == 1
@@ -291,7 +295,7 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert data["resumen"]["asistencia_global"] == 66.7
     assert data["resumen"]["materias_riesgo"] == 1
     assert data["resumen"]["acuerdos_pendientes"] == 1
-    assert data["resumen"]["semaforo"] == "ROJO"
+    assert data["resumen"]["semaforo"] == "AMARILLO"
     assert data["resumen"]["alerta_inmediata"]["nivel"] == "VERDE"
     assert data["resumen"]["umbrales"]["racha_riesgo"] == 3
     assert data["resumen"]["tendencias_asistencia"]["fecha_referencia"] == "2026-07-21"

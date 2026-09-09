@@ -15,8 +15,8 @@ División de Carrera, Mis Tutorados y el expediente individual deben presentar e
 
 - **Sin registros de asistencia:** no existe ningún pase de lista para el alumno.
 - **Sin base suficiente:** la cobertura institucional está debajo del umbral vigente o hay menos de tres observaciones. Durante el inicio se presenta como “Semana N · aún no hay base suficiente”.
-- **Riesgo:** asistencia observada menor a 80% o tres faltas consecutivas.
-- **Atención:** asistencia observada de 80% a menos de 90%, dos faltas consecutivas, acuerdos pendientes o reportes abiertos.
+- **Riesgo:** asistencia observada menor a 80% con al menos cinco registros, dos o más faltas, o tres faltas consecutivas.
+- **Atención:** asistencia observada de 80% a menos de 90%; una sola falta con tres o cuatro registros aunque el porcentaje resulte menor a 80%; dos faltas consecutivas; acuerdos pendientes o reportes abiertos.
 - **Regular:** existe base suficiente y no hay indicadores preventivos.
 
 Los reportes y acuerdos conservan su valor preventivo aun cuando la cobertura sea insuficiente.

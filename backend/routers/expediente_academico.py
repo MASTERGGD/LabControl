@@ -150,6 +150,8 @@ def _estado_materia(
     porcentaje: float | None, promedio: float | None,
     clases_registradas: int = MINIMO_CLASES_SEMAFORO,
     evidencias_registradas: int = 0,
+    faltas: int = 0,
+    faltas_consecutivas: int = 0,
 ) -> str:
     """Clasifica el seguimiento preventivo solo con asistencia del cuatrimestre."""
     if clases_registradas == 0:
@@ -157,7 +159,11 @@ def _estado_materia(
     if clases_registradas < MINIMO_CLASES_SEMAFORO:
         return "BASE_INSUFICIENT"
     if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO:
-        return "RIESGO_ALTO"
+        # Una sola falta en las primeras tres o cuatro clases requiere atención,
+        # pero todavía no constituye por sí misma un patrón de riesgo alto.
+        if clases_registradas >= 5 or faltas >= 2 or faltas_consecutivas >= UMBRAL_RACHA_RIESGO:
+            return "RIESGO_ALTO"
+        return "RIESGO_MEDIO"
     if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION:
         return "RIESGO_MEDIO"
     if porcentaje is not None:
@@ -231,11 +237,16 @@ def _clasificar_panorama(
     registros_asistencia: int = 0,
     cobertura_sesiones: float | None = None,
     semana_academica: int | None = None,
+    faltas: int = 0,
 ) -> tuple[str, list[str]]:
     razones_riesgo = []
     razones_atencion = []
     if porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_RIESGO:
-        razones_riesgo.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_RIESGO:g}%)")
+        razon = f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_RIESGO:g}%)"
+        if registros_asistencia >= 5 or faltas >= 2 or racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
+            razones_riesgo.append(razon)
+        else:
+            razones_atencion.append(f"{razon}; señal preventiva con muestra inicial")
     elif porcentaje is not None and porcentaje < UMBRAL_ASISTENCIA_ATENCION:
         razones_atencion.append(f"Asistencia de {porcentaje}% (menor a {UMBRAL_ASISTENCIA_ATENCION:g}%)")
     if racha["cantidad"] >= UMBRAL_RACHA_RIESGO:
@@ -645,11 +656,14 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             if calificaciones else None
         )
         acuerdos = [r for r in registros if r.tipo == "ACUERDO"]
-        estado = _estado_materia(porcentaje, promedio, len(clases), len(calificaciones))
         racha = _racha_reciente_por_materia(
             asistencias,
             {clase.id: clase for clase in clases},
             {carga.id: carga for carga in cargas if carga.id in carga_ids},
+        )
+        estado = _estado_materia(
+            porcentaje, promedio, total, len(calificaciones),
+            conteos["falta"], racha["cantidad"],
         )
 
         materias.append({
@@ -679,6 +693,7 @@ def _semaforo(materias, acuerdos, reportes):
     total_asistio = sum(
         m["presente"] + m["retardo"] + m["justificada"] for m in materias
     )
+    total_faltas = sum(m.get("falta", 0) for m in materias)
     if total_regs:
         asistencia_global = round(total_asistio * 100 / total_regs, 1)
     riesgos_altos = sum(1 for m in materias if m["estado"] == "RIESGO_ALTO")
@@ -692,9 +707,16 @@ def _semaforo(materias, acuerdos, reportes):
         1 for r in reportes if r.estado in ESTADOS_ABIERTOS and r.prioridad == "ALTA"
     )
     base_suficiente = total_regs >= MINIMO_CLASES_SEMAFORO
+    riesgo_porcentaje_consolidado = bool(
+        base_suficiente and asistencia_global is not None
+        and asistencia_global < UMBRAL_ASISTENCIA_RIESGO
+        and (total_regs >= 5 or total_faltas >= 2)
+    )
 
-    if base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
+    if riesgo_porcentaje_consolidado:
         razones.append(f"Asistencia global crítica de {asistencia_global}%")
+    elif base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO:
+        razones.append(f"Asistencia global preventiva de {asistencia_global}% con muestra inicial")
     if riesgos_altos:
         razones.append(f"{riesgos_altos} materia(s) en riesgo alto")
     if riesgos_medios:
@@ -709,9 +731,7 @@ def _semaforo(materias, acuerdos, reportes):
             and UMBRAL_ASISTENCIA_RIESGO <= asistencia_global < UMBRAL_ASISTENCIA_ATENCION):
         razones.append(f"Asistencia global preventiva de {asistencia_global}%")
 
-    if riesgos_altos >= UMBRAL_MATERIAS_ALTAS_ROJO or reportes_altos or (
-        base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_RIESGO
-    ):
+    if riesgos_altos >= UMBRAL_MATERIAS_ALTAS_ROJO or reportes_altos or riesgo_porcentaje_consolidado:
         nivel = "ROJO"
     elif riesgos_altos or riesgos_medios or acuerdos_vencidos or reportes_abiertos or (
         base_suficiente and asistencia_global is not None and asistencia_global < UMBRAL_ASISTENCIA_ATENCION
@@ -1091,6 +1111,7 @@ def panorama_alumnos_grupo(
             total_asistencia,
             cumplimiento_sesiones.get("porcentaje") if cumplimiento_sesiones.get("disponible") else None,
             semana_academica,
+            faltas=conteos["falta"],
         )
         filas.append({
             "id": alumno.id,
