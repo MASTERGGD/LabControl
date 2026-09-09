@@ -289,6 +289,14 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     assert data["acuerdos"][0]["grupo"] == "3° A"
     assert data["materias"][0]["promedio_evidencias"] == 6.5
     assert data["materias"][0]["falta"] == 1
+    assert data["materias"][0]["sin_registro"] == 0
+    assert data["tutoria"]["puede_gestionar"] is False
+    vista_tutor = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}",
+        headers=auth_headers(get_token(client, tutor.email, "Tutor123!")),
+    )
+    assert vista_tutor.status_code == 200, vista_tutor.text
+    assert vista_tutor.json()["tutoria"]["puede_gestionar"] is True
     patron = data["patrones_asistencia"]["excluyendo_justificadas"]
     assert patron["resumen"]["dias_ausencia_parcial"] == 1
     assert patron["resumen"]["primera_hora_ausente_luego_asistio"] == 1

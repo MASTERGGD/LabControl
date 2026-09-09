@@ -114,7 +114,7 @@ function MateriasTable({ materias, compact = false }) {
               <td className={`px-4 py-3 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{m.materia}</td>
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
               <td className="px-4 py-3 text-center">{m.clases_registradas}</td>
-              <td className="px-4 py-3 text-center">{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
+              <td className="px-4 py-3 text-center">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
               <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>
               <td className="px-4 py-3"><Badge className={`${ESTADO_MATERIA[m.estado]} whitespace-nowrap`}>{ICONO_ESTADO_MATERIA[m.estado]} {m.estado === 'BASE_INSUFICIENT' ? 'SIN BASE' : labelEstado(m.estado)}</Badge></td>
@@ -242,6 +242,7 @@ function Asistencia({ data }) {
   };
   const colorCelda = bloque => {
     if (!bloque.total) return 'bg-slate-500/5 text-slate-500';
+    if (bloque.total < 3) return 'bg-slate-500/10 text-slate-400';
     if (bloque.porcentaje_asistencia < 70) return 'bg-red-500/20 text-red-400';
     if (bloque.porcentaje_asistencia < 90) return 'bg-amber-500/20 text-amber-400';
     return 'bg-emerald-500/20 text-emerald-400';
@@ -254,16 +255,16 @@ function Asistencia({ data }) {
         <div className="mt-5 space-y-4">
           {materias.map(m => {
             const porcentaje = m.porcentaje_asistencia || 0;
-            const muestraInsuficiente = Number(m.clases_registradas || 0) < 3;
+            const muestraInsuficiente = Number(m.asistencias_registradas || 0) < 3;
             const color = muestraInsuficiente ? 'bg-slate-400' : porcentaje < 80 ? 'bg-red-500' : porcentaje < 90 ? 'bg-amber-500' : 'bg-emerald-500';
             return (
               <div key={m.clave}>
                 <div className="mb-1 flex items-center justify-between gap-4 text-sm">
                   <div className="min-w-0"><p className="truncate font-medium">{m.materia}</p><p className="text-[10px] text-slate-500">{m.docente}</p></div>
-                  <span className={`shrink-0 font-bold ${muestraInsuficiente ? 'text-slate-400' : ''}`}>{m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : 'Sin datos'}</span>
+                  <span className={`shrink-0 font-bold ${muestraInsuficiente ? 'text-slate-400' : ''}`}>{muestraInsuficiente ? '—' : m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : 'Sin datos'}</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${color}`} style={{ width: `${porcentaje * 100 / max}%` }} /></div>
-                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>{m.clases_registradas || 0} clases registradas</span>{muestraInsuficiente && m.porcentaje_asistencia != null && <span className="font-semibold text-slate-400">Muestra insuficiente</span>}<span>{m.presente} presentes</span><span>{m.falta} faltas</span><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span></div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${color}`} style={{ width: muestraInsuficiente ? '100%' : `${porcentaje * 100 / max}%` }} /></div>
+                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>{m.clases_registradas || 0} clases impartidas</span>{muestraInsuficiente && <span className="font-semibold text-slate-400">Muestra insuficiente</span>}<span>{m.presente} presentes</span><span>{m.falta} faltas</span><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span>{Number(m.sin_registro || 0) > 0 && <span className="font-semibold text-slate-400">{m.sin_registro} sin registro</span>}</div>
               </div>
             );
           })}
@@ -290,13 +291,12 @@ function Asistencia({ data }) {
               </div>
               <p className="mt-2 text-sm text-slate-400">{patron.resumen.hallazgo}</p>
             </div>
-            {hayDesglose ? <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <Kpi label="Registros analizados" value={patron.resumen.registros_analizados} />
+            {hayDesglose ? <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+              <Kpi label="Registros analizados" value={patron.resumen.registros_analizados} tone="text-slate-300" />
               <Kpi label="Faltas analizadas" value={patron.resumen.faltas} tone="text-red-400" />
-              <Kpi label="Faltas tempranas" value={patron.resumen.faltas_tempranas} hint={`${patron.resumen.porcentaje_faltas_tempranas}% del total`} tone="text-orange-400" />
-              <Kpi label="Ausencias parciales" value={patron.resumen.dias_ausencia_parcial} tone="text-amber-400" />
+              <Kpi label="Ausencias parciales" value={patron.resumen.dias_ausencia_parcial} tone="text-red-400" />
               <Kpi label="Ausencias completas" value={patron.resumen.dias_ausencia_completa} tone="text-red-400" />
-              <Kpi label="Faltó y entró después" value={patron.resumen.primera_hora_ausente_luego_asistio} tone="text-violet-400" />
+              <Kpi label="Faltó y entró después" value={patron.resumen.primera_hora_ausente_luego_asistio} tone="text-red-400" />
             </div> : <p className="mt-4 rounded-lg bg-slate-500/[0.06] px-4 py-3 text-sm text-slate-500">{patron.resumen.registros_analizados} registros analizados · sin ausencias que desglosar.</p>}
             {confianzaBaja && <button type="button" onClick={() => setMostrarAnalisis(value => !value)} className="mt-4 text-sm font-semibold text-emerald-500 hover:text-emerald-400">{mostrarAnalisis ? 'Ocultar análisis detallado' : 'Ver análisis detallado'}</button>}
           </Panel>
@@ -316,14 +316,14 @@ function Asistencia({ data }) {
                         <th className="p-2 text-left font-semibold">{dia.dia}</th>
                         {dia.bloques.map(bloque => (
                           <td key={`${dia.dia_num}-${bloque.hora_inicio}`} title={`${bloque.total} registro(s), ${bloque.falta} falta(s), ${bloque.retardo} retardo(s)`} className={`rounded-lg p-3 text-center font-bold ${colorCelda(bloque)}`}>
-                            {bloque.total ? `${bloque.porcentaje_asistencia}%` : '—'}
+                            {bloque.total ? bloque.total < 3 ? `${bloque.falta ? 'Falta' : `${bloque.porcentaje_asistencia}%`} · ${bloque.total} ${bloque.total === 1 ? 'clase' : 'clases'}` : `${bloque.porcentaje_asistencia}%` : '—'}
                           </td>
                         ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>🟢 90–100%</span><span>🟡 70–89%</span><span>🔴 Menor a 70%</span><span>Gris: sin clase registrada</span></div>
+                <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>🟢 90–100%</span><span>🟡 70–89%</span><span>🔴 Menor a 70%</span><span>Gris: menos de 3 registros o sin clase registrada</span></div>
               </div>
             </Panel>
 
@@ -945,7 +945,7 @@ export default function ExpedienteAcademico() {
               <div className="space-y-5">
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div><h2 className="text-2xl font-bold normal-case">{formatNombre(data.alumno.nombre)}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · <span title={data.alumno.carrera}>{formatCarrera(data.alumno.carrera)}</span> · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {formatNombre(data.tutoria.tutor_nombre) || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('tutoria')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Registrar o revisar tutoría</button><button onClick={() => setTab('acuerdos')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Revisar acuerdos</button><button onClick={() => setModalPdf(true)} className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Generar PDF</button></div></div>
+                    <div><h2 className="text-2xl font-bold normal-case">{formatNombre(data.alumno.nombre)}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · <span title={data.alumno.carrera}>{formatCarrera(data.alumno.carrera)}</span> · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {formatNombre(data.tutoria.tutor_nombre) || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('tutoria')} title={data.tutoria.puede_gestionar ? 'Eres el tutor asignado; puedes consultar la información disponible para dar seguimiento.' : 'Vista de consulta. Solo el tutor asignado puede registrar seguimiento tutorial.'} className={`rounded-lg px-3 py-2 text-xs font-semibold ${data.tutoria.puede_gestionar ? 'bg-emerald-600 text-white' : 'border border-slate-500/20 text-slate-500'}`}>{data.tutoria.puede_gestionar ? 'Revisar mi tutoría' : 'Consultar tutoría'}</button><button onClick={() => setTab('acuerdos')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Revisar acuerdos</button><button onClick={() => setModalPdf(true)} title="Muestra el contenido antes de generar el documento y registra la exportación en la bitácora institucional." className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Preparar PDF</button></div></div>
                     <div className="flex flex-wrap gap-3">
                       <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Señales en el periodo</p>

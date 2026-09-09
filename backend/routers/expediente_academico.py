@@ -644,6 +644,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             **item,
             "clases_registradas": len(clases),
             "asistencias_registradas": total,
+            "sin_registro": max(0, len(clases) - total),
             **conteos,
             "porcentaje_asistencia": porcentaje,
             "promedio_evidencias": promedio,
@@ -1526,6 +1527,7 @@ def expediente_alumno(
             "grupo_tutorado_id": grupo_tutorado.id if grupo_tutorado else None,
             "tutor_id": tutor.id if tutor else None,
             "tutor_nombre": tutor.nombre if tutor else None,
+            "puede_gestionar": bool(tutor and tutor.id == current_user.id),
             "estado_seguimiento": asignacion.estado_seguimiento if asignacion else None,
             "sesiones": sesiones,
             "reportes": [{
