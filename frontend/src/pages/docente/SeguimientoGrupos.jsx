@@ -262,7 +262,15 @@ export default function SeguimientoGrupos() {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {esPeriodoActual && a.falta > 0 ? <button onClick={() => abrirJustificacion(a)} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2.5 text-xs font-semibold text-blue-300">Justificar faltas</button> : <span />}
-                    <button onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)} className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300">Ver asistencia →</button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)}
+                      title="Consulta la asistencia por materia, reportes, acuerdos y seguimiento tutorial del alumno."
+                      aria-label={`Ver expediente de ${formatNombre(a.nombre)}`}
+                      className="rounded-xl border border-white/10 px-3 py-2.5 text-xs font-semibold text-slate-300"
+                    >
+                      Ver expediente →
+                    </button>
                   </div>
                 </article>
               ))}
@@ -270,7 +278,7 @@ export default function SeguimientoGrupos() {
             <div className="glass hidden overflow-x-auto rounded-2xl md:block">
               <div className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold text-white">{cargaActual?.actividad_nombre}</h2><p className="text-xs text-slate-400">{cargaActual?.grupo} · {cargaActual?.carrera}</p></div>
               <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Atención</th><th></th></tr></thead>
+                <thead className="text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Alumno</th><th>Presente</th><th>Faltas</th><th>Retardos</th><th>Justificadas</th><th>Asistencia</th><th>Seguimiento</th><th>Acciones</th></tr></thead>
                 <tbody className="divide-y divide-white/5">
                   {datos.alumnos.map((a) => <tr key={a.alumno_id}>
                     <td className="px-5 py-3"><p className="font-medium text-white">{formatNombre(a.nombre)}</p><p className="text-xs text-slate-500">{a.matricula}</p></td>
@@ -295,7 +303,15 @@ export default function SeguimientoGrupos() {
                             Justificar faltas
                           </button>
                         )}
-                        <button onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)} className="whitespace-nowrap rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">Ver asistencia →</button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/docente/seguimiento/${seleccion}/alumno/${a.alumno_id}`)}
+                          title="Consulta la asistencia por materia, reportes, acuerdos y seguimiento tutorial del alumno."
+                          aria-label={`Ver expediente de ${formatNombre(a.nombre)}`}
+                          className="whitespace-nowrap rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5"
+                        >
+                          Ver expediente →
+                        </button>
                       </div>
                     </td>
                   </tr>)}
