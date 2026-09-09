@@ -46,7 +46,7 @@ export default function ContextoAlumnoDocente({
         fecha_limite: form.tipo === 'ACUERDO' && !form.canalizar_tutor ? form.fecha_limite : null,
         fecha_revision: form.tipo === 'ACUERDO' && !form.canalizar_tutor ? form.fecha_revision : null,
         categoria_reporte: form.categoria_reporte,
-        prioridad_reporte: form.prioridad_reporte,
+        prioridad_reporte: form.prioridad_reporte || 'MEDIA',
         confidencial: form.confidencial,
         solicitar_reunion: form.solicitar_reunion,
       });
@@ -98,19 +98,19 @@ export default function ContextoAlumnoDocente({
           >
             <header className="theme-divider flex shrink-0 items-start justify-between border-b px-5 py-4" style={{ background: 'var(--surface-panel)' }}>
               <div>
-                <h2 className="theme-title font-semibold">Seguimiento del alumno</h2>
-                <p className="theme-muted mt-1 text-xs">{nombre} · Se guardará con la fecha y hora actuales en el historial de la materia.</p>
+                <h2 className="theme-title font-semibold">Nota y seguimiento del alumno</h2>
+                <p className="theme-muted mt-1 text-xs">{nombre} · Elige si será una nota personal o un reporte formal para Tutoría.</p>
               </div>
               <button type="button" aria-label="Cerrar" disabled={guardando} onClick={() => setAbierto(false)} className="theme-muted -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-2xl hover:bg-black/5">×</button>
             </header>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 overscroll-contain">
               <label className="block text-sm text-slate-300">Tipo de registro
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
-                  <option value="OBSERVACION">Nota informativa</option>
+                  <option value="OBSERVACION">Nota personal de clase</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
                 </select>
               </label>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className={`grid grid-cols-1 gap-3 ${form.canalizar_tutor ? 'sm:grid-cols-2' : ''}`}>
                 <label className="text-sm text-slate-300">Motivo del registro *
                   <select required value={form.titulo} onChange={(e) => {
                     const motivo = MOTIVOS_REPORTE.find(([, etiqueta]) => etiqueta === e.target.value);
@@ -120,14 +120,14 @@ export default function ContextoAlumnoDocente({
                     {MOTIVOS_REPORTE.map(([clave, etiqueta]) => <option key={clave} value={etiqueta}>{etiqueta}</option>)}
                   </select>
                 </label>
-                <label className="text-sm text-slate-300">Prioridad *
-                  <select value={form.prioridad_reporte} onChange={(e) => setForm({ ...form, prioridad_reporte: e.target.value })} className="input-dark mt-1">
+                {form.canalizar_tutor && <label className="text-sm text-slate-300">Prioridad del reporte *
+                  <select required value={form.prioridad_reporte} onChange={(e) => setForm({ ...form, prioridad_reporte: e.target.value })} className="input-dark mt-1">
                     <option value="">Selecciona una prioridad</option>
                     <option value="BAJA">Informativo</option>
                     <option value="MEDIA">Requiere seguimiento</option>
                     <option value="ALTA">Urgente</option>
                   </select>
-                </label>
+                </label>}
               </div>
               {form.tipo === 'ACUERDO' && !form.canalizar_tutor && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="text-sm text-slate-300">Fecha límite
@@ -152,23 +152,23 @@ export default function ContextoAlumnoDocente({
                 <span className={`mt-1 block text-right text-xs ${form.detalle.length >= 650 ? 'text-amber-400' : 'text-slate-500'}`}>{form.detalle.length}/800</span>
               </label>
               {form.detalle.length >= 650 && <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.06] px-3 py-2 text-xs text-blue-200"><p>Si el caso requiere más contexto, registra aquí un resumen factual.</p>{form.canalizar_tutor && <label className="mt-2 flex items-center gap-2 font-semibold"><input type="checkbox" checked={form.solicitar_reunion} onChange={e => setForm({ ...form, solicitar_reunion: e.target.checked })} />Solicitar una reunión rastreable con el tutor</label>}</div>}
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" style={{ color: 'var(--accent-warning-ui)' }}>Revisa la redacción antes de guardar: este texto formará parte del registro institucional. Los problemas de inscripción deben comunicarse a Servicios Escolares.</p>
+              {form.canalizar_tutor ? <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" style={{ color: 'var(--accent-warning-ui)' }}>Revisa la redacción antes de enviar: el reporte formará parte del seguimiento institucional y será visible para el tutor o Responsable de Tutoría.</p> : <p className="rounded-lg border border-slate-500/20 bg-slate-500/[0.06] px-3 py-2 text-xs text-slate-400"><b>Visibilidad: solo para ti.</b> Esta nota se conserva en el historial de tu materia y no genera alertas ni se envía automáticamente al tutor.</p>}
               <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={form.canalizar_tutor} onChange={(e) => setForm({ ...form, canalizar_tutor: e.target.checked })} />
-                  <span><b>Notificar al tutor del grupo</b><span className="mt-1 block text-xs font-normal text-slate-400">Si el grupo no tiene tutor, se enviará al Responsable de Tutoría.</span></span>
+                  <span><b>Crear reporte para seguimiento tutorial</b><span className="mt-1 block text-xs font-normal text-slate-400">Convierte esta información en una solicitud formal y trazable. Si no hay tutor, se enviará al Responsable de Tutoría.</span></span>
                 </label>
                 {form.canalizar_tutor && <label className="flex items-center gap-2 text-sm text-slate-300">
                   <input type="checkbox" checked={form.confidencial} onChange={(e) => setForm({ ...form, confidencial: e.target.checked })} />
                   Contiene información sensible
                 </label>}
               </div>
-              <p className="text-xs text-slate-500">El registro quedará vinculado automáticamente con esta materia, grupo, docente y alumno.</p>
+              <p className="text-xs text-slate-500">La nota quedará vinculada con esta materia, grupo, docente y alumno. Solo el reporte formal inicia el flujo de Tutoría.</p>
               {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
             </div>
             <footer className="theme-divider flex shrink-0 gap-3 border-t px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]" style={{ background: 'var(--surface-panel)' }}>
               <button type="button" disabled={guardando} onClick={() => setAbierto(false)} className="theme-text flex-1 rounded-xl border px-4 py-2.5 text-sm" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)' }}>Cancelar</button>
-              <button disabled={guardando || form.titulo.trim().length < 2 || !form.prioridad_reporte || (form.canalizar_tutor && form.detalle.trim().length < 5)} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Guardar y notificar' : 'Guardar nota'}</button>
+              <button disabled={guardando || form.titulo.trim().length < 2 || (form.canalizar_tutor && (!form.prioridad_reporte || form.detalle.trim().length < 5))} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:bg-slate-700 disabled:text-slate-500">{guardando ? 'Guardando…' : form.canalizar_tutor ? 'Crear y enviar reporte' : 'Guardar nota privada'}</button>
             </footer>
           </form>
         </div>,

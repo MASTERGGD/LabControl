@@ -178,6 +178,7 @@ export default function FichaAlumnoDocente() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <span className="text-xs font-bold text-emerald-400">{r.tipo}</span>
+          {r.tipo === 'OBSERVACION' && <span className="ml-2 rounded-full border border-slate-500/30 px-2 py-0.5 text-[10px] text-slate-400" title="Solo tú puedes consultar esta nota; no fue enviada a Tutoría.">Solo para ti</span>}
           <h3 className="font-semibold text-white">{r.titulo}</h3>
         </div>
         <div className="shrink-0 text-right">
@@ -515,18 +516,19 @@ export default function FichaAlumnoDocente() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setModalRegistro(false)}>
           <form onSubmit={guardar} onMouseDown={(e) => e.stopPropagation()} className="glass max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl shadow-2xl">
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
-              <div><h2 className="font-semibold text-white">Registrar seguimiento</h2><p className="mt-1 text-xs text-slate-400">Registra hechos y acuerdos concretos.</p></div>
+              <div><h2 className="font-semibold text-white">Nota y seguimiento del alumno</h2><p className="mt-1 text-xs text-slate-400">Una nota personal y un reporte a Tutoría son flujos distintos.</p></div>
               <button type="button" onClick={() => setModalRegistro(false)} className="text-2xl text-slate-400">×</button>
             </header>
             <div className="p-5">
               <label className="block text-sm text-slate-300">Tipo
                 <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, calificacion: '', fecha_limite: '', fecha_revision: '' })} className="input-dark mt-1">
-                  <option value="OBSERVACION">Observación docente</option>
+                  <option value="OBSERVACION">Nota personal de clase</option>
                   <option value="CALIFICACION">Evaluación / calificación</option>
                   <option value="ACUERDO">Acuerdo con el alumno</option>
                   <option value="TUTORIA">Enviar reporte al tutor del grupo</option>
                 </select>
               </label>
+              {form.tipo === 'OBSERVACION' && <div className="mt-3 rounded-xl border border-slate-500/20 bg-slate-500/[0.06] p-3 text-xs text-slate-400"><b>Visibilidad: solo para ti.</b> Se guardará en el historial de esta materia, sin alertar ni enviar información al tutor.</div>}
               <label className="mt-3 block text-sm text-slate-300">Título
                 <input required value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} className="input-dark mt-1" placeholder={form.tipo === 'CALIFICACION' ? 'Ej. Primer parcial' : 'Resumen breve'} />
               </label>
@@ -536,7 +538,7 @@ export default function FichaAlumnoDocente() {
               </label>}
               {form.tipo === 'TUTORIA' && (
                 <div className="mt-3 space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
-                  <p className="text-xs text-blue-200">El reporte se enviará al tutor asignado al grupo. Si aún no existe tutor, llegará al Responsable de Tutoría.</p>
+                  <p className="text-xs text-blue-200"><b>Reporte formal y trazable.</b> Se enviará al tutor asignado al grupo. Si aún no existe tutor, llegará al Responsable de Tutoría.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="text-sm text-slate-300">Categoría
                       <select value={form.categoria_reporte} onChange={(e) => setForm({ ...form, categoria_reporte: e.target.value })} className="input-dark mt-1">
@@ -573,7 +575,7 @@ export default function FichaAlumnoDocente() {
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" onClick={() => setModalRegistro(false)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={guardando} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando...' : form.tipo === 'TUTORIA' ? 'Enviar al tutor' : 'Guardar'}</button>
+              <button disabled={guardando} className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Guardando...' : form.tipo === 'TUTORIA' ? 'Crear y enviar reporte' : form.tipo === 'OBSERVACION' ? 'Guardar nota privada' : 'Guardar'}</button>
             </footer>
           </form>
         </div>

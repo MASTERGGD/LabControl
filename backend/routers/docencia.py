@@ -2520,6 +2520,7 @@ def ficha_alumno_docente(
         "asistencias": asistencias,
         "registros": [{
             "id": r.id, "tipo": r.tipo, "titulo": r.titulo, "detalle": r.detalle,
+            "visibilidad": "TUTORIA" if r.tipo == "TUTORIA" else "SOLO_DOCENTE",
             "calificacion": r.calificacion, "estado": r.estado,
             "fecha_limite": r.fecha_limite.isoformat() if r.fecha_limite else None,
             "fecha_revision": r.fecha_revision.isoformat() if r.fecha_revision else None,
@@ -2599,13 +2600,15 @@ def registrar_seguimiento_alumno(
     db.refresh(registro)
     return {
         "id": registro.id,
+        "visibilidad": "TUTORIA" if reporte else "SOLO_DOCENTE",
+        "genera_reporte": bool(reporte),
         "reporte_tutor_id": reporte.id if reporte else None,
         "destinatario": tutor.nombre if tutor else ("Responsable de Tutoría" if reporte else None),
         "estado_envio": reporte.estado if reporte else None,
         "mensaje": (
             f"Reporte enviado a {tutor.nombre}" if reporte and tutor
             else "Reporte enviado al Responsable de Tutoría para asignación" if reporte
-            else "Seguimiento registrado"
+            else "Nota privada guardada; no se notificó a Tutoría"
         ),
     }
 

@@ -99,6 +99,25 @@ def test_docente_envia_reporte_y_tutor_lo_cierra(client, db):
     assert "seguimiento semanal" in seguimiento.resultado_atencion
 
 
+def test_nota_informativa_es_privada_y_no_notifica_tutoria(client, db):
+    reportante, tutor, alumno, carga, _ = _escenario(db)
+    creado = client.post(
+        f"/docencia/seguimiento/{carga.id}/alumnos/{alumno.id}/registros",
+        headers=auth_headers(get_token(client, reportante.email, "Materia123!")),
+        json={
+            "tipo": "OBSERVACION",
+            "titulo": "Participación en clase",
+            "detalle": "Se conversó con la alumna al terminar la sesión.",
+        },
+    )
+    assert creado.status_code == 200, creado.text
+    assert creado.json()["visibilidad"] == "SOLO_DOCENTE"
+    assert creado.json()["genera_reporte"] is False
+    assert creado.json()["reporte_tutor_id"] is None
+    assert db.query(ReporteTutor).count() == 0
+    assert db.query(Notificacion).filter(Notificacion.usuario_id == tutor.id).count() == 0
+
+
 def test_responsable_recuerda_y_cierra_sin_contar_como_atencion(client, db):
     reportante, tutor, alumno, carga, _ = _escenario(db)
     responsable = Usuario(
