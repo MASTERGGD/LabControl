@@ -18,7 +18,7 @@ from models.tutoria import (
 )
 from models.notificacion import Notificacion
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
-from models.docencia import CargaDocente, SeguimientoAlumnoDocente
+from models.docencia import CargaDocente, ClaseDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
 import calendar, datetime, io, json, openpyxl, re
@@ -846,7 +846,10 @@ def alumnos_grupo(
 ):
     from routers.expediente_academico import (
         MINIMO_CLASES_SEMAFORO,
+        UMBRAL_COBERTURA_MINIMA,
         _agrupar_materias as agrupar_materias_academicas,
+        _clasificar_panorama,
+        _cumplimiento_sesiones,
         _grupo_y_cargas as grupo_y_cargas_academicas,
     )
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == grupo_id).first()
@@ -864,6 +867,7 @@ def alumnos_grupo(
     ).all()
 
     resultado = []
+    calculado_en = _now().isoformat() + "Z"
     for a in asignaciones:
         alumno  = db.query(CatalogoAlumno).filter(CatalogoAlumno.id == a.alumno_id).first()
         if not alumno:
@@ -872,7 +876,7 @@ def alumnos_grupo(
             PerfilSocioeconómico.alumno_id == alumno.id
         ).first()
         perfil_d = _ser_perfil(perfil)
-        _, cargas_academicas = grupo_y_cargas_academicas(db, alumno)
+        grupo_academico, cargas_academicas = grupo_y_cargas_academicas(db, alumno)
         materias = agrupar_materias_academicas(db, alumno, cargas_academicas)
         registros_asistencia = sum(m["asistencias_registradas"] for m in materias)
         asistencias_validas = sum(
@@ -884,6 +888,25 @@ def alumnos_grupo(
         )
         materias_riesgo = sum(
             1 for m in materias if m["estado"] in {"RIESGO_ALTO", "RIESGO_MEDIO"}
+        )
+        clases_academicas = (
+            db.query(ClaseDocente).filter(
+                ClaseDocente.carga_docente_id.in_([c.id for c in cargas_academicas])
+            ).all() if cargas_academicas else []
+        )
+        cumplimiento = _cumplimiento_sesiones(
+            db, grupo_academico.periodo_id if grupo_academico else None,
+            cargas_academicas, clases_academicas,
+        )
+        fecha_inicio = datetime.date.fromisoformat(cumplimiento["fecha_inicio"]) if cumplimiento.get("fecha_inicio") else None
+        fecha_corte = datetime.date.fromisoformat(cumplimiento["fecha_corte"]) if cumplimiento.get("fecha_corte") else None
+        semana_academica = (
+            max(1, ((fecha_corte - fecha_inicio).days // 7) + 1)
+            if fecha_inicio and fecha_corte and fecha_corte >= fecha_inicio else None
+        )
+        racha = max(
+            ({"cantidad": m.get("faltas_consecutivas", 0), "materia": m["materia"]} for m in materias),
+            key=lambda item: item["cantidad"], default={"cantidad": 0, "materia": None},
         )
         ultima_sesion = db.query(SesionTutoria).join(
             RegistroSesionAlumno, RegistroSesionAlumno.sesion_id == SesionTutoria.id,
@@ -899,6 +922,11 @@ def alumnos_grupo(
             ReporteTutor.alumno_id == alumno.id,
             ReporteTutor.estado.in_(["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA", "EN_SEGUIMIENTO"]),
         ).count()
+        cobertura = cumplimiento.get("porcentaje") if cumplimiento.get("disponible") else None
+        estado_riesgo, motivos_riesgo = _clasificar_panorama(
+            asistencia_global, None, racha, 0, reportes_abiertos,
+            registros_asistencia, cobertura, semana_academica,
+        )
         resultado.append({
             **_ser_alumno_basico(alumno),
             "asignacion_id":          a.id,
@@ -913,11 +941,20 @@ def alumnos_grupo(
             "materias_con_asistencia": sum(1 for m in materias if m["asistencias_registradas"] > 0),
             "muestra_asistencia_suficiente": registros_asistencia >= MINIMO_CLASES_SEMAFORO,
             "materias_riesgo": materias_riesgo,
+            "estado_riesgo": estado_riesgo,
+            "motivos_riesgo": motivos_riesgo,
+            "sesiones_esperadas": cumplimiento.get("sesiones_esperadas", 0),
+            "sesiones_registradas": cumplimiento.get("sesiones_registradas", 0),
+            "cobertura_sesiones": cobertura,
+            "umbral_cobertura": UMBRAL_COBERTURA_MINIMA,
+            "semana_academica": semana_academica,
+            "calculado_en": calculado_en,
             "ultima_sesion": ultima_sesion.fecha.isoformat() if ultima_sesion else None,
             "canalizaciones_abiertas": canalizaciones_abiertas,
             "reportes_abiertos": reportes_abiertos,
             "requiere_atencion": bool(
-                materias_riesgo or canalizaciones_abiertas or reportes_abiertos
+                estado_riesgo in {"RIESGO", "ATENCION"}
+                or canalizaciones_abiertas or reportes_abiertos
                 or a.estado_seguimiento in {"EN_OBSERVACION", "CANALIZADO"}
             ),
         })

@@ -5,6 +5,7 @@ from html import escape
 from pathlib import Path
 from collections import defaultdict
 import math
+import os
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -59,6 +60,9 @@ UMBRAL_RACHA_ATENCION = 2
 UMBRAL_MATERIAS_ALTAS_ROJO = 2
 MINIMO_CLASES_SEMAFORO = 3
 MINIMO_REGISTROS_TENDENCIA = 5
+# Política configurable por despliegue. El valor institucional por defecto es
+# 50%; Coordinación Académica es responsable de autorizar cualquier cambio.
+UMBRAL_COBERTURA_MINIMA = float(os.getenv("SIGA_UMBRAL_COBERTURA_MINIMA", "50"))
 
 
 def _numero_pdf(valor) -> str:
@@ -225,6 +229,8 @@ def _clasificar_panorama(
     acuerdos_pendientes: int,
     reportes_abiertos: int,
     registros_asistencia: int = 0,
+    cobertura_sesiones: float | None = None,
+    semana_academica: int | None = None,
 ) -> tuple[str, list[str]]:
     razones_riesgo = []
     razones_atencion = []
@@ -240,6 +246,12 @@ def _clasificar_panorama(
         razones_atencion.append(f"{acuerdos_pendientes} acuerdo(s) pendiente(s)")
     if reportes_abiertos:
         razones_atencion.append(f"{reportes_abiertos} reporte(s) abierto(s)")
+
+    if cobertura_sesiones is not None and cobertura_sesiones < UMBRAL_COBERTURA_MINIMA and not acuerdos_pendientes and not reportes_abiertos:
+        contexto = f"Semana {semana_academica} · " if semana_academica else ""
+        return "BASE_INSUFICIENT", [
+            f"{contexto}aún no hay base suficiente: {cobertura_sesiones:g}% de sesiones capturadas"
+        ]
 
     # Los acuerdos y reportes conservan su valor preventivo desde el primer
     # registro. Los porcentajes académicos necesitan una base mínima para no
@@ -998,6 +1010,19 @@ def panorama_alumnos_grupo(
     cumplimiento_sesiones = _cumplimiento_sesiones(
         db, grupo.periodo_id, cargas, clases,
     )
+    fecha_inicio_cobertura = (
+        datetime.date.fromisoformat(cumplimiento_sesiones["fecha_inicio"])
+        if cumplimiento_sesiones.get("fecha_inicio") else None
+    )
+    fecha_corte_cobertura = (
+        datetime.date.fromisoformat(cumplimiento_sesiones["fecha_corte"])
+        if cumplimiento_sesiones.get("fecha_corte") else None
+    )
+    semana_academica = (
+        max(1, ((fecha_corte_cobertura - fecha_inicio_cobertura).days // 7) + 1)
+        if fecha_inicio_cobertura and fecha_corte_cobertura and fecha_corte_cobertura >= fecha_inicio_cobertura
+        else None
+    )
     clase_ids = [clase.id for clase in clases]
     clase_por_id = {clase.id: clase for clase in clases}
     carga_por_id = {carga.id: carga for carga in cargas}
@@ -1064,6 +1089,8 @@ def panorama_alumnos_grupo(
         semaforo, razones_estado = _clasificar_panorama(
             porcentaje, promedio, racha, acuerdos_pendientes, reportes_abiertos,
             total_asistencia,
+            cumplimiento_sesiones.get("porcentaje") if cumplimiento_sesiones.get("disponible") else None,
+            semana_academica,
         )
         filas.append({
             "id": alumno.id,
@@ -1155,6 +1182,9 @@ def panorama_alumnos_grupo(
             },
             "cumplimiento_sesiones": cumplimiento_sesiones,
             "minimo_clases_semaforo": MINIMO_CLASES_SEMAFORO,
+            "umbral_cobertura": UMBRAL_COBERTURA_MINIMA,
+            "semana_academica": semana_academica,
+            "calculado_en": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         },
         "alumnos": paginadas,
         "paginacion": {

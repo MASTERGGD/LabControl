@@ -79,6 +79,22 @@ def test_umbrales_y_racha_reciente_se_calculan_por_materia():
     assert asistencia_preliminar == 100.0
     assert nivel_preliminar == "GRIS"
     assert "1 de 3 asistencias" in razones_preliminar[0]
+    sin_cobertura, razones_sin_cobertura = _clasificar_panorama(
+        100.0, None, {"cantidad": 0, "materia": None}, 0, 0, 7,
+        cobertura_sesiones=49.9, semana_academica=2,
+    )
+    assert sin_cobertura == "BASE_INSUFICIENT"
+    assert "Semana 2" in razones_sin_cobertura[0]
+    con_umbral, _ = _clasificar_panorama(
+        85.7, None, {"cantidad": 0, "materia": None}, 0, 0, 7,
+        cobertura_sesiones=50.0, semana_academica=2,
+    )
+    assert con_umbral == "ATENCION"
+    sin_registros, _ = _clasificar_panorama(
+        None, None, {"cantidad": 0, "materia": None}, 0, 0, 0,
+        cobertura_sesiones=None,
+    )
+    assert sin_registros == "SIN_DATOS"
 
 
 def test_tendencias_usan_la_ultima_clase_como_fecha_de_referencia():
