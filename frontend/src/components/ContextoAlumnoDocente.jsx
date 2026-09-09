@@ -152,7 +152,7 @@ export default function ContextoAlumnoDocente({
                 <span className={`mt-1 block text-right text-xs ${form.detalle.length >= 650 ? 'text-amber-400' : 'text-slate-500'}`}>{form.detalle.length}/800</span>
               </label>
               {form.detalle.length >= 650 && <div className="rounded-lg border border-blue-500/20 bg-blue-500/[0.06] px-3 py-2 text-xs text-blue-200"><p>Si el caso requiere más contexto, registra aquí un resumen factual.</p>{form.canalizar_tutor && <label className="mt-2 flex items-center gap-2 font-semibold"><input type="checkbox" checked={form.solicitar_reunion} onChange={e => setForm({ ...form, solicitar_reunion: e.target.checked })} />Solicitar una reunión rastreable con el tutor</label>}</div>}
-              <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200">Revisa la redacción antes de guardar: este texto formará parte del registro institucional. Los problemas de inscripción deben comunicarse a Servicios Escolares.</p>
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs" style={{ color: 'var(--accent-warning-ui)' }}>Revisa la redacción antes de guardar: este texto formará parte del registro institucional. Los problemas de inscripción deben comunicarse a Servicios Escolares.</p>
               <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={form.canalizar_tutor} onChange={(e) => setForm({ ...form, canalizar_tutor: e.target.checked })} />

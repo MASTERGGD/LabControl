@@ -37,6 +37,15 @@ const TIPOS = [
   ['RECESO', 'Receso'],
   ['OTRA', 'Otra actividad'],
 ];
+const MOTIVOS_CAPTURA_TARDIA = [
+  ['INTERNET', 'Falla de conexión a internet'],
+  ['SISTEMA', 'Sistema SIGA no disponible'],
+  ['ELECTRICA_EQUIPO', 'Falla eléctrica o del equipo'],
+  ['ACTIVIDAD_INSTITUCIONAL', 'Actividad institucional'],
+  ['EMERGENCIA', 'Emergencia o causa de fuerza mayor'],
+  ['NO_CONCLUIDA', 'No fue posible concluir la captura'],
+  ['OTRO', 'Otro motivo'],
+];
 const TIPO_ESTILO = {
   CLASE: 'border-emerald-500/40 bg-emerald-500/10',
   TUTORIA: 'border-blue-500/40 bg-blue-500/10',
@@ -498,6 +507,7 @@ export default function MiHorarioDocente() {
   const [reposicionesPendientes, setReposicionesPendientes] = useState([]);
   const [modalExtemporanea, setModalExtemporanea] = useState(null);
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
+  const [motivoExtemporaneoTipo, setMotivoExtemporaneoTipo] = useState('');
   const [resolucionPendiente, setResolucionPendiente] = useState('IMPARTIDA');
   const [programarAlDeclarar, setProgramarAlDeclarar] = useState(false);
   const [creandoExtemporanea, setCreandoExtemporanea] = useState(false);
@@ -691,15 +701,19 @@ export default function MiHorarioDocente() {
   };
   const crearExtemporanea = async (e) => {
     e.preventDefault();
-    if (!modalExtemporanea || motivoExtemporaneo.trim().length < 5) return;
+    const motivoCatalogo = MOTIVOS_CAPTURA_TARDIA.find(([clave]) => clave === motivoExtemporaneoTipo)?.[1];
+    const detalle = motivoExtemporaneo.trim();
+    if (!modalExtemporanea || !motivoCatalogo || (motivoExtemporaneoTipo === 'OTRO' && detalle.length < 5)) return;
+    const motivo = detalle ? `${motivoCatalogo}: ${detalle}` : motivoCatalogo;
     setCreandoExtemporanea(true);
     try {
       const { data } = await api.post(
         `/docencia/horario/${modalExtemporanea.carga_id}/captura-extemporanea`,
-        { fecha: modalExtemporanea.fecha, motivo: motivoExtemporaneo.trim() },
+        { fecha: modalExtemporanea.fecha, motivo },
       );
       setModalExtemporanea(null);
       setMotivoExtemporaneo('');
+      setMotivoExtemporaneoTipo('');
       navigate(`/docente/clase/${data.id}`);
     } catch (err) {
       setMensaje(err.response?.data?.detail || 'No se pudo abrir la captura extemporánea.');
@@ -728,6 +742,7 @@ export default function MiHorarioDocente() {
       );
       setModalExtemporanea(null);
       setMotivoExtemporaneo('');
+      setMotivoExtemporaneoTipo('');
       setResolucionPendiente('IMPARTIDA');
       setProgramarAlDeclarar(false);
       setMensaje(data.mensaje);
@@ -796,6 +811,7 @@ export default function MiHorarioDocente() {
                   const pendiente = extemporaneas[0];
                   setModalExtemporanea(pendiente);
                   setMotivoExtemporaneo('');
+                  setMotivoExtemporaneoTipo('');
                   setResolucionPendiente('IMPARTIDA');
                   setProgramarAlDeclarar(false);
                   setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
@@ -1189,6 +1205,8 @@ export default function MiHorarioDocente() {
                     const [cargaId, fecha] = e.target.value.split('|');
                     const pendiente = extemporaneas.find((item) => String(item.carga_id) === cargaId && item.fecha === fecha);
                     setModalExtemporanea(pendiente);
+                    setMotivoExtemporaneo('');
+                    setMotivoExtemporaneoTipo('');
                     setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
                   }}
                   className="input-dark mt-1"
@@ -1209,20 +1227,30 @@ export default function MiHorarioDocente() {
               <fieldset className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <legend className="mb-2 text-sm font-semibold text-slate-200">¿La clase se impartió?</legend>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'IMPARTIDA' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-slate-300'}`}>
-                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'IMPARTIDA'} onChange={() => { setResolucionPendiente('IMPARTIDA'); setProgramarAlDeclarar(false); }} />
+                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'IMPARTIDA'} onChange={() => { setResolucionPendiente('IMPARTIDA'); setProgramarAlDeclarar(false); setMotivoExtemporaneo(''); }} />
                   Sí, se impartió
                 </label>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'NO_IMPARTIDA' ? 'border-amber-500/50 bg-amber-500/10 text-amber-200' : 'border-white/10 text-slate-300'}`}>
-                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => setResolucionPendiente('NO_IMPARTIDA')} />
+                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => { setResolucionPendiente('NO_IMPARTIDA'); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
                   No se impartió
                 </label>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm sm:col-span-2 ${resolucionPendiente === 'NO_CORRESPONDIA' ? 'border-blue-500/50 bg-blue-500/10 text-blue-200' : 'border-white/10 text-slate-300'}`}>
-                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_CORRESPONDIA'} onChange={() => { setResolucionPendiente('NO_CORRESPONDIA'); setProgramarAlDeclarar(false); }} />
+                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_CORRESPONDIA'} onChange={() => { setResolucionPendiente('NO_CORRESPONDIA'); setProgramarAlDeclarar(false); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
                   No correspondía impartirla
                   <span className="mt-1 block pl-5 text-xs font-normal text-slate-400">Ej. El grupo fue citado para iniciar clases en una fecha posterior.</span>
                 </label>
               </fieldset>
-              <label className="block text-sm text-slate-300">{resolucionPendiente === 'IMPARTIDA' ? 'Motivo de la captura tardía' : 'Motivo por el que no se impartió'} *
+              {resolucionPendiente === 'IMPARTIDA' ? <div className="space-y-3">
+                <label className="block text-sm text-slate-300">Motivo de la captura tardía *
+                  <select required value={motivoExtemporaneoTipo} onChange={(e) => { setMotivoExtemporaneoTipo(e.target.value); setMotivoExtemporaneo(''); }} className="input-dark mt-1">
+                    <option value="">Selecciona un motivo</option>
+                    {MOTIVOS_CAPTURA_TARDIA.map(([clave, etiqueta]) => <option key={clave} value={clave}>{etiqueta}</option>)}
+                  </select>
+                </label>
+                {motivoExtemporaneoTipo && <label className="block text-sm text-slate-300">{motivoExtemporaneoTipo === 'OTRO' ? 'Describe el motivo *' : 'Observación adicional (opcional)'}
+                  <textarea required={motivoExtemporaneoTipo === 'OTRO'} minLength={motivoExtemporaneoTipo === 'OTRO' ? 5 : undefined} maxLength={300} rows={2} value={motivoExtemporaneo} onChange={(e) => setMotivoExtemporaneo(e.target.value)} className="input-dark mt-1" placeholder={motivoExtemporaneoTipo === 'OTRO' ? 'Describe brevemente la situación.' : 'Ej. La conexión se restableció a las 11:30.'} />
+                </label>}
+              </div> : <label className="block text-sm text-slate-300">Motivo por el que no se impartió *
                 <textarea
                   required
                   minLength={5}
@@ -1231,9 +1259,9 @@ export default function MiHorarioDocente() {
                   value={motivoExtemporaneo}
                   onChange={(e) => setMotivoExtemporaneo(e.target.value)}
                   className="input-dark mt-1"
-                  placeholder={resolucionPendiente === 'IMPARTIDA' ? 'Ej. La clase sí se impartió, pero falló la conexión a internet.' : 'Ej. Suspensión eléctrica en el edificio.'}
+                  placeholder="Ej. Suspensión eléctrica en el edificio."
                 />
-              </label>
+              </label>}
               {resolucionPendiente === 'NO_IMPARTIDA' && <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-4">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={programarAlDeclarar} onChange={(e) => setProgramarAlDeclarar(e.target.checked)} />
@@ -1250,7 +1278,7 @@ export default function MiHorarioDocente() {
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={creandoExtemporanea || motivoExtemporaneo.trim().length < 5} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : resolucionPendiente === 'NO_CORRESPONDIA' ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
+              <button disabled={creandoExtemporanea || (resolucionPendiente === 'IMPARTIDA' ? !motivoExtemporaneoTipo || (motivoExtemporaneoTipo === 'OTRO' && motivoExtemporaneo.trim().length < 5) : motivoExtemporaneo.trim().length < 5)} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : resolucionPendiente === 'NO_CORRESPONDIA' ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
             </footer>
           </form>
         </div>
