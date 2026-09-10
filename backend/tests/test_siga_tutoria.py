@@ -15,7 +15,8 @@ import pytest
 from tests.conftest import get_token, auth_headers
 from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
-from models.catalogo import CatalogoAlumno
+from models.catalogo import CatalogoAlumno, PeriodoEscolar
+from models.docencia import CargaDocente
 
 
 # ─────────────────────────── helpers ────────────────────────────────────────
@@ -96,6 +97,43 @@ class TestGruposTutoria:
         data = r.json()
         items = data if isinstance(data, list) else data.get("items", [])
         assert len(items) >= 1
+
+    def test_grupo_muestra_horario_de_tutoria_vinculado_desde_carga_docente(self, client, db):
+        ta = _tutoria_admin(db)
+        tok_admin = get_token(client, "ta@test.mx", "Test1234!")
+        tutor = _usuario(db, "Tutor", "tutor@test.mx", RolUsuario.DOCENTE)
+        grupo = _crear_grupo(client, tok_admin, tutor.id).json()
+        periodo = PeriodoEscolar(clave="ENE-ABR-2026", activo=True, es_actual=True)
+        db.add(periodo)
+        db.flush()
+        db.add(CargaDocente(
+            docente_id=tutor.id,
+            periodo_id=periodo.id,
+            grupo_tutorado_id=grupo["id"],
+            tipo_actividad="TUTORIA",
+            actividad_nombre="Tutoría grupal · 3° A",
+            dia_semana=2,
+            hora_inicio="13:00",
+            hora_fin="14:00",
+            estado="ACTIVO",
+            activo=True,
+        ))
+        db.commit()
+
+        tok_tutor = get_token(client, "tutor@test.mx", "Test1234!")
+        respuesta = client.get("/tutoria/grupos", headers=auth_headers(tok_tutor))
+
+        assert respuesta.status_code == 200
+        item = next(g for g in respuesta.json() if g["id"] == grupo["id"])
+        assert item["tutoria_en_carga_docente"] is True
+        assert item["horarios_tutoria"] == [{
+            "carga_id": item["horarios_tutoria"][0]["carga_id"],
+            "dia_semana": 2,
+            "dia": "Miércoles",
+            "hora_inicio": "13:00",
+            "hora_fin": "14:00",
+            "espacio": None,
+        }]
 
     def test_editar_grupo(self, client, db):
         ta = _tutoria_admin(db)

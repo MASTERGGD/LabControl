@@ -772,14 +772,34 @@ export default function MisTutorados() {
                 <p className="font-semibold text-white">Grupo {grupoSel.cuatrimestre}° {grupoSel.grupo}</p>
                 <p className="text-xs text-slate-400"><span title={grupoSel.carrera}>{formatCarrera(grupoSel.carrera)}</span> · {grupoSel.periodo}</p>
               </div>
-              <div className="flex gap-4 text-center">
+              <div className="flex flex-wrap justify-end gap-4 text-center">
                 <div>
                   <p className="text-xl font-bold text-white">{grupoSel.total_alumnos}</p>
                   <p className="text-xs text-slate-400">Alumnos</p>
                 </div>
                 <div>
-                  <p className={`text-xl font-bold ${grupoSel.sesiones_programadas ? 'text-emerald-400' : 'text-slate-400'}`}>{grupoSel.sesiones_programadas ? `${grupoSel.sesiones_realizadas} de ${grupoSel.sesiones_programadas}` : 'Sin programar'}</p>
-                  <p className="text-xs text-slate-400">Tutorías realizadas</p>
+                  {grupoSel.horarios_tutoria?.length ? (
+                    <>
+                      <p className="text-sm font-bold text-emerald-400">
+                        {grupoSel.horarios_tutoria.map((horario) => `${horario.dia} ${horario.hora_inicio}–${horario.hora_fin}`).join(' · ')}
+                      </p>
+                      <p className="text-xs text-slate-400">Tutoría semanal en carga docente</p>
+                    </>
+                  ) : grupoSel.sesiones_programadas ? (
+                    <>
+                      <p className="text-xl font-bold text-blue-400">{grupoSel.sesiones_programadas}</p>
+                      <p className="text-xs text-slate-400">Sesiones programadas</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-bold text-slate-400">Sin horario de tutoría</p>
+                      <p className="text-xs text-slate-500">Agrégalo en tu carga docente</p>
+                    </>
+                  )}
+                </div>
+                <div>
+                  <p className={`text-xl font-bold ${grupoSel.sesiones_realizadas ? 'text-emerald-400' : 'text-slate-400'}`}>{grupoSel.sesiones_realizadas || 0}</p>
+                  <p className="text-xs text-slate-400">Sesiones realizadas</p>
                 </div>
               </div>
             </div>

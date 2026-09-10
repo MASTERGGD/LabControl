@@ -270,6 +270,22 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
         ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
         ProgramacionSesionTutoria.estado != "CANCELADA",
     ).count()
+    cargas_tutoria = db.query(CargaDocente).filter(
+        CargaDocente.grupo_tutorado_id == g.id,
+        CargaDocente.docente_id == g.tutor_id,
+        CargaDocente.tipo_actividad == "TUTORIA",
+        CargaDocente.estado == "ACTIVO",
+        CargaDocente.activo == True,
+    ).order_by(CargaDocente.dia_semana, CargaDocente.hora_inicio).all()
+    dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+    horarios_tutoria = [{
+        "carga_id": carga.id,
+        "dia_semana": carga.dia_semana,
+        "dia": dias_semana[carga.dia_semana] if 0 <= carga.dia_semana < len(dias_semana) else "Día",
+        "hora_inicio": carga.hora_inicio,
+        "hora_fin": carga.hora_fin,
+        "espacio": carga.espacio_nombre,
+    } for carga in cargas_tutoria]
     historial_tutores = []
     for asignacion in db.query(HistorialTutorGrupo).filter(
         HistorialTutorGrupo.grupo_tutorado_id == g.id
@@ -297,6 +313,8 @@ def _ser_grupo(g: GrupoTutorado, db: Session) -> dict:
         "total_alumnos": total,
         "sesiones_realizadas": sesiones_cuatrimestre,
         "sesiones_programadas": sesiones_programadas,
+        "horarios_tutoria": horarios_tutoria,
+        "tutoria_en_carga_docente": bool(horarios_tutoria),
         "estado_tutoria": "ASIGNADO" if tutor else "SIN_TUTOR",
         "historial_tutores": historial_tutores,
     }
