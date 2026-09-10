@@ -263,7 +263,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
     form.dia_semana, form.hora_inicio, form.hora_fin, periodoId, actividad?.id,
   ]);
 
-  const guardar = async (evento, reservarLaboratorio = false) => {
+  const guardar = async (evento, reservarLaboratorio = false, activarAlGuardar = true) => {
     evento.preventDefault();
     if (esClase && !form.materia_id) {
       setError('Selecciona una materia de los resultados de búsqueda.');
@@ -277,10 +277,15 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
         ? await api.put(`/docencia/horario/${actividad.id}`, payload)
         : await api.post('/docencia/horario', payload);
       const cargaGuardada = data.carga;
+      let respuestaFinal = data;
+      if (activarAlGuardar && cargaGuardada?.id) {
+        const { data: activada } = await api.post(`/docencia/horario/${cargaGuardada.id}/activar`);
+        respuestaFinal = activada;
+      }
       if (reservarLaboratorio && cargaGuardada?.id) {
         await api.post(`/docencia/horario/${cargaGuardada.id}/reservar-laboratorio`);
       }
-      onGuardada(data);
+      onGuardada({ ...respuestaFinal, guardadaComoBorrador: !activarAlGuardar });
     } catch (err) {
       const detail = err.response?.data?.detail;
       setError(typeof detail === 'string' ? detail : detail?.mensaje || 'No se pudo guardar o reservar la actividad.');
@@ -469,19 +474,31 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
               </div>
             </div>
           )}
-          <label className="text-sm text-slate-300 sm:col-span-2">Observaciones
-            <textarea className="input-dark mt-1 min-h-20 w-full" value={form.observaciones || ''} onChange={(e) => cambiar('observaciones', e.target.value)} />
-          </label>
+          <details className="sm:col-span-2 rounded-xl border border-white/10 bg-white/[0.02] p-4" open={Boolean(form.observaciones)}>
+            <summary className="cursor-pointer text-sm font-semibold text-slate-300">Agregar información adicional</summary>
+            <label className="mt-4 block text-sm text-slate-300">Nota interna del horario (opcional)
+              <textarea
+                className="input-dark mt-1 min-h-20 w-full"
+                value={form.observaciones || ''}
+                onChange={(e) => cambiar('observaciones', e.target.value)}
+                placeholder="Ej. indicación especial sobre este bloque"
+              />
+              <span className="mt-1 block text-xs text-slate-500">Solo será visible para ti y para quienes administran el horario; no envía una notificación.</span>
+            </label>
+          </details>
           {error && <div className="sm:col-span-2 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         </div>
         <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
           <button type="button" onClick={onClose} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm text-slate-300">Cancelar</button>
-          <button disabled={guardando} className="rounded-xl bg-white/10 px-5 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-50">
-            {guardando ? 'Guardando...' : 'Guardar borrador'}
+          <button type="button" disabled={guardando} onClick={(e) => guardar(e, false, false)} className="rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-400 disabled:opacity-50">
+            Guardar y terminar después
+          </button>
+          <button disabled={guardando} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+            {guardando ? 'Guardando...' : actividad ? 'Guardar cambios' : 'Agregar al horario'}
           </button>
           {form.laboratorio_id && disponibilidadLab?.estado === 'DISPONIBLE' && (
-            <button type="button" disabled={guardando || verificandoLab} onClick={(e) => guardar(e, true)} className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-              Guardar y reservar laboratorio
+            <button type="button" disabled={guardando || verificandoLab} onClick={(e) => guardar(e, true, true)} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              {actividad ? 'Guardar y reservar laboratorio' : 'Agregar y reservar laboratorio'}
             </button>
           )}
         </div>
@@ -646,9 +663,15 @@ export default function MiHorarioDocente() {
     finally { setConfirmandoCarga(false); }
   };
 
-  const guardada = ({ advertencias = [] }) => {
+  const guardada = ({ advertencias = [], guardadaComoBorrador = false }) => {
     setModal(null);
-    setMensaje(advertencias.length ? `Guardado. Revisa: ${advertencias.join(' ')}` : 'Actividad guardada como borrador.');
+    setMensaje(
+      guardadaComoBorrador
+        ? 'Actividad guardada para terminar después. Aún no forma parte del horario activo.'
+        : advertencias.length
+          ? `Actividad agregada al horario. Revisa: ${advertencias.join(' ')}`
+          : 'Actividad agregada y activa en tu horario.'
+    );
     cargar(periodoId);
   };
   const activar = async (id) => {
