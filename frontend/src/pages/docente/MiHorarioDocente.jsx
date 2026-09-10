@@ -349,9 +349,12 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                   </div>
                 )}
                 {form.materia_id && (
-                  <p className="mt-1.5 text-xs text-emerald-400">
-                    ✓ Materia seleccionada{materiaSeleccionada?.carrera ? ` para ${materiaSeleccionada.carrera}` : ''}{materiaSeleccionada?.cuatrimestre_oficial ? ` · ${materiaSeleccionada.cuatrimestre_oficial}° cuatrimestre` : ''}
-                  </p>
+                  <span
+                    className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600"
+                    title={[materiaSeleccionada?.nombre, materiaSeleccionada?.carrera, materiaSeleccionada?.cuatrimestre_oficial ? `${materiaSeleccionada.cuatrimestre_oficial}° cuatrimestre` : null].filter(Boolean).join(' · ')}
+                  >
+                    <span aria-hidden="true">✓</span> Materia vinculada
+                  </span>
                 )}
               </div>
               <label className="text-sm text-slate-300">Grupo *
@@ -363,7 +366,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
                     return <option key={g.id} value={g.id} disabled={ocupada}>{g.label} · {ocupada ? `Asignada a ${asignacion.docente}` : asignacion?.es_propia ? 'Tu materia' : `${g.total_alumnos} alumno${g.total_alumnos === 1 ? '' : 's'}`}</option>;
                   })}
                 </select>
-                {form.materia_id && grupoSeleccionado && gruposCompatibles.filter((g) => { const a = asignacionGrupo(g.id); return !a || a.es_propia; }).length === 1 && <span className="mt-1 block text-xs text-emerald-400">✓ Grupo disponible asignado automáticamente</span>}
+                {form.materia_id && grupoSeleccionado && gruposCompatibles.filter((g) => { const a = asignacionGrupo(g.id); return !a || a.es_propia; }).length === 1 && <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600" title={grupoSeleccionado.label}><span aria-hidden="true">✓</span> Grupo asignado</span>}
                 {form.materia_id && !gruposCompatibles.length && <span className="mt-1 block text-xs text-amber-400">No existe un grupo activo para la carrera y cuatrimestre de esta materia.</span>}
                 {form.materia_id && gruposCompatibles.length > 0 && gruposCompatibles.every((g) => { const a = asignacionGrupo(g.id); return a && !a.es_propia; }) && <span className="mt-1 block text-xs text-amber-400">Todos los grupos compatibles ya fueron asignados a otros docentes.</span>}
               </label>

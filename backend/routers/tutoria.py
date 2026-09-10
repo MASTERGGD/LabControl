@@ -889,6 +889,13 @@ def alumnos_grupo(
         materias_riesgo = sum(
             1 for m in materias if m["estado"] in {"RIESGO_ALTO", "RIESGO_MEDIO"}
         )
+        detalle_materias_riesgo = [{
+            "materia": m["materia"],
+            "docente": m.get("docente"),
+            "asistencia": m.get("porcentaje_asistencia"),
+            "faltas": m.get("falta", 0),
+            "estado": m["estado"],
+        } for m in materias if m["estado"] in {"RIESGO_ALTO", "RIESGO_MEDIO"}]
         clases_academicas = (
             db.query(ClaseDocente).filter(
                 ClaseDocente.carga_docente_id.in_([c.id for c in cargas_academicas])
@@ -942,6 +949,7 @@ def alumnos_grupo(
             "materias_con_asistencia": sum(1 for m in materias if m["asistencias_registradas"] > 0),
             "muestra_asistencia_suficiente": registros_asistencia >= MINIMO_CLASES_SEMAFORO,
             "materias_riesgo": materias_riesgo,
+            "detalle_materias_riesgo": detalle_materias_riesgo,
             "estado_riesgo": estado_riesgo,
             "motivos_riesgo": motivos_riesgo,
             "sesiones_esperadas": cumplimiento.get("sesiones_esperadas", 0),

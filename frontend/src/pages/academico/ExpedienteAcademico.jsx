@@ -720,7 +720,7 @@ export default function ExpedienteAcademico() {
   const [vistaGrupos, setVistaGrupos] = useState('LISTA');
   const [alumnoId, setAlumnoId] = useState(Number(searchParams.get('alumno')) || null);
   const [data, setData] = useState(null);
-  const [tab, setTab] = useState('resumen');
+  const [tab, setTab] = useState(() => TABS.some(([id]) => id === searchParams.get('tab')) ? searchParams.get('tab') : 'resumen');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [modalPdf, setModalPdf] = useState(false);
