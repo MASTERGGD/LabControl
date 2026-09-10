@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
@@ -289,7 +289,21 @@ const CHECKS_REQ = [
   { key: 'extensiones', label: 'Extensiones / contactos' },
 ];
 
-function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
+function minutosEntre(horaInicio, horaFin) {
+  const [ih, im] = horaInicio.split(':').map(Number);
+  const [fh, fm] = horaFin.split(':').map(Number);
+  return (fh * 60 + fm) - (ih * 60 + im);
+}
+
+function duracionLegible(minutos) {
+  const horas = Math.floor(minutos / 60);
+  const resto = minutos % 60;
+  if (!horas) return `${resto} min`;
+  if (!resto) return `${horas} h`;
+  return `${horas} h ${resto} min`;
+}
+
+function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
   const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -308,6 +322,29 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [periodosSeleccionados, setPeriodosSeleccionados] = useState(1);
+
+  const opcionesDuracion = useMemo(() => {
+    const mismoDia = (slots || [])
+      .filter(s => s.dia_semana === slot.dia_semana)
+      .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+    const inicio = mismoDia.findIndex(s => s.horario_id === slot.horario_id);
+    if (inicio < 0) return [{ slots: [slot], horaFin: slot.hora_fin }];
+
+    const opciones = [];
+    const consecutivos = [];
+    for (let i = inicio; i < mismoDia.length; i += 1) {
+      const actual = mismoDia[i];
+      const anterior = consecutivos[consecutivos.length - 1];
+      if (actual.estado_vista !== 'LIBRE') break;
+      if (anterior && anterior.hora_fin !== actual.hora_inicio) break;
+      consecutivos.push(actual);
+      opciones.push({ slots: [...consecutivos], horaFin: actual.hora_fin });
+    }
+    return opciones.length ? opciones : [{ slots: [slot], horaFin: slot.hora_fin }];
+  }, [slot, slots]);
+
+  const opcionSeleccionada = opcionesDuracion[Math.min(periodosSeleccionados - 1, opcionesDuracion.length - 1)];
 
   const seleccionarMateria = (m) => {
     setMateriaQuery(m.label || m.nombre || '');
@@ -361,8 +398,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
     setSaving(true); setError('');
     const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
     try {
-      await api.post('/horarios/reservaciones', {
-        horario_id:           slot.horario_id,
+      const payloadBase = {
         laboratorio_id:       laboratorio_id,
         docente_id:           usuario.id,
         materia:              form.materia,
@@ -375,7 +411,25 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
         req_items:            reqItems.length ? reqItems : undefined,
         req_descripcion:      notaReq.trim() || undefined,
         req_tiene_instalador: checks.software ? tieneInstalador : undefined,
-      });
+      };
+      const creadas = [];
+      try {
+        for (const [indice, periodo] of opcionSeleccionada.slots.entries()) {
+          const { data } = await api.post('/horarios/reservaciones', {
+            ...payloadBase,
+            horario_id: periodo.horario_id,
+            // Los requerimientos pertenecen al bloque completo; se registran
+            // una sola vez para no duplicar pendientes al administrador.
+            req_items: indice === 0 ? payloadBase.req_items : undefined,
+            req_descripcion: indice === 0 ? payloadBase.req_descripcion : undefined,
+            req_tiene_instalador: indice === 0 ? payloadBase.req_tiene_instalador : undefined,
+          });
+          creadas.push(data.id);
+        }
+      } catch (err) {
+        await Promise.allSettled(creadas.map(id => api.delete(`/horarios/reservaciones/${id}`)));
+        throw err;
+      }
       onGuardado(); onClose();
     } catch (err) {
       setError(formatApiError(err, 'Error al reservar'));
@@ -416,6 +470,26 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             </select>
           </div>
           {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span></label>}
+          <div>
+            <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Hora de fin y duración</label>
+            <select
+              value={periodosSeleccionados}
+              onChange={e => setPeriodosSeleccionados(Number(e.target.value))}
+              className="input-dark w-full"
+            >
+              {opcionesDuracion.map((opcion, indice) => {
+                const minutos = minutosEntre(slot.hora_inicio, opcion.horaFin);
+                return (
+                  <option key={opcion.horaFin} value={indice + 1}>
+                    {opcion.horaFin} · {duracionLegible(minutos)}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="mt-1 text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
+              Se reservarán automáticamente {opcionSeleccionada.slots.length} periodo{opcionSeleccionada.slots.length === 1 ? '' : 's'} consecutivo{opcionSeleccionada.slots.length === 1 ? '' : 's'}. Los recesos y espacios ocupados no se incluyen.
+            </p>
+          </div>
           {/* Materia */}
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
@@ -2320,7 +2394,7 @@ export default function SesionClase() {
 
       {/* Modales */}
       {modalSlot?.tipo === 'reservar' && (
-        <ModalReservar slot={modalSlot.slot} cuatrimestre={cuatrimestre} laboratorio_id={labId}
+        <ModalReservar slot={modalSlot.slot} slots={slots} cuatrimestre={cuatrimestre} laboratorio_id={labId}
           onClose={cerrar} onGuardado={recargar} />
       )}
       {modalSlot?.tipo === 'mi_reserva' && (
