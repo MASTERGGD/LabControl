@@ -1546,9 +1546,11 @@ def asignar_matriculas_grupo(
 @router.delete("/grupos/{grupo_id}/alumnos/{alumno_id}", summary="Retirar un alumno del grupo")
 def retirar_alumno_grupo(
     grupo_id: int, alumno_id: int,
+    motivo: str = Query(default="NO_SE_INSCRIBIO", min_length=3, max_length=80),
     db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user),
 ):
     _require_se(db, current_user)
+    grupo = _grupo_o_error(db, grupo_id)
     inscripcion = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.grupo_academico_id == grupo_id,
         InscripcionAlumno.alumno_id == alumno_id,
@@ -1556,9 +1558,29 @@ def retirar_alumno_grupo(
     ).first()
     if not inscripcion:
         raise HTTPException(404, "El alumno no está inscrito en este grupo")
-    inscripcion.estado = "INACTIVO"
+    motivo_normalizado = motivo.strip().upper().replace(" ", "_")
+    motivos_validos = {
+        "NO_SE_INSCRIBIO", "BAJA_TEMPORAL", "BAJA_DEFINITIVA",
+        "CAMBIO_DE_GRUPO", "DUPLICADO", "OTRO",
+    }
+    if motivo_normalizado not in motivos_validos:
+        raise HTTPException(422, "Selecciona un motivo válido para retirar al alumno")
+    inscripcion.estado = "NO_INSCRITO"
+    db.add(AuditLog(
+        accion="RETIRAR_INSCRIPCION_ALUMNO", recurso="INSCRIPCION_ALUMNO",
+        recurso_id=inscripcion.id, usuario_id=current_user.id,
+        usuario_nombre=current_user.nombre, usuario_email=current_user.email,
+        detalle={
+            "alumno_id": alumno_id, "grupo_id": grupo_id,
+            "periodo_id": grupo.periodo_id, "motivo": motivo_normalizado,
+            "estado_anterior": "ACTIVO", "estado_nuevo": "NO_INSCRITO",
+        },
+    ))
     db.commit()
-    return {"mensaje": "Alumno retirado del grupo"}
+    return {
+        "mensaje": "Alumno retirado del grupo; no será reactivado por importaciones automáticas",
+        "estado": "NO_INSCRITO", "motivo": motivo_normalizado,
+    }
 
 
 def _carrera_catalogo_por_nombre(db: Session, nombre: str) -> CatalogoCarrera | None:

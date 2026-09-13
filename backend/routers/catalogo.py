@@ -144,6 +144,16 @@ def _sincronizar_inscripcion(db, alumno):
         grupo.carrera_id = alumno.carrera_id
     if not grupo.generacion:
         grupo.generacion = generacion_grupo(grupo)
+    retiro_explicito = db.query(InscripcionAlumno).join(GrupoAcademico).filter(
+        InscripcionAlumno.alumno_id == alumno.id,
+        GrupoAcademico.periodo_id == periodo.id,
+        InscripcionAlumno.estado == "NO_INSCRITO",
+    ).first()
+    if retiro_explicito:
+        # Una importación o edición de catálogo no equivale a una reinscripción.
+        # Servicios Escolares debe agregar al alumno explícitamente para
+        # levantar este bloqueo y dejar trazabilidad de la decisión.
+        return
     inscripcion = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.alumno_id == alumno.id,
         InscripcionAlumno.grupo_academico_id == grupo.id,

@@ -31,6 +31,8 @@ export default function SEGrupos() {
   const [seleccionados, setSeleccionados] = useState(new Set());
   const [matriculas, setMatriculas] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [retiro, setRetiro] = useState(null);
+  const [motivoRetiro, setMotivoRetiro] = useState('NO_SE_INSCRIBIO');
 
   useEffect(() => {
     let vigente = true;
@@ -150,9 +152,15 @@ export default function SEGrupos() {
     finally { setGuardando(false); }
   };
 
-  const retirar = async (alumno) => {
-    try { await api.delete(`/servicios-escolares/grupos/${detalle.id}/alumnos/${alumno.id}`); await recargarDetalle(); }
+  const retirar = async () => {
+    if (!retiro) return;
+    setGuardando(true); setError('');
+    try {
+      const { data } = await api.delete(`/servicios-escolares/grupos/${detalle.id}/alumnos/${retiro.id}`, { params: { motivo: motivoRetiro } });
+      setRetiro(null); await recargarDetalle(); setMensaje(data.mensaje);
+    }
     catch (err) { setError(err.response?.data?.detail || 'No se pudo retirar al alumno.'); }
+    finally { setGuardando(false); }
   };
 
   const periodoSeleccionado = periodos.find((item) => item.clave === periodo);
@@ -389,7 +397,7 @@ export default function SEGrupos() {
                 {alumnos.map((alumno) => (
                   <div key={alumno.id} className="flex items-center justify-between gap-2 py-2">
                     <div><p className="text-white">{alumno.nombre}</p><p className="text-xs text-slate-500">{alumno.matricula}</p></div>
-                    <button onClick={() => retirar(alumno)} className="text-xs text-red-400">Retirar</button>
+                    <button onClick={() => { setRetiro(alumno); setMotivoRetiro('NO_SE_INSCRIBIO'); }} className="text-xs text-red-400">Retirar</button>
                   </div>
                 ))}
                 {!alumnos.length && <p className="py-6 text-center text-sm text-slate-500">Grupo vacío</p>}</div></section>
@@ -405,6 +413,7 @@ export default function SEGrupos() {
         )}
 
         {nuevoGrupo && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setNuevoGrupo(false)}><form onSubmit={crearGrupo} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg space-y-4 p-6"><div><h2 className="text-lg font-bold text-white">Crear grupo</h2><p className="text-sm text-slate-400">{periodo}</p></div><label className="block text-sm text-slate-300">Carrera oficial<select required value={formGrupo.carrera_id} onChange={e => setFormGrupo(f => ({ ...f, carrera_id: e.target.value }))} className="input-dark mt-1 w-full"><option value="">Selecciona…</option>{carreras.map(c => <option key={c.id} value={c.id}>{c.clave} · {c.nombre}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label className="text-sm text-slate-300">Cuatrimestre<input required type="number" min="1" max="12" value={formGrupo.cuatrimestre} onChange={e => setFormGrupo(f => ({ ...f, cuatrimestre: e.target.value }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Grupo<input required value={formGrupo.grupo} onChange={e => setFormGrupo(f => ({ ...f, grupo: e.target.value.toUpperCase() }))} className="input-dark mt-1 w-full"/></label><label className="text-sm text-slate-300">Turno<input value={formGrupo.turno} onChange={e => setFormGrupo(f => ({ ...f, turno: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Matutino"/></label><label className="text-sm text-slate-300">Capacidad<input type="number" min="1" max="100" value={formGrupo.capacidad} onChange={e => setFormGrupo(f => ({ ...f, capacidad: e.target.value }))} className="input-dark mt-1 w-full" placeholder="Opcional"/></label></div><p className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">SIGA calculará la generación con la carrera, el periodo de ingreso y el cuatrimestre. La conservará automáticamente en cada promoción.</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setNuevoGrupo(false)} className="rounded-xl border border-white/10 px-4 py-2 text-slate-300">Cancelar</button><button disabled={guardando} className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-40">Crear grupo</button></div></form></div>}
+        {retiro && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" onMouseDown={() => !guardando && setRetiro(null)}><section onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg overflow-hidden"><header className="border-b border-white/10 px-6 py-5"><h2 className="text-lg font-bold text-white">Retirar inscripción del periodo</h2><p className="mt-1 text-sm text-slate-400">{retiro.nombre} · {retiro.matricula}</p></header><div className="space-y-4 px-6 py-5"><label className="block text-sm font-semibold text-slate-300">Motivo del retiro<select value={motivoRetiro} onChange={e => setMotivoRetiro(e.target.value)} className="input-dark mt-1 w-full"><option value="NO_SE_INSCRIBIO">No se inscribió</option><option value="BAJA_TEMPORAL">Baja temporal</option><option value="BAJA_DEFINITIVA">Baja definitiva</option><option value="CAMBIO_DE_GRUPO">Cambio de grupo</option><option value="DUPLICADO">Registro duplicado</option><option value="OTRO">Otro motivo administrativo</option></select></label><p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"><b>Esta acción elimina al alumno de los indicadores del periodo.</b> Las importaciones automáticas no volverán a inscribirlo. Para recuperarlo, Servicios Escolares deberá agregarlo explícitamente al grupo.</p></div><footer className="flex justify-end gap-2 border-t border-white/10 px-6 py-4"><button type="button" disabled={guardando} onClick={() => setRetiro(null)} className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300 disabled:opacity-50">Cancelar</button><button type="button" disabled={guardando} onClick={retirar} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{guardando ? 'Retirando…' : 'Confirmar retiro'}</button></footer></section></div>}
       </div>
     </AdminLayout>
   );

@@ -7,6 +7,8 @@ from dependencies import hashear_password
 from models.usuario import Usuario, RolUsuario
 from models.catalogo import CatalogoAlumno, CatalogoCarrera, CatalogoMateria, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.ficha_socioeconomica import FichaSocioeconomica
+from models.auditoria import AuditLog
+from routers.catalogo import _sincronizar_inscripcion
 from tests.conftest import auth_headers, get_token
 
 
@@ -117,6 +119,50 @@ def test_crear_grupo_y_asignar_alumnos_conserva_historial(client, db, admin_user
     assert (destino.carrera_id, destino.cuatrimestre, destino.grupo) == (carrera.id, 7, "A")
     assert db.query(CatalogoAlumno).filter_by(matricula=origen.matricula).count() == 2
     assert db.query(InscripcionAlumno).filter_by(alumno_id=destino.id, grupo_academico_id=grupo_id, estado="ACTIVO").count() == 1
+
+
+def test_retiro_no_se_reactiva_por_sincronizacion_y_admite_reinscripcion_manual(client, db, admin_user):
+    carrera = CatalogoCarrera(clave="LCP", nombre="LICENCIATURA EN CONTADURÍA", nivel="LICENCIATURA", activo=True)
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add_all([carrera, periodo]); db.flush()
+    grupo = GrupoAcademico(
+        periodo_id=periodo.id, carrera=carrera.nombre, carrera_id=carrera.id,
+        cuatrimestre=7, grupo="A", activo=True,
+    )
+    alumno = CatalogoAlumno(
+        matricula="UTC240024", apellido_paterno="ALVAREZ", apellido_materno="CANTOR",
+        nombres="MONSERRAT DE JESUS", carrera=carrera.nombre, carrera_id=carrera.id,
+        cuatrimestre=7, grupo="A", periodo=periodo.clave, activo=True,
+    )
+    db.add_all([grupo, alumno]); db.flush()
+    inscripcion = InscripcionAlumno(
+        alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO",
+    )
+    db.add(inscripcion); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+
+    retirado = client.delete(
+        f"/servicios-escolares/grupos/{grupo.id}/alumnos/{alumno.id}",
+        params={"motivo": "NO_SE_INSCRIBIO"}, headers=headers,
+    )
+    assert retirado.status_code == 200, retirado.text
+    db.refresh(inscripcion)
+    assert inscripcion.estado == "NO_INSCRITO"
+    assert db.query(AuditLog).filter_by(
+        accion="RETIRAR_INSCRIPCION_ALUMNO", recurso_id=inscripcion.id,
+    ).count() == 1
+
+    _sincronizar_inscripcion(db, alumno)
+    db.commit(); db.refresh(inscripcion)
+    assert inscripcion.estado == "NO_INSCRITO"
+
+    reinscrito = client.post(
+        f"/servicios-escolares/grupos/{grupo.id}/alumnos",
+        headers=headers, json={"alumno_ids": [alumno.id]},
+    )
+    assert reinscrito.status_code == 200, reinscrito.text
+    db.refresh(inscripcion)
+    assert inscripcion.estado == "ACTIVO"
 
 
 def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):
