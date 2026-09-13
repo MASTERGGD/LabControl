@@ -257,6 +257,7 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         asistencia_info = _mostrar_asistencia(asistio, len(estados), len(sesiones))
         materias.append({
             "grupo_id": carga.grupo_academico_id,
+            "docente_id": carga.docente_id,
             "materia": carga.actividad_nombre,
             "docente": _nombre_persona(carga.docente.nombre) if carga.docente else "Sin docente",
             "sesiones": len(sesiones), "sesiones_programadas": programadas, "cobertura": cobertura,
@@ -380,6 +381,57 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
         "correcciones": len(correcciones_por_clase[c.id]),
         "ultima_correccion": max((r.creado_en for r in correcciones_por_clase[c.id]), default=None).isoformat() if correcciones_por_clase[c.id] else None,
     } for c in clases if c.es_extemporanea or any(r.clase_docente_id == c.id for r in correcciones)]
+
+    docentes = []
+    for docente_id in sorted({carga.docente_id for carga in cargas}):
+        cargas_docente = [carga for carga in cargas if carga.docente_id == docente_id]
+        ids_cargas_docente = {carga.id for carga in cargas_docente}
+        clases_docente = [clase for clase in clases if clase.carga_docente_id in ids_cargas_docente]
+        materias_docente = [materia for materia in materias if materia["docente_id"] == docente_id]
+        programadas = sum(materia["sesiones_programadas"] for materia in materias_docente)
+        registradas = len(clases_docente)
+        extemporaneas = sum(1 for clase in clases_docente if clase.es_extemporanea)
+        corregidas = len({
+            correccion.clase_docente_id for correccion in correcciones
+            if correccion.clase_docente_id in {clase.id for clase in clases_docente}
+        })
+        seguimientos_docente = [s for s in seguimientos if s.docente_id == docente_id]
+        pendientes = max(0, programadas - registradas)
+        oportunidad = round((registradas - extemporaneas) * 100 / registradas, 1) if registradas else None
+        if programadas == 0:
+            estado_docente = "SIN_ACTIVIDAD_ESPERADA"
+        elif pendientes:
+            estado_docente = "SESIONES_PENDIENTES"
+        elif extemporaneas >= 2:
+            estado_docente = "CAPTURA_EXTEMPORANEA_RECURRENTE"
+        else:
+            estado_docente = "AL_DIA"
+        docente = cargas_docente[0].docente
+        docentes.append({
+            "docente_id": docente_id,
+            "docente": _nombre_persona(docente.nombre) if docente else "Docente sin identificar",
+            "materias": len({(carga.materia_id or carga.actividad_nombre) for carga in cargas_docente}),
+            "grupos": len({carga.grupo_academico_id for carga in cargas_docente}),
+            "sesiones_programadas": programadas,
+            "sesiones_registradas": registradas,
+            "sesiones_pendientes": pendientes,
+            "captura_oportuna": oportunidad,
+            "extemporaneas": extemporaneas,
+            "corregidas": corregidas,
+            "seguimientos": len(seguimientos_docente),
+            "reportes_tutoria": sum(1 for s in seguimientos_docente if s.tipo == "TUTORIA"),
+            "estado": estado_docente,
+            "detalle": [{
+                "grupo_id": materia["grupo_id"],
+                "materia": materia["materia"],
+                "sesiones_registradas": materia["sesiones"],
+                "sesiones_programadas": materia["sesiones_programadas"],
+                "sesiones_pendientes": max(0, materia["sesiones_programadas"] - materia["sesiones"]),
+                "extemporaneas": materia["extemporaneas"],
+                "corregidas": materia["corregidas"],
+            } for materia in materias_docente],
+        })
+    docentes.sort(key=lambda docente: (-docente["sesiones_pendientes"], docente["docente"]))
     return {
         "periodo": {"id": periodo.id, "clave": periodo.clave},
         "filtros": {"desde": inicio_reporte.isoformat(), "hasta": fin_reporte.isoformat()},
@@ -388,7 +440,7 @@ def _datos_reporte(db: Session, periodo_id: int, grupo_ids: list[int], desde: Op
                     "cobertura": round(len(clases) * 100 / programadas_total, 1) if programadas_total else None,
                     "asistencia": asistencia_general["porcentaje"], "asistencia_detalle": asistencia_general,
                     "incidencias": len(incidencias), "alumnos_atencion": len(alumnos_atencion)},
-        "grupos": grupos_json, "materias": materias,
+        "grupos": grupos_json, "materias": materias, "docentes": docentes,
         "alumnos_atencion": sorted(alumnos_atencion, key=lambda a: (a["nivel"] != "PRIORITARIO", a["nombre"])),
         "incidencias": incidencias, "observaciones_academicas": observaciones,
         "sesiones_especiales": sesiones_especiales,

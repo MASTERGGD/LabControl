@@ -55,6 +55,21 @@ def test_reporte_multigrupo_y_exportaciones(client, db, admin_user):
     assert data["alumnos_atencion"][0]["nivel"] == "ATENCIÓN"
     assert data["materias"][0]["ultimo_tema"] == "Modelo relacional"
     assert data["sesiones_especiales"][0]["correcciones"] == 2
+    assert len(data["docentes"]) == 1
+    panorama_docente = data["docentes"][0]
+    assert panorama_docente["docente_id"] == admin_user.id
+    assert panorama_docente["materias"] == 1
+    assert panorama_docente["grupos"] == 2
+    assert panorama_docente["sesiones_registradas"] == 2
+    assert panorama_docente["sesiones_programadas"] > 2
+    assert panorama_docente["sesiones_pendientes"] == (
+        panorama_docente["sesiones_programadas"] - panorama_docente["sesiones_registradas"]
+    )
+    assert panorama_docente["captura_oportuna"] == 100.0
+    assert panorama_docente["corregidas"] == 1
+    assert panorama_docente["seguimientos"] == 1
+    assert panorama_docente["estado"] == "SESIONES_PENDIENTES"
+    assert len(panorama_docente["detalle"]) == 2
     assert "Documento de uso interno" in data["privacidad"]
 
     excel = client.get("/reportes-academicos/exportar.xlsx", params=params, headers=headers)

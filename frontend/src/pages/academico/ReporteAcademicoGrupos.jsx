@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { usePeriodo } from '../../context/PeriodoContext';
 import api from '../../hooks/useApi';
@@ -11,6 +11,33 @@ const fechaLegible = (valor) => {
   return new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
     .format(new Date(anio, mes - 1, dia)).replace('.', '');
 };
+
+function PanoramaDocentes({ docentes = [], grupos = [] }) {
+  const [abierto, setAbierto] = useState(null);
+  if (!docentes.length) return null;
+  const etiquetaEstado = (valor) => ({
+    AL_DIA: ['Al día', 'bg-emerald-500/15 text-emerald-300'],
+    SESIONES_PENDIENTES: ['Con sesiones pendientes', 'bg-amber-500/15 text-amber-300'],
+    CAPTURA_EXTEMPORANEA_RECURRENTE: ['Captura extemporánea recurrente', 'bg-violet-500/15 text-violet-300'],
+    SIN_ACTIVIDAD_ESPERADA: ['Sin actividad esperada', 'bg-slate-500/15 text-slate-300'],
+  }[valor] || ['Por revisar', 'bg-slate-500/15 text-slate-300']);
+  return <section className="glass overflow-hidden rounded-2xl">
+    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
+      <div><h2 className="font-semibold text-white">Panorama operativo de docentes</h2><p className="text-xs text-slate-300">Cumplimiento de la carga seleccionada. Los estados describen registros del sistema; no califican el desempeño docente.</p></div>
+      <span className="rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-300">{docentes.length} {docentes.length === 1 ? 'docente' : 'docentes'}</span>
+    </header>
+    <div className="overflow-x-auto"><table className="w-full min-w-[1120px] text-left text-sm"><thead className="bg-white/[0.025] text-xs uppercase text-slate-400"><tr><th className="px-5 py-3">Docente</th><th>Carga</th><th>Sesiones</th><th>Listas pendientes</th><th>Captura oportuna</th><th>Extemporáneas</th><th>Correcciones</th><th>Seguimientos</th><th>Estado</th><th className="pr-5 text-right">Acción</th></tr></thead>
+      <tbody className="divide-y divide-white/5">{docentes.map((docente) => {
+        const estaAbierto = abierto === docente.docente_id;
+        const estado = etiquetaEstado(docente.estado);
+        return <Fragment key={docente.docente_id}><tr><td className="px-5 py-3 font-semibold text-white">{docente.docente}</td><td>{docente.materias} {docente.materias === 1 ? 'materia' : 'materias'} · {docente.grupos} {docente.grupos === 1 ? 'grupo' : 'grupos'}</td><td>{docente.sesiones_registradas}/{docente.sesiones_programadas}</td><td className={docente.sesiones_pendientes ? 'font-bold text-amber-300' : 'text-slate-400'}>{docente.sesiones_pendientes}</td><td>{docente.captura_oportuna == null ? 'Sin registros' : pct(docente.captura_oportuna)}</td><td>{docente.extemporaneas}</td><td>{docente.corregidas}</td><td>{docente.seguimientos}</td><td><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado[1]}`}>{estado[0]}</span></td><td className="pr-5 text-right"><button type="button" onClick={() => setAbierto(estaAbierto ? null : docente.docente_id)} className="rounded-lg border border-blue-500/25 px-3 py-2 text-xs font-semibold text-blue-300">{estaAbierto ? 'Ocultar' : 'Ver detalle'}</button></td></tr>
+          {estaAbierto && <tr key={`${docente.docente_id}-detalle`}><td colSpan="10" className="bg-blue-500/[0.035] px-5 py-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docente.detalle.map((materia) => { const grupo = grupos.find((item) => item.id === materia.grupo_id); return <article key={`${materia.grupo_id}-${materia.materia}`} className="rounded-xl border border-white/10 bg-slate-950/20 p-4"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{materia.materia}</p><p className="text-xs text-slate-400">{grupo?.nombre || 'Grupo'} · {grupo?.carrera}</p></div>{materia.sesiones_pendientes > 0 && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-300">{materia.sesiones_pendientes} pendientes</span>}</div><p className="mt-3 text-sm text-slate-300">{materia.sesiones_registradas} de {materia.sesiones_programadas} sesiones registradas</p><p className="mt-1 text-xs text-slate-500">{materia.extemporaneas} extemporáneas · {materia.corregidas} corregidas</p></article>; })}</div></td></tr>}
+        </Fragment>;
+      })}</tbody>
+    </table></div>
+    <footer className="border-t border-white/10 bg-white/[0.02] px-5 py-3 text-xs text-slate-400">La captura oportuna considera las sesiones registradas que no fueron marcadas como extemporáneas. Los seguimientos son trazabilidad académica, no una cuota.</footer>
+  </section>;
+}
 
 export default function ReporteAcademicoGrupos() {
   const { periodo } = usePeriodo();
@@ -123,6 +150,7 @@ export default function ReporteAcademicoGrupos() {
         <section className="glass overflow-hidden rounded-2xl"><header className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold text-white">Observaciones académicas de las sesiones</h2><p className="text-xs text-slate-400">Temas, actividades y pendientes registrados por cada docente.</p></header><div className="max-h-[420px] divide-y divide-white/5 overflow-y-auto">{datos.observaciones_academicas.map((o, i)=><article key={`${o.grupo_id}-${o.fecha}-${o.materia}-${i}`} className="px-5 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm text-white">{o.materia}</b><span className="text-xs text-slate-500">{fechaLegible(o.fecha)} · {datos.grupos.find((g)=>g.id===o.grupo_id)?.nombre}</span></div><p className="text-xs text-slate-400">{o.docente}</p>{o.tema&&<p className="mt-2 text-sm text-slate-200"><b>Tema:</b> {o.tema}</p>}{o.actividades&&<p className="mt-1 text-xs text-slate-300"><b>Actividades:</b> {o.actividades}</p>}{o.pendiente&&<p className="mt-1 text-xs text-amber-300"><b>Pendiente:</b> {o.pendiente}</p>}</article>)}{!datos.observaciones_academicas.length&&<p className="p-6 text-center text-sm text-slate-400">No hay observaciones académicas en el periodo indicado.</p>}</div></section>
         {datos.incidencias.length > 0 && <section className="glass overflow-hidden rounded-2xl"><header className="border-b border-white/10 px-5 py-4"><h2 className="font-semibold text-white">Incidencias generales</h2><p className="text-xs text-slate-400">Situaciones registradas para el grupo completo.</p></header><div className="max-h-[420px] divide-y divide-white/5 overflow-y-auto">{datos.incidencias.map((i, index)=><article key={`${i.grupo_id}-${i.fecha}-${index}`} className="px-5 py-3"><div className="flex flex-wrap items-center justify-between gap-2"><b className="text-sm text-amber-300">{i.tipo}</b><span className="text-xs text-slate-500">{fechaLegible(i.fecha)} · {datos.grupos.find((g)=>g.id===i.grupo_id)?.nombre}</span></div><p className="mt-1 text-xs text-slate-400">{i.materia} · {i.docente}</p><p className="mt-2 text-sm text-slate-200">{i.descripcion}</p>{i.requiere_seguimiento&&<span className="mt-2 inline-flex rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-semibold text-blue-300">Canalizada a seguimiento</span>}</article>)}</div></section>}
       </div>
+      <PanoramaDocentes docentes={datos.docentes} grupos={datos.grupos} />
       <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-4 text-sm text-blue-200"><b>Privacidad:</b> {datos.privacidad}</div>
     </>}
   </div></AdminLayout>;
