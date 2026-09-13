@@ -552,6 +552,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
   const [pagina, setPagina] = useState(paginaInicial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mostrarSesionesPendientes, setMostrarSesionesPendientes] = useState(false);
   const primeraActualizacionFiltros = useRef(true);
 
   const cargar = useCallback(async () => {
@@ -629,11 +630,38 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
           {cumplimiento.disponible && <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-center sm:grid-cols-4">
             <div><p className="text-2xl font-bold text-blue-400">{cumplimiento.porcentaje ?? '—'}%</p><p className="text-[10px] text-slate-500">Cumplimiento</p></div>
             <div><p className="text-xl font-bold">{cumplimiento.sesiones_registradas}/{cumplimiento.sesiones_esperadas}</p><p className="text-[10px] text-slate-500">Registradas</p></div>
-            <div><p className="text-xl font-bold text-red-400">{cumplimiento.sesiones_sin_registro}</p><p className="text-[10px] text-slate-500">Sin registro</p></div>
+            <button
+              type="button"
+              onClick={() => setMostrarSesionesPendientes(true)}
+              disabled={!cumplimiento.sesiones_sin_registro}
+              className={`rounded-xl px-2 py-1 transition ${cumplimiento.sesiones_sin_registro ? 'cursor-pointer hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-400/50' : 'cursor-default'}`}
+              title={cumplimiento.sesiones_sin_registro ? 'Ver las sesiones esperadas que todavía no tienen lista capturada' : 'No hay sesiones pendientes de captura'}
+            ><p className="text-xl font-bold text-red-400">{cumplimiento.sesiones_sin_registro}</p><p className="text-[10px] font-semibold text-slate-500">Sesiones sin lista ↗</p></button>
             <div><p className="text-xl font-bold text-violet-400">{cumplimiento.sesiones_adicionales}</p><p className="text-[10px] text-slate-500">Adicionales</p></div>
           </div>}
         </div>
       </Panel>}
+
+      {mostrarSesionesPendientes && cumplimiento?.disponible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="sesiones-pendientes-titulo">
+          <Panel className="max-h-[85vh] w-full max-w-5xl overflow-hidden shadow-2xl">
+            <div className={`flex items-start justify-between gap-4 border-b px-5 py-4 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>
+              <div><h2 id="sesiones-pendientes-titulo" className="text-lg font-bold">Sesiones pendientes de lista</h2><p className="mt-1 text-sm text-slate-500">El horario y el calendario oficial esperaban estas sesiones, pero no existe una clase con lista capturada.</p></div>
+              <button type="button" onClick={() => setMostrarSesionesPendientes(false)} className="rounded-lg px-2 text-2xl text-slate-500 hover:bg-slate-500/10" aria-label="Cerrar">×</button>
+            </div>
+            <div className="max-h-[62vh] overflow-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className={`sticky top-0 text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-slate-900 text-slate-400'}`}><tr><th className="px-5 py-3">Fecha</th><th className="px-4 py-3">Horario</th><th className="px-4 py-3">Materia</th><th className="px-4 py-3">Grupo</th><th className="px-4 py-3">Docente responsable</th><th className="px-5 py-3">Estado</th></tr></thead>
+                <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
+                  {(cumplimiento.sesiones_pendientes || []).map(sesion => <tr key={`${sesion.carga_docente_id}-${sesion.fecha}`}><td className="px-5 py-3 font-semibold">{fmt(sesion.fecha)}</td><td className="px-4 py-3 tabular-nums">{sesion.hora_inicio}–{sesion.hora_fin}</td><td className="px-4 py-3 font-medium">{sesion.materia}</td><td className="px-4 py-3">{sesion.grupo || '—'}</td><td className="px-4 py-3">{sesion.docente}</td><td className="px-5 py-3"><Badge className="border-red-500/25 bg-red-500/10 text-red-400">SIN LISTA CAPTURADA</Badge></td></tr>)}
+                </tbody>
+              </table>
+              {!cumplimiento.sesiones_pendientes?.length && <p className="p-8 text-center text-sm text-slate-500">No hay sesiones pendientes de captura.</p>}
+            </div>
+            <div className={`flex items-center justify-between gap-3 border-t px-5 py-4 text-xs ${isDay ? 'border-slate-200' : 'border-white/10'}`}><p className="text-slate-500">Se excluyen suspensiones y recesos publicados en el calendario oficial.</p><button type="button" onClick={() => setMostrarSesionesPendientes(false)} className="rounded-xl border border-slate-500/20 px-4 py-2 font-semibold">Cerrar</button></div>
+          </Panel>
+        </div>
+      )}
 
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

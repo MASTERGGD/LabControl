@@ -413,6 +413,7 @@ def _cumplimiento_sesiones(
         "sesiones_registradas": 0,
         "sesiones_sin_registro": 0,
         "sesiones_adicionales": 0,
+        "sesiones_pendientes": [],
         "fecha_inicio": None,
         "fecha_corte": None,
         "fecha_fin_oficial": None,
@@ -484,6 +485,23 @@ def _cumplimiento_sesiones(
     total_esperadas = len(esperadas)
     total_registradas = len(registradas_esperadas)
     porcentaje = round(total_registradas * 100 / total_esperadas, 1) if total_esperadas else None
+    cargas_por_id = {carga.id: carga for carga in cargas}
+    sesiones_pendientes = []
+    for carga_id, fecha in sorted(esperadas - registradas, key=lambda item: (item[1], item[0])):
+        carga = cargas_por_id.get(carga_id)
+        if not carga:
+            continue
+        grupo = carga.grupo_academico
+        sesiones_pendientes.append({
+            "carga_docente_id": carga.id,
+            "fecha": fecha.isoformat(),
+            "hora_inicio": carga.hora_inicio,
+            "hora_fin": carga.hora_fin,
+            "materia": carga.actividad_nombre,
+            "docente": carga.docente.nombre if carga.docente else "Docente sin identificar",
+            "grupo": f"{grupo.cuatrimestre}° {grupo.grupo}" if grupo else None,
+            "estado": "SIN_LISTA_CAPTURADA",
+        })
     return {
         "disponible": True,
         "estado": "CALCULADO",
@@ -492,6 +510,7 @@ def _cumplimiento_sesiones(
         "sesiones_registradas": total_registradas,
         "sesiones_sin_registro": max(0, total_esperadas - total_registradas),
         "sesiones_adicionales": len(adicionales),
+        "sesiones_pendientes": sesiones_pendientes,
         "fecha_inicio": fecha_inicio.isoformat(),
         "fecha_corte": corte.isoformat(),
         "fecha_fin_oficial": fecha_fin_oficial.isoformat(),

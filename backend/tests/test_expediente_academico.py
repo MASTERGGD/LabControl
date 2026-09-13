@@ -134,11 +134,17 @@ def test_cumplimiento_excluye_suspensiones_y_separa_sesiones_adicionales(db, adm
         actividad_nombre="Redes", dia_semana=0, hora_inicio="08:00",
         hora_fin="09:00", estado="ACTIVO", activo=True,
     )
+    carga_pendiente = CargaDocente(
+        docente_id=admin_user.id, periodo_id=periodo.id,
+        grupo_academico_id=grupo.id, materia_id=None, tipo_actividad="CLASE",
+        actividad_nombre="Seguridad informática", dia_semana=2, hora_inicio="10:00",
+        hora_fin="11:00", estado="ACTIVO", activo=True,
+    )
     calendario = CalendarioAcademico(
         periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin_user.id,
         publicado_por_id=admin_user.id,
     )
-    db.add_all([carga, calendario]); db.flush()
+    db.add_all([carga, carga_pendiente, calendario]); db.flush()
     db.add_all([
         EventoCalendarioAcademico(
             calendario_id=calendario.id, titulo="Inicio", tipo="INICIO_CUATRIMESTRE",
@@ -170,15 +176,37 @@ def test_cumplimiento_excluye_suspensiones_y_separa_sesiones_adicionales(db, adm
     db.add_all([clase_programada, clase_adicional]); db.flush()
 
     cumplimiento = _cumplimiento_sesiones(
-        db, periodo.id, [carga], [clase_programada, clase_adicional],
+        db, periodo.id, [carga, carga_pendiente], [clase_programada, clase_adicional],
         fecha_corte=datetime.date(2027, 8, 15),
     )
     assert cumplimiento["disponible"] is True
-    assert cumplimiento["sesiones_esperadas"] == 1
+    assert cumplimiento["sesiones_esperadas"] == 3
     assert cumplimiento["sesiones_registradas"] == 1
-    assert cumplimiento["sesiones_sin_registro"] == 0
+    assert cumplimiento["sesiones_sin_registro"] == 2
     assert cumplimiento["sesiones_adicionales"] == 1
-    assert cumplimiento["porcentaje"] == 100.0
+    assert cumplimiento["porcentaje"] == 33.3
+    assert cumplimiento["sesiones_pendientes"] == [
+        {
+            "carga_docente_id": carga_pendiente.id,
+            "fecha": "2027-08-04",
+            "hora_inicio": "10:00",
+            "hora_fin": "11:00",
+            "materia": "Seguridad informática",
+            "docente": admin_user.nombre,
+            "grupo": "4° B",
+            "estado": "SIN_LISTA_CAPTURADA",
+        },
+        {
+            "carga_docente_id": carga_pendiente.id,
+            "fecha": "2027-08-11",
+            "hora_inicio": "10:00",
+            "hora_fin": "11:00",
+            "materia": "Seguridad informática",
+            "docente": admin_user.nombre,
+            "grupo": "4° B",
+            "estado": "SIN_LISTA_CAPTURADA",
+        },
+    ]
 
 
 def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_user):
