@@ -26,7 +26,7 @@ from reportlab.platypus import (
 
 from database import get_db
 from dependencies import get_current_user
-from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
+from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
 from models.docencia import (
     AsistenciaDocente, CargaDocente, ClaseDocente, SeguimientoAlumnoDocente,
@@ -579,17 +579,21 @@ def eliminar_acuerdo_prueba(
     return {"ok": True, "mensaje": "Acuerdo de prueba eliminado; la acción quedó en auditoría"}
 
 
-def _grupo_y_cargas(db: Session, alumno: CatalogoAlumno):
-    inscripcion = (
+def _grupo_y_cargas(
+    db: Session, alumno: CatalogoAlumno, periodo_id: Optional[int] = None,
+):
+    consulta = (
         db.query(InscripcionAlumno)
         .join(GrupoAcademico, GrupoAcademico.id == InscripcionAlumno.grupo_academico_id)
         .filter(
             InscripcionAlumno.alumno_id == alumno.id,
             InscripcionAlumno.estado == "ACTIVO",
+            GrupoAcademico.activo == True,
         )
-        .order_by(InscripcionAlumno.inscrito_en.desc())
-        .first()
     )
+    if periodo_id is not None:
+        consulta = consulta.filter(GrupoAcademico.periodo_id == periodo_id)
+    inscripcion = consulta.order_by(InscripcionAlumno.inscrito_en.desc()).first()
     grupo = (
         db.query(GrupoAcademico).filter(GrupoAcademico.id == inscripcion.grupo_academico_id).first()
         if inscripcion else None
@@ -1425,6 +1429,7 @@ def expediente_alumno(
     request: Request,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
+    periodo_id: Optional[int] = Query(default=None),
 ):
     sincronizar_grupos_tutoria(db)
     db.commit()
@@ -1434,24 +1439,48 @@ def expediente_alumno(
         usuario=current_user, recurso_id=alumno.id, request=request,
         detalle={"origen": "EXPEDIENTE_ACADEMICO", "alcance": "ACADEMICO"},
     )
-    grupo, cargas = _grupo_y_cargas(db, alumno)
-    materias = _agrupar_materias(db, alumno, cargas)
+    if periodo_id is not None:
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_id).first()
+        if not periodo:
+            raise HTTPException(status_code=404, detail="Periodo escolar no encontrado")
+    else:
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.es_actual == True).first()
+        if not periodo:
+            periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == alumno.periodo).first()
 
-    acuerdos = db.query(SeguimientoAlumnoDocente).filter(
+    grupo, cargas = _grupo_y_cargas(db, alumno, periodo.id if periodo else None)
+    materias = _agrupar_materias(db, alumno, cargas)
+    inscripcion_vigente = grupo is not None
+    carga_ids = [carga.id for carga in cargas]
+
+    acuerdos_query = db.query(SeguimientoAlumnoDocente).filter(
         SeguimientoAlumnoDocente.alumno_id == alumno.id,
         SeguimientoAlumnoDocente.tipo == "ACUERDO",
-    ).order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
-    reportes = db.query(ReporteTutor).filter(
-        ReporteTutor.alumno_id == alumno.id
-    ).order_by(ReporteTutor.creado_en.desc()).all()
-    canalizaciones = db.query(Canalizacion).filter(
-        Canalizacion.alumno_id == alumno.id
-    ).order_by(Canalizacion.fecha_solicitud.desc()).all()
+    )
+    reportes_query = db.query(ReporteTutor).filter(ReporteTutor.alumno_id == alumno.id)
+    if carga_ids:
+        acuerdos_query = acuerdos_query.filter(SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids))
+        reportes_query = reportes_query.filter(ReporteTutor.carga_docente_id.in_(carga_ids))
+    elif periodo:
+        acuerdos_query = acuerdos_query.filter(False)
+        reportes_query = reportes_query.filter(False)
+    acuerdos = acuerdos_query.order_by(SeguimientoAlumnoDocente.creado_en.desc()).all()
+    reportes = reportes_query.order_by(ReporteTutor.creado_en.desc()).all()
 
-    asignacion = db.query(AsignacionTutoria).filter(
-        AsignacionTutoria.alumno_id == alumno.id,
-        AsignacionTutoria.activo == True,
-    ).order_by(AsignacionTutoria.asignado_en.desc()).first()
+    asignacion = None
+    if grupo:
+        asignacion = (
+            db.query(AsignacionTutoria)
+            .join(GrupoTutorado, GrupoTutorado.id == AsignacionTutoria.grupo_tutorado_id)
+            .filter(
+                AsignacionTutoria.alumno_id == alumno.id,
+                AsignacionTutoria.activo == True,
+                GrupoTutorado.activo == True,
+                GrupoTutorado.periodo == periodo.clave,
+                GrupoTutorado.cuatrimestre == grupo.cuatrimestre,
+                GrupoTutorado.grupo == grupo.grupo,
+            ).order_by(AsignacionTutoria.asignado_en.desc()).first()
+        )
     grupo_tutorado = (
         db.query(GrupoTutorado).filter(GrupoTutorado.id == asignacion.grupo_tutorado_id).first()
         if asignacion else None
@@ -1459,6 +1488,13 @@ def expediente_alumno(
     tutor = (
         db.query(Usuario).filter(Usuario.id == grupo_tutorado.tutor_id).first()
         if grupo_tutorado else None
+    )
+    canalizaciones = (
+        db.query(Canalizacion).filter(
+            Canalizacion.alumno_id == alumno.id,
+            Canalizacion.grupo_tutorado_id == grupo_tutorado.id,
+        ).order_by(Canalizacion.fecha_solicitud.desc()).all()
+        if grupo_tutorado else []
     )
     sesiones = []
     if grupo_tutorado:
@@ -1478,7 +1514,10 @@ def expediente_alumno(
         } for registro, sesion in registros_sesion]
 
     nivel, razones, asistencia_global = _semaforo(materias, acuerdos, reportes)
-    carga_ids = [carga.id for carga in cargas]
+    if not inscripcion_vigente and periodo:
+        nivel = "GRIS"
+        razones = [f"No tiene inscripción activa en {periodo.clave}; no se calculan alertas para este periodo."]
+        asistencia_global = None
     clases_patron = []
     asistencias_patron = []
     if carga_ids:
@@ -1569,6 +1608,17 @@ def expediente_alumno(
             "nombre": _nombre_alumno(alumno), "carrera": alumno.carrera,
             "cuatrimestre": alumno.cuatrimestre, "grupo": alumno.grupo,
             "periodo": alumno.periodo,
+        },
+        "vigencia": {
+            "periodo_id": periodo.id if periodo else None,
+            "periodo": periodo.clave if periodo else alumno.periodo,
+            "inscrito": inscripcion_vigente,
+            "estado": "INSCRITO" if inscripcion_vigente else "NO_INSCRITO",
+            "mensaje": (
+                None if inscripcion_vigente else
+                f"No tiene inscripción activa en {periodo.clave if periodo else 'el periodo consultado'}. "
+                "Su información de cuatrimestres anteriores se conserva en Trayectoria e Historial."
+            ),
         },
         "grupo_academico": {
             "id": grupo.id, "carrera": grupo.carrera, "cuatrimestre": grupo.cuatrimestre,
@@ -1821,6 +1871,7 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
 def exportar_expediente_alumno_pdf(
     alumno_id: int,
     request: Request,
+    periodo_id: Optional[int] = Query(default=None),
     incluir_acuerdos: bool = Query(default=False),
     incluir_tutoria: bool = Query(default=False),
     incluir_asistencia: bool = Query(default=False),
@@ -1830,7 +1881,9 @@ def exportar_expediente_alumno_pdf(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    data = expediente_alumno(alumno_id, request, db, current_user)
+    data = expediente_alumno(
+        alumno_id, request, db, current_user, periodo_id=periodo_id,
+    )
     ahora = datetime.datetime.now(MX_TIMEZONE)
     folio = f"EXP-{data['alumno']['matricula']}-{ahora.strftime('%Y%m%d-%H%M%S')}"
     salida = _crear_pdf_expediente(data, current_user.nombre, folio, {

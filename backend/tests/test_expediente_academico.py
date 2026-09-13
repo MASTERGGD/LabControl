@@ -420,6 +420,55 @@ def test_trayectoria_agrupa_inscripciones_equivalentes_y_conserva_movimientos(cl
     assert len(trayectoria[0]["cambios_inscripcion"]) == 1
     assert trayectoria[0]["cambios_inscripcion"][0]["estado"] == "INACTIVO"
 
+
+def test_alumno_sin_inscripcion_en_periodo_no_genera_falsa_alerta(client, db, admin_user):
+    _, _, alumno, carga_anterior, _ = _escenario(db)
+    periodo_anterior = carga_anterior.grupo_academico.periodo
+    periodo_anterior.es_actual = False
+    periodo_actual = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add(periodo_actual)
+    db.flush()
+
+    # Aunque el catálogo general se haya actualizado por error, no existe una
+    # inscripción académica que respalde al alumno en el periodo nuevo.
+    alumno.periodo = periodo_actual.clave
+    alumno.cuatrimestre = 7
+    for fecha in (
+        datetime.date(2026, 8, 3), datetime.date(2026, 8, 5), datetime.date(2026, 8, 7),
+    ):
+        clase = ClaseDocente(carga_docente_id=carga_anterior.id, fecha=fecha)
+        db.add(clase)
+        db.flush()
+        db.add(AsistenciaDocente(
+            clase_docente_id=clase.id, alumno_id=alumno.id, estado="FALTA",
+        ))
+    db.commit()
+
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    respuesta = client.get(
+        f"/expediente-academico/alumnos/{alumno.id}",
+        params={"periodo_id": periodo_actual.id},
+        headers=headers,
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    expediente = respuesta.json()
+    assert expediente["vigencia"] == {
+        "periodo_id": periodo_actual.id,
+        "periodo": "SEP-DIC 2026",
+        "inscrito": False,
+        "estado": "NO_INSCRITO",
+        "mensaje": (
+            "No tiene inscripción activa en SEP-DIC 2026. Su información de "
+            "cuatrimestres anteriores se conserva en Trayectoria e Historial."
+        ),
+    }
+    assert expediente["grupo_academico"] is None
+    assert expediente["materias"] == []
+    assert expediente["resumen"]["semaforo"] == "GRIS"
+    assert expediente["resumen"]["asistencia_global"] is None
+    assert expediente["resumen"]["reportes_abiertos"] == 0
+    assert len(expediente["trayectoria_academica"]) == 1
+
 def test_solo_tutor_asignado_consulta_expediente(client, db):
     reportante, tutor, alumno, carga, _ = _escenario(db)
     # El rol principal no debe bloquear una asignación tutorial vigente.

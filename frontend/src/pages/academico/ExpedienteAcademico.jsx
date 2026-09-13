@@ -4,6 +4,7 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePeriodo } from '../../context/PeriodoContext';
 import { formatDateInMexico, formatDateTimeInMexico } from '../../utils/timezone';
 import { formatCarrera, formatNombre } from '../../utils/presentacion';
 
@@ -705,6 +706,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
 export default function ExpedienteAcademico() {
   const navigate = useNavigate();
   const { usuario } = useAuth();
+  const { periodo } = usePeriodo();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -757,11 +759,13 @@ export default function ExpedienteAcademico() {
   useEffect(() => {
     if (!alumnoId) { setData(null); return; }
     setLoading(true); setError('');
-    api.get(`/expediente-academico/alumnos/${alumnoId}`)
+    api.get(`/expediente-academico/alumnos/${alumnoId}`, {
+      params: periodo?.id ? { periodo_id: periodo.id } : undefined,
+    })
       .then(({ data: expediente }) => setData(expediente))
       .catch(err => setError(err.response?.data?.detail || 'No se pudo cargar el expediente.'))
       .finally(() => setLoading(false));
-  }, [alumnoId]);
+  }, [alumnoId, periodo?.id]);
 
   const seleccionar = id => {
     setAlumnoId(id); setTab('resumen');
@@ -811,6 +815,7 @@ export default function ExpedienteAcademico() {
           incluir_trayectoria: opcionesPdf.trayectoria,
           incluir_observaciones: opcionesPdf.observaciones,
           omitir_secciones_vacias: opcionesPdf.omitirVacias,
+          periodo_id: periodo?.id,
         },
         responseType: 'blob',
       });
@@ -943,13 +948,19 @@ export default function ExpedienteAcademico() {
             {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
             {data && !loading && (
               <div className="space-y-5">
+                {!data.vigencia?.inscrito && (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-amber-600">
+                    <p className="font-bold">No inscrita en {data.vigencia?.periodo || 'el periodo seleccionado'}</p>
+                    <p className="mt-1 text-sm">Sin seguimiento académico vigente. No se calculan asistencia, riesgo ni pendientes con datos de otros cuatrimestres. La trayectoria histórica permanece disponible.</p>
+                  </div>
+                )}
                 <Panel className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div><h2 className="text-2xl font-bold normal-case">{formatNombre(data.alumno.nombre)}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula} · <span title={data.alumno.carrera}>{formatCarrera(data.alumno.carrera)}</span> · {data.alumno.cuatrimestre}° {data.alumno.grupo} · {data.alumno.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</p><p className="mt-1 text-xs text-slate-500">Tutor: {formatNombre(data.tutoria.tutor_nombre) || 'Sin tutor asignado'}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => setTab('tutoria')} title={data.tutoria.puede_gestionar ? 'Eres el tutor asignado; puedes consultar la información disponible para dar seguimiento.' : 'Vista de consulta. Solo el tutor asignado puede registrar seguimiento tutorial.'} className={`rounded-lg px-3 py-2 text-xs font-semibold ${data.tutoria.puede_gestionar ? 'bg-emerald-600 text-white' : 'border border-slate-500/20 text-slate-500'}`}>{data.tutoria.puede_gestionar ? 'Revisar mi tutoría' : 'Consultar tutoría'}</button><button onClick={() => setTab('acuerdos')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Revisar acuerdos</button><button onClick={() => setModalPdf(true)} title="Muestra el contenido antes de generar el documento y registra la exportación en la bitácora institucional." className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Preparar PDF</button></div></div>
+                    <div><h2 className="text-2xl font-bold normal-case">{formatNombre(data.alumno.nombre)}</h2><p className="mt-1 text-sm text-slate-500">{data.alumno.matricula}{data.vigencia?.inscrito ? <> · <span title={data.grupo_academico?.carrera}>{formatCarrera(data.grupo_academico?.carrera)}</span> · {data.grupo_academico?.cuatrimestre}° {data.grupo_academico?.grupo} · {data.vigencia?.periodo} · {data.resumen.materias_inscritas} {data.resumen.materias_inscritas === 1 ? 'materia este cuatrimestre' : 'materias este cuatrimestre'}</> : <> · No inscrita en {data.vigencia?.periodo}</>}</p>{data.vigencia?.inscrito && <p className="mt-1 text-xs text-slate-500">Tutor: {formatNombre(data.tutoria.tutor_nombre) || 'Sin tutor asignado'}</p>}<div className="mt-3 flex flex-wrap gap-2">{data.vigencia?.inscrito && <><button onClick={() => setTab('tutoria')} title={data.tutoria.puede_gestionar ? 'Eres el tutor asignado; puedes consultar la información disponible para dar seguimiento.' : 'Vista de consulta. Solo el tutor asignado puede registrar seguimiento tutorial.'} className={`rounded-lg px-3 py-2 text-xs font-semibold ${data.tutoria.puede_gestionar ? 'bg-emerald-600 text-white' : 'border border-slate-500/20 text-slate-500'}`}>{data.tutoria.puede_gestionar ? 'Revisar mi tutoría' : 'Consultar tutoría'}</button><button onClick={() => setTab('acuerdos')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400">Revisar acuerdos</button></>}<button onClick={() => setModalPdf(true)} title="Muestra el contenido antes de generar el documento y registra la exportación en la bitácora institucional." className="rounded-lg border border-slate-500/20 px-3 py-2 text-xs font-semibold text-slate-500">Preparar PDF</button></div></div>
                     <div className="flex flex-wrap gap-3">
                       <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.semaforo]?.box}`}>
                           <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Señales en el periodo</p>
-                        <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.semaforo]?.text}>{data.resumen.semaforo === 'ROJO' ? '▲' : data.resumen.semaforo === 'AMARILLO' ? '●' : data.resumen.semaforo === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{data.resumen.semaforo === 'VERDE' ? 'Sin señales en el periodo' : SEMAFORO[data.resumen.semaforo]?.label}</span></div>
+                          <div className="flex items-center gap-2"><span className={SEMAFORO[data.resumen.semaforo]?.text}>{data.resumen.semaforo === 'ROJO' ? '▲' : data.resumen.semaforo === 'AMARILLO' ? '●' : data.resumen.semaforo === 'VERDE' ? '✓' : '◌'}</span><span className={`text-sm font-bold ${SEMAFORO[data.resumen.semaforo]?.text}`}>{!data.vigencia?.inscrito ? 'Sin seguimiento vigente' : data.resumen.semaforo === 'VERDE' ? 'Sin señales en el periodo' : SEMAFORO[data.resumen.semaforo]?.label}</span></div>
                       </div>
                       {data.resumen.alerta_inmediata && (
                         <div className={`rounded-xl border px-4 py-3 ${SEMAFORO[data.resumen.alerta_inmediata.nivel]?.box}`}>
