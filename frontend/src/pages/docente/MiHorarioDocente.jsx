@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -526,6 +526,8 @@ export default function MiHorarioDocente() {
   const [extemporaneas, setExtemporaneas] = useState([]);
   const [reposicionesPendientes, setReposicionesPendientes] = useState([]);
   const [modalExtemporanea, setModalExtemporanea] = useState(null);
+  const [busquedaPendiente, setBusquedaPendiente] = useState('');
+  const [grupoPendiente, setGrupoPendiente] = useState('');
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
   const [motivoExtemporaneoTipo, setMotivoExtemporaneoTipo] = useState('');
   const [resolucionPendiente, setResolucionPendiente] = useState('IMPARTIDA');
@@ -702,6 +704,15 @@ export default function MiHorarioDocente() {
     setModalReposicion(pendiente);
     setFormReposicion({ fecha_original: pendiente.fecha_original, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: pendiente.motivo || '', tema: pendiente.tema || '' });
   };
+  const seleccionarPendiente = (pendiente) => {
+    if (!pendiente) return;
+    setModalExtemporanea(pendiente);
+    setMotivoExtemporaneo('');
+    setMotivoExtemporaneoTipo('');
+    setResolucionPendiente('IMPARTIDA');
+    setProgramarAlDeclarar(false);
+    setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
+  };
   const guardarReposicion = async (e) => {
     e.preventDefault();
     if (guardandoReposicion) return;
@@ -766,12 +777,16 @@ export default function MiHorarioDocente() {
           tema: programarAlDeclarar ? formReposicion.tema || null : null,
         },
       );
-      setModalExtemporanea(null);
+      const restantes = extemporaneas.filter((item) => !(item.carga_id === modalExtemporanea.carga_id && item.fecha === modalExtemporanea.fecha));
+      setExtemporaneas(restantes);
       setMotivoExtemporaneo('');
       setMotivoExtemporaneoTipo('');
       setResolucionPendiente('IMPARTIDA');
       setProgramarAlDeclarar(false);
       setMensaje(data.mensaje);
+      const siguiente = restantes.find((item) => `${item.fecha} ${item.hora_inicio}` > `${modalExtemporanea.fecha} ${modalExtemporanea.hora_inicio}`) || restantes[0];
+      if (siguiente) seleccionarPendiente(siguiente);
+      else setModalExtemporanea(null);
       await cargar(periodoId);
     } catch (err) {
       setMensaje(err.response?.data?.detail || 'No se pudo registrar lo ocurrido con la clase.');
@@ -780,6 +795,15 @@ export default function MiHorarioDocente() {
     }
   };
   const minutoActual = (ahora.getHours() * 60) + ahora.getMinutes();
+  const pendientesOrdenadas = useMemo(() => [...extemporaneas].sort((a, b) => `${a.fecha} ${a.hora_inicio}`.localeCompare(`${b.fecha} ${b.hora_inicio}`)), [extemporaneas]);
+  const gruposPendientes = useMemo(() => [...new Set(pendientesOrdenadas.map((item) => item.grupo).filter(Boolean))].sort(), [pendientesOrdenadas]);
+  const pendientesFiltradas = useMemo(() => {
+    const termino = busquedaPendiente.trim().toLocaleLowerCase('es-MX');
+    return pendientesOrdenadas.filter((item) => (
+      (!grupoPendiente || item.grupo === grupoPendiente)
+      && (!termino || `${item.materia} ${item.grupo} ${item.carrera} ${item.fecha}`.toLocaleLowerCase('es-MX').includes(termino))
+    ));
+  }, [busquedaPendiente, grupoPendiente, pendientesOrdenadas]);
   const agendaHoy = hoy.map((item) => ({ ...item, estadoDia: estadoActividad(item, minutoActual) }));
   const actividadPrincipal = (
     agendaHoy.find((item) => item.estadoDia === 'EN_CURSO')
@@ -834,13 +858,9 @@ export default function MiHorarioDocente() {
               <button
                 type="button"
                 onClick={() => {
-                  const pendiente = extemporaneas[0];
-                  setModalExtemporanea(pendiente);
-                  setMotivoExtemporaneo('');
-                  setMotivoExtemporaneoTipo('');
-                  setResolucionPendiente('IMPARTIDA');
-                  setProgramarAlDeclarar(false);
-                  setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
+                  setBusquedaPendiente('');
+                  setGrupoPendiente('');
+                  seleccionarPendiente(pendientesOrdenadas[0]);
                 }}
                 className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"
               >
@@ -1215,42 +1235,44 @@ export default function MiHorarioDocente() {
       )}
       {modalExtemporanea && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !creandoExtemporanea && setModalExtemporanea(null)}>
-          <form onSubmit={resolverClasePendiente} onMouseDown={(e) => e.stopPropagation()} className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-amber-500/20 bg-slate-900 shadow-2xl">
+          <form onSubmit={resolverClasePendiente} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-amber-500/20 bg-slate-900 shadow-2xl">
             <header className="flex items-start justify-between border-b border-white/10 px-5 py-4">
               <div>
-                <h2 className="font-semibold text-white">Resolver clase pendiente</h2>
-                <p className="mt-1 text-xs text-slate-400">Indica si la clase se impartió.</p>
+                <h2 className="font-semibold text-white">Resolver clases pendientes <span className="text-amber-300">({extemporaneas.length})</span></h2>
+                <p className="mt-1 text-xs text-slate-400">Selecciona una clase e indica si se impartió.</p>
               </div>
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="text-2xl text-slate-400">×</button>
             </header>
-            <div className="space-y-4 p-5">
-              <label className="block text-sm text-slate-300">Clase pendiente
-                <select
-                  value={`${modalExtemporanea.carga_id}|${modalExtemporanea.fecha}`}
-                  onChange={(e) => {
-                    const [cargaId, fecha] = e.target.value.split('|');
-                    const pendiente = extemporaneas.find((item) => String(item.carga_id) === cargaId && item.fecha === fecha);
-                    setModalExtemporanea(pendiente);
-                    setMotivoExtemporaneo('');
-                    setMotivoExtemporaneoTipo('');
-                    setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
-                  }}
-                  className="input-dark mt-1"
-                >
-                  {extemporaneas.map((item) => (
-                    <option key={`${item.carga_id}-${item.fecha}`} value={`${item.carga_id}|${item.fecha}`}>
-                      {item.fecha} · {item.hora_inicio}–{item.hora_fin} · {item.materia} · {item.grupo} · {item.carrera}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[21rem_minmax(0,1fr)] lg:overflow-hidden">
+              <aside className="border-b border-white/10 p-4 lg:overflow-y-auto lg:border-b-0 lg:border-r">
+                {extemporaneas.length > 5 && <div className="mb-3 grid gap-2">
+                  <input value={busquedaPendiente} onChange={(e) => setBusquedaPendiente(e.target.value)} className="input-dark" placeholder="Buscar materia o fecha" aria-label="Buscar clase pendiente" />
+                  <select value={grupoPendiente} onChange={(e) => setGrupoPendiente(e.target.value)} className="input-dark" aria-label="Filtrar clases pendientes por grupo">
+                    <option value="">Todos los grupos</option>
+                    {gruposPendientes.map((grupo) => <option key={grupo} value={grupo}>{grupo}</option>)}
+                  </select>
+                </div>}
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Más antiguas primero</p>
+                <div className="max-h-64 space-y-2 overflow-y-auto pr-1 lg:max-h-none">
+                  {pendientesFiltradas.map((item) => {
+                    const activa = item.carga_id === modalExtemporanea.carga_id && item.fecha === modalExtemporanea.fecha;
+                    return <button key={`${item.carga_id}-${item.fecha}`} type="button" onClick={() => seleccionarPendiente(item)} className={`w-full rounded-xl border p-3 text-left transition ${activa ? 'border-amber-400/60 bg-amber-500/10' : 'border-white/10 bg-white/[0.025] hover:border-white/20 hover:bg-white/[0.05]'}`}>
+                      <div className="flex items-center justify-between gap-2"><span className={`text-xs font-semibold ${activa ? 'text-amber-300' : 'text-slate-300'}`}>{new Date(`${item.fecha}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })}</span><span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">Extemporánea</span></div>
+                      <p className="mt-1 truncate text-sm font-semibold text-white" title={item.materia}>{item.materia}</p>
+                      <p className="mt-1 text-xs text-slate-400">{item.hora_inicio}–{item.hora_fin} · {item.grupo}</p>
+                    </button>;
+                  })}
+                  {!pendientesFiltradas.length && <p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-sm text-slate-500">No hay coincidencias.</p>}
+                </div>
+              </aside>
+              <div className="space-y-4 p-5 lg:overflow-y-auto">
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] p-4">
                 <p className="font-semibold text-white">{modalExtemporanea.materia}</p>
                 <p className="mt-1 text-sm text-slate-300">{modalExtemporanea.fecha} · {modalExtemporanea.hora_inicio}–{modalExtemporanea.hora_fin} · {modalExtemporanea.grupo}</p>
                 <p className="mt-1 text-xs text-slate-400">{modalExtemporanea.carrera}</p>
                 <p className="mt-1 text-xs text-amber-300">{resolucionPendiente === 'IMPARTIDA' ? 'La asistencia quedará identificada como captura extemporánea.' : 'La clase original quedará registrada como no impartida.'}</p>
               </div>
-              <fieldset className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <fieldset className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <legend className="mb-2 text-sm font-semibold text-slate-200">¿La clase se impartió?</legend>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'IMPARTIDA' ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-slate-300'}`}>
                   <input type="radio" className="mr-2" checked={resolucionPendiente === 'IMPARTIDA'} onChange={() => { setResolucionPendiente('IMPARTIDA'); setProgramarAlDeclarar(false); setMotivoExtemporaneo(''); }} />
@@ -1260,7 +1282,7 @@ export default function MiHorarioDocente() {
                   <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => { setResolucionPendiente('NO_IMPARTIDA'); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
                   No se impartió
                 </label>
-                <label className={`cursor-pointer rounded-xl border p-3 text-sm sm:col-span-2 ${resolucionPendiente === 'NO_CORRESPONDIA' ? 'border-blue-500/50 bg-blue-500/10 text-blue-200' : 'border-white/10 text-slate-300'}`}>
+                <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'NO_CORRESPONDIA' ? 'border-blue-500/50 bg-blue-500/10 text-blue-200' : 'border-white/10 text-slate-300'}`}>
                   <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_CORRESPONDIA'} onChange={() => { setResolucionPendiente('NO_CORRESPONDIA'); setProgramarAlDeclarar(false); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
                   No correspondía impartirla
                   <span className="mt-1 block pl-5 text-xs font-normal text-slate-400">Ej. El grupo fue citado para iniciar clases en una fecha posterior.</span>
@@ -1301,10 +1323,11 @@ export default function MiHorarioDocente() {
                 </div>}
               </div>}
               <p className="text-xs text-slate-500">{resolucionPendiente === 'IMPARTIDA' ? 'Los alumnos iniciarán como presentes; marca las excepciones y cierra la asistencia.' : resolucionPendiente === 'NO_CORRESPONDIA' ? 'La clase quedará en el historial como no impartida y cerrada sin obligación de reposición.' : 'La sesión original quedará como NO IMPARTIDA y permanecerá en el historial.'}</p>
+              </div>
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={creandoExtemporanea || (resolucionPendiente === 'IMPARTIDA' ? !motivoExtemporaneoTipo || (motivoExtemporaneoTipo === 'OTRO' && motivoExtemporaneo.trim().length < 5) : motivoExtemporaneo.trim().length < 5)} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : resolucionPendiente === 'NO_CORRESPONDIA' ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
+              <button disabled={creandoExtemporanea || (resolucionPendiente === 'IMPARTIDA' ? !motivoExtemporaneoTipo || (motivoExtemporaneoTipo === 'OTRO' && motivoExtemporaneo.trim().length < 5) : motivoExtemporaneo.trim().length < 5)} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : extemporaneas.length > 1 ? (programarAlDeclarar ? 'Registrar reposición y siguiente →' : 'Resolver y siguiente →') : resolucionPendiente === 'NO_CORRESPONDIA' ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
             </footer>
           </form>
         </div>
