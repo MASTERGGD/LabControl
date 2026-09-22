@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
@@ -36,7 +36,28 @@ export default function Login() {
   const [pin, setPin] = useState('');
   const [offlineError, setOfflineError] = useState('');
   const [offlineLoading, setOfflineLoading] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
+  const [offlineSelected, setOfflineSelected] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   const offlineInfo = getOfflineAccessInfo();
+  const offlineMode = !online || offlineSelected;
+
+  useEffect(() => {
+    const updateConnection = () => {
+      setOnline(navigator.onLine);
+      setOfflineSelected(false);
+      setPin('');
+      setShowPin(false);
+      setOfflineError('');
+      setError('');
+    };
+    window.addEventListener('online', updateConnection);
+    window.addEventListener('offline', updateConnection);
+    return () => {
+      window.removeEventListener('online', updateConnection);
+      window.removeEventListener('offline', updateConnection);
+    };
+  }, []);
 
   if (usuario) {
     if (usuario.debe_cambiar_password) return <Navigate to="/cambiar-password" replace />;
@@ -85,7 +106,7 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
+      className="min-h-screen flex items-center justify-center px-4 py-10"
       style={{
         background: 'linear-gradient(135deg, #F5F7FA 0%, #EEF6F2 52%, #E6F3EC 100%)',
       }}
@@ -115,20 +136,29 @@ export default function Login() {
         </div>
 
         <div className="bg-white/95 border border-slate-200 shadow-xl p-8 rounded-2xl">
-          <h2 className="text-lg font-semibold text-slate-950 mb-6">Iniciar sesión</h2>
+          <h2 className="text-lg font-semibold text-slate-950 mb-6">{offlineMode ? 'Acceder sin conexión' : 'Iniciar sesión'}</h2>
 
-          {offlineInfo && (
-            <form onSubmit={handleOfflineSubmit} className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-slate-900">
-              <h3 className="font-semibold">Abrir datos descargados</h3>
-              <p className="mt-1 text-sm text-slate-700">Sin internet, puedes continuar con las clases guardadas en este dispositivo. El PIN no inicia sesión en el servidor.</p>
-              <label htmlFor="offline-pin" className="mt-3 block text-sm font-medium">PIN offline de 6 dígitos</label>
-              <input id="offline-pin" type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-950" />
-              {offlineError && <p role="alert" className="mt-2 text-sm text-red-700">{offlineError}</p>}
-              <button type="submit" disabled={offlineLoading} className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50">{offlineLoading ? 'Abriendo…' : 'Continuar sin conexión'}</button>
-              <p className="mt-2 text-xs text-slate-600">Válido hasta {new Date(offlineInfo.expiresAt).toLocaleString('es-MX')}.</p>
+          {offlineMode && offlineInfo && (
+            <form onSubmit={handleOfflineSubmit} className="space-y-5 text-slate-900">
+              <p id="offline-pin-help" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">Introduce tu PIN de 6 dígitos para abrir las clases guardadas en este dispositivo.</p>
+              <div>
+                <label htmlFor="offline-pin" className="mb-1.5 block text-sm font-medium text-slate-600">PIN de acceso</label>
+                <div className="relative">
+                  <input id="offline-pin" type={showPin ? 'text' : 'password'} inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} aria-describedby="offline-pin-help" aria-invalid={Boolean(offlineError)} onChange={event => { setPin(event.target.value.replace(/\D/g, '')); setOfflineError(''); }} placeholder="••••••" className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-4 pr-24 text-lg tracking-[0.3em] text-slate-950 outline-none placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+                  <button type="button" onClick={() => setShowPin(value => !value)} aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'} aria-pressed={showPin} className="absolute right-3 top-1/2 -translate-y-1/2 rounded px-2 py-3 text-sm font-semibold text-emerald-700 focus-visible:outline-emerald-600">{showPin ? 'Ocultar' : 'Mostrar'}</button>
+                </div>
+              </div>
+              {offlineError && <p role="alert" className="text-sm text-red-700">{offlineError}</p>}
+              <button type="submit" disabled={offlineLoading} className="w-full rounded-xl bg-emerald-700 px-4 py-3.5 font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50">{offlineLoading ? 'Abriendo…' : 'Abrir clases guardadas'}</button>
+              <p className="text-center text-xs leading-relaxed text-slate-500">Disponible hasta el {new Date(offlineInfo.expiresAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.</p>
             </form>
           )}
 
+          {offlineMode && !offlineInfo && (
+            <p role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">No hay acceso sin conexión configurado en este dispositivo. Conéctate a internet para iniciar sesión.</p>
+          )}
+
+          {!offlineMode && (
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-1.5" htmlFor="email">
@@ -218,6 +248,13 @@ export default function Login() {
               ) : 'Acceder al sistema'}
             </button>
           </form>
+          )}
+
+          {online && offlineInfo && (
+            <button type="button" onClick={() => { setOfflineSelected(value => !value); setPin(''); setShowPin(false); setOfflineError(''); }} className="mt-5 w-full rounded-lg px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 focus-visible:outline-emerald-600">
+              {offlineMode ? 'Volver a iniciar sesión' : 'Acceder sin conexión'}
+            </button>
+          )}
 
           <div className="mt-6 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
             <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
