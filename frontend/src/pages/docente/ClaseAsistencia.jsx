@@ -4,7 +4,9 @@ import AdminLayout from '../../components/AdminLayout';
 import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import { formatCarrera, formatNombre } from '../../utils/presentacion';
+import { enqueueOfflineOperation, getOfflineSnapshot, saveOfflineSnapshot } from '../../utils/offlineStore';
 
 const ESTADOS = [
   ['PRESENTE', 'Presente', 'bg-emerald-600'],
@@ -12,10 +14,17 @@ const ESTADOS = [
   ['RETARDO', 'Retardo', 'bg-amber-600'],
 ];
 
+const recalcularResumen = (alumnos = []) => alumnos.reduce((resumen, alumno) => {
+  const clave = String(alumno.estado || '').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(resumen, clave)) resumen[clave] += 1;
+  return resumen;
+}, { total: alumnos.length, presente: 0, falta: 0, retardo: 0, justificada: 0 });
+
 export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
   const { themeKey } = useTheme();
+  const { usuario } = useAuth();
   const isDay = themeKey === 'day';
   const [clase, setClase] = useState(null);
   const [contextos, setContextos] = useState({});
@@ -36,6 +45,13 @@ export default function ClaseAsistencia() {
     tema_impartido: '', avance_planeacion: 100, actividades_realizadas: '',
     tema_pendiente: '',
   });
+  const [modoLocal, setModoLocal] = useState(false);
+  const snapshotKey = `clase:${usuario?.id || 'anon'}:${claseId}`;
+
+  const guardarSnapshotClase = useCallback((data, contextosActuales = contextos) => {
+    if (!data) return;
+    saveOfflineSnapshot(snapshotKey, { clase: data, contextos: contextosActuales }).catch(() => {});
+  }, [contextos, snapshotKey]);
 
   const cargar = useCallback(async () => {
     try {
@@ -45,11 +61,25 @@ export default function ClaseAsistencia() {
       ]);
       setClase(claseRes.data);
       setContextos(contextoRes.data);
-    } catch {
-      setError('No se pudo cargar la clase.');
+      setModoLocal(false);
+      setError('');
+      await saveOfflineSnapshot(snapshotKey, { clase: claseRes.data, contextos: contextoRes.data });
+    } catch (err) {
+      const local = await getOfflineSnapshot(snapshotKey).catch(() => null);
+      if (local?.data?.clase) {
+        setClase(local.data.clase);
+        setContextos(local.data.contextos || {});
+        setModoLocal(true);
+        setError('');
+      } else setError(err.response ? (err.response?.data?.detail || 'No se pudo cargar la clase.') : 'Esta clase todavía no está disponible sin conexión. Ábrela una vez con internet para descargarla.');
     }
-  }, [claseId]);
+  }, [claseId, snapshotKey]);
   useEffect(() => { cargar(); }, [cargar]);
+  useEffect(() => {
+    const recargarSincronizada = () => cargar();
+    window.addEventListener('siga:offline-synced', recargarSincronizada);
+    return () => window.removeEventListener('siga:offline-synced', recargarSincronizada);
+  }, [cargar]);
   useEffect(() => {
     if (!redireccionAutomatica || !cierreConfirmado) return undefined;
     const temporizador = window.setTimeout(() => navigate('/docente/horario'), 5000);
@@ -58,18 +88,38 @@ export default function ClaseAsistencia() {
 
   const cambiar = async (asistenciaId, estado, observacion = null) => {
     if (!['ABIERTA', 'CORRECCION'].includes(clase.estado)) return;
-    setClase((actual) => ({
-      ...actual,
-      alumnos: actual.alumnos.map((a) => a.asistencia_id === asistenciaId ? { ...a, estado, observacion } : a),
-    }));
+    setClase((actual) => {
+      const siguiente = {
+        ...actual,
+        alumnos: actual.alumnos.map((a) => a.asistencia_id === asistenciaId ? { ...a, estado, observacion } : a),
+      };
+      siguiente.resumen = recalcularResumen(siguiente.alumnos);
+      return siguiente;
+    });
+    const aplicarLocal = async () => {
+      const actual = await getOfflineSnapshot(snapshotKey);
+      if (actual?.data?.clase) {
+        const alumnos = actual.data.clase.alumnos.map((a) => a.asistencia_id === asistenciaId ? { ...a, estado, observacion } : a);
+        await saveOfflineSnapshot(snapshotKey, { ...actual.data, clase: { ...actual.data.clase, alumnos, resumen: recalcularResumen(alumnos) } });
+      }
+    };
     try {
+      if (!navigator.onLine) throw new TypeError('offline');
       await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado, observacion });
-      cargar();
+      await aplicarLocal();
+      setModoLocal(false);
       return true;
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo guardar la asistencia.');
-      cargar();
-      return false;
+      if (err.response) {
+        setError(err.response?.data?.detail || 'No se pudo guardar la asistencia.');
+        cargar();
+        return false;
+      }
+      await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'ATTENDANCE', method: 'patch', url: `/docencia/clases/${claseId}/asistencia/${asistenciaId}`, data: { estado, observacion }, label: 'Cambio de asistencia' });
+      await aplicarLocal();
+      setModoLocal(true);
+      setMensaje('Cambio guardado en este dispositivo. Se sincronizará al recuperar internet.');
+      return true;
     }
   };
 
@@ -77,6 +127,7 @@ export default function ClaseAsistencia() {
     setCerrando(true);
     const eraCorreccion = clase.estado === 'CORRECCION';
     try {
+      if (!navigator.onLine) throw new TypeError('offline');
       const { data } = await api.post(`/docencia/clases/${claseId}/cerrar`, {
         ...bitacora,
         // Campo anterior: se vacía para que el seguimiento quede en un solo lugar.
@@ -93,8 +144,21 @@ export default function ClaseAsistencia() {
       });
       setRedireccionAutomatica(true);
       setError('');
+      guardarSnapshotClase(data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo cerrar la clase.');
+      if (err.response) setError(err.response?.data?.detail || 'No se pudo cerrar la clase.');
+      else {
+        const payload = { ...bitacora, tarea_asignada: '', avance_planeacion: Number(bitacora.avance_planeacion) };
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLOSE_CLASS', method: 'post', url: `/docencia/clases/${claseId}/cerrar`, data: payload, label: 'Cierre de clase' });
+        const local = { ...clase, estado: 'CERRADA', bitacora: { ...(clase.bitacora || {}), ...payload } };
+        setClase(local);
+        guardarSnapshotClase(local);
+        setModal(null);
+        setModoLocal(true);
+        setCierreConfirmado({ titulo: 'Clase guardada en este dispositivo', detalle: 'La asistencia y la bitácora se enviarán automáticamente cuando vuelva internet.' });
+        setRedireccionAutomatica(false);
+        setError('');
+      }
     } finally {
       setCerrando(false);
     }
@@ -174,6 +238,7 @@ export default function ClaseAsistencia() {
     if (!incidenciaGrupo.tipo || incidenciaGrupo.descripcion.trim().length < 5) return;
     setCerrando(true);
     try {
+      if (!navigator.onLine) throw new TypeError('offline');
       const { data } = await api.patch(`/docencia/clases/${claseId}/incidencia`, {
         tipo: incidenciaGrupo.tipo,
         descripcion: incidenciaGrupo.descripcion.trim(),
@@ -190,8 +255,20 @@ export default function ClaseAsistencia() {
             ? 'Nota registrada. Se notificará al tutor al cerrar la clase.'
             : 'Nota de la clase registrada.');
       setError('');
+      guardarSnapshotClase(data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo guardar la nota de la clase.');
+      if (err.response) setError(err.response?.data?.detail || 'No se pudo guardar la nota de la clase.');
+      else {
+        const payload = { tipo: incidenciaGrupo.tipo, descripcion: incidenciaGrupo.descripcion.trim(), requiere_seguimiento: incidenciaGrupo.requiere_seguimiento, solicita_justificacion: incidenciaGrupo.solicita_justificacion };
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLASS_NOTE', method: 'patch', url: `/docencia/clases/${claseId}/incidencia`, data: payload, label: 'Nota de clase' });
+        const local = { ...clase, bitacora: { ...(clase.bitacora || {}), incidencia_tipo: payload.tipo, incidencias: payload.descripcion, incidencia_requiere_seguimiento: payload.requiere_seguimiento, incidencia_solicita_justificacion: payload.solicita_justificacion } };
+        setClase(local);
+        guardarSnapshotClase(local);
+        setModalIncidenciaGrupo(false);
+        setModoLocal(true);
+        setMensaje(payload.requiere_seguimiento || payload.tipo === 'SEGURIDAD' ? 'Nota guardada localmente. La notificación se enviará cuando vuelva internet.' : 'Nota guardada en este dispositivo.');
+        setError('');
+      }
     } finally {
       setCerrando(false);
     }
@@ -202,6 +279,7 @@ export default function ClaseAsistencia() {
   return (
     <AdminLayout>
       <div className="space-y-5">
+        {modoLocal && <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-200" role="status"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"/><div><b>Trabajando sin conexión</b><p className="mt-0.5 text-xs text-amber-100/75">Los cambios se guardan en este dispositivo y se enviarán en orden cuando vuelva internet. No cierres sesión ni borres los datos del navegador.</p></div></div>}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <button onClick={() => navigate('/docente/horario')} className="mb-2 text-sm text-slate-400 hover:text-white">← Mi horario</button>

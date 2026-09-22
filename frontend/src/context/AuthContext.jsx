@@ -51,7 +51,8 @@ function getLastActivity() {
 
 export function AuthProvider({ children }) {
   const tieneToken = Boolean(store.getItem('token'));
-  const [usuario, setUsuario] = useState(tieneToken ? null : null);
+  const usuarioGuardado = (() => { try { return JSON.parse(store.getItem('usuario') || 'null'); } catch { return null; } })();
+  const [usuario, setUsuario] = useState(tieneToken ? usuarioGuardado : null);
   const [authListo, setAuthListo] = useState(!tieneToken);
   const [sessionInfo, setSessionInfo] = useState({ active_count: 1, active_sessions: [] });
   const [idleWarning, setIdleWarning] = useState(false);
@@ -127,8 +128,10 @@ export function AuthProvider({ children }) {
         setUsuario(data);
         markActivity(true);
       })
-      .catch(() => {
-        finishLocalSession();
+      .catch((error) => {
+        // Una interrupción de red no invalida la sesión local: permite abrir
+        // las clases que ya fueron descargadas y sincronizarlas más tarde.
+        if (error.response || !usuarioGuardado) finishLocalSession();
       })
       .finally(() => setAuthListo(true));
   }, [expireIdleSession, finishLocalSession, markActivity]);

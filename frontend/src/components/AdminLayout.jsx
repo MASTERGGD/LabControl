@@ -5,6 +5,7 @@ import api from '../hooks/useApi';
 import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
 import ThemeSwitcher from './ThemeSwitcher';
+import OfflineStatus from './OfflineStatus';
 import { useTheme } from '../context/ThemeContext';
 import { usePeriodo } from '../context/PeriodoContext';
 
@@ -1159,6 +1160,8 @@ export default function AdminLayout({ children }) {
 
           {/* Derecha: acciones */}
           <div className="flex items-center gap-2">
+
+            <OfflineStatus enabled={usuario?.rol === 'DOCENTE'} />
 
             {/* Contexto académico global: inicia en el periodo actual y permite consultar históricos. */}
             {periodo && (
