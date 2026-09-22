@@ -1,5 +1,14 @@
-const CACHE = 'siga-shell-v2';
+const CACHE = 'siga-shell-v3';
 const SHELL = ['/', '/manifest.json'];
+
+function cacheResponse(event, key, response) {
+  if (!response.ok) return;
+  // Clone before returning the response: the browser may consume it immediately.
+  const copy = response.clone();
+  event.waitUntil(caches.open(CACHE)
+    .then(cache => cache.put(key, copy))
+    .catch(() => { /* A cache failure must not interrupt the network response. */ }));
+}
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -21,8 +30,7 @@ self.addEventListener('fetch', event => {
 
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then(response => {
-      const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put('/', copy));
+      cacheResponse(event, '/', response);
       return response;
     }).catch(() => caches.match('/')));
     return;
@@ -30,7 +38,7 @@ self.addEventListener('fetch', event => {
 
   if (/\.(?:js|css|png|jpg|jpeg|svg|ico|woff2?)$/i.test(url.pathname)) {
     event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-      if (response.ok) caches.open(CACHE).then(cache => cache.put(request, response.clone()));
+      cacheResponse(event, request, response);
       return response;
     })));
   }

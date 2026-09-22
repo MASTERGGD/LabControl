@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from fastapi.middleware.cors import CORSMiddleware
 
 from tests.conftest import get_token, auth_headers
 from services.rate_limit import RateLimitMiddleware
@@ -34,6 +35,25 @@ def test_cors_produccion_permite_contexto_de_periodo():
 def test_cors_produccion_permite_identificador_de_sesion():
     """El control de sesiones no debe bloquear el login durante el preflight."""
     assert "X-SIGA-Session-ID" in PRODUCTION_CORS_HEADERS
+
+
+def test_cors_produccion_permite_sincronizacion_offline():
+    app = FastAPI()
+    origin = "https://siga-utecan.up.railway.app"
+    app.add_middleware(
+        CORSMiddleware, allow_origins=[origin], allow_credentials=True,
+        allow_methods=["POST", "PATCH"], allow_headers=PRODUCTION_CORS_HEADERS,
+    )
+    with TestClient(app) as client:
+        for method in ("POST", "PATCH"):
+            response = client.options("/docencia/horario/90/iniciar-offline", headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "authorization,content-type,x-siga-offline-operation,x-siga-periodo-id,x-siga-session-id",
+            })
+            assert response.status_code == 200
+            assert response.headers["access-control-allow-origin"] == origin
+            assert "x-siga-offline-operation" in response.headers["access-control-allow-headers"].lower()
 
 
 # ─── 1. Guard de cambio de contraseña obligatorio ──────────────────────────────

@@ -161,6 +161,7 @@ _CORS_ENV     = os.getenv("CORS_ORIGINS", "")
 PRODUCTION_CORS_HEADERS = [
     "Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With",
     "X-SIGA-Periodo-Id", "X-SIGA-Periodo", "X-SIGA-Session-ID",
+    "X-SIGA-Offline-Operation",
 ]
 
 if _APP_ENV in ("production", "prod"):
