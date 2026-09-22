@@ -50,3 +50,9 @@ test('rechaza PIN débil en longitud y cuentas no docentes', async () => {
   await expect(configureOfflineAccess('1234', docente, periodo)).rejects.toThrow('6 dígitos');
   await expect(configureOfflineAccess('123456', { ...docente, rol: 'ALUMNO' }, periodo)).rejects.toThrow('sesión docente');
 });
+
+test('no muestra el PIN de otro docente como activo en su panel', async () => {
+  await configureOfflineAccess('123456', docente, periodo);
+  expect(getOfflineAccessInfo(docente.id)).not.toBeNull();
+  expect(getOfflineAccessInfo(99)).toBeNull();
+});

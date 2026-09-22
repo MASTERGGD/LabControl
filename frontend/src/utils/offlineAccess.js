@@ -14,9 +14,10 @@ async function keyFromPin(pin, salt) {
   );
 }
 
-export function getOfflineAccessInfo() {
+export function getOfflineAccessInfo(ownerId = null) {
   const record = read();
   if (!record) return null;
+  if (ownerId != null && String(record.ownerId) !== String(ownerId)) return null;
   return { expiresAt: record.expiresAt, lockedUntil: record.lockedUntil || 0 };
 }
 
@@ -29,8 +30,8 @@ export async function configureOfflineAccess(pin, usuario, periodo) {
   const key = await keyFromPin(pin, salt);
   const payload = { usuario: { id: usuario.id, nombre: usuario.nombre, rol: 'DOCENTE' }, periodo: { id: periodo.id, clave: periodo.clave, es_actual: periodo.es_actual, estado_periodo: periodo.estado_periodo } };
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(payload)));
-  localStorage.setItem(KEY, JSON.stringify({ salt: toBase64(salt), iv: toBase64(iv), ciphertext: toBase64(new Uint8Array(ciphertext)), expiresAt: Date.now() + VALID_MS, attempts: 0, lockedUntil: 0 }));
-  return getOfflineAccessInfo();
+  localStorage.setItem(KEY, JSON.stringify({ ownerId: usuario.id, salt: toBase64(salt), iv: toBase64(iv), ciphertext: toBase64(new Uint8Array(ciphertext)), expiresAt: Date.now() + VALID_MS, attempts: 0, lockedUntil: 0 }));
+  return getOfflineAccessInfo(usuario.id);
 }
 
 export async function unlockOfflineAccess(pin) {

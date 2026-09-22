@@ -70,3 +70,13 @@ test('el indicador de asistencia abre directamente la clase pendiente', async ()
   await act(async () => boton.click());
   expect(mockNavigate).toHaveBeenCalledWith('/docente/clase/91');
 });
+
+test('la configuración del PIN permanece compacta hasta que el docente la abre', async () => {
+  await act(async () => root.render(<DashboardDocente />));
+  expect(host.textContent).toContain('PIN pendiente');
+  expect(host.querySelector('[role="dialog"]')).toBeNull();
+  const configurar = [...host.querySelectorAll('button')].find(button => button.textContent === 'Configurar PIN');
+  await act(async () => configurar.click());
+  expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(host.querySelectorAll('[role="dialog"] input[type="password"]')).toHaveLength(2);
+});
