@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import api from '../hooks/useApi';
+import { getOfflineAccessInfo, unlockOfflineAccess } from '../utils/offlineAccess';
 
 const AuthContext = createContext(null);
 
@@ -42,6 +43,7 @@ function clearStoredSession() {
   store.removeItem('siga_periodo_id');
   store.removeItem('siga_periodo_clave');
   store.removeItem('siga_periodo_historico');
+  store.removeItem('siga_offline_periodo');
 }
 
 function getLastActivity() {
@@ -53,6 +55,7 @@ export function AuthProvider({ children }) {
   const tieneToken = Boolean(store.getItem('token'));
   const usuarioGuardado = (() => { try { return JSON.parse(store.getItem('usuario') || 'null'); } catch { return null; } })();
   const [usuario, setUsuario] = useState(tieneToken ? usuarioGuardado : null);
+  const [offlineAccess, setOfflineAccess] = useState(false);
   const [authListo, setAuthListo] = useState(!tieneToken);
   const [sessionInfo, setSessionInfo] = useState({ active_count: 1, active_sessions: [] });
   const [idleWarning, setIdleWarning] = useState(false);
@@ -71,6 +74,7 @@ export function AuthProvider({ children }) {
     setSessionInfo({ active_count: 1, active_sessions: [] });
     setIdleWarning(false);
     setUsuario(null);
+    setOfflineAccess(false);
   }, []);
 
   const expireIdleSession = useCallback((redirect = true) => {
@@ -184,7 +188,24 @@ export function AuthProvider({ children }) {
     };
   }, [checkIdleSession, markActivity, usuario]);
 
+  useEffect(() => {
+    if (!offlineAccess) return undefined;
+    const expiresAt = getOfflineAccessInfo()?.expiresAt || 0;
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      finishLocalSession();
+      window.location.replace('/login');
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      finishLocalSession();
+      window.location.replace('/login');
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [finishLocalSession, offlineAccess]);
+
   const login = (userData, token) => {
+    store.removeItem('siga_offline_periodo');
     store.setItem('token', token);
     store.setItem('usuario', JSON.stringify(userData));
     store.removeItem(LOGOUT_REASON_KEY);
@@ -192,6 +213,19 @@ export function AuthProvider({ children }) {
     getBrowserSessionId();
     setIdleWarning(false);
     setUsuario(userData);
+    setOfflineAccess(false);
+  };
+
+  const loginOffline = async pin => {
+    const { usuario: offlineUser, periodo } = await unlockOfflineAccess(pin);
+    clearStoredSession();
+    store.setItem('usuario', JSON.stringify(offlineUser));
+    store.setItem('siga_periodo_id', String(periodo.id));
+    store.setItem('siga_periodo_clave', periodo.clave);
+    store.setItem('siga_periodo_historico', periodo.es_actual ? '0' : '1');
+    store.setItem('siga_offline_periodo', JSON.stringify(periodo));
+    setOfflineAccess(true);
+    setUsuario(offlineUser);
   };
 
   const logout = () => {
@@ -220,7 +254,7 @@ export function AuthProvider({ children }) {
   if (!authListo) return null;
 
   return (
-    <AuthContext.Provider value={{ usuario, login, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo }}>
+    <AuthContext.Provider value={{ usuario, login, loginOffline, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo }}>
       {children}
       {idleWarning && usuario && (
         <div className="fixed inset-x-0 bottom-5 z-[9999] flex justify-center px-4 pointer-events-none">

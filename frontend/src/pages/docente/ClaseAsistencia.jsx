@@ -24,7 +24,7 @@ export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
   const { themeKey } = useTheme();
-  const { usuario } = useAuth();
+  const { usuario, offlineAccess } = useAuth();
   const isDay = themeKey === 'day';
   const [clase, setClase] = useState(null);
   const [contextos, setContextos] = useState({});
@@ -56,6 +56,7 @@ export default function ClaseAsistencia() {
 
   const cargar = useCallback(async () => {
     try {
+      if (offlineAccess) throw new TypeError('offline');
       const [claseRes, contextoRes] = await Promise.all([
         api.get(`/docencia/clases/${claseId}`),
         api.get(`/docencia/clases/${claseId}/contexto-alumnos`),
@@ -74,7 +75,7 @@ export default function ClaseAsistencia() {
         setError('');
       } else setError(err.response ? (err.response?.data?.detail || 'No se pudo cargar la clase.') : 'Esta clase todavía no está disponible sin conexión. Ábrela una vez con internet para descargarla.');
     }
-  }, [claseId, snapshotKey]);
+  }, [claseId, snapshotKey, offlineAccess]);
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => {
     const recargarSincronizada = () => cargar();
@@ -111,7 +112,7 @@ export default function ClaseAsistencia() {
       return true;
     }
     try {
-      if (!navigator.onLine) throw new TypeError('offline');
+      if (!navigator.onLine || offlineAccess) throw new TypeError('offline');
       await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado, observacion });
       await aplicarLocal();
       setModoLocal(false);
@@ -152,7 +153,7 @@ export default function ClaseAsistencia() {
         setError('');
         return;
       }
-      if (!navigator.onLine) throw new TypeError('offline');
+      if (!navigator.onLine || offlineAccess) throw new TypeError('offline');
       const { data } = await api.post(`/docencia/clases/${claseId}/cerrar`, {
         ...bitacora,
         // Campo anterior: se vacía para que el seguimiento quede en un solo lugar.
@@ -274,7 +275,7 @@ export default function ClaseAsistencia() {
         setError('');
         return;
       }
-      if (!navigator.onLine) throw new TypeError('offline');
+      if (!navigator.onLine || offlineAccess) throw new TypeError('offline');
       const { data } = await api.patch(`/docencia/clases/${claseId}/incidencia`, {
         tipo: incidenciaGrupo.tipo,
         descripcion: incidenciaGrupo.descripcion.trim(),
@@ -315,7 +316,7 @@ export default function ClaseAsistencia() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        {modoLocal && <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-200" role="status"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"/><div><b>Trabajando sin conexión</b><p className="mt-0.5 text-xs text-amber-100/75">Los cambios se guardan en este dispositivo y se enviarán en orden cuando vuelva internet. No cierres sesión ni borres los datos del navegador.</p></div></div>}
+        {modoLocal && <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-950/35 px-4 py-3 text-sm text-amber-100" role="status"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"/><div><b>Trabajando sin conexión</b><p className="mt-0.5 text-xs text-amber-200">Los cambios se guardan en este dispositivo. Si cierras el navegador, podrás volver con tu PIN offline. No borres los datos del navegador; inicia sesión con internet para sincronizar.</p></div></div>}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <button onClick={() => navigate('/docente/horario')} className="mb-2 text-sm text-slate-400 hover:text-white">← Mi horario</button>

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { usePeriodo } from '../context/PeriodoContext';
 import api from '../hooks/useApi';
 import { abrirClaseDocente } from '../utils/abrirClaseDocente';
@@ -11,6 +12,7 @@ import { abreviarCarrera } from '../utils/resumenConsultaHorario';
 import { formatNombre } from '../utils/presentacion';
 import { MEXICO_TIME_ZONE } from '../utils/timezone';
 import { getOfflineSnapshot, saveOfflineSnapshot } from '../utils/offlineStore';
+import { configureOfflineAccess, getOfflineAccessInfo } from '../utils/offlineAccess';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toTitleCase = formatNombre;
@@ -217,7 +219,8 @@ function BannerCalendarioOficial({ estado, proximaClase, onCalendario }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function DashboardDocente() {
-  const { usuario }   = useAuth();
+  const { usuario, offlineAccess, logout } = useAuth();
+  const { themeKey } = useTheme();
   const { periodo }   = usePeriodo();
   const navigate      = useNavigate();
 
@@ -237,12 +240,30 @@ export default function DashboardDocente() {
   const [modoLocal, setModoLocal] = useState(false);
   const [sinDatosLocales, setSinDatosLocales] = useState(false);
   const [preparandoOffline, setPreparandoOffline] = useState(false);
+  const [pinOffline, setPinOffline] = useState('');
+  const [pinOfflineConfirmacion, setPinOfflineConfirmacion] = useState('');
+  const [configurandoPin, setConfigurandoPin] = useState(false);
+  const [offlineInfo, setOfflineInfo] = useState(() => getOfflineAccessInfo());
+  const [offlinePinError, setOfflinePinError] = useState('');
   const paqueteKey = `paquete-docente:${usuario?.id || 'anon'}`;
 
   // Cargar datos al montar
   const cargarDatos = useCallback(async (silencioso = false) => {
     if (!silencioso) setLoading(true);
     try {
+      if (offlineAccess) {
+        const local = await getOfflineSnapshot(paqueteKey).catch(() => null);
+        if (local?.data?.operacion) {
+          setOperacion(local.data.operacion);
+          setPaqueteOffline(local.data);
+          setModoLocal(true);
+          setSinDatosLocales(false);
+        } else {
+          setOperacion(null);
+          setSinDatosLocales(true);
+        }
+        return;
+      }
       const [resComunicados, resSesion, resSolicitudes, resOperacion] = await Promise.allSettled([
         api.get('/comunicados/pendientes-count'),
         api.get('/sesiones/activas'),
@@ -300,7 +321,7 @@ export default function DashboardDocente() {
     } finally {
       setLoading(false);
     }
-  }, [paqueteKey, usuario?.id]);
+  }, [paqueteKey, usuario?.id, offlineAccess]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
@@ -346,7 +367,7 @@ export default function DashboardDocente() {
     setAbriendo(true);
     setErrorClase('');
     try {
-      if (!navigator.onLine) {
+      if (!navigator.onLine || offlineAccess) {
         if (item.tipo_actividad !== 'CLASE') throw new Error('Esta operación requiere conexión al servidor.');
         if (item.clase_id) {
           const cache = await getOfflineSnapshot(`clase:${usuario?.id}:${item.clase_id}`);
@@ -400,6 +421,21 @@ export default function DashboardDocente() {
     await cargarDatos(true);
     setPreparandoOffline(false);
   };
+  const activarPinOffline = async event => {
+    event.preventDefault();
+    setOfflinePinError('');
+    if (pinOffline !== pinOfflineConfirmacion) { setOfflinePinError('Los PIN no coinciden.'); return; }
+    setConfigurandoPin(true);
+    try {
+      const paqueteGuardado = await getOfflineSnapshot(paqueteKey);
+      if (!paqueteGuardado?.data?.operacion) throw new Error('Primero actualiza los datos offline y comprueba que se descargaron en este dispositivo.');
+      const info = await configureOfflineAccess(pinOffline, usuario, periodo);
+      setOfflineInfo(info);
+      setPinOffline('');
+      setPinOfflineConfirmacion('');
+    } catch (error) { setOfflinePinError(error.message || 'No se pudo configurar el acceso offline.'); }
+    finally { setConfigurandoPin(false); }
+  };
 
   // Items de "Atención requerida"
   const atencionItems = [];
@@ -420,7 +456,8 @@ export default function DashboardDocente() {
     <AdminLayout>
       <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
-        {modoLocal && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-800"><div><b>Modo sin conexión</b><p className="text-xs opacity-75">Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}.</p></div><span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold">Los cambios quedarán en este dispositivo</span></div>}
+        {modoLocal && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>Modo sin conexión</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}.</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}
+        {offlineAccess && navigator.onLine && <div className="rounded-xl border border-blue-400/50 bg-blue-950/30 p-4 text-sm text-blue-100">Volvió la conexión. Inicia sesión con tu cuenta institucional para sincronizar los cambios. <button type="button" onClick={() => { logout(); navigate('/login'); }} className="ml-2 font-semibold underline">Ir a iniciar sesión</button></div>}
         {sinDatosLocales && !loading && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="font-bold text-amber-700">No hay información disponible sin conexión</h2><p className="mt-1 text-sm text-slate-500">Conéctate a internet y pulsa “Actualizar datos offline” para descargar tu jornada y listas.</p></section>}
 
         {/* ── Saludo ──────────────────────────────────────────────────── */}
@@ -434,6 +471,20 @@ export default function DashboardDocente() {
           </p>
           {!modoLocal && <button type="button" disabled={preparandoOffline} onClick={prepararOffline} className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600 disabled:opacity-50">{preparandoOffline ? 'Actualizando…' : 'Actualizar datos offline'}</button>}
         </div>
+
+        {!offlineAccess && !modoLocal && paqueteOffline?.operacion && periodo && (
+          <section className={`rounded-xl border p-4 text-sm ${themeKey === 'day' ? 'border-slate-300 bg-white text-slate-700' : 'border-slate-500/40 bg-slate-900/60 text-slate-200'}`}>
+            <p className={`font-semibold ${themeKey === 'day' ? 'text-slate-950' : 'text-white'}`}>Acceso a clases sin internet</p>
+            <p className="mt-1">Tu jornada ya está descargada. Configura un PIN para abrirla si cierras el navegador. Vence a las 24 horas; al volver internet deberás iniciar sesión para sincronizar. Usa un dispositivo personal: las listas guardadas aún dependen de la seguridad de este navegador.</p>
+            {offlineInfo && Date.now() < offlineInfo.expiresAt && <p className={`mt-2 ${themeKey === 'day' ? 'text-emerald-800' : 'text-emerald-300'}`}>PIN configurado hasta {new Date(offlineInfo.expiresAt).toLocaleString('es-MX')}. Puedes renovarlo aquí.</p>}
+            <form onSubmit={activarPinOffline} className="mt-3 flex flex-wrap items-end gap-2">
+              <label className="text-xs">PIN de 6 dígitos<input type="password" inputMode="numeric" autoComplete="off" required pattern="[0-9]{6}" maxLength={6} value={pinOffline} onChange={event => setPinOffline(event.target.value.replace(/\D/g, ''))} className="mt-1 block w-36 rounded-lg border border-slate-500 bg-slate-900 px-3 py-2 text-white" /></label>
+              <label className="text-xs">Confirmar PIN<input type="password" inputMode="numeric" autoComplete="off" required pattern="[0-9]{6}" maxLength={6} value={pinOfflineConfirmacion} onChange={event => setPinOfflineConfirmacion(event.target.value.replace(/\D/g, ''))} className="mt-1 block w-36 rounded-lg border border-slate-500 bg-slate-900 px-3 py-2 text-white" /></label>
+              <button type="submit" disabled={configurandoPin} className="rounded-lg bg-emerald-700 px-3 py-2 font-semibold text-white disabled:opacity-50">{configurandoPin ? 'Guardando…' : 'Activar acceso offline'}</button>
+            </form>
+            {offlinePinError && <p role="alert" className={`mt-2 ${themeKey === 'day' ? 'text-red-700' : 'text-red-300'}`}>{offlinePinError}</p>}
+          </section>
+        )}
 
         {/* ── Sesión activa (prioridad máxima) ───────────────────────── */}
         {sesionActiva && (
@@ -519,7 +570,7 @@ export default function DashboardDocente() {
               <h2 className="font-bold text-white">Mi jornada de hoy</h2>
               <p className="text-xs text-slate-500">Clases, tutorías y otras actividades de tu horario.</p>
             </div>
-            <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>
+            {!offlineAccess && <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">

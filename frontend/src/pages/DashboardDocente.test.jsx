@@ -7,10 +7,12 @@ import { abrirClaseDocente } from '../utils/abrirClaseDocente';
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 jest.mock('../components/AdminLayout', () => ({ children }) => <div>{children}</div>);
-jest.mock('../context/AuthContext', () => ({ useAuth: () => ({ usuario: { nombre: 'Docente' } }) }));
-jest.mock('../context/PeriodoContext', () => ({ usePeriodo: () => ({ periodo: { clave: 'SEP-DIC 2026' } }) }));
+jest.mock('../context/AuthContext', () => ({ useAuth: () => ({ usuario: { id: 42, nombre: 'Docente', rol: 'DOCENTE' }, offlineAccess: false }) }));
+jest.mock('../context/PeriodoContext', () => ({ usePeriodo: () => ({ periodo: { id: 7, clave: 'SEP-DIC 2026' } }) }));
+jest.mock('../context/ThemeContext', () => ({ useTheme: () => ({ themeKey: 'night' }) }));
 jest.mock('../hooks/useApi', () => ({ get: jest.fn() }));
 jest.mock('../utils/abrirClaseDocente', () => ({ abrirClaseDocente: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../utils/offlineStore', () => ({ getOfflineSnapshot: jest.fn().mockResolvedValue(null), saveOfflineSnapshot: jest.fn().mockResolvedValue(undefined) }));
 
 let host, root;
 const bloque = { id: 12, hora_inicio: '10:15', hora_fin: '12:00', calendario: { requiere_asistencia: true, permite_iniciar_clase: true } };
@@ -22,11 +24,11 @@ beforeEach(() => {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/dashboard' ? {
+  api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/offline/paquete' ? { operacion: {
     fecha: '2026-09-03', resumen: { grupos_activos: 1 }, grupos: [], alumnos_prioritarios: [],
     jornada: [{ carga_id: 12, materia: 'Inteligencia artificial', grupo: '7 A', espacio: 'Salón 14', hora_inicio: '10:15', hora_fin: '12:00', estado: 'PROGRAMADA' }],
     proxima_clase: null,
-  } : url === '/docencia/hoy' ? [bloque] : [] }));
+  }, clases: {} } : url === '/docencia/hoy' ? [bloque] : [] }));
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -57,12 +59,12 @@ test('al entrar durante la clase aparece el acceso aunque no haya próxima clase
 });
 
 test('el indicador de asistencia abre directamente la clase pendiente', async () => {
-  api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/dashboard' ? {
+  api.get.mockImplementation(url => Promise.resolve({ data: url === '/docencia/offline/paquete' ? { operacion: {
     fecha: '2026-09-03',
     resumen: { grupos_activos: 1, asistencias_pendientes: 1, acuerdos_pendientes: 0 },
     asistencias_pendientes: [{ clase_id: 91, carga_id: 12, fecha: '2026-09-02', materia: 'Inteligencia artificial', accion: 'Continuar asistencia' }],
     jornada: [], grupos: [], alumnos_prioritarios: [], proxima_clase: null,
-  } : [] }));
+  }, clases: {} } : [] }));
   await act(async () => root.render(<DashboardDocente />));
   const boton = [...host.querySelectorAll('button')].find(item => item.textContent.includes('Asistencias'));
   await act(async () => boton.click());

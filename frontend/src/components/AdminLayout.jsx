@@ -6,6 +6,7 @@ import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
 import ThemeSwitcher from './ThemeSwitcher';
 import OfflineStatus from './OfflineStatus';
+import { listOfflineOperations } from '../utils/offlineStore';
 import { useTheme } from '../context/ThemeContext';
 import { usePeriodo } from '../context/PeriodoContext';
 
@@ -945,7 +946,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 
 // Layout principal
 export default function AdminLayout({ children }) {
-  const { usuario, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
+  const { usuario, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const homePath = getHomePath(usuario);
@@ -1041,7 +1042,14 @@ export default function AdminLayout({ children }) {
     return () => window.removeEventListener('labcontrol:abrir-uso-libre', abrirUsoLibre);
   }, [usuario?.rol]);
 
-  const handleLogout = useCallback(() => { logout(); navigate('/login'); }, [logout, navigate]);
+  const handleLogout = useCallback(async () => {
+    if (usuario?.rol === 'DOCENTE') {
+      const pendientes = await listOfflineOperations(usuario.id).catch(() => []);
+      if (pendientes.length && !window.confirm(`Tienes ${pendientes.length} captura${pendientes.length === 1 ? '' : 's'} pendiente${pendientes.length === 1 ? '' : 's'} de sincronizar. Se conservarán en este dispositivo. ¿Cerrar sesión?`)) return;
+    }
+    logout();
+    navigate('/login');
+  }, [logout, navigate, usuario?.id, usuario?.rol]);
   const handleCambiarFuncion = async (rol) => {
     if (!rol || rol === usuario?.rol) return;
     setCambiandoFuncion(true);
@@ -1070,6 +1078,7 @@ export default function AdminLayout({ children }) {
     || usuario?.rol === 'LAB_ADMIN'
     || espaciosResponsable.length > 0;
   const itemsVisibles = NAV_ITEMS.filter(item => {
+    if (offlineAccess) return item.path === '/docente';
     if (usuario?.rol === 'SUPER_ADMIN' && item.ocultarSuperAdmin) return false;
     // Permiso base por rol
     const porRol = item.roles.includes(usuario?.rol);

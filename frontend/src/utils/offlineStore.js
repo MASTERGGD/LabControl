@@ -74,7 +74,7 @@ async function removeOperation(id) {
 }
 
 export async function flushOfflineQueue(api, ownerId) {
-  if (!navigator.onLine) return { synced: 0, conflicts: 0, pending: (await listOfflineOperations(ownerId)).length };
+  if (!navigator.onLine || !sessionStorage.getItem('token') || ownerId == null) return { synced: 0, conflicts: 0, pending: (await listOfflineOperations(ownerId)).length };
   const operations = await listOfflineOperations(ownerId);
   let synced = 0;
   let conflicts = 0;

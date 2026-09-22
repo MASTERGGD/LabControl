@@ -11,7 +11,7 @@ export default function useOfflineSync(enabled = true) {
 
   const refresh = useCallback(() => listOfflineOperations(ownerId).then(setOperations).catch(() => setOperations([])), [ownerId]);
   const sync = useCallback(async () => {
-    if (!enabled || !navigator.onLine || syncingRef.current) return;
+    if (!enabled || !navigator.onLine || !sessionStorage.getItem('token') || syncingRef.current) return;
     syncingRef.current = true;
     setSyncing(true);
     try { await flushOfflineQueue(api, ownerId); } finally { syncingRef.current = false; setSyncing(false); refresh(); }

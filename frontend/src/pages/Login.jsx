@@ -2,6 +2,7 @@ import React, { useState, useId } from 'react';
 import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
+import { getOfflineAccessInfo } from '../utils/offlineAccess';
 
 const ROLES_REDIRECT = {
   SUPER_ADMIN: '/admin',
@@ -26,12 +27,16 @@ function getRedirectPath(usuario) {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, usuario } = useAuth();
+  const { login, loginOffline, usuario } = useAuth();
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const [pin, setPin] = useState('');
+  const [offlineError, setOfflineError] = useState('');
+  const [offlineLoading, setOfflineLoading] = useState(false);
+  const offlineInfo = getOfflineAccessInfo();
 
   if (usuario) {
     if (usuario.debe_cambiar_password) return <Navigate to="/cambiar-password" replace />;
@@ -67,6 +72,17 @@ export default function Login() {
     }
   };
 
+  const handleOfflineSubmit = async event => {
+    event.preventDefault();
+    setOfflineLoading(true);
+    setOfflineError('');
+    try {
+      await loginOffline(pin);
+      navigate('/docente', { replace: true });
+    } catch (err) { setOfflineError(err.message || 'No se pudo abrir la copia offline.'); }
+    finally { setOfflineLoading(false); setPin(''); }
+  };
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -100,6 +116,18 @@ export default function Login() {
 
         <div className="bg-white/95 border border-slate-200 shadow-xl p-8 rounded-2xl">
           <h2 className="text-lg font-semibold text-slate-950 mb-6">Iniciar sesión</h2>
+
+          {offlineInfo && (
+            <form onSubmit={handleOfflineSubmit} className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-slate-900">
+              <h3 className="font-semibold">Abrir datos descargados</h3>
+              <p className="mt-1 text-sm text-slate-700">Sin internet, puedes continuar con las clases guardadas en este dispositivo. El PIN no inicia sesión en el servidor.</p>
+              <label htmlFor="offline-pin" className="mt-3 block text-sm font-medium">PIN offline de 6 dígitos</label>
+              <input id="offline-pin" type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, ''))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-950" />
+              {offlineError && <p role="alert" className="mt-2 text-sm text-red-700">{offlineError}</p>}
+              <button type="submit" disabled={offlineLoading} className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50">{offlineLoading ? 'Abriendo…' : 'Continuar sin conexión'}</button>
+              <p className="mt-2 text-xs text-slate-600">Válido hasta {new Date(offlineInfo.expiresAt).toLocaleString('es-MX')}.</p>
+            </form>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>

@@ -75,10 +75,14 @@ const PERM_MATERIAS_MANAGE = 'materias:manage';
 // También acepta rolesPermitidos explícito para casos especiales.
 
 function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) {
-  const { usuario } = useAuth();
+  const { usuario, offlineAccess } = useAuth();
 
   if (!usuario) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (offlineAccess && !(/^\/docente(?:\/clase\/[^/]+)?$/.test(window.location.pathname))) {
+    return <Navigate to="/docente" replace />;
   }
 
   // Cambio de contraseña obligatorio pendiente: bloquear toda la app.

@@ -15,7 +15,7 @@ function guardarPeriodo(periodo) {
 }
 
 export function PeriodoProvider({ children }) {
-  const { usuario } = useAuth();
+  const { usuario, offlineAccess } = useAuth();
   const [periodos, setPeriodos] = useState([]);
   const [periodo, setPeriodo] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -24,6 +24,14 @@ export function PeriodoProvider({ children }) {
     if (!usuario) {
       setPeriodos([]);
       setPeriodo(null);
+      return;
+    }
+
+    if (offlineAccess) {
+      let local = null;
+      try { local = JSON.parse(sessionStorage.getItem('siga_offline_periodo') || 'null'); } catch { /* sin periodo local */ }
+      setPeriodos(local ? [local] : []);
+      setPeriodo(local);
       return;
     }
 
@@ -41,11 +49,13 @@ export function PeriodoProvider({ children }) {
         guardarPeriodo(seleccionado);
       })
       .catch(() => {
-        setPeriodos([]);
-        setPeriodo(null);
+        let local = null;
+        try { local = JSON.parse(sessionStorage.getItem('siga_offline_periodo') || 'null'); } catch { /* sin periodo local */ }
+        setPeriodos(local ? [local] : []);
+        setPeriodo(local);
       })
       .finally(() => setCargando(false));
-  }, [usuario?.id]);
+  }, [usuario?.id, offlineAccess]);
 
   const actualizarPeriodo = useCallback((cambios) => {
     setPeriodos(actuales => actuales.map(item => item.id === cambios.id ? { ...item, ...cambios } : item));
