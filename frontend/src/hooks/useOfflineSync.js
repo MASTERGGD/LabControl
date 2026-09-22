@@ -34,7 +34,7 @@ export default function useOfflineSync(enabled = true) {
   }, [enabled, refresh, sync]);
 
   return {
-    online, syncing, sync,
+    online, syncing, sync, operations,
     pending: operations.filter(item => item.status === 'PENDING').length,
     conflicts: operations.filter(item => item.status === 'CONFLICT').length,
   };

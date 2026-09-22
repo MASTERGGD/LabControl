@@ -82,6 +82,19 @@ async function removeOperation(id) {
   await transact(QUEUE, 'readwrite', store => store.delete(id));
 }
 
+export async function retryOfflineOperation(id) {
+  const operations = await listOfflineOperations();
+  const item = operations.find(operation => operation.id === id);
+  if (!item) return;
+  await updateOperation({ ...item, status: 'PENDING', error: null, attempts: 0 });
+  notify();
+}
+
+export async function discardOfflineOperation(id) {
+  await removeOperation(id);
+  notify();
+}
+
 export async function flushOfflineQueue(api, ownerId) {
   if (!navigator.onLine || !sessionStorage.getItem('token') || ownerId == null) return { synced: 0, conflicts: 0, pending: (await listOfflineOperations(ownerId)).length };
   const operations = await listOfflineOperations(ownerId);

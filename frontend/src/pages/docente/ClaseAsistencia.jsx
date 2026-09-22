@@ -148,7 +148,7 @@ export default function ClaseAsistencia() {
         guardarSnapshotClase(local);
         setModal(null);
         setModoLocal(true);
-        setCierreConfirmado({ titulo: 'Clase guardada en este dispositivo', detalle: 'Se creará y cerrará en SIGA automáticamente cuando vuelva internet.' });
+        setCierreConfirmado({ titulo: 'Clase guardada en este dispositivo', detalle: 'Quedó pendiente de validación y sincronización. Inicia sesión con internet antes de 7 días y confirma el resultado en Historial de clases.' });
         setRedireccionAutomatica(false);
         setError('');
         return;

@@ -13,7 +13,7 @@ El PIN no es una sesión del servidor. Durante el acceso local solo se permiten 
 3. Configurar y confirmar el PIN. Anotar mentalmente su vigencia, visible en pantalla.
 4. Abrir una clase previamente descargada y probar la operación sin conexión antes de depender de ella en una jornada completa.
 
-Si se cierra el navegador, se abre la página habitual de SIGA y se elige **Continuar sin conexión**. Una vez disponible internet, se inicia sesión con correo y contraseña para sincronizar. El indicador de pendientes debe llegar a cero o mostrar el conflicto que requiera revisión.
+Si se cierra el navegador, se abre la página habitual de SIGA y se elige **Continuar sin conexión**. Una vez disponible internet, se inicia sesión con correo y contraseña para sincronizar. El indicador permanece visible también en móvil y abre el detalle de capturas pendientes o rechazadas. Desde el quinto día advierte que el plazo de aceptación automática está próximo a vencer.
 
 ## Límites de seguridad y operación
 
@@ -22,7 +22,8 @@ Si se cierra el navegador, se abre la página habitual de SIGA y se elige **Cont
 - Borrar datos del sitio, usar navegación privada o cambiar de dispositivo puede eliminar las capturas no sincronizadas.
 - El paquete refleja el estado de la última descarga. Cambios de inscripción, horario o calendario posteriores requieren reconciliación al sincronizar; el servidor conserva la autoridad.
 - Reservar laboratorios o espacios y modificar el horario siguen siendo operaciones exclusivamente en línea.
-- Este acceso cubre jornada, pase de lista y bitácora de clase. Reportes individuales y tutoría offline aún no están incluidos.
+- Este acceso cubre jornada, pase de lista y bitácora de clase. También permite consultar, con la hora de corte visible, el horario, hasta 80 clases recientes y el seguimiento de los grupos descargados. Reportes individuales y tutoría offline aún no están incluidos.
+- El plazo de siete días limita la aceptación automática del servidor; una captura vencida o rechazada se conserva localmente como **Requiere revisión** hasta que el docente la respalde, reintente o descarte con confirmación.
 
 ## Verificación previa a producción
 
