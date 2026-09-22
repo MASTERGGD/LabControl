@@ -441,6 +441,13 @@ def test_flujo_horario_clase_y_asistencia(client, db, monkeypatch):
     assert seguimiento.json()["muestra_suficiente"] is False
     assert seguimiento.json()["alumnos_en_alerta"] == 0
 
+    paquete = client.get("/docencia/offline/paquete", headers=headers)
+    assert paquete.status_code == 200, paquete.text
+    assert any(item["id"] == carga_id for item in paquete.json()["horario"])
+    assert any(item["id"] == clase["id"] for item in paquete.json()["historial"])
+    assert paquete.json()["seguimientos"][str(carga_id)]["total_clases"] == 1
+    assert "clases" not in paquete.json()["seguimientos"][str(carga_id)]
+
     alumno_id = clase["alumnos"][0]["alumno_id"]
     registro = client.post(
         f"/docencia/seguimiento/{carga_id}/alumnos/{alumno_id}/registros",

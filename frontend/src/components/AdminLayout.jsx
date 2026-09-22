@@ -1078,7 +1078,7 @@ export default function AdminLayout({ children }) {
     || usuario?.rol === 'LAB_ADMIN'
     || espaciosResponsable.length > 0;
   const itemsVisibles = NAV_ITEMS.filter(item => {
-    if (offlineAccess) return item.path === '/docente';
+    if (offlineAccess) return ['/docente', '/docente/horario', '/docente/historial-clases', '/docente/seguimiento'].includes(item.path);
     if (usuario?.rol === 'SUPER_ADMIN' && item.ocultarSuperAdmin) return false;
     // Permiso base por rol
     const porRol = item.roles.includes(usuario?.rol);

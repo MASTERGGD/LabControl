@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -45,6 +45,7 @@ import BuscarDocente from './pages/docente/BuscarDocente';
 import HistorialClasesDocente from './pages/docente/HistorialClasesDocente';
 import ClaseAsistencia from './pages/docente/ClaseAsistencia';
 import SeguimientoGrupos from './pages/docente/SeguimientoGrupos';
+import OfflineDocenteConsultas from './pages/docente/OfflineDocenteConsultas';
 import FichaAlumnoDocente from './pages/docente/FichaAlumnoDocente';
 import EspaciosAdmin from './pages/admin/EspaciosAdmin';
 import ApartarEspacio from './pages/espacios/ApartarEspacio';
@@ -81,7 +82,7 @@ function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) 
     return <Navigate to="/login" replace />;
   }
 
-  if (offlineAccess && !(/^\/docente(?:\/clase\/[^/]+)?$/.test(window.location.pathname))) {
+  if (offlineAccess && !(/^\/docente(?:\/(?:clase\/[^/]+|horario|historial-clases|seguimiento))?$/.test(window.location.pathname))) {
     return <Navigate to="/docente" replace />;
   }
 
@@ -107,6 +108,18 @@ function RutaProtegida({ children, rolesPermitidos, permisosPermitidos, path }) 
   }
 
   return children;
+}
+
+function ConsultaDocente({ tipo, children }) {
+  const { offlineAccess } = useAuth();
+  const [enLinea, setEnLinea] = useState(navigator.onLine);
+  useEffect(() => {
+    const actualizar = () => setEnLinea(navigator.onLine);
+    window.addEventListener('online', actualizar);
+    window.addEventListener('offline', actualizar);
+    return () => { window.removeEventListener('online', actualizar); window.removeEventListener('offline', actualizar); };
+  }, []);
+  return offlineAccess || !enLinea ? <OfflineDocenteConsultas tipo={tipo} /> : children;
 }
 
 // ─── Mapa de rutas por rol ─────────────────────────────────────────────────────
@@ -388,7 +401,7 @@ function AppRoutes() {
       }/>
       <Route path="/docente/horario" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
-          <MiHorarioDocente />
+          <ConsultaDocente tipo="horario"><MiHorarioDocente /></ConsultaDocente>
         </RutaProtegida>
       }/>
       <Route path="/docente/buscar-docente" element={
@@ -398,7 +411,7 @@ function AppRoutes() {
       }/>
       <Route path="/docente/historial-clases" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
-          <HistorialClasesDocente />
+          <ConsultaDocente tipo="historial"><HistorialClasesDocente /></ConsultaDocente>
         </RutaProtegida>
       }/>
       <Route path="/docente/laboratorio" element={
@@ -413,7 +426,7 @@ function AppRoutes() {
       }/>
       <Route path="/docente/seguimiento" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
-          <SeguimientoGrupos />
+          <ConsultaDocente tipo="seguimiento"><SeguimientoGrupos /></ConsultaDocente>
         </RutaProtegida>
       }/>
       <Route path="/docente/seguimiento/:cargaId/alumno/:alumnoId" element={

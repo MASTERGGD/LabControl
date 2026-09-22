@@ -47,6 +47,15 @@ export async function getOfflineSnapshot(key) {
   }).finally(() => db.close());
 }
 
+export async function listOfflineSnapshots(prefix) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(SNAPSHOTS).objectStore(SNAPSHOTS).getAll();
+    request.onsuccess = () => resolve((request.result || []).filter(item => item.key.startsWith(prefix)));
+    request.onerror = () => reject(request.error);
+  }).finally(() => db.close());
+}
+
 export async function enqueueOfflineOperation(operation) {
   const item = { id: uuid(), createdAt: new Date().toISOString(), order: performance.timeOrigin + performance.now(), status: 'PENDING', attempts: 0, ...operation };
   await transact(QUEUE, 'readwrite', store => store.put(item));

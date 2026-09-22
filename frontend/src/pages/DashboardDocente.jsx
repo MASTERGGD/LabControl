@@ -10,8 +10,8 @@ import { accionClaseDashboard } from '../utils/accionClaseDashboard';
 import { getApiErrorMessage } from '../utils/apiError';
 import { abreviarCarrera } from '../utils/resumenConsultaHorario';
 import { formatNombre } from '../utils/presentacion';
-import { MEXICO_TIME_ZONE } from '../utils/timezone';
-import { getOfflineSnapshot, saveOfflineSnapshot } from '../utils/offlineStore';
+import { MEXICO_TIME_ZONE, todayISOInMexico } from '../utils/timezone';
+import { getOfflineSnapshot, listOfflineSnapshots, saveOfflineSnapshot } from '../utils/offlineStore';
 import { configureOfflineAccess, getOfflineAccessInfo } from '../utils/offlineAccess';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -266,12 +266,23 @@ export default function DashboardDocente() {
       if (offlineAccess) {
         const local = await getOfflineSnapshot(paqueteKey).catch(() => null);
         if (local?.data?.operacion) {
-          setOperacion(local.data.operacion);
+          const snapshots = await listOfflineSnapshots(`clase:${usuario?.id}:`).catch(() => []);
+          const clasesLocales = snapshots.map(item => item.data?.clase).filter(clase => clase?.es_local);
+          const datosOperacion = local.data.operacion;
+          const jornadaActualizada = (datosOperacion.jornada || []).map(item => {
+            const clase = clasesLocales.find(registro => registro.carga?.id === item.carga_id && registro.fecha === datosOperacion.fecha);
+            return clase ? { ...item, clase_id: clase.id, estado: clase.estado === 'CERRADA' ? 'CERRADA' : 'EN_CURSO' } : item;
+          });
+          setOperacion({ ...datosOperacion, jornada: jornadaActualizada });
           setPaqueteOffline(local.data);
+          const proxima = datosOperacion.proxima_clase;
+          const capturada = clasesLocales.some(clase => clase.fecha === proxima?.fecha && clase.carga?.id === proxima?.carga_id && clase.estado === 'CERRADA');
+          setProximaClase(proxima && !capturada && proxima.fecha >= todayISOInMexico() ? { ...proxima, _proxFecha: new Date(proxima.inicio) } : null);
           setModoLocal(true);
           setSinDatosLocales(false);
         } else {
           setOperacion(null);
+          setProximaClase(null);
           setSinDatosLocales(true);
         }
         return;
@@ -351,8 +362,9 @@ export default function DashboardDocente() {
   }, [cargarDatos]);
 
   const jornada = operacion?.jornada || [];
-  const actual = jornada.find(item => ['CLASE', 'TUTORIA'].includes(item.tipo_actividad) && (item.estado === 'EN_CURSO' || item.estado === 'CORRECCION'))
-    || jornada.find(item => accionClaseDashboard(item, operacion?.fecha, ahora).iniciar);
+  const jornadaVigente = operacion?.fecha === todayISOInMexico(ahora);
+  const actual = jornadaVigente && (jornada.find(item => ['CLASE', 'TUTORIA'].includes(item.tipo_actividad) && (item.estado === 'EN_CURSO' || item.estado === 'CORRECCION'))
+    || jornada.find(item => accionClaseDashboard(item, operacion?.fecha, ahora).iniciar));
   const claseDestacada = actual ? {
     ...actual, fecha: operacion.fecha,
     laboratorio_nombre: actual.espacio,
@@ -478,7 +490,7 @@ export default function DashboardDocente() {
       <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {modoLocal && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>Modo sin conexión</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}.</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}
-        {offlineAccess && navigator.onLine && <div className="rounded-xl border border-blue-400/50 bg-blue-950/30 p-4 text-sm text-blue-100">Volvió la conexión. Inicia sesión con tu cuenta institucional para sincronizar los cambios. <button type="button" onClick={() => { logout(); navigate('/login'); }} className="ml-2 font-semibold underline">Ir a iniciar sesión</button></div>}
+        {offlineAccess && navigator.onLine && <div className={`rounded-xl border p-4 text-sm ${themeKey === 'day' ? 'border-sky-300 bg-sky-50 text-sky-950' : 'border-sky-400/60 bg-sky-950/50 text-sky-100'}`}>El dispositivo detecta conexión. Inicia sesión con tu cuenta institucional para sincronizar los cambios. <button type="button" onClick={() => { logout(); navigate('/login'); }} className="ml-2 font-semibold underline">Ir a iniciar sesión</button></div>}
         {sinDatosLocales && !loading && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="font-bold text-amber-700">No hay información disponible sin conexión</h2><p className="mt-1 text-sm text-slate-500">Conéctate a internet y pulsa “Actualizar datos offline” para descargar tu jornada y listas.</p></section>}
 
         {/* ── Saludo ──────────────────────────────────────────────────── */}
@@ -529,14 +541,14 @@ export default function DashboardDocente() {
         )}
 
         {/* ── Próxima clase ──────────────────────────────────────────── */}
-        {!loading && operacion?.calendario_hoy && (
+        {!loading && jornadaVigente && operacion?.calendario_hoy && (
           <BannerCalendarioOficial
             estado={operacion.calendario_hoy}
             proximaClase={proximaClase}
             onCalendario={() => navigate('/calendario-academico')}
           />
         )}
-        {!loading && claseDestacada && !operacion?.calendario_hoy && (
+        {!loading && claseDestacada && !(jornadaVigente && operacion?.calendario_hoy) && (
           <BloqueProximaClase
             reservacion={claseDestacada}
             tiempoRestante={claseDestacada._proxFecha - ahora}
@@ -601,10 +613,10 @@ export default function DashboardDocente() {
         {!sinCarga && <div className="dashboard-surface rounded-2xl border border-white/8 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4">
             <div>
-              <h2 className="font-bold text-white">Mi jornada de hoy</h2>
-              <p className="text-xs text-slate-500">Clases, tutorías y otras actividades de tu horario.</p>
+              <h2 className="font-bold text-white">{jornadaVigente ? 'Mi jornada de hoy' : `Jornada descargada del ${operacion?.fecha || 'último acceso'}`}</h2>
+              <p className="text-xs text-slate-500">{jornadaVigente ? 'Clases, tutorías y otras actividades de tu horario.' : 'Consulta histórica; actualiza datos cuando recuperes internet.'}</p>
             </div>
-            {!offlineAccess && <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>}
+            <button onClick={() => navigate('/docente/horario')} className="flex items-center gap-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300">Ver horario completo <Flecha /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">

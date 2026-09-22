@@ -3232,7 +3232,7 @@ def paquete_offline_docente(
     _solo_docente(current_user)
     operacion = dashboard_docente(db, current_user)
     if not operacion.get("periodo"):
-        return {"generado_en": _ahora_mx().isoformat(), "operacion": operacion, "listas": {}, "clases": {}}
+        return {"generado_en": _ahora_mx().isoformat(), "operacion": operacion, "horario": [], "listas": {}, "clases": {}, "historial": [], "seguimientos": {}}
     horario = mi_horario(operacion["periodo"]["id"], db, current_user)
     cargas_ids = [item["id"] for item in horario if item.get("tipo_actividad") == "CLASE"]
     cargas = db.query(CargaDocente).filter(CargaDocente.id.in_(cargas_ids)).all() if cargas_ids else []
@@ -3255,10 +3255,29 @@ def paquete_offline_docente(
         )]
     clases_ids = [item.get("clase_id") for item in operacion.get("jornada", []) if item.get("clase_id")]
     clases = db.query(ClaseDocente).filter(ClaseDocente.id.in_(clases_ids)).all() if clases_ids else []
+    # Un corte acotado permite consultar sin red sin convertir el paquete en
+    # una copia indefinida del expediente institucional.
+    historial = db.query(ClaseDocente).join(CargaDocente).filter(
+        CargaDocente.docente_id == current_user.id,
+    ).order_by(ClaseDocente.fecha.desc(), ClaseDocente.inicio.desc()).limit(80).all()
+    seguimientos = {}
+    grupos_vistos = set()
+    for carga in cargas:
+        if not carga.grupo_academico_id:
+            continue
+        clave = (carga.grupo_academico_id, carga.materia_id or carga.actividad_nombre.strip().casefold())
+        if clave in grupos_vistos:
+            continue
+        grupos_vistos.add(clave)
+        detalle = seguimiento_grupo(carga.id, db, current_user)
+        detalle.pop("clases", None)  # El historial se descarga una sola vez.
+        seguimientos[str(carga.id)] = detalle
     return {
         "generado_en": _ahora_mx().isoformat(),
         "operacion": operacion,
         "horario": horario,
         "listas": listas,
         "clases": {str(clase.id): _serializar_clase(clase) for clase in clases},
+        "historial": [_serializar_clase(clase) for clase in historial],
+        "seguimientos": seguimientos,
     }

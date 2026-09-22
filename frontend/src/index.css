@@ -120,6 +120,20 @@ body.theme-day .themed-date-input { color-scheme: light; }
 .theme-muted { color: var(--text-muted); }
 .theme-divider { border-color: var(--surface-border); }
 
+body.theme-day .offline-consulta { color: var(--text-primary); }
+body.theme-day .offline-consulta h1,
+body.theme-day .offline-consulta h2,
+body.theme-day .offline-consulta strong { color: var(--text-primary); }
+body.theme-day .offline-consulta section { background: var(--surface-panel); border-color: var(--surface-border); }
+body.theme-day .offline-consulta section > div,
+body.theme-day .offline-consulta section tr { border-color: var(--surface-border); }
+body.theme-day .offline-consulta .text-slate-300,
+body.theme-day .offline-consulta .text-slate-400 { color: var(--text-secondary); }
+body.theme-day .offline-consulta .offline-cutoff { background: #eff6ff; color: #075985; border-color: #7dd3fc; }
+body.theme-day .offline-consulta input,
+body.theme-day .offline-consulta select { background: #fff; color: var(--text-primary); border-color: var(--surface-border); }
+body.theme-day .offline-consulta thead { background: #f1f5f9; color: var(--text-secondary); }
+
 /* Superficies semánticas: separación consistente entre página y tarjetas. */
 .dashboard-surface {
   background: rgba(30, 41, 59, 0.48);
