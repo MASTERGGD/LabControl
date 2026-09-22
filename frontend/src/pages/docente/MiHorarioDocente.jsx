@@ -4,6 +4,8 @@ import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { abrirClaseDocente } from '../../utils/abrirClaseDocente';
 import { usePeriodo } from '../../context/PeriodoContext';
+import { useAuth } from '../../context/AuthContext';
+import { getOfflineSnapshot } from '../../utils/offlineStore';
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const PERIODOS_ESCOLARIZADOS = [
@@ -509,6 +511,7 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
 
 export default function MiHorarioDocente() {
   const navigate = useNavigate();
+  const { usuario } = useAuth();
   const { periodo: periodoGlobal, cargando: cargandoPeriodoGlobal } = usePeriodo();
   const [catalogos, setCatalogos] = useState({ periodos: [], grupos: [], materias: [], laboratorios: [], espacios: [] });
   const [periodoId, setPeriodoId] = useState('');
@@ -577,11 +580,18 @@ export default function MiHorarioDocente() {
         }, {});
       setRecordatorios(ultimos);
     } catch {
-      setMensaje('No se pudo cargar el módulo docente.');
+      const local = await getOfflineSnapshot(`paquete-docente:${usuario?.id || 'anon'}`).catch(() => null);
+      if (local?.data?.horario) {
+        setHorario(local.data.horario);
+        setHoy([]);
+        setExtemporaneas([]);
+        setReposicionesPendientes([]);
+        setMensaje(`Modo sin conexión · horario descargado el ${new Date(local.data.generado_en).toLocaleString('es-MX')}. Las reservas y modificaciones requieren internet.`);
+      } else setMensaje('No hay un horario descargado en este dispositivo. Conéctate y actualiza los datos offline desde Inicio docente.');
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [usuario?.id]);
 
   useEffect(() => {
     if (!cargandoPeriodoGlobal) cargar(periodoGlobal?.id);

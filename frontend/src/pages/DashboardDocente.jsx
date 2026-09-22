@@ -10,6 +10,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { abreviarCarrera } from '../utils/resumenConsultaHorario';
 import { formatNombre } from '../utils/presentacion';
 import { MEXICO_TIME_ZONE } from '../utils/timezone';
+import { getOfflineSnapshot, saveOfflineSnapshot } from '../utils/offlineStore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toTitleCase = formatNombre;
@@ -232,6 +233,11 @@ export default function DashboardDocente() {
   const aperturaEnCurso = useRef(false);
   const [errorClase, setErrorClase] = useState('');
   const [loading,       setLoading]        = useState(true);
+  const [paqueteOffline, setPaqueteOffline] = useState(null);
+  const [modoLocal, setModoLocal] = useState(false);
+  const [sinDatosLocales, setSinDatosLocales] = useState(false);
+  const [preparandoOffline, setPreparandoOffline] = useState(false);
+  const paqueteKey = `paquete-docente:${usuario?.id || 'anon'}`;
 
   // Cargar datos al montar
   const cargarDatos = useCallback(async (silencioso = false) => {
@@ -241,7 +247,7 @@ export default function DashboardDocente() {
         api.get('/comunicados/pendientes-count'),
         api.get('/sesiones/activas'),
         api.get('/espacios/mis-solicitudes'),
-        api.get('/docencia/dashboard'),
+        api.get('/docencia/offline/paquete'),
       ]);
 
       // Comunicados pendientes
@@ -263,17 +269,38 @@ export default function DashboardDocente() {
         });
       }
       if (resOperacion.status === 'fulfilled') {
-        const datosOperacion = resOperacion.value.data;
+        const paquete = resOperacion.value.data;
+        const datosOperacion = paquete.operacion;
         setOperacion(datosOperacion);
+        setPaqueteOffline(paquete);
+        setModoLocal(false);
+        setSinDatosLocales(false);
+        await saveOfflineSnapshot(paqueteKey, paquete);
+        await Promise.all(Object.entries(paquete.clases || {}).map(([id, clase]) => saveOfflineSnapshot(`clase:${usuario?.id}:${id}`, { clase, contextos: {} })));
         setProximaClase(datosOperacion?.proxima_clase ? {
           ...datosOperacion.proxima_clase,
           _proxFecha: new Date(datosOperacion.proxima_clase.inicio),
         } : null);
+      } else {
+        const local = await getOfflineSnapshot(paqueteKey).catch(() => null);
+        if (local?.data?.operacion) {
+          const paquete = local.data;
+          const datosOperacion = paquete.operacion;
+          setOperacion(datosOperacion);
+          setPaqueteOffline(paquete);
+          setModoLocal(true);
+          setSinDatosLocales(false);
+          setProximaClase(datosOperacion?.proxima_clase ? { ...datosOperacion.proxima_clase, _proxFecha: new Date(datosOperacion.proxima_clase.inicio) } : null);
+        } else {
+          setSinDatosLocales(true);
+          setOperacion(null);
+          setProximaClase(null);
+        }
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [paqueteKey, usuario?.id]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
 
@@ -319,6 +346,34 @@ export default function DashboardDocente() {
     setAbriendo(true);
     setErrorClase('');
     try {
+      if (!navigator.onLine) {
+        if (item.tipo_actividad !== 'CLASE') throw new Error('Esta operación requiere conexión al servidor.');
+        if (item.clase_id) {
+          const cache = await getOfflineSnapshot(`clase:${usuario?.id}:${item.clase_id}`);
+          if (!cache?.data?.clase) throw new Error('Esta clase no se descargó en el dispositivo. Actualiza los datos cuando tengas internet.');
+          navigate(`/docente/clase/${item.clase_id}`);
+          return;
+        }
+        if (!accion.iniciar) throw new Error('Solo puedes iniciar sin conexión una clase dentro de su horario permitido.');
+        const alumnos = paqueteOffline?.listas?.[String(item.carga_id)] || [];
+        if (!alumnos.length) throw new Error('La lista de este grupo no está descargada. Usa “Actualizar datos offline” cuando tengas internet.');
+        const localId = `local-${item.carga_id}-${fecha}`;
+        const claveLocal = `clase:${usuario?.id}:${localId}`;
+        const existente = await getOfflineSnapshot(claveLocal);
+        if (!existente?.data?.clase) {
+          const alumnosClase = alumnos.map(alumno => ({ ...alumno, asistencia_id: `local-${alumno.alumno_id}`, estado: 'PRESENTE', observacion: null }));
+          const claseLocal = {
+            id: localId, fecha, estado: 'ABIERTA', inicio: new Date().toISOString(), fin: null,
+            es_local: true, correcciones_asistencia: [], bitacora: {},
+            carga: { id: item.carga_id, periodo_id: operacion?.periodo?.id, periodo: operacion?.periodo?.clave, actividad_nombre: item.materia, grupo: item.grupo, carrera: item.carrera, espacio_nombre: item.espacio, hora_inicio: item.hora_inicio, hora_fin: item.hora_fin },
+            resumen: { total: alumnosClase.length, presente: alumnosClase.length, falta: 0, retardo: 0, justificada: 0 },
+            alumnos: alumnosClase,
+          };
+          await saveOfflineSnapshot(claveLocal, { clase: claseLocal, contextos: {} });
+        }
+        navigate(`/docente/clase/${localId}`);
+        return;
+      }
       // Obtener el bloque vigente conserva las reservas y el flujo de laboratorio del horario.
       const { data } = await api.get('/docencia/hoy');
       const bloque = data.find(c => c.id === item.carga_id && (!item.clase_id || c.clase_id === item.clase_id));
@@ -339,7 +394,12 @@ export default function DashboardDocente() {
 
   const { prefijo, nombre: nombreCorto } = saludar(usuario?.nombre);
   const semana = semanaDelPeriodo(periodo?.clave);
-  const sinCarga = !loading && !operacion?.resumen?.grupos_activos && !operacion?.jornada?.length && !proximaClase;
+  const sinCarga = !loading && !sinDatosLocales && !operacion?.resumen?.grupos_activos && !operacion?.jornada?.length && !proximaClase;
+  const prepararOffline = async () => {
+    setPreparandoOffline(true);
+    await cargarDatos(true);
+    setPreparandoOffline(false);
+  };
 
   // Items de "Atención requerida"
   const atencionItems = [];
@@ -360,6 +420,9 @@ export default function DashboardDocente() {
     <AdminLayout>
       <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
+        {modoLocal && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-800"><div><b>Modo sin conexión</b><p className="text-xs opacity-75">Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}.</p></div><span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold">Los cambios quedarán en este dispositivo</span></div>}
+        {sinDatosLocales && !loading && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="font-bold text-amber-700">No hay información disponible sin conexión</h2><p className="mt-1 text-sm text-slate-500">Conéctate a internet y pulsa “Actualizar datos offline” para descargar tu jornada y listas.</p></section>}
+
         {/* ── Saludo ──────────────────────────────────────────────────── */}
         <div>
           <h1 className="text-2xl font-bold text-white">
@@ -369,6 +432,7 @@ export default function DashboardDocente() {
           <p className="text-slate-500 text-sm mt-0.5">
             {[periodo?.clave, semana && `Semana ${semana}`, new Date().toLocaleDateString('es-MX', { timeZone: MEXICO_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })].filter(Boolean).join(' · ')}
           </p>
+          {!modoLocal && <button type="button" disabled={preparandoOffline} onClick={prepararOffline} className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600 disabled:opacity-50">{preparandoOffline ? 'Actualizando…' : 'Actualizar datos offline'}</button>}
         </div>
 
         {/* ── Sesión activa (prioridad máxima) ───────────────────────── */}

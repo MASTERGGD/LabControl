@@ -177,6 +177,11 @@ class CorreccionInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
 
 
+class InicioOfflineInput(BaseModel):
+    fecha: datetime.date
+    capturada_en: datetime.datetime
+
+
 class ReclasificarNoImpartidaInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
     requiere_reposicion: bool = False
@@ -1884,6 +1889,66 @@ def habilitar_correccion(
     return _serializar_clase(clase)
 
 
+@router.post("/horario/{carga_id}/iniciar-offline")
+def iniciar_clase_offline(
+    carga_id: int,
+    data: InicioOfflineInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Materializa una clase capturada localmente dentro de su horario real."""
+    carga = db.query(CargaDocente).filter(
+        CargaDocente.id == carga_id,
+        CargaDocente.docente_id == current_user.id,
+        CargaDocente.activo == True,
+        CargaDocente.estado == "ACTIVO",
+        CargaDocente.tipo_actividad == "CLASE",
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Clase programada no encontrada")
+    _validar_carga_actual(db, carga)
+    existente = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == carga.id,
+        ClaseDocente.fecha == data.fecha,
+    ).first()
+    if existente:
+        return _serializar_clase(existente)
+    capturada = data.capturada_en
+    if capturada.tzinfo is None:
+        capturada = capturada.replace(tzinfo=MX)
+    else:
+        capturada = capturada.astimezone(MX)
+    if capturada.date() != data.fecha or carga.dia_semana != data.fecha.weekday():
+        raise HTTPException(409, "La captura local no corresponde al día programado de esta clase")
+    estado_fecha = estado_fecha_academica(db, carga.periodo_id, data.fecha)
+    if not estado_fecha["permite_iniciar_clase"] or not estado_fecha["requiere_asistencia"]:
+        raise HTTPException(409, f"La fecha no requiere asistencia: {estado_fecha['motivo']}")
+    tolerancia = datetime.timedelta(minutes=15)
+    inicio_programado = datetime.datetime.combine(data.fecha, datetime.time.fromisoformat(carga.hora_inicio), tzinfo=MX)
+    fin_programado = datetime.datetime.combine(data.fecha, datetime.time.fromisoformat(carga.hora_fin), tzinfo=MX)
+    if capturada < inicio_programado - tolerancia or capturada > fin_programado + tolerancia:
+        raise HTTPException(409, "La clase local fue capturada fuera de la ventana permitida")
+    if _ahora_mx() - capturada > PLAZO_CAPTURA_EXTEMPORANEA:
+        raise HTTPException(409, "El plazo de 7 días para sincronizar esta clase ya venció")
+    clase = ClaseDocente(
+        carga_docente_id=carga.id,
+        fecha=data.fecha,
+        estado="ABIERTA",
+        inicio=capturada.astimezone(datetime.timezone.utc).replace(tzinfo=None),
+    )
+    db.add(clase)
+    db.flush()
+    inscripciones = db.query(InscripcionAlumno).filter(
+        InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
+        InscripcionAlumno.estado == "ACTIVO",
+    ).all()
+    for inscripcion in inscripciones:
+        db.add(AsistenciaDocente(clase_docente_id=clase.id, alumno_id=inscripcion.alumno_id, estado="PRESENTE"))
+    db.commit()
+    db.refresh(clase)
+    return _serializar_clase(clase)
+
+
 @router.post("/clases/{clase_id}/no-impartida")
 def reclasificar_clase_no_impartida(
     clase_id: int,
@@ -3151,4 +3216,49 @@ def dashboard_docente(
         "proxima_clase": proxima_clase,
         "grupos": grupos,
         "alumnos_prioritarios": alumnos_prioritarios[:8],
+    }
+
+
+@router.get("/offline/paquete", summary="Paquete local de trabajo docente")
+def paquete_offline_docente(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Entrega en una sola respuesta el panorama y las listas mínimas del día.
+
+    No crea clases ni reserva recursos. El cliente puede preparar una captura
+    local y el servidor conserva la autoridad al momento de sincronizar.
+    """
+    _solo_docente(current_user)
+    operacion = dashboard_docente(db, current_user)
+    if not operacion.get("periodo"):
+        return {"generado_en": _ahora_mx().isoformat(), "operacion": operacion, "listas": {}, "clases": {}}
+    horario = mi_horario(operacion["periodo"]["id"], db, current_user)
+    cargas_ids = [item["id"] for item in horario if item.get("tipo_actividad") == "CLASE"]
+    cargas = db.query(CargaDocente).filter(CargaDocente.id.in_(cargas_ids)).all() if cargas_ids else []
+    listas = {}
+    for carga in cargas:
+        inscripciones = db.query(InscripcionAlumno).filter(
+            InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
+            InscripcionAlumno.estado == "ACTIVO",
+        ).all()
+        listas[str(carga.id)] = [{
+            "alumno_id": inscripcion.alumno_id,
+            "matricula": inscripcion.alumno.matricula,
+            "nombre": (
+                f"{inscripcion.alumno.apellido_paterno} {inscripcion.alumno.apellido_materno} "
+                f"{inscripcion.alumno.nombres}"
+            ).strip(),
+        } for inscripcion in sorted(
+            inscripciones,
+            key=lambda item: (item.alumno.apellido_paterno, item.alumno.nombres),
+        )]
+    clases_ids = [item.get("clase_id") for item in operacion.get("jornada", []) if item.get("clase_id")]
+    clases = db.query(ClaseDocente).filter(ClaseDocente.id.in_(clases_ids)).all() if clases_ids else []
+    return {
+        "generado_en": _ahora_mx().isoformat(),
+        "operacion": operacion,
+        "horario": horario,
+        "listas": listas,
+        "clases": {str(clase.id): _serializar_clase(clase) for clase in clases},
     }

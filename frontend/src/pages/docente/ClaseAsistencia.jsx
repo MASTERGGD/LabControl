@@ -46,6 +46,7 @@ export default function ClaseAsistencia() {
     tema_pendiente: '',
   });
   const [modoLocal, setModoLocal] = useState(false);
+  const esClaseLocal = String(claseId).startsWith('local-');
   const snapshotKey = `clase:${usuario?.id || 'anon'}:${claseId}`;
 
   const guardarSnapshotClase = useCallback((data, contextosActuales = contextos) => {
@@ -103,6 +104,12 @@ export default function ClaseAsistencia() {
         await saveOfflineSnapshot(snapshotKey, { ...actual.data, clase: { ...actual.data.clase, alumnos, resumen: recalcularResumen(alumnos) } });
       }
     };
+    if (esClaseLocal) {
+      await aplicarLocal();
+      setModoLocal(true);
+      setMensaje('Asistencia guardada en este dispositivo.');
+      return true;
+    }
     try {
       if (!navigator.onLine) throw new TypeError('offline');
       await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado, observacion });
@@ -127,6 +134,24 @@ export default function ClaseAsistencia() {
     setCerrando(true);
     const eraCorreccion = clase.estado === 'CORRECCION';
     try {
+      if (esClaseLocal) {
+        const payload = { ...bitacora, tarea_asignada: '', avance_planeacion: Number(bitacora.avance_planeacion) };
+        const incidencia = clase.bitacora?.incidencias ? {
+          tipo: clase.bitacora.incidencia_tipo || 'OTRA', descripcion: clase.bitacora.incidencias,
+          requiere_seguimiento: Boolean(clase.bitacora.incidencia_requiere_seguimiento),
+          solicita_justificacion: Boolean(clase.bitacora.incidencia_solicita_justificacion),
+        } : null;
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'OFFLINE_CLASS', method: 'post', url: '/docencia/offline/clase', data: { carga_id: clase.carga.id, fecha: clase.fecha, capturada_en: clase.inicio, alumnos: clase.alumnos.map(alumno => ({ alumno_id: alumno.alumno_id, estado: alumno.estado, observacion: alumno.observacion || null })), bitacora: payload, incidencia }, label: `Clase ${clase.carga.actividad_nombre}` });
+        const local = { ...clase, estado: 'CERRADA', bitacora: { ...(clase.bitacora || {}), ...payload } };
+        setClase(local);
+        guardarSnapshotClase(local);
+        setModal(null);
+        setModoLocal(true);
+        setCierreConfirmado({ titulo: 'Clase guardada en este dispositivo', detalle: 'Se creará y cerrará en SIGA automáticamente cuando vuelva internet.' });
+        setRedireccionAutomatica(false);
+        setError('');
+        return;
+      }
       if (!navigator.onLine) throw new TypeError('offline');
       const { data } = await api.post(`/docencia/clases/${claseId}/cerrar`, {
         ...bitacora,
@@ -238,6 +263,17 @@ export default function ClaseAsistencia() {
     if (!incidenciaGrupo.tipo || incidenciaGrupo.descripcion.trim().length < 5) return;
     setCerrando(true);
     try {
+      if (esClaseLocal) {
+        const payload = { tipo: incidenciaGrupo.tipo, descripcion: incidenciaGrupo.descripcion.trim(), requiere_seguimiento: incidenciaGrupo.requiere_seguimiento, solicita_justificacion: incidenciaGrupo.solicita_justificacion };
+        const local = { ...clase, bitacora: { ...(clase.bitacora || {}), incidencia_tipo: payload.tipo, incidencias: payload.descripcion, incidencia_requiere_seguimiento: payload.requiere_seguimiento, incidencia_solicita_justificacion: payload.solicita_justificacion } };
+        setClase(local);
+        guardarSnapshotClase(local);
+        setModalIncidenciaGrupo(false);
+        setModoLocal(true);
+        setMensaje(payload.requiere_seguimiento || payload.tipo === 'SEGURIDAD' ? 'Nota guardada. La notificación se enviará cuando la clase se sincronice.' : 'Nota guardada en este dispositivo.');
+        setError('');
+        return;
+      }
       if (!navigator.onLine) throw new TypeError('offline');
       const { data } = await api.patch(`/docencia/clases/${claseId}/incidencia`, {
         tipo: incidenciaGrupo.tipo,
@@ -316,8 +352,8 @@ export default function ClaseAsistencia() {
               </div>
             )}
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
-            {clase.estado === 'CERRADA' && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
-            {['ABIERTA', 'CORRECCION', 'CERRADA'].includes(clase.estado) && <button onClick={() => { setTexto(''); setRequiereReposicion(false); setModal('no-impartida'); }} className="rounded-xl border border-slate-500/30 px-4 py-2.5 text-sm font-semibold text-slate-400 hover:bg-white/5">Marcar no impartida</button>}
+            {clase.estado === 'CERRADA' && !esClaseLocal && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
+            {['ABIERTA', 'CORRECCION', 'CERRADA'].includes(clase.estado) && !esClaseLocal && <button onClick={() => { setTexto(''); setRequiereReposicion(false); setModal('no-impartida'); }} className="rounded-xl border border-slate-500/30 px-4 py-2.5 text-sm font-semibold text-slate-400 hover:bg-white/5">Marcar no impartida</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento del grupo</button>}
           </div>
         </div>
@@ -420,7 +456,7 @@ export default function ClaseAsistencia() {
                     alumnoId={alumno.alumno_id}
                     nombre={formatNombre(alumno.nombre)}
                     contexto={contextos[String(alumno.alumno_id)]}
-                    permitirNota={['ABIERTA', 'CORRECCION'].includes(clase.estado)}
+                    permitirNota={!esClaseLocal && ['ABIERTA', 'CORRECCION'].includes(clase.estado)}
                     onEnviada={(data) => { setMensaje(data.mensaje); cargar(); }}
                   />
                 </div>

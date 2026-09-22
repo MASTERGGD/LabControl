@@ -81,7 +81,27 @@ export async function flushOfflineQueue(api, ownerId) {
   for (const item of operations) {
     if (item.status === 'CONFLICT') { conflicts += 1; continue; }
     try {
-      await api.request({ method: item.method, url: item.url, data: item.data, headers: { 'X-SIGA-Offline-Operation': item.id } });
+      if (item.kind === 'OFFLINE_CLASS') {
+        const { data: clase } = await api.post(`/docencia/horario/${item.data.carga_id}/iniciar-offline`, { fecha: item.data.fecha, capturada_en: item.data.capturada_en }, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+        if (clase.estado === 'CERRADA') {
+          await removeOperation(item.id);
+          synced += 1;
+          continue;
+        }
+        const asistenciaPorAlumno = new Map((clase.alumnos || []).map(alumno => [String(alumno.alumno_id), alumno]));
+        for (const alumno of item.data.alumnos || []) {
+          const servidor = asistenciaPorAlumno.get(String(alumno.alumno_id));
+          if (servidor && (servidor.estado !== alumno.estado || (servidor.observacion || null) !== (alumno.observacion || null))) {
+            await api.patch(`/docencia/clases/${clase.id}/asistencia/${servidor.asistencia_id}`, { estado: alumno.estado, observacion: alumno.observacion || null }, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+          }
+        }
+        if (item.data.incidencia?.tipo && item.data.incidencia?.descripcion) {
+          await api.patch(`/docencia/clases/${clase.id}/incidencia`, item.data.incidencia, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+        }
+        await api.post(`/docencia/clases/${clase.id}/cerrar`, item.data.bitacora, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+      } else {
+        await api.request({ method: item.method, url: item.url, data: item.data, headers: { 'X-SIGA-Offline-Operation': item.id } });
+      }
       await removeOperation(item.id);
       synced += 1;
     } catch (error) {
