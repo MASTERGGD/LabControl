@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import { usePeriodo } from '../../context/PeriodoContext';
 import api from '../../hooks/useApi';
@@ -118,6 +119,7 @@ export default function ReporteAcademicoGrupos() {
   };
 
   return <AdminLayout><div className="space-y-5">
+    <Link to="/division-carrera/asistencia-hoy" className="inline-flex rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">Ver asistencia de hoy · alumnos únicos</Link>
     <header><h1 className="text-2xl font-bold text-white">Reporte académico de grupos</h1><p className="text-sm text-slate-400">Compara uno o varios grupos para reuniones académicas y seguimiento de División de Carrera.</p></header>
     <section className="glass space-y-4 rounded-2xl p-5">
       <div>

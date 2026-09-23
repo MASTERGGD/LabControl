@@ -65,6 +65,7 @@ import ValidarActivo from './pages/ValidarActivo';
 import ExpedienteAcademico from './pages/academico/ExpedienteAcademico';
 import CalendarioAcademico from './pages/academico/CalendarioAcademico';
 import ReporteAcademicoGrupos from './pages/academico/ReporteAcademicoGrupos';
+import AsistenciaHoy from './pages/academico/AsistenciaHoy';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
@@ -299,6 +300,11 @@ function AppRoutes() {
       <Route path="/division-carrera/reportes-academicos" element={
         <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE, PERM_MATERIAS_MANAGE]}>
           <ReporteAcademicoGrupos />
+        </RutaProtegida>
+      }/>
+      <Route path="/division-carrera/asistencia-hoy" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos={[PERM_DIVISION_CARRERA_MANAGE, PERM_MATERIAS_MANAGE]}>
+          <AsistenciaHoy />
         </RutaProtegida>
       }/>
       <Route path="/calendario-academico" element={

@@ -395,6 +395,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>,
   },
 
+  {
+    label: 'Asistencia de hoy', path: '/division-carrera/asistencia-hoy', roles: ['SUPER_ADMIN'], permiso: 'materias:manage', inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M5 5h14v16H5zM9 16l2 2 4-4" /></svg>,
+  },
   // Grupo: Dirección de División de Carrera
   { divider: true, label: 'Seguimiento académico', roles: ['SUPER_ADMIN','TUTORIA_ADMIN','SERVICIOS_ESCOLARES'], permiso: 'expediente_academico:read' },
   {
@@ -591,6 +595,7 @@ const BREADCRUMB_MAP = {
   '/admin/catalogo':          [{ label: 'Catálogos' }],
   '/division-carrera/materias': [{ label: 'Académico' }, { label: 'Materias' }],
   '/division-carrera/reportes-academicos': [{ label: 'Académico' }, { label: 'Reportes académicos' }],
+  '/division-carrera/asistencia-hoy': [{ label: 'Académico' }, { label: 'Asistencia de hoy' }],
   '/calendario-academico': [{ label: 'Académico' }, { label: 'Calendario oficial' }],
   '/expediente-academico':   [{ label: 'Académico' }, { label: 'Expediente académico' }],
   '/docente/horario':         [{ label: 'Mi Horario' }],

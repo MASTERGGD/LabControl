@@ -33,6 +33,7 @@ from services.calendario_academico import estado_fecha_academica
 from services.grupos_academicos import generacion_grupo
 from services.timezone import as_mx, format_fecha_corta_mx, now_mx, today_mx
 from services.user_permissions import puede_gestionar_materias
+from services.asistencia_diaria import asistencia_diaria
 
 
 router = APIRouter(prefix="/reportes-academicos", tags=["Reportes académicos"])
@@ -496,6 +497,14 @@ def catalogos(db: Session = Depends(get_db), current_user: Usuario = Depends(get
             "grupos": [{"id": g.id, "periodo_id": g.periodo_id, "carrera": g.carrera,
                         "nombre": f"{g.cuatrimestre}° {g.grupo}", "turno": g.turno,
                         "generacion": generacion_grupo(g)} for g in grupos]}
+
+
+@router.get("/asistencia-diaria")
+def consultar_asistencia_diaria(periodo_id: int, fecha: Optional[datetime.date] = None,
+                               carrera: Optional[str] = None,
+                               db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _autorizar(db, current_user)
+    return asistencia_diaria(db, periodo_id, fecha, carrera)
 
 
 @router.get("")
