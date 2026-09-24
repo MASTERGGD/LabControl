@@ -5,6 +5,8 @@ import api from '../hooks/useApi';
 import NotificacionesBell from './NotificacionesBell';
 import SelectDark from './SelectDark';
 import ThemeSwitcher from './ThemeSwitcher';
+import MobileRoleSwitcher from './MobileRoleSwitcher';
+import './MobileLayout.css';
 import OfflineStatus from './OfflineStatus';
 import { listOfflineOperations } from '../utils/offlineStore';
 import { useTheme } from '../context/ThemeContext';
@@ -1098,7 +1100,7 @@ export default function AdminLayout({ children }) {
   });
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{background:'var(--layout-bg)'}}>
+    <div className="siga-layout h-screen overflow-hidden flex" style={{background:'var(--layout-bg)'}}>
 
       {/* Sidebar desktop (md+) */}
       <aside
@@ -1117,12 +1119,12 @@ export default function AdminLayout({ children }) {
 
       {/* Drawer móvil (< md) */}
       {menuMovil && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+        <div className="md:hidden fixed inset-0 z-[90] flex">
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                onClick={() => setMenuMovil(false)} />
           {/* Panel */}
-          <aside className="relative z-10 w-72 flex flex-col h-full"
+          <aside className="relative z-10 w-72 max-w-[calc(100vw-2rem)] flex flex-col h-full"
                  style={{
                    background: 'linear-gradient(180deg,var(--sidebar-from) 0%,var(--sidebar-to) 100%)',
                    borderRight: '1px solid var(--sidebar-border)',
@@ -1132,6 +1134,9 @@ export default function AdminLayout({ children }) {
                             setMenuMovil={setMenuMovil} usuario={usuario} itemsVisibles={itemsVisibles}
                             handleLogout={handleLogout} pendientesComunicados={pendientesComunicados}
                             pathname={location.pathname} />
+            <div className="flex shrink-0 items-center justify-between border-t border-slate-700 px-4 py-3 text-sm text-slate-300">
+              <span>Apariencia</span><ThemeSwitcher />
+            </div>
           </aside>
         </div>
       )}
@@ -1141,7 +1146,7 @@ export default function AdminLayout({ children }) {
 
         {/* Topbar */}
         <header
-          className="px-3 md:px-6 py-3 flex items-center justify-between shrink-0"
+          className="siga-topbar px-3 md:px-6 py-3 flex items-center justify-between shrink-0"
           style={{
             position: 'relative',
             zIndex: 50,
@@ -1173,14 +1178,14 @@ export default function AdminLayout({ children }) {
           <div className="hidden md:block" />
 
           {/* Derecha: acciones */}
-          <div className="flex items-center gap-2">
+          <div className="siga-topbar-actions flex items-center gap-2">
 
             <OfflineStatus enabled={usuario?.rol === 'DOCENTE'} />
 
             {/* Contexto académico global: inicia en el periodo actual y permite consultar históricos. */}
             {periodo && (
               <label
-                className="flex items-center gap-2 rounded-xl border px-2.5 py-1.5"
+                className="siga-period-filter flex items-center gap-2 rounded-xl border px-2.5 py-1.5"
                 style={{
                   background: 'var(--topbar-bg)',
                   borderColor: 'var(--topbar-border)',
@@ -1190,7 +1195,7 @@ export default function AdminLayout({ children }) {
                 <svg className={`w-4 h-4 shrink-0 ${esHistorico ? 'text-slate-500' : 'text-emerald-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                 </svg>
-                <span className="hidden lg:block text-[10px] font-bold uppercase tracking-wider text-slate-500">Periodo</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Periodo</span>
                 <select
                   value={periodo.id}
                   disabled={cargandoPeriodos}
@@ -1210,23 +1215,24 @@ export default function AdminLayout({ children }) {
 
             {/* Campana */}
             <NotificacionesBell comunicadosPendientes={pendientesComunicados} />
-            <ThemeSwitcher />
+            <div className="hidden md:block"><ThemeSwitcher /></div>
 
             {sessionInfo?.active_count > 1 && (
-              <div className="relative" ref={sesionesRef}>
+              <div className="siga-sessions relative" ref={sesionesRef}>
                 <button
                   type="button"
                   onClick={() => setMostrarSesiones(actual => !actual)}
                   className="flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-semibold"
                   style={{borderColor:'var(--topbar-border)', color:'var(--main-text)', background:'var(--topbar-bg)'}}
                   title="Ver sesiones de esta cuenta"
+                  aria-label={`Ver ${sessionInfo.active_count} sesiones de esta cuenta`}
                   aria-expanded={mostrarSesiones}
                 >
                   <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"/><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"/></span>
-                  {sessionInfo.active_count} sesiones
+                  {sessionInfo.active_count}<span className="hidden md:inline"> sesiones</span>
                 </button>
                 {mostrarSesiones && (
-                  <div className="absolute right-0 top-full z-[80] mt-2 w-80 rounded-2xl border p-3 shadow-2xl" style={{background:'var(--topbar-bg)', borderColor:'var(--topbar-border)', color:'var(--main-text)'}}>
+                  <div className="siga-sessions-popover absolute right-0 top-full z-[80] mt-2 w-80 rounded-2xl border p-3 shadow-2xl" style={{background:'var(--topbar-bg)', borderColor:'var(--topbar-border)', color:'var(--main-text)'}}>
                     <p className="text-sm font-semibold">Sesiones de tu cuenta</p>
                     <p className="mt-0.5 text-xs text-slate-500">Las pestañas de este navegador se agrupan como una sola sesión.</p>
                     <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
@@ -1246,7 +1252,7 @@ export default function AdminLayout({ children }) {
             )}
 
             {usuario?.roles_disponibles?.length > 1 && (
-              <label className="flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
+              <label className="hidden xl:flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
                 <span className="hidden text-[10px] font-bold uppercase tracking-wide text-slate-500 xl:block">Modo</span>
                 <select value={usuario.rol} disabled={cambiandoFuncion} onChange={e => handleCambiarFuncion(e.target.value)} className="bg-transparent text-xs font-semibold outline-none" style={{color:'var(--main-text)'}} aria-label="Función activa">
                   {usuario.roles_disponibles.map(rol => <option key={rol} value={rol}>{rol === 'DOCENTE' ? 'Docente' : rol === 'LAB_ADMIN' ? 'Responsable de laboratorio' : rol.replaceAll('_', ' ')}</option>)}
@@ -1255,7 +1261,7 @@ export default function AdminLayout({ children }) {
             )}
 
             {/* Nombre y rol, solo desktop */}
-            <div className="hidden md:flex items-center gap-2 pl-1 ml-1" style={{borderLeft:'1px solid var(--user-sep)'}}>
+            <div className="hidden xl:flex items-center gap-2 pl-1 ml-1" style={{borderLeft:'1px solid var(--user-sep)'}}>
               <span className="text-sm font-medium" style={{color:'var(--user-name-color)'}}>{usuario?.nombre}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${getRolBadgeClass(usuario?.rol, isDay)}`}
                 style={getRolBadgeStyle(usuario?.rol, isDay) || {}}>
@@ -1289,11 +1295,13 @@ export default function AdminLayout({ children }) {
           </div>
         </header>
 
+        <MobileRoleSwitcher usuario={usuario} busy={cambiandoFuncion} onChange={handleCambiarFuncion} />
+
         {/* Breadcrumb */}
         <Breadcrumb pathname={location.pathname} />
 
         {/* Contenido */}
-        <main className="flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>
+        <main className="siga-main min-h-0 flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>
           {esHistorico && periodo && usuario?.rol !== 'DOCENTE' && (
             <div
               className="mb-4 rounded-xl px-4 py-3 text-sm flex items-start gap-3"

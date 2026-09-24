@@ -120,46 +120,30 @@ function KpiMini({ valor, label, sub, color = '#3b82f6', alert, onClick, icon })
 }
 
 // ─── Tarjeta de sesión activa ─────────────────────────────────────────────────
+const KPI_ICONS = {
+  '🟢': 'M8 5v14l11-7-11-7Z',
+  '🧮': 'M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z',
+  '🎓': 'm3 8 9-5 9 5-9 5-9-5Zm3 2v7c4 3 8 3 12 0v-7m3-2v9',
+  '💻': 'M4 4h16v12H4V4Zm4 16h8m-4-4v4',
+  '📥': 'M4 4h16v16H4V4Zm8 3v7m-3-3 3 3 3-3M4 16h4l2 2h4l2-2h4',
+  '🛠️': 'm12 3 10 18H2L12 3Zm0 6v5m0 3v1',
+};
+
 function KpiPrincipal({ valor, label, sub, color, icon, alert, onClick }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={`relative text-left transition-all ${onClick ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-default'}`}
-      style={{
-        background: isDay ? '#FFFFFF' : 'rgba(30,41,59,0.58)',
-        border: `1px solid ${alert ? (isDay ? '#EF4444' : 'rgba(239,68,68,0.55)') : isDay ? '#CBD5E1' : 'rgba(255,255,255,0.08)'}`,
-        borderRadius: '0.875rem',
-        padding: '1.15rem 1.15rem',
-        minHeight: 132,
-        overflow: 'hidden',
-        boxShadow: isDay ? '0 1px 2px rgba(15,23,42,0.04)' : undefined,
-      }}
-      onMouseEnter={e => {
-        if (!onClick) return;
-        e.currentTarget.style.borderColor = `${color}99`;
-        e.currentTarget.style.boxShadow = `0 0 22px ${color}24`;
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = alert ? 'rgba(239,68,68,0.55)' : 'rgba(255,255,255,0.08)';
-        e.currentTarget.style.boxShadow = 'none';
-      }}
-    >
-      {alert && (
-        <span className="absolute top-5 right-5 w-2 h-2 rounded-full"
-          style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
-      )}
-      <div style={{ fontSize: 20, marginBottom: 18 }}>{icon}</div>
-      <p style={{ margin: 0, fontSize: 30, lineHeight: 1, fontWeight: 850,
-        color: alert ? '#DC2626' : (valor === 0 || valor === '0') ? '#9CA3AF' : isDay ? '#0F172A' : '#f8fafc',
-        fontVariantNumeric: 'tabular-nums' }}>
-        {valor}
-      </p>
-      <p style={{ margin: '7px 0 0', fontSize: 13, color: isDay ? '#475569' : '#94a3b8', fontWeight: 600 }}>{label}</p>
-      {sub && <p style={{ margin: '6px 0 0', fontSize: 13, color: alert ? '#DC2626' : '#10b981', fontWeight: 600 }}>{sub}</p>}
-    </button>
+    <Tag onClick={onClick} type={onClick ? 'button' : undefined}
+      className="lab-kpi rounded-2xl border text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500"
+      style={{ background: isDay ? '#fff' : '#182233', borderColor: alert ? (isDay ? '#b91c1c' : '#f87171') : isDay ? '#cbd5e1' : '#334155', color: isDay ? '#0f172a' : '#f8fafc' }}>
+      <span className="lab-kpi-icon" style={{ background: isDay ? '#eef2f6' : '#243247', color: alert ? (isDay ? '#b91c1c' : '#fca5a5') : isDay ? '#047857' : '#6ee7b7' }}>
+        <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d={KPI_ICONS[icon]} /></svg>
+      </span>
+      <span className="lab-kpi-label">{label}</span>
+      <span className="lab-kpi-value">{valor}</span>
+      {sub && <span className="lab-kpi-sub" style={{ color: alert ? (isDay ? '#b91c1c' : '#fca5a5') : isDay ? '#475569' : '#cbd5e1' }}>{sub}</span>}
+    </Tag>
   );
 }
 
@@ -831,13 +815,13 @@ export default function DashboardAdmin() {
         {/* Encabezado */}
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-white" style={{margin:0}}>{saludo} Bienvenido, {usuario?.nombre?.split(' ')[0]}</h1>
+            <h1 className="text-xl md:text-2xl font-bold break-words" style={{margin:0, color: 'var(--main-text)'}}>{saludo} Bienvenido, {usuario?.nombre?.replace(/\b(Mtro|Mtra|Dr|Dra|Ing|Lic)\.\s*/gi, '$1. ')}</h1>
             <p className="text-sm text-slate-400" style={{margin:'4px 0 0'}}>{fechaStr}</p>
           </div>
           {stats?.labs?.length > 1 && (
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Laboratorio</label>
-              <SelectDark value={labId} onChange={v => setLabId(Number(v))} className="min-w-[180px]"
+            <div className="lab-filter">
+              <p className="block text-sm font-medium mb-1" style={{color: 'var(--main-text)'}}>Laboratorio</p>
+              <SelectDark value={labId} onChange={v => setLabId(Number(v))} className="w-full"
                 options={[{ value:'', label:'Todos' }, ...stats.labs.map(l => ({ value:l.id, label:l.nombre }))]}/>
             </div>
           )}
