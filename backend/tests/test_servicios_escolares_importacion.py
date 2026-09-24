@@ -165,6 +165,40 @@ def test_retiro_no_se_reactiva_por_sincronizacion_y_admite_reinscripcion_manual(
     assert inscripcion.estado == "ACTIVO"
 
 
+def test_buscar_nombre_completo_y_cambiar_de_carrera(client, db, admin_user):
+    origen = CatalogoCarrera(clave="TSUC", nombre="TSU EN CONTADURÍA", nivel="TSU", activo=True)
+    destino = CatalogoCarrera(clave="TSUP", nombre="TSU EN PARAMÉDICO", nivel="TSU", activo=True)
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
+    db.add_all([origen, destino, periodo]); db.flush()
+    grupos = [GrupoAcademico(periodo_id=periodo.id, carrera=c.nombre, carrera_id=c.id,
+                              cuatrimestre=1, grupo="A", activo=True) for c in [origen, destino]]
+    alumno = CatalogoAlumno(matricula="UTC260097", apellido_paterno="AC", apellido_materno="PÉREZ",
+        nombres="JESÚS ANDRÉS", carrera=origen.nombre, carrera_id=origen.id,
+        cuatrimestre=1, grupo="A", periodo=periodo.clave, activo=True)
+    db.add_all([*grupos, alumno]); db.flush()
+    inscripcion = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupos[0].id, estado="ACTIVO")
+    db.add(inscripcion); db.commit()
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    retirado = client.delete(f"/servicios-escolares/grupos/{grupos[0].id}/alumnos/{alumno.id}",
+                            params={"motivo": "CAMBIO_DE_GRUPO"}, headers=headers)
+    assert retirado.status_code == 200, retirado.text
+    url = f"/servicios-escolares/grupos/{grupos[1].id}"
+    for busqueda in ["AC PÉREZ JESUS", "  JESUS   AC PÉREZ  ", "ac pérez jesús", "ac perez jesus", "UTC260097"]:
+        encontrados = client.get(f"{url}/candidatos", params={"q": busqueda}, headers=headers)
+        assert encontrados.status_code == 200, encontrados.text
+        assert [a["id"] for a in encontrados.json()] == [alumno.id]
+    sin_coincidencia = client.get(f"{url}/candidatos", params={"q": "AC PÉREZ MARIA"}, headers=headers)
+    assert sin_coincidencia.json() == []
+    asignado = client.post(f"{url}/alumnos", json={"alumno_ids": [alumno.id]}, headers=headers)
+    assert asignado.status_code == 200, asignado.text
+    db.refresh(alumno); db.refresh(inscripcion)
+    assert (alumno.carrera_id, alumno.carrera, alumno.cuatrimestre, alumno.grupo) == (destino.id, destino.nombre, 1, "A")
+    assert inscripcion.estado == "NO_INSCRITO"
+    assert db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id, estado="ACTIVO").one().grupo_academico_id == grupos[1].id
+    assert db.query(CatalogoAlumno).filter_by(matricula=alumno.matricula).count() == 1
+    assert client.get(f"{url}/candidatos", params={"q": "UTC260097"}, headers=headers).json() == []
+
+
 def test_confirmar_importacion_crea_grupos_e_inscripciones(client, db):
     admin = Usuario(nombre="Admin Escolar", email="escolar@test.mx",
                     password_hash=hashear_password("Test1234!"),

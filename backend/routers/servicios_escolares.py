@@ -1493,11 +1493,18 @@ def candidatos_de_grupo(
     inscritos = {item.alumno.matricula.upper() for item in grupo.inscripciones if item.estado == "ACTIVO"}
     consulta = db.query(CatalogoAlumno).filter(CatalogoAlumno.activo == True)
     if q.strip():
-        patron = f"%{q.strip()}%"
-        consulta = consulta.filter(
-            CatalogoAlumno.matricula.ilike(patron) | CatalogoAlumno.nombres.ilike(patron) |
-            CatalogoAlumno.apellido_paterno.ilike(patron) | CatalogoAlumno.apellido_materno.ilike(patron)
-        )
+        # Buscar el nombre completo sin depender del orden ni de los acentos.
+        texto = (func.coalesce(CatalogoAlumno.matricula, "") + " "
+                 + func.coalesce(CatalogoAlumno.apellido_paterno, "") + " "
+                 + func.coalesce(CatalogoAlumno.apellido_materno, "") + " "
+                 + func.coalesce(CatalogoAlumno.nombres, ""))
+        for acentuada, simple in zip("ÁÉÍÓÚÜÑáéíóúüñ", "AEIOUUNaeiouun"):
+            texto = func.replace(texto, acentuada, simple)
+        texto = func.lower(texto)
+        busqueda = unicodedata.normalize("NFKD", q.casefold())
+        busqueda = "".join(ch for ch in busqueda if not unicodedata.combining(ch))
+        for termino in busqueda.split():
+            consulta = consulta.filter(texto.contains(termino, autoescape=True))
     resultado, vistas = [], set()
     for alumno in consulta.order_by(CatalogoAlumno.id.desc()).limit(500).all():
         matricula = alumno.matricula.upper()
