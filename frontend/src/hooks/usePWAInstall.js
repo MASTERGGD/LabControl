@@ -1,46 +1,63 @@
-/**
- * usePWAInstall — captura el evento beforeinstallprompt del navegador
- * y expone una función install() para mostrar el diálogo nativo de instalación.
- *
- * Uso:
- *   const { canInstall, install, dismiss } = usePWAInstall();
- */
-import { useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
-export default function usePWAInstall() {
-  const [prompt, setPrompt]       = useState(null);
-  const [canInstall, setCanInstall] = useState(false);
-  const [dismissed, setDismissed]  = useState(
-    () => sessionStorage.getItem('pwa-dismissed') === '1'
-  );
+const PWAInstallContext = createContext({ canInstall: false, installed: false });
+
+export function PWAInstallProvider({ children }) {
+  const promptRef = useRef(null);
+  const [available, setAvailable] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    try { return sessionStorage.getItem('pwa-dismissed') === '1'; } catch { return false; }
+  });
 
   useEffect(() => {
-    const handler = e => {
-      e.preventDefault();   // evitar el mini-infobar del navegador
-      setPrompt(e);
-      setCanInstall(true);
+    const media = window.matchMedia?.('(display-mode: standalone)');
+    const isStandalone = () => Boolean(media?.matches || navigator.standalone);
+    setInstalled(isStandalone());
+    const onPrompt = event => {
+      event.preventDefault();
+      if (isStandalone()) return;
+      promptRef.current = event;
+      setAvailable(true);
     };
-    window.addEventListener('beforeinstallprompt', handler);
-
-    // Si ya está instalada como PWA, no mostrar nada
-    const mq = window.matchMedia('(display-mode: standalone)');
-    if (mq.matches) setCanInstall(false);
-
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    const onInstalled = () => {
+      promptRef.current = null;
+      setAvailable(false);
+      setInstalled(true);
+    };
+    const onDisplayChange = () => { if (isStandalone()) onInstalled(); };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    media?.addEventListener?.('change', onDisplayChange);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+      media?.removeEventListener?.('change', onDisplayChange);
+    };
   }, []);
 
   const install = async () => {
-    if (!prompt) return;
-    prompt.prompt();
-    const { outcome } = await prompt.userChoice;
-    if (outcome === 'accepted') setCanInstall(false);
-    setPrompt(null);
+    const event = promptRef.current;
+    if (!event) return 'unavailable';
+    // Each browser prompt can only be used once, even if it is dismissed.
+    promptRef.current = null;
+    setAvailable(false);
+    try {
+      await event.prompt();
+      const { outcome } = await event.userChoice;
+      if (outcome === 'accepted') setInstalled(true);
+      return outcome;
+    } catch { return 'unavailable'; }
   };
 
   const dismiss = () => {
     setDismissed(true);
-    sessionStorage.setItem('pwa-dismissed', '1');
+    try { sessionStorage.setItem('pwa-dismissed', '1'); } catch { /* Storage is optional. */ }
   };
 
-  return { canInstall: canInstall && !dismissed, install, dismiss };
+  return <PWAInstallContext.Provider value={{ canInstall: available && !installed, showBanner: available && !installed && !dismissed, installed, install, dismiss }}>{children}</PWAInstallContext.Provider>;
+}
+
+export default function usePWAInstall() {
+  return useContext(PWAInstallContext);
 }

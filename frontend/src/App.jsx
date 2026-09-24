@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PeriodoProvider } from './context/PeriodoContext';
 import PWAInstallBanner from './components/PWAInstallBanner';
+import { PWAInstallProvider } from './hooks/usePWAInstall';
 import { ROUTE_PERMISSIONS } from './config/permissions';
 
 // Páginas
@@ -517,6 +518,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
+    <PWAInstallProvider>
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
@@ -529,5 +531,6 @@ export default function App() {
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>
+    </PWAInstallProvider>
   );
 }

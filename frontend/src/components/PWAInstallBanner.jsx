@@ -7,11 +7,13 @@
  */
 import React from 'react';
 import usePWAInstall from '../hooks/usePWAInstall';
+import { useLocation } from 'react-router-dom';
 
 export default function PWAInstallBanner() {
-  const { canInstall, install, dismiss } = usePWAInstall();
+  const { showBanner, install, dismiss } = usePWAInstall();
+  const { pathname } = useLocation();
 
-  if (!canInstall) return null;
+  if (!showBanner || pathname === '/login') return null;
 
   return (
     <div

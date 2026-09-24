@@ -3,6 +3,7 @@ import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 import { getOfflineAccessInfo } from '../utils/offlineAccess';
+import PWAInstallAccess from '../components/PWAInstallAccess';
 
 const ROLES_REDIRECT = {
   SUPER_ADMIN: '/admin',
@@ -255,6 +256,8 @@ export default function Login() {
               {offlineMode ? 'Volver a iniciar sesión' : 'Acceder sin conexión'}
             </button>
           )}
+
+          <PWAInstallAccess />
 
           <div className="mt-6 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
             <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
