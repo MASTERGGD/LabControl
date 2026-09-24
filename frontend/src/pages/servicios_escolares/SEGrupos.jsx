@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 
@@ -15,6 +15,7 @@ export default function SEGrupos() {
   const [periodos, setPeriodos] = useState([]);
   const [periodo, setPeriodo] = useState(null);
   const [grupos, setGrupos] = useState([]);
+  const [ordenGrupos, setOrdenGrupos] = useState('cuatrimestre-asc');
   const [resumen, setResumen] = useState({});
   const [detalle, setDetalle] = useState(null);
   const [alumnos, setAlumnos] = useState([]);
@@ -164,6 +165,21 @@ export default function SEGrupos() {
   };
 
   const periodoSeleccionado = periodos.find((item) => item.clave === periodo);
+  const gruposOrdenados = useMemo(() => {
+    const compararTexto = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' });
+    return [...grupos].sort((a, b) => {
+      const cuatrimestre = Number(a.cuatrimestre) - Number(b.cuatrimestre);
+      const carrera = compararTexto(a.carrera, b.carrera);
+      const desempate = cuatrimestre || carrera || compararTexto(a.grupo, b.grupo) || a.id - b.id;
+      switch (ordenGrupos) {
+        case 'cuatrimestre-desc': return -cuatrimestre || desempate;
+        case 'carrera': return carrera || desempate;
+        case 'alumnos-desc': return Number(b.total_alumnos) - Number(a.total_alumnos) || desempate;
+        case 'alumnos-asc': return Number(a.total_alumnos) - Number(b.total_alumnos) || desempate;
+        default: return desempate;
+      }
+    });
+  }, [grupos, ordenGrupos]);
 
   const establecerActual = async () => {
     if (!periodoSeleccionado || activandoPeriodo) return;
@@ -225,7 +241,9 @@ export default function SEGrupos() {
                 </p>
                 <p className="text-sm text-slate-300">
                   {periodoSeleccionado.coincide_con_fecha
-                    ? 'Este periodo corresponde a la fecha actual.'
+                    ? periodoSeleccionado.es_actual_configurado
+                      ? 'Este periodo corresponde a la fecha actual y ya está configurado como actual.'
+                      : 'Este periodo se reconoce como vigente por la fecha. Falta guardarlo como periodo actual en la configuración.'
                     : 'Este periodo no corresponde al bloque académico calculado para la fecha actual.'}
                 </p>
               </div>
@@ -236,7 +254,7 @@ export default function SEGrupos() {
                   onClick={() => setConfirmandoPeriodo(true)}
                   className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {activandoPeriodo ? 'Estableciendo…' : 'Establecer como actual'}
+                  {activandoPeriodo ? 'Estableciendo…' : 'Confirmar periodo actual'}
                 </button>
               )}
             </div>
@@ -264,6 +282,19 @@ export default function SEGrupos() {
         )}
 
         <div className="glass rounded-2xl overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-3">
+            <p className="text-sm text-slate-400">{cargando ? 'Cargando grupos…' : `${grupos.length} grupos en este periodo`}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="orden-grupos" className="text-sm font-semibold text-slate-300">Ordenar por</label>
+              <select id="orden-grupos" className="input-dark max-w-full" value={ordenGrupos} onChange={(evento) => setOrdenGrupos(evento.target.value)}>
+                <option value="cuatrimestre-asc">Cuatrimestre: menor a mayor</option>
+                <option value="cuatrimestre-desc">Cuatrimestre: mayor a menor</option>
+                <option value="carrera">Carrera: A–Z</option>
+                <option value="alumnos-desc">Alumnos: mayor a menor</option>
+                <option value="alumnos-asc">Alumnos: menor a mayor</option>
+              </select>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -286,7 +317,7 @@ export default function SEGrupos() {
                     <td colSpan="5" className="p-8 text-center text-slate-400">No hay grupos registrados en este periodo.</td>
                   </tr>
                 )}
-                {!cargando && grupos.map((grupo) => (
+                {!cargando && gruposOrdenados.map((grupo) => (
                   <tr
                     key={grupo.id}
                     onClick={() => abrir(grupo)}
