@@ -120,6 +120,38 @@ body.theme-day .themed-date-input { color-scheme: light; }
 .theme-muted { color: var(--text-muted); }
 .theme-divider { border-color: var(--surface-border); }
 
+/* Asistencia diaria: colores semánticos para avisos en ambos temas. */
+.asistencia-hoy .attendance-cutoff {
+  color: #dbeafe; background: #17243d; border-color: #28436b;
+}
+.asistencia-hoy .attendance-calendar {
+  color: #fde68a; background: #292313; border-color: #78581b;
+}
+.asistencia-hoy .attendance-error {
+  color: #fecaca; background: #3b1820; border-color: #92404a;
+}
+body.theme-day .asistencia-hoy .attendance-cutoff {
+  color: #1e3a5f; background: #eff6ff; border-color: #93c5fd;
+}
+body.theme-day .asistencia-hoy .attendance-calendar {
+  color: #78350f; background: #fffbeb; border-color: #fcd34d;
+}
+body.theme-day .asistencia-hoy .attendance-error {
+  color: #991b1b; background: #fef2f2; border-color: #fca5a5;
+}
+body.theme-day .asistencia-hoy .text-blue-300 { color: #1d4ed8 !important; }
+body.theme-day .asistencia-hoy .text-amber-300 { color: #92400e !important; }
+body.theme-day .asistencia-hoy .text-slate-200,
+body.theme-day .asistencia-hoy .text-slate-300,
+body.theme-day .asistencia-hoy .text-slate-400 { color: var(--text-secondary) !important; }
+body.theme-day .asistencia-hoy .text-white:not(button) { color: var(--text-primary) !important; }
+body.theme-day .asistencia-hoy .glass {
+  background: var(--surface-panel); border-color: var(--surface-border);
+}
+body.theme-day .asistencia-hoy [class*="border-white"],
+body.theme-day .asistencia-hoy tbody tr { border-color: var(--surface-border); }
+body.theme-day .asistencia-hoy thead { background: var(--surface-panel-soft); }
+
 body.theme-day .offline-consulta { color: var(--text-primary); }
 body.theme-day .offline-consulta h1,
 body.theme-day .offline-consulta h2,
