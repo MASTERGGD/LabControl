@@ -919,9 +919,9 @@ export default function MiHorarioDocente() {
                   )}
                   {!esNoLectiva(actividadPrincipal) && recordatorioPrincipal && (
                     <div className="mt-3 text-sm">
-                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2 text-amber-100">
-                        <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-300">Pendiente de la sesión anterior</span>
-                        {[recordatorioPrincipal.bitacora?.tema_pendiente?.trim(), recordatorioPrincipal.bitacora?.tarea_asignada?.trim()].filter(Boolean).map((pendiente, indice) => <span key={`${pendiente}-${indice}`} className="mt-1 block">{pendiente}</span>)}
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2" style={{ color: 'var(--accent-warning-ui)' }}>
+                        <span className="block text-[10px] font-bold uppercase tracking-wider">Pendiente de la sesión anterior</span>
+                        {[recordatorioPrincipal.bitacora?.tema_pendiente?.trim(), recordatorioPrincipal.bitacora?.tarea_asignada?.trim()].filter(Boolean).map((pendiente, indice) => <span key={`${pendiente}-${indice}`} className="mt-1 block whitespace-pre-wrap break-words">{pendiente}</span>)}
                       </div>
                     </div>
                   )}
