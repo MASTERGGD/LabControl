@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
@@ -161,6 +161,8 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
   const [notas, setNotas] = useState({});
   const [notaVisible, setNotaVisible] = useState(null);
   const [resolviendo, setResolviendo] = useState(null);
+  const guardando = useRef(false);
+  const [mensaje, setMensaje] = useState('');
   const [cargando, setCargando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -201,40 +203,56 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
       || String(a.req.hora_inicio || '').localeCompare(String(b.req.hora_inicio || '')));
   const historial = filas.filter(fila => fila.estado !== 'PENDIENTE');
 
+  const aplicarRespuesta = actualizados => {
+    setRequerimientos(prev => prev.map(req => {
+      const actualizado = actualizados.find(item => item.id === req.id);
+      return actualizado ? { ...req, ...actualizado } : req;
+    }));
+  };
+
   const resolverFila = async (fila, estado, nota = null) => {
+    if (guardando.current) return;
+    guardando.current = true;
+    setMensaje('');
     setResolviendo(fila.key);
     try {
       const endpoint = fila.esDescripcion
         ? `/horarios/requerimientos/${fila.req.id}/resolver`
         : `/horarios/requerimientos/${fila.req.id}/items/${fila.itemIndex}/resolver`;
-      await api.put(endpoint, {
+      const { data } = await api.put(endpoint, {
         estado,
         nota_admin: nota?.trim() || null,
       });
+      aplicarRespuesta([data]);
+      setMensaje('Recurso actualizado.');
       setNotaVisible(null);
-      await cargar();
       onActualizado?.();
     } catch (err) {
       alert(err.response?.data?.detail || 'No se pudo actualizar el recurso.');
     } finally {
+      guardando.current = false;
       setResolviendo(null);
     }
   };
 
   const resolverLote = async (grupo, estado) => {
     const seleccion = grupo.filter(fila => !fila.esDescripcion);
-    if (!seleccion.length) return;
+    if (!seleccion.length || guardando.current) return;
+    guardando.current = true;
+    setMensaje('');
     setResolviendo(`lote-${grupo[0].item}`);
     try {
-      await api.put('/horarios/requerimientos/items/resolver-lote', {
+      const { data } = await api.put('/horarios/requerimientos/items/resolver-lote', {
         estado,
         items: seleccion.map(fila => ({ requerimiento_id: fila.req.id, item_index: fila.itemIndex })),
       });
-      await cargar();
+      aplicarRespuesta(data.requerimientos);
+      setMensaje(`${data.actualizados} recursos actualizados correctamente.`);
       onActualizado?.();
     } catch (err) {
       alert(err.response?.data?.detail || 'No se pudieron actualizar los recursos en lote.');
     } finally {
+      guardando.current = false;
       setResolviendo(null);
     }
   };
@@ -269,16 +287,16 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
           </div>
           {fila.estado === 'PENDIENTE' && (
             <div className="flex flex-wrap justify-start gap-1 lg:justify-end">
-              <button disabled={resolviendo === fila.key} onClick={() => resolverFila(fila, 'CONFIRMADO')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-emerald-500 hover:text-emerald-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Confirmar</button>
-              <button disabled={resolviendo === fila.key} onClick={() => resolverFila(fila, 'DOCENTE_PROVEE')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Docente provee</button>
-              <button disabled={resolviendo === fila.key} onClick={() => setNotaVisible(rechazando ? null : fila.key)} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-red-500 hover:text-red-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">No disponible</button>
+              <button disabled={!!resolviendo} onClick={() => resolverFila(fila, 'CONFIRMADO')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-emerald-500 hover:text-emerald-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Confirmar</button>
+              <button disabled={!!resolviendo} onClick={() => resolverFila(fila, 'DOCENTE_PROVEE')} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">Docente provee</button>
+              <button disabled={!!resolviendo} onClick={() => setNotaVisible(rechazando ? null : fila.key)} className="rounded-md border border-slate-300 px-2 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-red-500 hover:text-red-700 disabled:opacity-50 dark:border-white/15 dark:text-slate-300">No disponible</button>
             </div>
           )}
         </div>
         {rechazando && (
           <div className="mt-2 flex flex-col gap-2 rounded-lg bg-red-500/[0.06] p-2 sm:flex-row">
             <input autoFocus value={notas[fila.key] || ''} onChange={e => setNotas(actual => ({ ...actual, [fila.key]: e.target.value }))} className="input-dark min-w-0 flex-1 text-xs" placeholder="Explica al docente por qué no está disponible" />
-            <button disabled={!notas[fila.key]?.trim() || resolviendo === fila.key} onClick={() => resolverFila(fila, 'RECHAZADO', notas[fila.key])} className="rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar no disponible</button>
+            <button disabled={!notas[fila.key]?.trim() || !!resolviendo} onClick={() => resolverFila(fila, 'RECHAZADO', notas[fila.key])} className="rounded-md bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Confirmar no disponible</button>
             <button onClick={() => setNotaVisible(null)} className="px-2 text-xs text-slate-500">Cancelar</button>
           </div>
         )}
@@ -299,6 +317,11 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
         <button type="button" className="self-start rounded-lg border border-slate-500/20 px-3 py-1.5 text-xs font-semibold text-slate-500 sm:self-center">{expandida ? 'Ocultar' : 'Gestionar'} {expandida ? '▴' : '▾'}</button>
       </header>
 
+      {(resolviendo || mensaje) && (
+        <p role="status" aria-live="polite" className="px-4 py-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {resolviendo ? 'Guardando los requerimientos…' : mensaje}
+        </p>
+      )}
       {expandida && (
         <div>
           <div className="flex gap-1 border-b border-slate-500/15 px-3 py-2">
@@ -312,8 +335,8 @@ function BandejaRequerimientos({ laboratorioId, cuatrimestre, onActualizado, onA
                 <p className={`text-xs font-bold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>{nombre} · {grupo.length} solicitud{grupo.length === 1 ? '' : 'es'}</p>
                 {grupo.length > 1 && !grupo.some(fila => fila.esDescripcion) && (
                   <div className="flex gap-1.5">
-                    <button disabled={resolviendo === `lote-${nombre}`} onClick={() => resolverLote(grupo, 'CONFIRMADO')} className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">Confirmar todas</button>
-                    <button disabled={resolviendo === `lote-${nombre}`} onClick={() => resolverLote(grupo, 'DOCENTE_PROVEE')} className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">Docente provee todas</button>
+                    <button disabled={!!resolviendo} onClick={() => resolverLote(grupo, 'CONFIRMADO')} className="rounded-md bg-emerald-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">{resolviendo === `lote-${nombre}` ? 'Procesando…' : 'Confirmar todas'}</button>
+                    <button disabled={!!resolviendo} onClick={() => resolverLote(grupo, 'DOCENTE_PROVEE')} className="rounded-md bg-indigo-600 px-2.5 py-1.5 text-[10px] font-semibold text-white disabled:opacity-50">{resolviendo === `lote-${nombre}` ? 'Procesando…' : 'Docente provee todas'}</button>
                   </div>
                 )}
               </div>

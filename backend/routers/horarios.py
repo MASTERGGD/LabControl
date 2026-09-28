@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import BackgroundTasks, APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel, Field
@@ -1740,6 +1740,7 @@ def mis_requerimientos(
 
 @router.put("/requerimientos/items/resolver-lote", summary="Resolver recursos de clase en lote — admins")
 def resolver_items_requerimiento_lote(
+    background_tasks: BackgroundTasks,
     data: RequerimientoLoteResolverSchema,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN)),
@@ -1785,13 +1786,12 @@ def resolver_items_requerimiento_lote(
         actualizados.append(req)
         if req.reservacion:
             notificaciones.append((req.reservacion.docente_id, req.reservacion.materia, nombres))
-    db.commit()
-
     for docente_id, materia, nombres in notificaciones:
         crear_notificacion(
             db, docente_id, "requerimiento",
             "📋 Recursos de clase actualizados",
             f"{', '.join(nombres)} para '{materia}': {ESTADO_REQ_LABEL.get(estado, estado).lower()}.",
+            background_tasks=background_tasks,
         )
     db.commit()
     return {"actualizados": len(data.items), "requerimientos": [_serializar_requerimiento(req) for req in actualizados]}
@@ -1799,6 +1799,7 @@ def resolver_items_requerimiento_lote(
 
 @router.put("/requerimientos/{req_id}/resolver", summary="Resolver requerimiento — admins")
 def resolver_requerimiento(
+    background_tasks: BackgroundTasks,
     req_id: int,
     data: RequerimientoResolverSchema,
     db: Session = Depends(get_db),
@@ -1838,6 +1839,7 @@ def resolver_requerimiento(
                 "requerimiento",
                 f"{emojis.get(data.estado,'📋')} Requerimiento de clase actualizado",
                 msg,
+                background_tasks=background_tasks,
             )
             db.commit()
     except Exception:
@@ -1848,6 +1850,7 @@ def resolver_requerimiento(
 
 @router.put("/requerimientos/{req_id}/items/{item_index}/resolver", summary="Resolver un recurso solicitado — admins")
 def resolver_item_requerimiento(
+    background_tasks: BackgroundTasks,
     req_id: int,
     item_index: int,
     data: RequerimientoItemResolverSchema,
@@ -1892,6 +1895,7 @@ def resolver_item_requerimiento(
             "📋 Recurso de clase actualizado",
             f"{item['item']}: {ESTADO_REQ_LABEL.get(estado, estado).lower()}."
             + (f" Nota del laboratorio: {item['nota_admin']}" if item["nota_admin"] else ""),
+            background_tasks=background_tasks,
         )
         db.commit()
     return _serializar_requerimiento(req)

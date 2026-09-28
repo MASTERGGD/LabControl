@@ -23,7 +23,7 @@ def _utcnow() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -53,8 +53,9 @@ def crear_notificacion(
     mensaje: str,
     url: Optional[str] = None,
     enviar_email: bool = True,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> Notificacion:
-    """Crea una notificación en BD y envía email si el usuario tiene correo."""
+    """Crea la notificación; permite diferir el correo hasta después de responder."""
     n = Notificacion(
         usuario_id=usuario_id,
         tipo=tipo,
@@ -69,13 +70,14 @@ def crear_notificacion(
         try:
             usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
             if usuario and usuario.email:
-                enviar_notificacion(
-                    destinatario=usuario.email,
-                    tipo=tipo,
-                    titulo=titulo,
-                    mensaje=mensaje,
-                    url=url,
+                correo = dict(
+                    destinatario=usuario.email, tipo=tipo, titulo=titulo,
+                    mensaje=mensaje, url=url,
                 )
+                if background_tasks is not None:
+                    background_tasks.add_task(enviar_notificacion, **correo)
+                else:
+                    enviar_notificacion(**correo)
         except Exception as exc:
             logger.warning("No se pudo enviar email para notif %s: %s", n.id, exc)
 

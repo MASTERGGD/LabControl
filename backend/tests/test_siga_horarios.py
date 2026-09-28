@@ -416,7 +416,15 @@ class TestDisponibilidad:
 
 class TestBandejaRequerimientos:
 
-    def test_requerimiento_resuelto_permanece_en_historial(self, client, db):
+    def test_requerimiento_resuelto_permanece_en_historial(self, client, db, monkeypatch):
+        from fastapi import BackgroundTasks
+        from models.notificacion import Notificacion
+        from routers import notificaciones
+
+        correos = []
+        tareas = []
+        monkeypatch.setattr(notificaciones, "enviar_notificacion", lambda **correo: correos.append(correo))
+        monkeypatch.setattr(BackgroundTasks, "add_task", lambda self, fn, *args, **kwargs: tareas.append((fn, args, kwargs)))
         admin = _usuario(db, "Admin", "admin@test.mx", RolUsuario.SUPER_ADMIN)
         docente = _usuario(db, "Docente", "docente@test.mx", RolUsuario.DOCENTE)
         tok = get_token(client, "admin@test.mx", "Test1234!")
@@ -492,6 +500,18 @@ class TestBandejaRequerimientos:
         assert lote.json()["actualizados"] == 2
         assert lote.json()["requerimientos"][0]["estado"] == "CONFIRMADO"
         assert all(item["estado"] == "CONFIRMADO" for item in lote.json()["requerimientos"][0]["items_detalle"])
+
+        # Los cambios y avisos internos ya están guardados sin esperar al correo.
+        db.expire_all()
+        assert db.get(RequerimientoClase, requerimiento.id).estado == "CONFIRMADO"
+        assert db.query(Notificacion).filter_by(usuario_id=docente.id, tipo="requerimiento").count() == 3
+        assert correos == []
+        assert len(tareas) == 3
+        for fn, args, kwargs in tareas:
+            fn(*args, **kwargs)
+        assert len(correos) == 3
+        assert all(correo["destinatario"] == "docente@test.mx" for correo in correos)
+
 
 
 # ════════════════════════════════════════════════════════════════════════════
