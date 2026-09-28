@@ -176,6 +176,9 @@ function KpiRow({ stats, sesiones, navigate }) {
 }
 
 function TarjetaSesion({ sesion, onIr }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const overtimeColor = isDay ? '#991b1b' : '#fca5a5';
   const seg = useTiempoRestante(sesion.fin_estimado);
   const abs = seg !== null ? Math.abs(seg) : 0;
   const h = Math.floor(abs/3600), m = Math.floor((abs%3600)/60), s = abs%60;
@@ -187,8 +190,8 @@ function TarjetaSesion({ sesion, onIr }) {
     <div onClick={() => onIr(sesion)}
       style={{
         borderRadius: '0.875rem',
-        border: `1px solid ${overtime ? 'rgba(239,68,68,0.45)' : aviso ? 'rgba(245,158,11,0.40)' : 'rgba(255,255,255,0.08)'}`,
-        background: overtime ? 'rgba(127,29,29,0.18)' : aviso ? 'rgba(120,53,15,0.12)' : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${overtime ? (isDay ? '#fca5a5' : 'rgba(239,68,68,0.45)') : aviso ? (isDay ? '#fcd34d' : 'rgba(245,158,11,0.40)') : 'var(--surface-border)'}`,
+        background: overtime ? (isDay ? '#fef2f2' : 'rgba(127,29,29,0.18)') : aviso ? (isDay ? '#fffbeb' : 'rgba(120,53,15,0.12)') : 'var(--surface-panel-soft)',
         padding: '0.75rem',
         cursor: 'pointer',
         transition: 'border-color 0.2s',
@@ -200,29 +203,32 @@ function TarjetaSesion({ sesion, onIr }) {
               ? <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" style={{ width:8, height:8 }}/>
               : <PulseDot color="#10b981" size={8}/>
             }
-            <p className="text-sm font-semibold text-white truncate" style={{ margin:0 }}>
+            <p className="text-sm font-semibold truncate" style={{ margin:0, color: 'var(--text-primary)' }}>
               {sesion.tipo_sesion === 'LIBRE' ? '🖥️ Sesión Libre' : sesion.materia}
             </p>
           </div>
-          <p className="text-xs text-slate-400" style={{ margin:0 }}>
+          <p className="text-xs" style={{ margin:0, color: 'var(--text-secondary)' }}>
             {sesion.tipo_sesion === 'LIBRE' ? sesion.laboratorio_nombre : `${sesion.grupo} · ${sesion.laboratorio_nombre}`}
           </p>
           {sesion.docente_nombre && sesion.docente_nombre !== 'Sistema' && (
-            <p className="text-xs text-slate-500 truncate" style={{ margin:'2px 0 0' }}>{sesion.docente_nombre}</p>
+            <p className="text-xs truncate" style={{ margin:'2px 0 0', color: 'var(--text-secondary)' }}>{sesion.docente_nombre}</p>
           )}
         </div>
         <div className="shrink-0 text-right">
           {seg === null
-            ? <span className="text-xs text-slate-500">Sin límite</span>
+            ? <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Sin límite</span>
             : overtime
-              ? <div><p className="text-xs text-red-400 font-semibold" style={{margin:0}}>Excedido</p><p className="font-mono text-red-400 font-bold text-sm" style={{margin:0}}>+{fmt}</p></div>
-              : <div><p className="text-xs text-slate-400" style={{margin:0}}>{aviso ? '⚠️ Termina' : 'Resta'}</p><p className={`font-mono font-bold text-sm ${aviso ? 'text-yellow-400' : 'text-gray-300'}`} style={{margin:0}}>{fmt}</p></div>
+              ? <div><p className="text-xs font-semibold" style={{margin:0, color: overtimeColor}}>Excedido</p><p className="font-mono font-bold text-sm" style={{margin:0, color: overtimeColor}}>+{fmt}</p></div>
+              : <div><p className="text-xs text-slate-400" style={{margin:0}}>{aviso ? '⚠️ Termina' : 'Resta'}</p><p className="font-mono font-bold text-sm" style={{margin:0, color: aviso ? 'var(--accent-warning-ui)' : 'var(--text-secondary)'}}>{fmt}</p></div>
           }
         </div>
       </div>
       <div style={{ marginTop: 8, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span className="text-xs text-slate-500">{sesion.pcs_ocupadas} PCs en uso</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${overtime ? 'bg-red-900/60 text-red-300' : 'bg-green-900/60 text-green-300'}`}>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{sesion.pcs_ocupadas} PCs en uso</span>
+        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+          background: overtime ? (isDay ? '#fee2e2' : 'rgba(127,29,29,0.60)') : (isDay ? '#dcfce7' : 'rgba(20,83,45,0.60)'),
+          color: overtime ? overtimeColor : (isDay ? '#166534' : '#86efac'),
+        }}>
           {overtime ? '⚠️ Tiempo extra' : '🟢 Activa'}
         </span>
       </div>
@@ -232,6 +238,8 @@ function TarjetaSesion({ sesion, onIr }) {
 
 // ─── HERO CARD: Estado + sesiones activas ─────────────────────────────────────
 function HeroCard({ stats, sesiones, cargando, onIr, onRefresh }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const pcsOp    = stats?.pcs?.operativas ?? 0;
   const pcsTotal = stats?.pcs?.total ?? 0;
   const activas  = sesiones.length;
@@ -335,8 +343,8 @@ function HeroCard({ stats, sesiones, cargando, onIr, onRefresh }) {
             {/* Badge tiempo extra */}
             {overtime > 0 && (
               <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20,
-                background: 'rgba(239,68,68,0.14)', color: '#f87171',
-                fontWeight: 600, border: '1px solid rgba(239,68,68,0.22)',
+                background: isDay ? '#fee2e2' : 'rgba(239,68,68,0.14)', color: isDay ? '#991b1b' : '#fca5a5',
+                fontWeight: 600, border: `1px solid ${isDay ? '#fca5a5' : 'rgba(239,68,68,0.22)'}`,
               }}>
                 ⚠ {overtime} con tiempo extra
               </span>
