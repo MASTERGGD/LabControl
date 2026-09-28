@@ -11,7 +11,7 @@ jest.mock('../../hooks/useApi', () => ({ get: jest.fn() }));
 const data = {
   fecha: '2026-09-22', corte: '2026-09-22T10:30:00-06:00', periodo: { id: 1, clave: 'SEP-DIC 2026' },
   carreras_disponibles: ['IA'], carreras: [], grupos: [], criterio: 'Solo listas cerradas',
-  resumen: { asistentes: 3, grupos_con_lista: 1, grupos_sin_lista: 2, grupos_por_iniciar: 1, listas_confirmadas: 2, listas_pendientes: 2 },
+  resumen: { asistentes: 3, a_tiempo: 2, retardos: 1, faltaron: 0, justificados: 1, grupos_con_lista: 1, grupos_sin_lista: 2, grupos_por_iniciar: 1, listas_confirmadas: 2, listas_pendientes: 2 },
 };
 
 test('exporta el mismo corte e impide interpretar nombres como fórmulas', () => {
@@ -20,6 +20,8 @@ test('exporta el mismo corte e impide interpretar nombres como fórmulas', () =>
   expect(csv).toContain('"\'=1+1"');
   expect(csv).toContain('"1° ""A"""');
   expect(csv).toContain('Solo listas cerradas');
+  expect(csv).toContain('"Con retardo","1"');
+  expect(csv).toContain('"Faltaron al corte","0"');
 });
 
 test('consulta el corte, filtra por carrera y no muestra datos anteriores ante un error', async () => {
@@ -31,6 +33,9 @@ test('consulta el corte, filtra por carrera y no muestra datos anteriores ante u
   try {
     await act(async () => root.render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AsistenciaHoy /></MemoryRouter>));
     expect(container.textContent).toContain('3 alumnos únicos');
+    expect(container.textContent).toContain('2A tiempo');
+    expect(container.textContent).toContain('1Con retardo');
+    expect(container.textContent).toContain('0Faltaron al corte');
     await act(async () => {
       const select = container.querySelector('select');
       select.value = 'IA'; select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -43,5 +48,33 @@ test('consulta el corte, filtra por carrera y no muestra datos anteriores ante u
     expect([...container.querySelectorAll('button')].find(b => b.textContent.startsWith('Exportar')).disabled).toBe(true);
   } finally {
     act(() => root.unmount()); container.remove();
+  }
+});
+
+test('exporta Excel con el periodo y carrera seleccionados', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  api.get.mockResolvedValue({ data });
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  URL.createObjectURL = jest.fn(() => 'blob:excel');
+  URL.revokeObjectURL = jest.fn();
+  const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  try {
+    await act(async () => root.render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AsistenciaHoy /></MemoryRouter>));
+    await act(async () => {
+      const select = container.querySelector('select');
+      select.value = 'IA'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    api.get.mockResolvedValueOnce({ data: new Blob(['excel']) });
+    await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Exportar Excel con detalle').click());
+    expect(api.get).toHaveBeenLastCalledWith('/reportes-academicos/asistencia-diaria/excel', {
+      params: { periodo_id: 1, fecha: '2026-09-22', carrera: 'IA' }, responseType: 'blob',
+    });
+    expect(click).toHaveBeenCalledTimes(1);
+    api.get.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Exportar Excel con detalle').click());
+    expect(container.querySelector('[role="alert"]').textContent).toContain('No se pudo exportar');
+  } finally {
+    act(() => root.unmount()); click.mockRestore();
   }
 });

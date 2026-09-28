@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import selectinload
 
 from models.catalogo import GrupoAcademico, PeriodoEscolar
-from models.docencia import CargaDocente, ClaseDocente
+from models.docencia import AsistenciaDocente, CargaDocente, ClaseDocente
 from services.calendario_academico import estado_fecha_academica
 from services.timezone import now_mx
 
@@ -32,7 +32,7 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
         CargaDocente.tipo_actividad == "CLASE",
     ).all()
     por_carga = {c.id: c for c in cargas}
-    clases = db.query(ClaseDocente).options(selectinload(ClaseDocente.asistencias)).filter(
+    clases = db.query(ClaseDocente).options(selectinload(ClaseDocente.asistencias).selectinload(AsistenciaDocente.alumno)).filter(
         ClaseDocente.carga_docente_id.in_(por_carga), ClaseDocente.fecha == fecha,
     ).all()
     por_id = {c.carga_docente_id: c for c in clases}
@@ -43,6 +43,9 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
     confirmadas = defaultdict(set)
     observados = defaultdict(set)
     asistentes = defaultdict(set)
+    por_estado = defaultdict(lambda: defaultdict(set))
+    detalle = []
+    grupos_por_id = {g.id: g for g in grupos}
     en_captura = defaultdict(int)
     hora = corte.strftime('%H:%M')
 
@@ -76,8 +79,30 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
         futuras[grupo_id].discard(carga.id)
         for asistencia in clase.asistencias:
             observados[grupo_id].add(asistencia.alumno_id)
+            por_estado[grupo_id][asistencia.estado].add(asistencia.alumno_id)
             if asistencia.estado in {'PRESENTE', 'RETARDO'}:
                 asistentes[grupo_id].add(asistencia.alumno_id)
+            alumno = asistencia.alumno
+            grupo = grupos_por_id[grupo_id]
+            detalle.append({
+                'alumno_id': asistencia.alumno_id, 'matricula': alumno.matricula,
+                'alumno': ' '.join(filter(None, [alumno.apellido_paterno, alumno.apellido_materno, alumno.nombres])),
+                'grupo_id': grupo_id, 'grupo': f'{grupo.cuatrimestre}° {grupo.grupo}',
+                'carrera': grupo.carrera, 'clase_id': clase.id, 'clase': carga.actividad_nombre,
+                'hora_inicio': clase.hora_inicio_reposicion or carga.hora_inicio,
+                'estado': asistencia.estado,
+            })
+
+    def desglose(ids):
+        estados = {estado: set().union(*(por_estado[i][estado] for i in ids))
+                   for estado in ('PRESENTE', 'RETARDO', 'FALTA', 'JUSTIFICADA')}
+        presentes = estados['PRESENTE'] | estados['RETARDO']
+        return {
+            'a_tiempo': len(estados['PRESENTE'] - estados['RETARDO']),
+            'retardos': len(estados['RETARDO']),
+            'faltaron': len(estados['FALTA'] - presentes),
+            'justificados': len(estados['JUSTIFICADA'] - presentes - estados['FALTA']),
+        }
 
     filas = []
     for grupo in grupos:
@@ -89,6 +114,7 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
             'id': gid, 'nombre': f'{grupo.cuatrimestre}° {grupo.grupo}',
             'carrera': grupo.carrera, 'turno': grupo.turno,
             'asistentes': len(asistentes[gid]), 'alumnos_con_registro': len(observados[gid]),
+            **desglose([gid]),
             'listas_confirmadas': len(confirmadas[gid]), 'listas_pendientes': pendientes,
             'listas_en_captura': en_captura[gid], 'estado': estado,
         })
@@ -96,6 +122,7 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
     def resumen(grupos_resumen):
         ids_resumen = [g['id'] for g in grupos_resumen]
         return {
+            **desglose(ids_resumen),
             'asistentes': len(set().union(*(asistentes[i] for i in ids_resumen))),
             'alumnos_con_registro': len(set().union(*(observados[i] for i in ids_resumen))),
             'grupos': len(grupos_resumen),
@@ -111,8 +138,9 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
         'periodo': {'id': periodo.id, 'clave': periodo.clave},
         'carrera': carrera, 'carreras_disponibles': carreras,
         'resumen': resumen(filas), 'grupos': filas,
+        'detalle': sorted(detalle, key=lambda d: (d['carrera'], d['grupo'], d['alumno'], d['hora_inicio'], d['clase_id'])),
         'carreras': [{'carrera': nombre, **resumen([g for g in filas if g['carrera'] == nombre])}
                      for nombre in sorted({g['carrera'] for g in filas})],
         'nota_calendario': calendario.get('motivo'),
-        'criterio': 'Cada alumno cuenta una vez si tiene PRESENTE o RETARDO en una lista cerrada del día. Las faltas justificadas no cuentan como presencia. No mide cuántos alumnos permanecen en el plantel. Las listas abiertas, en corrección o pendientes de sincronizar no cuentan como confirmadas.',
+        'criterio': 'Asistencia al corte: solo listas cerradas. Cada alumno cuenta una vez por nivel. Asistieron = a tiempo + con retardo; con retardo significa al menos un RETARDO y a tiempo significa PRESENTE sin retardos registrados. Faltaron: alumnos con FALTA sin ninguna presencia confirmada; justificados: solo JUSTIFICADA, sin presencia ni faltas sin justificar. El detalle conserva cada estado por clase. Las listas abiertas, en corrección o pendientes de sincronizar no generan faltas ni cuentan como confirmadas. No representa la ausencia de todo el día ni la permanencia en el plantel.',
     }

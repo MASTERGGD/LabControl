@@ -54,6 +54,9 @@ def test_corte_deduplica_y_distingue_cobertura(db, jornada):
     r = data['resumen']
     assert r['asistentes'] == 3  # ni justificación, ni abiertas, ni en corrección
     assert r['alumnos_con_registro'] == 4
+    assert (r['a_tiempo'], r['retardos'], r['faltaron'], r['justificados']) == (2, 1, 0, 1)
+    assert len(data['detalle']) == 7
+    assert {d['estado'] for d in data['detalle']} == {'PRESENTE', 'RETARDO', 'FALTA', 'JUSTIFICADA'}
     assert r['grupos_con_lista'] == 2
     assert r['grupos_sin_lista'] == 2
     assert r['grupos_por_iniciar'] == 1
@@ -63,6 +66,7 @@ def test_corte_deduplica_y_distingue_cobertura(db, jornada):
     assert por_id[grupos[0].id]['asistentes'] == 3
     assert por_id[grupos[3].id]['estado'] == 'SIN_ACTIVIDAD'
     assert por_id[grupos[5].id]['listas_en_captura'] == 1
+    assert por_id[grupos[5].id]['faltaron'] == 0
     assert sum(c['asistentes'] for c in data['carreras']) == 4  # total institucional deduplicado = 3
 
 
@@ -98,6 +102,52 @@ def test_endpoint_autorizacion_fecha_y_aislamiento(client, db, admin_user, docen
     from dependencies import get_current_user
     client.app.dependency_overrides[get_current_user] = lambda: docente_user
     try:
+        assert client.get(url, params={'periodo_id': periodo.id}).status_code == 403
+    finally:
+        client.app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_desglose_prioriza_retardo_y_falta_sin_duplicar(db, jornada):
+    periodo, grupos, alumnos, sesion = jornada
+    sesion(grupos[0], [(alumnos[0], 'RETARDO'), (alumnos[2], 'FALTA'), (alumnos[4], 'FALTA')])
+    db.commit()
+    data = asistencia_diaria(db, periodo.id)
+    r = data['resumen']
+    assert (r['a_tiempo'], r['retardos'], r['faltaron'], r['justificados']) == (1, 2, 2, 0)
+    assert r['asistentes'] == r['a_tiempo'] + r['retardos']
+    assert r['alumnos_con_registro'] == r['asistentes'] + r['faltaron'] + r['justificados']
+    assert len([d for d in data['detalle'] if d['alumno_id'] == alumnos[0].id]) == 4
+
+
+def test_excel_desglose_detalle_filtro_y_autorizacion(client, db, admin_user, docente_user, jornada):
+    import io
+    import openpyxl
+    from dependencies import get_current_user
+
+    periodo, grupos, alumnos, _ = jornada
+    alumnos[0].nombres = '=1+1'
+    alumnos[0].matricula = '=2+2'
+    db.commit()
+    url = '/reportes-academicos/asistencia-diaria/excel'
+    client.app.dependency_overrides[get_current_user] = lambda: admin_user
+    try:
+        response = client.get(url, params={'periodo_id': periodo.id})
+        assert response.status_code == 200
+        wb = openpyxl.load_workbook(io.BytesIO(response.content))
+        assert wb.sheetnames == ['Resumen al corte', 'Detalle por alumno y clase']
+        ws = wb.worksheets[0]
+        assert ws['A13'].value == 'Carrera'
+        assert ws.freeze_panes == 'A14'
+        assert [ws.cell(14, i).value for i in range(5, 10)] == [3, 2, 1, 0, 1]
+        assert ws['E15'].value is None  # Sin lista no significa falta.
+        detalle = wb.worksheets[1]
+        assert detalle.max_row == 8
+        formulas = [c for row in detalle for c in row if c.value == '=2+2']
+        assert formulas and all(c.data_type == 's' for c in formulas)
+        filtered = client.get(url, params={'periodo_id': periodo.id, 'carrera': 'Software'})
+        assert openpyxl.load_workbook(io.BytesIO(filtered.content)).worksheets[1].max_row == 2
+        assert client.get(url, params={'periodo_id': periodo.id, 'fecha': '2026-09-23'}).status_code == 422
+        client.app.dependency_overrides[get_current_user] = lambda: docente_user
         assert client.get(url, params={'periodo_id': periodo.id}).status_code == 403
     finally:
         client.app.dependency_overrides.pop(get_current_user, None)

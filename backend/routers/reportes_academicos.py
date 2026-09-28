@@ -507,6 +507,64 @@ def consultar_asistencia_diaria(periodo_id: int, fecha: Optional[datetime.date] 
     return asistencia_diaria(db, periodo_id, fecha, carrera)
 
 
+@router.get("/asistencia-diaria/excel")
+def exportar_asistencia_diaria(periodo_id: int, fecha: Optional[datetime.date] = None,
+                              carrera: Optional[str] = None,
+                              db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    _autorizar(db, current_user)
+    data = asistencia_diaria(db, periodo_id, fecha, carrera)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Resumen al corte'
+    estados = {'CON_LISTA': 'Con lista confirmada', 'SIN_LISTA': 'Pendiente de confirmar',
+               'POR_INICIAR': 'Clases por iniciar', 'SIN_ACTIVIDAD': 'Sin actividad prevista'}
+    ws.append(['Asistencia al corte', data['fecha']])
+    ws.append(['Periodo', data['periodo']['clave']])
+    ws.append(['Corte (hora de México)', data['corte']])
+    ws.append(['Carrera', data['carrera'] or 'Todas las carreras'])
+    for campo, etiqueta in [('asistentes', 'Asistieron'), ('a_tiempo', 'A tiempo'),
+                            ('retardos', 'Con retardo'), ('faltaron', 'Faltaron al corte'),
+                            ('justificados', 'Justificados'), ('listas_pendientes', 'Listas pendientes')]:
+        ws.append([etiqueta, data['resumen'][campo]])
+    ws.append(['Criterio', data['criterio']])
+    ws.append([])
+    encabezado = 13
+    ws.append(['Carrera', 'Grupo', 'Turno', 'Con registro', 'Asistieron', 'A tiempo', 'Con retardo',
+               'Faltaron al corte', 'Justificados', 'Listas confirmadas', 'Listas pendientes', 'Estado'])
+    for g in data['grupos']:
+        valores = [g[k] if g['listas_confirmadas'] else None
+                   for k in ('asistentes', 'a_tiempo', 'retardos', 'faltaron', 'justificados')]
+        ws.append([g['carrera'], g['nombre'], g['turno'], g['alumnos_con_registro'], *valores,
+                   g['listas_confirmadas'], g['listas_pendientes'], estados[g['estado']]])
+    detalle = wb.create_sheet('Detalle por alumno y clase')
+    detalle.append(['Carrera', 'Grupo', 'Matrícula', 'Alumno', 'Clase', 'Hora de inicio', 'Estado', 'ID clase'])
+    for d in data['detalle']:
+        detalle.append([d[k] for k in ('carrera', 'grupo', 'matricula', 'alumno', 'clase', 'hora_inicio', 'estado', 'clase_id')])
+    for hoja, fila, anchos in [(ws, encabezado, [55, 22, 18, 18, 16, 16, 18, 20, 18, 20, 20, 28]),
+                               (detalle, 1, [55, 16, 22, 42, 42, 20, 20, 14])]:
+        hoja.freeze_panes = f'A{fila + 1}'
+        hoja.auto_filter.ref = f'A{fila}:{get_column_letter(hoja.max_column)}{hoja.max_row}'
+        for i, ancho in enumerate(anchos, 1):
+            hoja.column_dimensions[get_column_letter(i)].width = ancho
+        for celda in hoja[fila]:
+            celda.font = Font(bold=True, color='FFFFFF')
+            celda.fill = PatternFill('solid', fgColor='166534')
+            celda.alignment = Alignment(wrap_text=True)
+        for row in hoja:
+            for celda in row:
+                if isinstance(celda.value, str):
+                    celda.data_type = 's'  # Nombres y matrículas nunca se ejecutan como fórmulas.
+        hoja.sheet_view.showGridLines = False
+    ws.merge_cells('B11:L11')
+    ws['B11'].alignment = Alignment(wrap_text=True, vertical='top')
+    ws.row_dimensions[11].height = 65
+    salida = io.BytesIO()
+    wb.save(salida)
+    salida.seek(0)
+    return StreamingResponse(salida, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                             headers={'Content-Disposition': f'attachment; filename="asistencia-{data["fecha"]}.xlsx"'})
+
+
 @router.get("")
 def consultar(periodo_id: int, grupos: str, desde: Optional[datetime.date] = None, hasta: Optional[datetime.date] = None,
               db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
