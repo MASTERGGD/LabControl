@@ -57,7 +57,20 @@ const REQ_ESTADO_CLASS = {
   RESUELTO_PARCIAL: 'text-sky-700 dark:text-sky-300',
 };
 
+const REQ_ESTADO_TEXT_DAY = {
+  PENDIENTE: '#92400e',
+  CONFIRMADO: '#166534',
+  RECHAZADO: '#991b1b',
+  DOCENTE_PROVEE: '#3730a3',
+  RESUELTO_PARCIAL: '#075985',
+};
+
 function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const colorEstado = estado => isDay
+    ? (REQ_ESTADO_TEXT_DAY[estado] || REQ_ESTADO_TEXT_DAY.PENDIENTE)
+    : (REQ_ESTADO_STYLE[estado] || REQ_ESTADO_STYLE.PENDIENTE).text;
   const [actual, setActual] = useState(req || {});
   const [notasItem, setNotasItem] = useState({});
   const [resolviendoItem, setResolviendoItem] = useState(null);
@@ -86,11 +99,11 @@ function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
 
   return (
     <div className="rounded-xl p-3 space-y-2" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
-      <div className="flex items-center justify-between">
-        <p className={`text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 ${REQ_ESTADO_CLASS[actual.estado] || REQ_ESTADO_CLASS.PENDIENTE}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
           📋 Requerimientos de clase
         </p>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${REQ_ESTADO_CLASS[actual.estado] || REQ_ESTADO_CLASS.PENDIENTE}`} style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ color: colorEstado(actual.estado), background: style.bg, border: `1px solid ${style.border}` }}>
           {actual.estado_label || style.label}
         </span>
       </div>
@@ -99,19 +112,19 @@ function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
           {items.map((item, index) => {
             const estadoItem = REQ_ESTADO_STYLE[item.estado] || REQ_ESTADO_STYLE.PENDIENTE;
             return (
-              <div key={`${item.item}-${index}`} className="rounded-lg border border-slate-500/20 bg-white/50 p-2.5 dark:bg-black/15">
+              <div key={`${item.item}-${index}`} className="rounded-lg border p-2.5" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{item.item}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${REQ_ESTADO_CLASS[item.estado] || REQ_ESTADO_CLASS.PENDIENTE}`} style={{ background: estadoItem.bg, border: `1px solid ${estadoItem.border}` }}>{estadoItem.label}</span>
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{item.item}</span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: colorEstado(item.estado), background: estadoItem.bg, border: `1px solid ${estadoItem.border}` }}>{estadoItem.label}</span>
                 </div>
-                {item.nota_admin && <p className="mt-1 text-xs text-slate-500">Respuesta: {item.nota_admin}</p>}
+                {item.nota_admin && <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>Respuesta: {item.nota_admin}</p>}
                 {esAdmin && item.estado === 'PENDIENTE' && (
                   <div className="mt-2 space-y-2">
                     <input value={notasItem[index] || ''} onChange={e => setNotasItem(value => ({ ...value, [index]: e.target.value }))} className="input-dark w-full text-xs" placeholder="Nota para este recurso (opcional)" />
                     <div className="grid grid-cols-3 gap-1.5">
-                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'CONFIRMADO')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-emerald-500 hover:text-emerald-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">Confirmar</button>
-                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'DOCENTE_PROVEE')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">Docente provee</button>
-                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'RECHAZADO')} className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[10px] font-semibold text-slate-700 hover:border-red-500 hover:text-red-700 disabled:opacity-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">No disponible</button>
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'CONFIRMADO')} className="rounded-md border px-2 py-1.5 text-[10px] font-semibold hover:brightness-95 disabled:opacity-50" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)', color: 'var(--text-primary)' }}>Confirmar</button>
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'DOCENTE_PROVEE')} className="rounded-md border px-2 py-1.5 text-[10px] font-semibold hover:brightness-95 disabled:opacity-50" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)', color: 'var(--text-primary)' }}>Docente provee</button>
+                      <button disabled={resolviendoItem === index} onClick={() => resolverItem(index, 'RECHAZADO')} className="rounded-md border px-2 py-1.5 text-[10px] font-semibold hover:brightness-95 disabled:opacity-50" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)', color: 'var(--text-primary)' }}>No disponible</button>
                     </div>
                   </div>
                 )}
@@ -120,21 +133,21 @@ function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {
           })}
         </div>
       )}
-      {actual.descripcion && <p className="text-xs text-slate-600 italic leading-relaxed dark:text-slate-300">"{actual.descripcion}"</p>}
+      {actual.descripcion && <p className="text-xs italic leading-relaxed" style={{ color: 'var(--text-secondary)' }}>"{actual.descripcion}"</p>}
       {actual.tiene_instalador && (
-        <p className="text-xs text-indigo-300 flex items-center gap-1.5">
+        <p className="text-xs flex items-center gap-1.5" style={{ color: colorEstado('DOCENTE_PROVEE') }}>
           <span>💾</span> El docente tiene el instalador disponible
         </p>
       )}
       {actual.urgente && (
-        <p className="text-xs text-red-400 font-semibold flex items-center gap-1.5">
+        <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: colorEstado('RECHAZADO') }}>
           <span>🔴</span> URGENTE — menos de 3 días hábiles
         </p>
       )}
       {actual.nota_admin && (
-        <div className="pt-1.5 border-t border-white/5">
-          <p className="text-xs text-slate-400">Nota del administrador:</p>
-          <p className="text-xs text-slate-200 italic mt-0.5">"{actual.nota_admin}"</p>
+        <div className="pt-1.5 border-t" style={{ borderColor: 'var(--surface-border)' }}>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Nota del administrador:</p>
+          <p className="text-xs italic mt-0.5" style={{ color: 'var(--text-primary)' }}>"{actual.nota_admin}"</p>
         </div>
       )}
     </div>
