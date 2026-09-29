@@ -223,6 +223,14 @@ def _ensure_organizacion_bloqueada(db: Session):
         if not periodo:
             periodo = PeriodoEscolar(clave=clave, activo=True)
             db.add(periodo); db.flush(); cambios = True
+        # El catálogo heredado no puede revocar un retiro explícito del periodo.
+        retiro = db.query(InscripcionAlumno).join(GrupoAcademico).filter(
+            InscripcionAlumno.alumno_id == alumno.id,
+            GrupoAcademico.periodo_id == periodo.id,
+            InscripcionAlumno.estado == "NO_INSCRITO",
+        ).first()
+        if retiro:
+            continue
         grupo = db.query(GrupoAcademico).filter(
             GrupoAcademico.periodo_id == periodo.id,
             GrupoAcademico.carrera == carrera,
@@ -246,7 +254,8 @@ def _ensure_organizacion_bloqueada(db: Session):
             db.add(InscripcionAlumno(alumno_id=alumno.id,
                 grupo_academico_id=grupo.id, estado="ACTIVO")); cambios = True
         elif existe.estado != "ACTIVO":
-            existe.estado = "ACTIVO"; cambios = True
+            # Consultar grupos no equivale a reinscribir ni a deshacer una promoción.
+            continue
         inscripciones_anteriores = db.query(InscripcionAlumno).filter(
             InscripcionAlumno.alumno_id == alumno.id,
             InscripcionAlumno.grupo_academico_id != grupo.id,

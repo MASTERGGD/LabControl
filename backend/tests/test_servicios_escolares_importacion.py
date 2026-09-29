@@ -9,6 +9,7 @@ from models.catalogo import CatalogoAlumno, CatalogoCarrera, CatalogoMateria, Gr
 from models.ficha_socioeconomica import FichaSocioeconomica
 from models.auditoria import AuditLog
 from routers.catalogo import _sincronizar_inscripcion
+from routers.servicios_escolares import _ensure_organizacion_desde_catalogo
 from tests.conftest import auth_headers, get_token
 
 
@@ -155,6 +156,17 @@ def test_retiro_no_se_reactiva_por_sincronizacion_y_admite_reinscripcion_manual(
     _sincronizar_inscripcion(db, alumno)
     db.commit(); db.refresh(inscripcion)
     assert inscripcion.estado == "NO_INSCRITO"
+
+    # La consulta de grupos reconstruye la organización desde el catálogo.
+    # No debe deshacer el retiro al recargar la pantalla.
+    for _ in range(2):
+        listado = client.get("/servicios-escolares/grupos", headers=headers)
+        assert listado.status_code == 200, listado.text
+        db.refresh(inscripcion)
+        assert inscripcion.estado == "NO_INSCRITO"
+        assert next(g for g in listado.json() if g["id"] == grupo.id)["total_alumnos"] == 0
+        alumnos = client.get(f"/servicios-escolares/grupos/{grupo.id}/alumnos", headers=headers)
+        assert alumnos.status_code == 200 and alumnos.json() == []
 
     reinscrito = client.post(
         f"/servicios-escolares/grupos/{grupo.id}/alumnos",
@@ -328,3 +340,18 @@ def test_carreras_pendientes_detecta_nombres_heredados(client, db):
     assert pendiente == {
         "nombre": "TSU en Inteligencia Artificial", "alumnos": 1, "grupos": 1, "materias": 1,
     }
+
+
+def test_consultar_organizacion_respeta_inscripcion_concluida(db):
+    periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True)
+    db.add(periodo); db.flush()
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera="CONTADURIA", cuatrimestre=6, grupo="A", activo=True)
+    alumno = CatalogoAlumno(matricula="HIST001", apellido_paterno="PRUEBA", apellido_materno="HISTORIAL", nombres="ALUMNA",
+        carrera="CONTADURIA", cuatrimestre=6, grupo="A", periodo=periodo.clave, activo=True)
+    db.add_all([grupo, alumno]); db.flush()
+    inscripcion = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="CONCLUIDA")
+    db.add(inscripcion); db.commit()
+    _ensure_organizacion_desde_catalogo(db)
+    db.refresh(inscripcion)
+    assert inscripcion.estado == "CONCLUIDA"
+    assert db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id).count() == 1
