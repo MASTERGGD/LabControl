@@ -627,7 +627,7 @@ export default function DashboardDocente() {
                   const estado = {
                     PROGRAMADA: ['Programada', 'bg-blue-500/15 text-blue-300'],
                     EN_CURSO: ['En curso', 'bg-emerald-500/15 text-emerald-300'],
-                    CERRADA: ['Cerrada', 'bg-slate-500/15 text-slate-400'],
+                    CERRADA: [item.sesion_tutoria_id ? 'Tutoría registrada' : 'Cerrada', 'bg-slate-500/15 text-slate-400'],
                     CORRECCION: ['En corrección', 'bg-amber-500/15 text-amber-300'],
                     FINALIZADA: ['Finalizada', 'bg-slate-500/15 text-slate-400'],
                     SIN_REGISTRO: ['Sin registro', 'bg-red-500/15 text-red-300'],

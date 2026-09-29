@@ -4,7 +4,7 @@ Procedimiento P-DC-02 v08 · ISO 9001:2015 cláusula 8.5.1
 """
 from sqlalchemy import (
     Column, Integer, String, Boolean, Text,
-    DateTime, Date, Time, ForeignKey, Float
+    DateTime, Date, Time, ForeignKey, Float, UniqueConstraint
 )
 from database import Base
 import datetime
@@ -137,11 +137,16 @@ class PerfilSocioeconómico(Base):
 
 class SesionTutoria(Base):
     __tablename__ = "sesiones_tutoria"
+    __table_args__ = (UniqueConstraint('carga_docente_id', 'fecha_programada', name='uq_tutoria_carga_fecha'),)
 
     id                = Column(Integer, primary_key=True, index=True)
     grupo_tutorado_id = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=False, index=True)
     tutor_id          = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     fecha             = Column(Date, nullable=False)
+    carga_docente_id   = Column(Integer, ForeignKey('cargas_docentes.id'), nullable=True)
+    fecha_programada  = Column(Date, nullable=True)
+    motivo_extraordinaria = Column(Text, nullable=True)
+    revision          = Column(Integer, nullable=False, default=1, server_default='1')
     hora_inicio       = Column(Time, nullable=True)
     duracion_minutos  = Column(Integer, nullable=True)
     lugar             = Column(String(160), nullable=True)

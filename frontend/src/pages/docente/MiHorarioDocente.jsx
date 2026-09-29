@@ -1,3 +1,4 @@
+import { accionTutoria } from '../../utils/accionClaseDashboard';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
@@ -75,6 +76,7 @@ const minutosDeHora = (hora = '00:00') => {
 };
 
 export const estadoActividad = (item, minutoActual) => {
+  if (item.sesion_tutoria_id) return 'FINALIZADA';
   if (item.calendario && !item.calendario.requiere_asistencia) return 'NO_LECTIVA';
   if (['CERRADA', 'NO_IMPARTIDA'].includes(item.clase_estado)) return 'FINALIZADA';
   if (['ABIERTA', 'CORRECCION'].includes(item.clase_estado)) return 'EN_CURSO';
@@ -939,7 +941,7 @@ export default function MiHorarioDocente() {
                   </button>
                 )}
                 {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (
-                  <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${actividadPrincipal.grupo_tutorado_id}&accion=sesion`)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">Registrar tutoría</button>
+                  <button onClick={() => navigate(accionTutoria(actividadPrincipal).path)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">{accionTutoria(actividadPrincipal).texto}</button>
                 )}
                 {esNoLectiva(actividadPrincipal) && (
                   <button onClick={() => navigate('/calendario-academico')} className="rounded-xl border border-slate-500/30 bg-slate-500/10 px-4 py-2.5 text-sm font-semibold text-slate-300">
@@ -1092,7 +1094,7 @@ export default function MiHorarioDocente() {
                   const destacada = item.id === actividadPrincipal.id;
                   const puedeIniciarItem = puedeIniciarActividad(item, minutoActual);
                   const etiqueta = {
-                    FINALIZADA: 'Finalizada',
+                    FINALIZADA: item.sesion_tutoria_id ? 'Tutoría registrada' : 'Finalizada',
                     EN_CURSO: 'En curso',
                     ACTUAL: 'Ahora',
                     PROXIMA: 'Próxima',
@@ -1131,7 +1133,7 @@ export default function MiHorarioDocente() {
                                   : 'Ventana de inicio finalizada'}
                             </button>
                           )}
-                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(`/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion`)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Registrar tutoría</button>}
+                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(accionTutoria(item).path)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">{accionTutoria(item).texto}</button>}
                           {esNoLectiva(item) && (
                             <button onClick={() => navigate('/calendario-academico')} className="rounded-lg border border-slate-500/30 px-3 py-2 text-xs font-semibold text-slate-300">
                               Ver calendario

@@ -25,6 +25,10 @@ import calendar, datetime, io, json, openpyxl, re
 from pathlib import Path
 from routers.notificaciones import crear_notificacion
 from services.tutoria_sync import sincronizar_grupos_tutoria
+from services.timezone import today_mx
+from services.tutoria_sesiones import autorizar_tutor, bloqueo_edicion, opciones_horario, resolver_horario, datos_sesion, guardar_historial
+from sqlalchemy.exc import IntegrityError
+from models.auditoria import AuditLog
 
 # PDF generation
 from fastapi.responses import StreamingResponse
@@ -96,6 +100,12 @@ class SesionTutoriaCreate(BaseModel):
     fecha:                   str  = Field(..., description="YYYY-MM-DD")
     tipo_sesion:             str  = Field(default="GRUPAL")  # GRUPAL | INDIVIDUAL
     programacion_id:         Optional[int] = None
+    carga_docente_id:        Optional[int] = None
+    fecha_programada:       Optional[datetime.date] = None
+    extraordinaria:         bool = False
+    motivo_extraordinaria:  Optional[str] = Field(default=None, max_length=2000)
+    motivo_cambio:          Optional[str] = Field(default=None, max_length=2000)
+    revision:               Optional[int] = None
     hora_inicio:             Optional[str] = None
     duracion_minutos:        Optional[int] = Field(default=None, ge=1, le=480)
     lugar:                   Optional[str] = Field(default=None, max_length=160)
@@ -517,7 +527,7 @@ def _calcular_indicadores(db: Session, periodo: Optional[str] = None, bimestre: 
             ProgramacionSesionTutoria.tutor_id == tid,
             ProgramacionSesionTutoria.grupo_tutorado_id.in_(grupos_tutor_ids or [0]),
             ProgramacionSesionTutoria.estado == "PROGRAMADA",
-            ProgramacionSesionTutoria.fecha_programada < datetime.date.today(),
+            ProgramacionSesionTutoria.fecha_programada < today_mx(),
         ).count()
         canalizaciones_abiertas_tutor = db.query(Canalizacion).filter(
             Canalizacion.tutor_id == tid,
@@ -627,7 +637,7 @@ def dashboard_tutoria(
     current_user: Usuario = Depends(_resp_roles),
 ):
     indicadores = _calcular_indicadores(db, periodo=periodo)
-    hoy = datetime.date.today()
+    hoy = today_mx()
     semana_inicio = hoy - datetime.timedelta(days=hoy.weekday())
 
     grupos_periodo = db.query(GrupoTutorado).filter(GrupoTutorado.activo == True)
@@ -1363,12 +1373,12 @@ def _calcular_alertas(db: Session, periodo: Optional[str] = None) -> list:
     progs_vencidas = db.query(ProgramacionSesionTutoria).filter(
         ProgramacionSesionTutoria.grupo_tutorado_id.in_(grupo_ids or [0]),
         ProgramacionSesionTutoria.estado == "PROGRAMADA",
-        ProgramacionSesionTutoria.fecha_programada < ahora.date(),
+        ProgramacionSesionTutoria.fecha_programada < today_mx(),
     ).all()
     for p in progs_vencidas:
         grupo = db.query(GrupoTutorado).filter(GrupoTutorado.id == p.grupo_tutorado_id).first()
         tutor = db.query(Usuario).filter(Usuario.id == p.tutor_id).first()
-        dias = (ahora.date() - p.fecha_programada).days
+        dias = (today_mx() - p.fecha_programada).days
         desc = f"{grupo.carrera} Grupo {grupo.grupo} ({grupo.periodo})" if grupo else "grupo no localizado"
         alertas.append({
             "tipo": "SESION_PROGRAMADA_VENCIDA",
@@ -1650,7 +1660,7 @@ def resumen_cierre(
     programadas_vencidas = db.query(ProgramacionSesionTutoria).filter(
         ProgramacionSesionTutoria.grupo_tutorado_id.in_(grupo_ids),
         ProgramacionSesionTutoria.estado == "PROGRAMADA",
-        ProgramacionSesionTutoria.fecha_programada < datetime.date.today(),
+        ProgramacionSesionTutoria.fecha_programada < today_mx(),
     ).count()
     riesgo_sin_seguimiento = 0
     for a in db.query(AsignacionTutoria).filter(
@@ -1931,7 +1941,7 @@ async def importar_socioeconomico(
         """Estima el cuatrimestre cursado según la fecha de ingreso."""
         if not isinstance(fecha_ingreso, datetime.datetime):
             return 1
-        hoy = datetime.date.today()
+        hoy = today_mx()
         meses = (hoy.year - fecha_ingreso.year) * 12 + (hoy.month - fecha_ingreso.month)
         return max(1, min(12, (meses // 4) + 1))
 
@@ -2071,7 +2081,7 @@ def mis_pendientes(
       - canalizaciones_pendientes: propias abiertas ≥ 5 días
       - informes_borrador: informes F-DC-09 en estado BORRADOR
     """
-    hoy       = datetime.date.today()
+    hoy       = today_mx()
     hace_5    = _now() - datetime.timedelta(days=5)
     proximos7 = hoy + datetime.timedelta(days=7)
 
@@ -2216,18 +2226,40 @@ def registrar_sesion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    return _guardar_sesion(data, db, current_user)
+
+
+def _guardar_sesion(data, db, current_user, sesion=None):
+    editando = sesion is not None
     g = db.query(GrupoTutorado).filter(GrupoTutorado.id == data.grupo_tutorado_id).first()
     if not g:
         raise HTTPException(404, "Grupo tutorado no encontrado")
     if not g.tutor_id:
         raise HTTPException(409, "El grupo todavía no tiene tutor asignado")
-    if current_user.rol == RolUsuario.DOCENTE and g.tutor_id != current_user.id:
-        raise HTTPException(403, "No puedes registrar sesiones de otro tutor")
+    autorizar_tutor(current_user, sesion.tutor_id if editando else g.tutor_id)
+    if editando and sesion.grupo_tutorado_id != g.id:
+        raise HTTPException(422, 'No puedes cambiar el grupo de la sesión')
 
     try:
         fecha = datetime.date.fromisoformat(data.fecha)
     except ValueError:
         raise HTTPException(422, "Formato de fecha inválido. Use YYYY-MM-DD")
+
+    if fecha > today_mx():
+        raise HTTPException(422, 'La fecha no puede ser futura')
+    if editando:
+        if not (data.motivo_cambio or '').strip():
+            raise HTTPException(422, 'Indica el motivo de la corrección')
+        if data.revision != sesion.revision:
+            raise HTTPException(409, 'La sesión cambió. Vuelve a abrirla antes de editar')
+        bloqueo = bloqueo_edicion(db, g, sesion.fecha) or bloqueo_edicion(db, g, fecha)
+        if bloqueo:
+            raise HTTPException(409, bloqueo)
+        antes = datos_sesion(db, sesion)
+    if len({r.get('alumno_id') for r in data.registros}) != len(data.registros):
+        raise HTTPException(422, 'Hay alumnos duplicados')
+    if editando and sesion.carga_docente_id and data.tipo_sesion != 'GRUPAL':
+        raise HTTPException(422, 'La tutoría del horario debe conservar el tipo grupal')
 
     tipo_sesion = (data.tipo_sesion or "GRUPAL").upper()
     if tipo_sesion not in {"GRUPAL", "INDIVIDUAL"}:
@@ -2258,21 +2290,27 @@ def registrar_sesion(
             raise HTTPException(422, "Formato de hora inválido. Use HH:MM")
 
     programacion = None
+    prog_anterior = db.query(ProgramacionSesionTutoria).filter(ProgramacionSesionTutoria.sesion_id == sesion.id).first() if editando else None
+    if editando and data.programacion_id != (prog_anterior.id if prog_anterior else None):
+        raise HTTPException(422, 'Conserva la programación original')
     if data.programacion_id:
         programacion = db.query(ProgramacionSesionTutoria).filter(
             ProgramacionSesionTutoria.id == data.programacion_id,
             ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
             ProgramacionSesionTutoria.tutor_id == g.tutor_id,
-            ProgramacionSesionTutoria.estado == "PROGRAMADA",
-        ).first()
+        ).with_for_update().first()
+        if programacion and programacion.estado != 'PROGRAMADA' and not (editando and programacion.sesion_id == sesion.id):
+            programacion = None
         if not programacion:
             raise HTTPException(409, "La sesión programada ya no está disponible")
         if tipo_sesion != "GRUPAL":
             raise HTTPException(422, "Solo una sesión grupal puede cumplir la programación grupal")
 
-    sesion = SesionTutoria(
+    carga_id, fecha_original = resolver_horario(db, g, data, fecha, hora_inicio, sesion)
+    valores = dict(
         grupo_tutorado_id=data.grupo_tutorado_id,
-        tutor_id=current_user.id if current_user.rol == RolUsuario.DOCENTE else g.tutor_id,
+        carga_docente_id=carga_id, fecha_programada=fecha_original,
+        motivo_extraordinaria=(data.motivo_extraordinaria or "").strip() or None,
         fecha=fecha,
         hora_inicio=hora_inicio,
         duracion_minutos=data.duracion_minutos,
@@ -2283,16 +2321,31 @@ def registrar_sesion(
         tema=tema_sesion or None,
         acciones_preventivas=acciones_sesion or None,
         observaciones_generales=data.observaciones_generales,
-        creado_por=current_user.id,
-        creado_en=_now(),
         actualizado_en=_now(),
     )
-    doc = _documento_vigente(db, "F-DC-07")
-    sesion.documento_codigo = doc["codigo"]
-    sesion.documento_version = doc["version"]
-    sesion.documento_efectivo = doc["fecha_efectivo"]
-    db.add(sesion)
-    db.flush()
+    if editando:
+        for campo, valor in valores.items():
+            setattr(sesion, campo, valor)
+        sesion.revision += 1
+    else:
+        sesion = SesionTutoria(**valores, tutor_id=g.tutor_id, creado_por=current_user.id, creado_en=_now())
+        doc = _documento_vigente(db, "F-DC-07")
+        sesion.documento_codigo = doc["codigo"]
+        sesion.documento_version = doc["version"]
+        sesion.documento_efectivo = doc["fecha_efectivo"]
+        db.add(sesion)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, 'Esta tutoría del horario ya está registrada. Actualiza el panel.')
+    anteriores = {r.alumno_id: r for r in db.query(RegistroSesionAlumno).filter(RegistroSesionAlumno.sesion_id == sesion.id)}
+    nuevos = {r.get('alumno_id') for r in data.registros}
+    for alumno_id, registro in anteriores.items():
+        if alumno_id not in nuevos:
+            if db.query(Canalizacion).filter(Canalizacion.sesion_id == sesion.id, Canalizacion.alumno_id == alumno_id).first():
+                raise HTTPException(409, 'No puedes retirar un alumno con canalización vinculada')
+            db.delete(registro)
 
     # Guardar registros por alumno
     for r in data.registros:
@@ -2302,14 +2355,17 @@ def registrar_sesion(
             AsignacionTutoria.alumno_id == alumno_id,
             AsignacionTutoria.activo == True,
         ).first()
-        if not pertenece:
+        if not pertenece and alumno_id not in anteriores:
             raise HTTPException(422, "Uno de los alumnos no pertenece al grupo tutorado")
         requiere_canalizacion = bool(r.get("requiere_canalizacion", False))
         canalizacion_data = r.get("canalizacion") or {}
         if requiere_canalizacion and (not str(canalizacion_data.get("area") or "").strip() or not str(canalizacion_data.get("motivo") or "").strip()):
             raise HTTPException(422, "Toda canalización requiere área y motivo")
 
-        registro = RegistroSesionAlumno(
+        canal_existente = db.query(Canalizacion).filter(Canalizacion.sesion_id == sesion.id, Canalizacion.alumno_id == alumno_id).first()
+        if canal_existente:
+            requiere_canalizacion = True
+        valores_registro = dict(
             sesion_id=sesion.id,
             alumno_id=alumno_id,
             asistio=r.get("asistio", True),
@@ -2321,9 +2377,13 @@ def registrar_sesion(
             acciones_preventivas=acciones_sesion or None,
             comentarios=r.get("comentarios"),
         )
-        db.add(registro)
+        if alumno_id in anteriores:
+            for campo, valor in valores_registro.items():
+                setattr(anteriores[alumno_id], campo, valor)
+        else:
+            db.add(RegistroSesionAlumno(**valores_registro))
 
-        if requiere_canalizacion:
+        if requiere_canalizacion and not canal_existente:
             area = str(canalizacion_data.get("area") or "").upper()
             db.add(Canalizacion(
                 tutor_id=sesion.tutor_id,
@@ -2340,10 +2400,11 @@ def registrar_sesion(
             ))
 
     prog = programacion
-    if prog is None and tipo_sesion == "GRUPAL":
+    if prog is None and tipo_sesion == "GRUPAL" and not data.extraordinaria and not editando:
         prog = db.query(ProgramacionSesionTutoria).filter(
             ProgramacionSesionTutoria.grupo_tutorado_id == g.id,
-            ProgramacionSesionTutoria.fecha_programada == fecha,
+            ProgramacionSesionTutoria.fecha_programada == (fecha_original or fecha),
+            ProgramacionSesionTutoria.tutor_id == g.tutor_id,
             ProgramacionSesionTutoria.tipo_sesion == "GRUPAL",
             ProgramacionSesionTutoria.estado == "PROGRAMADA",
         ).first()
@@ -2351,19 +2412,24 @@ def registrar_sesion(
         prog.estado = "CUMPLIDA"
         prog.sesion_id = sesion.id
 
+    if editando:
+        db.flush()
+        guardar_historial(db, current_user, sesion, antes, datos_sesion(db, sesion), data.motivo_cambio.strip())
     db.commit()
     db.refresh(sesion)
 
     from services.auditoria import registrar as _reg, Accion, Recurso
-    _reg(db, accion=Accion.REGISTRAR_SESION_TUTORIA, recurso=Recurso.TUTORIA,
-         usuario=current_user, recurso_id=sesion.id,
-         detalle={
-             "grupo": f"{g.carrera} · Grupo {g.grupo}",
-             "periodo": g.periodo,
-             "fecha": data.fecha,
-             "tipo_sesion": data.tipo_sesion,
-             "alumnos_registrados": len(data.registros),
-         })
+    if not editando:
+        _reg(db, accion=Accion.REGISTRAR_SESION_TUTORIA, recurso=Recurso.TUTORIA,
+             usuario=current_user, recurso_id=sesion.id,
+             detalle={
+                 "grupo": f"{g.carrera} · Grupo {g.grupo}",
+                 "periodo": g.periodo,
+                 "fecha": data.fecha,
+                 "tipo_sesion": data.tipo_sesion,
+                 "alumnos_registrados": len(data.registros),
+             })
+
 
     return {
         "id": sesion.id,
@@ -2371,9 +2437,55 @@ def registrar_sesion(
         "tipo_sesion": sesion.tipo_sesion,
         "programacion_id": prog.id if prog else None,
         "registros": len(data.registros),
-        "creado_por": current_user.id,
+        "carga_docente_id": sesion.carga_docente_id, "revision": sesion.revision,
+        "creado_por": sesion.creado_por,
         "creado_en": sesion.creado_en.isoformat() if sesion.creado_en else None,
     }
+
+
+@router.get("/horario-sesiones")
+def horario_sesiones(grupo_id: int, fecha: datetime.date, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    g = db.get(GrupoTutorado, grupo_id)
+    if not g:
+        raise HTTPException(404, 'Grupo no encontrado')
+    autorizar_tutor(current_user, g.tutor_id)
+    resultado = []
+    for c in opciones_horario(db, g):
+        if c.dia_semana != fecha.weekday():
+            continue
+        existente = db.query(SesionTutoria).filter(SesionTutoria.carga_docente_id == c.id, SesionTutoria.fecha_programada == fecha).first()
+        inicio = datetime.time.fromisoformat(c.hora_inicio)
+        fin = datetime.time.fromisoformat(c.hora_fin)
+        resultado.append({'id': c.id, 'fecha_programada': fecha.isoformat(), 'hora_inicio': c.hora_inicio,
+                          'duracion_minutos': (fin.hour * 60 + fin.minute) - (inicio.hour * 60 + inicio.minute),
+                          'lugar': c.espacio_nombre or '', 'sesion_id': existente.id if existente else None})
+    return resultado
+
+
+def _sesion_autorizada(db, sesion_id, usuario, bloquear=False):
+    q = db.query(SesionTutoria).filter(SesionTutoria.id == sesion_id)
+    s = (q.with_for_update() if bloquear else q).first()
+    if not s:
+        raise HTTPException(404, 'Sesión no encontrada')
+    autorizar_tutor(usuario, s.tutor_id)
+    return s
+
+
+@router.get("/sesiones/{sesion_id}")
+def consultar_sesion(sesion_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    s = _sesion_autorizada(db, sesion_id, current_user)
+    datos = datos_sesion(db, s)
+    datos['bloqueo_edicion'] = bloqueo_edicion(db, db.get(GrupoTutorado, s.grupo_tutorado_id), s.fecha)
+    logs = db.query(AuditLog).filter(AuditLog.recurso == 'TUTORIA', AuditLog.recurso_id == s.id,
+                                    AuditLog.accion == 'EDITAR_SESION_TUTORIA').order_by(AuditLog.timestamp.desc()).all()
+    datos['historial'] = [{'usuario': h.usuario_nombre, 'fecha': h.timestamp.isoformat() + 'Z', **h.detalle} for h in logs]
+    return datos
+
+
+@router.put("/sesiones/{sesion_id}")
+def editar_sesion(sesion_id: int, data: SesionTutoriaCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    s = _sesion_autorizada(db, sesion_id, current_user, bloquear=True)
+    return _guardar_sesion(data, db, current_user, s)
 
 
 @router.get("/sesiones", summary="Sesiones de tutoría del tutor actual o todas (admin)")
@@ -2382,6 +2494,7 @@ def listar_sesiones(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    autorizar_tutor(current_user, current_user.id)
     q = db.query(SesionTutoria)
     if current_user.rol == RolUsuario.DOCENTE:
         q = q.filter(SesionTutoria.tutor_id == current_user.id)
@@ -2394,6 +2507,8 @@ def listar_sesiones(
         registros = db.query(RegistroSesionAlumno).filter(RegistroSesionAlumno.sesion_id == s.id).all()
         resultado.append({
             "id":                      s.id,
+            "carga_docente_id": s.carga_docente_id,
+            "fecha_programada": s.fecha_programada.isoformat() if s.fecha_programada else None,
             "grupo_tutorado_id":       s.grupo_tutorado_id,
             "fecha":                   s.fecha.isoformat(),
             "hora_inicio":             s.hora_inicio.isoformat(timespec="minutes") if s.hora_inicio else None,

@@ -1,3 +1,4 @@
+import { formatDateInMexico, todayISOInMexico } from "../../utils/timezone";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
@@ -354,7 +355,7 @@ function TabAgenda({ pendientes, grupos, onRegistrarSesion, onCanalizar }) {
               <div>
                 <p className="text-sm text-white font-medium">{s.grupo_label}</p>
                 <p className="text-xs text-red-300">
-                  Programada: {new Date(s.fecha_programada).toLocaleDateString("es-MX")}
+                  Programada: {formatDateInMexico(s.fecha_programada)}
                   {s.dias_atraso > 0 && <span className="ml-2 font-semibold">· {s.dias_atraso} días de atraso</span>}
                 </p>
                 {s.objetivo && <p className="text-xs text-slate-400 mt-0.5">{s.objetivo}</p>}
@@ -395,7 +396,7 @@ function TabAgenda({ pendientes, grupos, onRegistrarSesion, onCanalizar }) {
               <div>
                 <p className="text-sm text-white font-medium">{s.grupo_label}</p>
                 <p className="text-xs text-blue-300">
-                  {new Date(s.fecha_programada).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}
+                  {formatDateInMexico(s.fecha_programada, { weekday: "long", day: "numeric", month: "long" })}
                   <span className="ml-2 text-slate-400">· {s.tipo_sesion}</span>
                 </p>
                 {s.objetivo && <p className="text-xs text-slate-400 mt-0.5">{s.objetivo}</p>}
@@ -453,7 +454,7 @@ function TabAgenda({ pendientes, grupos, onRegistrarSesion, onCanalizar }) {
 }
 
 // ─── Tab: Sesiones ────────────────────────────────────────────────────────────
-function TabSesiones({ grupoId }) {
+function TabSesiones({ grupoId, onVer }) {
   const [sesiones, setSesiones] = useState([]);
   const [programadas, setProgramadas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -463,7 +464,7 @@ function TabSesiones({ grupoId }) {
     setLoading(true);
     Promise.all([
       api.get(`/tutoria/sesiones?grupo_tutorado_id=${grupoId}`),
-      api.get(`/tutoria/programaciones?grupo_tutorado_id=${grupoId}`),
+      api.get(`/tutoria/programaciones?grupo_id=${grupoId}`),
     ]).then(([s, p]) => {
       setSesiones(s.data);
       setProgramadas(p.data);
@@ -472,8 +473,8 @@ function TabSesiones({ grupoId }) {
 
   if (loading) return <p className="text-slate-400 text-sm text-center py-8">Cargando sesiones…</p>;
 
-  const prog_vencidas = programadas.filter(p => p.estado === "PROGRAMADA" && new Date(p.fecha_programada) < new Date());
-  const prog_futuras  = programadas.filter(p => p.estado === "PROGRAMADA" && new Date(p.fecha_programada) >= new Date());
+  const prog_vencidas = programadas.filter(p => p.estado === "PROGRAMADA" && p.fecha_programada < todayISOInMexico());
+  const prog_futuras  = programadas.filter(p => p.estado === "PROGRAMADA" && p.fecha_programada >= todayISOInMexico());
   const prog_ok       = programadas.filter(p => p.estado === "REALIZADA");
 
   return (
@@ -500,7 +501,7 @@ function TabSesiones({ grupoId }) {
             {prog_vencidas.map(p => (
               <div key={p.id} className="bg-red-900/10 border border-red-500/30 rounded-xl px-4 py-2.5 flex justify-between items-center">
                 <div>
-                  <p className="text-sm text-white">{new Date(p.fecha_programada).toLocaleDateString("es-MX")}
+                  <p className="text-sm text-white">{formatDateInMexico(p.fecha_programada)}
                     <span className="text-slate-400 text-xs ml-2">· {p.tipo_sesion}</span>
                   </p>
                   {p.objetivo && <p className="text-xs text-slate-400">{p.objetivo}</p>}
@@ -524,9 +525,9 @@ function TabSesiones({ grupoId }) {
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="text-sm font-medium text-white">
-                      {new Date(s.fecha).toLocaleDateString("es-MX", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                      {formatDateInMexico(s.fecha, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                     </p>
-                    <p className="text-xs text-slate-400 mt-0.5">{s.tipo_sesion}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{s.tipo_sesion} · {s.carga_docente_id ? "Tutoría del horario registrada" : "Sesión registrada"}</p><button onClick={() => onVer(s.id)} className="mt-2 text-sm font-semibold text-emerald-400 underline">Ver tutoría / Editar</button>
                   </div>
                   <div className="text-right text-xs">
                     <p className="text-emerald-400 font-medium">{s.asistentes} asistentes</p>
@@ -571,6 +572,8 @@ export default function MisTutorados() {
     const solicitado = searchParams.get("tab");
     return ["agenda", "alumnos", "sesiones", "informe", "reportes", "canalizaciones"].includes(solicitado) ? solicitado : "agenda";
   });
+  const [sesionEditar, setSesionEditar] = useState(null);
+  const [origenHorario, setOrigenHorario] = useState(null);
   const [modal, setModal] = useState(null); // null | "sesion" | "canalizar"
   const [busquedaAlumno, setBusquedaAlumno] = useState("");
   const [filtroAlumnos, setFiltroAlumnos] = useState("TODOS");
@@ -619,9 +622,17 @@ export default function MisTutorados() {
     api.get(`/tutoria/grupos/${grupoSel.id}/alumnos`)
       .then(({ data }) => {
         setAlumnos(data);
+        if (searchParams.get('sesion')) {
+          abrirSesion(Number(searchParams.get('sesion')));
+          navigate(`/docente/mis-tutorados?grupo=${grupoSel.id}&tab=sesiones`, { replace: true });
+        }
+
         if (searchParams.get("accion") === "sesion" || registrarGrupoId === grupoSel.id) {
+          setSesionEditar(null);
+          setOrigenHorario(searchParams.get('carga') ? { carga_docente_id: Number(searchParams.get('carga')), fecha: searchParams.get('fecha') || todayISOInMexico() } : null);
           setModal("sesion");
           setRegistrarGrupoId(null);
+          navigate(`/docente/mis-tutorados?grupo=${grupoSel.id}&tab=sesiones`, { replace: true });
         }
       })
       .catch(() => showToast("Error al cargar alumnos", "error"));
@@ -629,6 +640,13 @@ export default function MisTutorados() {
       .then(({ data }) => setCanalizaciones(data))
       .catch(() => {});
   }, [grupoSel, registrarGrupoId]);
+
+  const abrirSesion = async id => {
+    try {
+      const { data } = await api.get(`/tutoria/sesiones/${id}`);
+      setSesionEditar(data); setOrigenHorario(null); setModal('sesion');
+    } catch { showToast('No se pudo abrir la tutoría', 'error'); }
+  };
 
   const urgentes = pendientes?.resumen?.urgente || 0;
   const canPend  = canalizaciones.filter(c => c.estado === "PENDIENTE").length;
@@ -680,7 +698,7 @@ export default function MisTutorados() {
   };
 
   const recargarTodo = () => {
-    setModal(null);
+    setModal(null); setSesionEditar(null); setOrigenHorario(null); setTab("sesiones");
     cargarPendientes();
     api.get("/tutoria/grupos").then(({ data }) => {
       setGrupos(data);
@@ -720,9 +738,12 @@ export default function MisTutorados() {
     return (
       <AdminLayout>
         <RegistroSesionTutoria
+          key={sesionEditar?.id || "nueva"}
+          sesion={sesionEditar}
+          origen={origenHorario}
           grupo={grupoSel}
           alumnos={alumnos}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); setSesionEditar(null); setOrigenHorario(null); }}
           onGuardado={recargarTodo}
         />
       </AdminLayout>
@@ -889,7 +910,7 @@ export default function MisTutorados() {
 
         {/* ── SESIONES ── */}
         {tab === "sesiones" && grupoSel && (
-          <TabSesiones grupoId={grupoSel.id} />
+          <TabSesiones grupoId={grupoSel.id} onVer={abrirSesion} />
         )}
 
         {/* ── INFORME BIMESTRAL ── */}
@@ -968,7 +989,7 @@ export default function MisTutorados() {
                     </p>
 
                     <p className="text-xs text-slate-500 mt-1">
-                      {c.fecha_solicitud ? new Date(c.fecha_solicitud).toLocaleDateString("es-MX") : ""}
+                      {c.fecha_solicitud ? formatDateInMexico(c.fecha_solicitud) : ""}
                     </p>
                   </div>
                 </div>

@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { formatDateInMexico } from "../../utils/timezone";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
@@ -431,8 +432,8 @@ function ModalEditarGrupo({ grupo, docentes, onClose, onGuardado }) {
               <p className="text-xs font-semibold text-slate-300 mb-2">Historial de tutores</p>
               {grupo.historial_tutores.map((h, index) => (
                 <p key={`${h.tutor_id}-${h.desde}-${index}`} className="text-xs text-slate-400">
-                  {h.tutor_nombre} · {new Date(h.desde).toLocaleDateString("es-MX")}
-                  {h.hasta ? ` – ${new Date(h.hasta).toLocaleDateString("es-MX")}` : " – vigente"}
+                  {h.tutor_nombre} · {formatDateInMexico(h.desde)}
+                  {h.hasta ? ` – ${formatDateInMexico(h.hasta)}` : " – vigente"}
                 </p>
               ))}
             </div>
@@ -962,7 +963,7 @@ function ModalSeguimientoAlumno({ alumnoId, onClose }) {
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div>
                         <p className="text-sm font-medium text-white">
-                          {s.fecha ? new Date(s.fecha).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "Sin fecha"}
+                          {s.fecha ? formatDateInMexico(s.fecha, { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "Sin fecha"}
                           <span className="text-xs text-slate-500 ml-2">{s.tipo_sesion}</span>
                         </p>
                         <p className="text-xs text-slate-400 mt-0.5">Grupo {s.grupo} · {s.periodo} · {s.tutor_nombre}</p>
@@ -1005,7 +1006,7 @@ function ModalSeguimientoAlumno({ alumnoId, onClose }) {
                           {c.tipos?.map(t => <span key={t} className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">{t}</span>)}
                         </div>
                         <p className="text-xs text-slate-400">
-                          {c.fecha_solicitud ? new Date(c.fecha_solicitud).toLocaleDateString("es-MX") : ""}
+                          {c.fecha_solicitud ? formatDateInMexico(c.fecha_solicitud) : ""}
                           {c.tutor_nombre ? ` · Tutor: ${c.tutor_nombre}` : ""}
                         </p>
                         <p className="text-xs text-slate-300 mt-1">{c.motivo}</p>
@@ -1074,7 +1075,7 @@ function ModalSeguimientoAlumno({ alumnoId, onClose }) {
                       <p className="text-sm font-semibold text-white">{d.codigo} v{d.version}</p>
                       <p className="text-xs text-slate-500">{d.tipo} · {d.referencia}</p>
                     </div>
-                    <span className="text-xs text-slate-500">{d.fecha ? new Date(d.fecha).toLocaleDateString("es-MX") : "Sin fecha"}</span>
+                    <span className="text-xs text-slate-500">{d.fecha ? formatDateInMexico(d.fecha) : "Sin fecha"}</span>
                   </div>
                 ));
               })()}
@@ -1277,7 +1278,7 @@ function AlumnoRiesgoCard({ alumno, onVerSeguimiento }) {
             </span>
           )}
           {alumno.ultima_asistencia && (
-            <span>Asistencia: {new Date(alumno.ultima_asistencia).toLocaleDateString("es-MX")}</span>
+            <span>Asistencia: {formatDateInMexico(alumno.ultima_asistencia)}</span>
           )}
         </div>
         <div className="flex gap-2 shrink-0 items-center">
@@ -2328,7 +2329,7 @@ export default function TutoriaAdmin() {
                   </div>
                   <div className="flex gap-2 flex-col items-end">
                     <span className="text-xs text-slate-500">
-                      {c.fecha_solicitud ? new Date(c.fecha_solicitud).toLocaleDateString("es-MX") : ""}
+                      {c.fecha_solicitud ? formatDateInMexico(c.fecha_solicitud) : ""}
                     </span>
                     {c.estado === "PENDIENTE" && (
                       <>
@@ -2375,7 +2376,7 @@ export default function TutoriaAdmin() {
                 </span>
                 {inf.enviado_en && (
                   <span className="text-xs text-slate-500">
-                    Enviado: {new Date(inf.enviado_en).toLocaleDateString("es-MX")}
+                    Enviado: {formatDateInMexico(inf.enviado_en)}
                   </span>
                 )}
                 {inf.estado === "ENVIADO" && (
@@ -2485,11 +2486,11 @@ export default function TutoriaAdmin() {
                 const rows = [HEADS, ...reporteGeneralFiltrado.map(r => COLS.map(c => {
                   const v = r[c];
                   if (c === "tiene_perfil") return v ? "Sí" : "No";
-                  if (c === "ultima_asistencia") return v ? new Date(v).toLocaleDateString("es-MX") : "";
+                  if (c === "ultima_asistencia") return v ? formatDateInMexico(v) : "";
                   return v ?? "";
                 }))];
                 const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-                const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+                const blob = new Blob(["" + csv], { type: "text/csv;charset=utf-8" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a"); a.href = url;
                 a.download = `reporte_tutoria_${todayISOInMexico()}.csv`;
@@ -2597,7 +2598,7 @@ export default function TutoriaAdmin() {
                             : <span className="text-slate-600">0</span>}
                         </td>
                         <td className="px-3 py-2.5 text-slate-500 text-xs whitespace-nowrap">
-                          {r.ultima_asistencia ? new Date(r.ultima_asistencia).toLocaleDateString("es-MX") : "—"}
+                          {r.ultima_asistencia ? formatDateInMexico(r.ultima_asistencia) : "—"}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           {r.tiene_perfil
@@ -2688,7 +2689,7 @@ export default function TutoriaAdmin() {
                 <div key={p.id} className="p-4 flex items-center justify-between gap-4 flex-wrap">
                   <div>
                     <p className="font-medium text-white">{p.grupo_label}</p>
-                    <p className="text-xs text-slate-500">{p.tutor_nombre} · {p.fecha_programada ? new Date(p.fecha_programada).toLocaleDateString("es-MX") : ""} · {p.tipo_sesion}</p>
+                    <p className="text-xs text-slate-500">{p.tutor_nombre} · {p.fecha_programada ? formatDateInMexico(p.fecha_programada) : ""} · {p.tipo_sesion}</p>
                     {p.objetivo && <p className="text-xs text-slate-400 mt-1">{p.objetivo}</p>}
                   </div>
                   <span className={`text-xs px-2 py-1 rounded-full ${
@@ -2883,7 +2884,7 @@ export default function TutoriaAdmin() {
                   </div>
                   <div className="rounded-xl bg-slate-800/45 border border-slate-700/50 px-3 py-2">
                     <p className="text-slate-500">Efectividad</p>
-                    <p className="text-white font-semibold">{d.fecha_efectivo ? new Date(d.fecha_efectivo).toLocaleDateString("es-MX") : "Sin fecha"}</p>
+                    <p className="text-white font-semibold">{d.fecha_efectivo ? formatDateInMexico(d.fecha_efectivo) : "Sin fecha"}</p>
                   </div>
                 </div>
                 {d.observaciones && <p className="text-xs text-slate-400 mt-3">{d.observaciones}</p>}

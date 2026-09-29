@@ -5,7 +5,7 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
   if (item.tipo_actividad === 'TUTORIA') {
-    return { texto: 'Registrar tutoría', path: `/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}&accion=sesion` };
+    return accionTutoria(item, fecha);
   }
   if (item.tipo_actividad && item.tipo_actividad !== 'CLASE') {
     return { texto: 'Ver horario', path: '/docente/horario' };
@@ -22,4 +22,10 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
     return { texto: 'Iniciar clase', iniciar: true };
   }
   return { texto: 'Ver horario', path: '/docente/horario' };
+}
+
+export function accionTutoria(item, fecha = todayISOInMexico()) {
+  const base = `/docente/mis-tutorados?grupo=${item.grupo_tutorado_id}`;
+  if (item.sesion_tutoria_id) return { texto: 'Ver tutoría', path: `${base}&tab=sesiones&sesion=${item.sesion_tutoria_id}` };
+  return { texto: 'Registrar tutoría', path: `${base}&accion=sesion&carga=${item.carga_id || item.id}&fecha=${fecha}` };
 }

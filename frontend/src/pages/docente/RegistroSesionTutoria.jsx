@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
-import { todayISOInMexico } from "../../utils/timezone";
+import { todayISOInMexico, formatDateInMexico, formatDateTimeInMexico } from "../../utils/timezone";
 import { formatCarrera, formatNombre } from "../../utils/presentacion";
 
+
+const camposHistorial = { fecha: 'Fecha realizada', hora_inicio: 'Hora', duracion_minutos: 'Duración', lugar: 'Lugar', tipo_sesion: 'Tipo de sesión', categoria: 'Categoría', categoria_otro: 'Otra categoría', tema: 'Tema', acciones_preventivas: 'Acuerdos y acciones', observaciones_generales: 'Observaciones', motivo_extraordinaria: 'Motivo extraordinario', registros: 'Participantes y seguimiento' };
+const valorHistorial = (campo, valor) => campo === 'registros'
+  ? (valor || []).map(r => `${formatNombre(r.nombre)}: ${r.asistio ? 'asistió' : 'faltó'}${r.comentarios ? ` · ${r.comentarios}` : ''}${r.requiere_canalizacion ? ' · con canalización' : ''}`).join('; ')
+  : campo === 'fecha' ? formatDateInMexico(valor) : String(valor || 'Sin dato');
 
 const emptyRecord = alumno => ({
   alumno_id: alumno.id,
@@ -16,22 +21,26 @@ const emptyRecord = alumno => ({
   canalizacion: { area: "ASESORIA_ACADEMICA", motivo: "" },
 });
 
-export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuardado }) {
+export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuardado, sesion = null, origen = null }) {
   const { toast } = useToast();
-  const draftKey = `siga:tutoria:f-dc-07:${grupo.id}`;
+  const [editando, setEditando] = useState(!sesion);
+  const draftKey = `siga:tutoria:f-dc-07:${grupo.id}:${sesion?.id || (origen ? `${origen.carga_docente_id}:${origen.fecha}` : 'nueva')}`;
   const draft = useMemo(() => {
     try { return JSON.parse(localStorage.getItem(draftKey) || "null"); } catch { return null; }
   }, [draftKey]);
-  const [form, setForm] = useState(draft?.form || {
-    fecha: todayISOInMexico(), hora_inicio: "", duracion_minutos: 60, lugar: "",
+  const [form, setForm] = useState((sesion ? { ...sesion, alumno_id: sesion.registros[0]?.alumno_id || "", programacion_id: sesion.programacion_id || "", carga_docente_id: sesion.carga_docente_id || "", motivo_cambio: "", extraordinaria: false } : draft?.form) || {
+    fecha: origen?.fecha || todayISOInMexico(), carga_docente_id: origen?.carga_docente_id || "", fecha_programada: origen?.fecha || null, extraordinaria: false, motivo_extraordinaria: "", hora_inicio: "", duracion_minutos: 60, lugar: "",
     tipo_sesion: "GRUPAL", programacion_id: "", alumno_id: alumnos[0]?.id || "",
     categoria: "ACADEMICO", categoria_otro: "", tema: "",
     acciones_preventivas: "", observaciones_generales: "",
   });
   const [registros, setRegistros] = useState(() => {
-    const saved = new Map((draft?.registros || []).map(record => [String(record.alumno_id), record]));
-    return alumnos.map(alumno => ({ ...emptyRecord(alumno), ...(saved.get(String(alumno.id)) || {}) }));
+    const saved = new Map((sesion?.registros || draft?.registros || []).map(record => [String(record.alumno_id), record]));
+    const roster = [...alumnos, ...(sesion?.registros || []).filter(r => !alumnos.some(a => a.id === r.alumno_id)).map(r => ({ id: r.alumno_id, nombre: r.nombre, matricula: r.matricula }))];
+    return roster.map(alumno => ({ ...emptyRecord(alumno), ...(saved.get(String(alumno.id)) || {}), comentarios: saved.get(String(alumno.id))?.comentarios || '' }));
   });
+  const [bloques, setBloques] = useState([]);
+  const [errorHorario, setErrorHorario] = useState(false);
   const [programaciones, setProgramaciones] = useState([]);
   const [guardadoEn, setGuardadoEn] = useState(draft?.guardadoEn || null);
   const [dirty, setDirty] = useState(Boolean(draft));
@@ -46,12 +55,29 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
 
   useEffect(() => {
     api.get(`/tutoria/programaciones?grupo_id=${grupo.id}`)
-      .then(({ data }) => setProgramaciones(data.filter(item => item.estado === "PROGRAMADA")))
+      .then(({ data }) => setProgramaciones(data.filter(item => item.estado === "PROGRAMADA" || item.id === sesion?.programacion_id)))
       .catch(() => setProgramaciones([]));
   }, [grupo.id]);
 
   useEffect(() => {
-    if (!dirty) return undefined;
+    if (sesion) return;
+    let vigente = true;
+    setErrorHorario(false);
+    api.get('/tutoria/horario-sesiones', { params: { grupo_id: grupo.id, fecha: form.fecha_programada || form.fecha } })
+      .then(({ data }) => {
+        if (!vigente) return;
+        setBloques(data);
+        const elegido = data.find(b => b.id === Number(origen?.carga_docente_id)) || (data.length === 1 ? data[0] : null);
+        if (!elegido && !origen?.carga_docente_id) setForm(f => ({ ...f, carga_docente_id: "" }));
+        if (elegido && !form.extraordinaria && form.tipo_sesion === 'GRUPAL' && !form.programacion_id) {
+          setForm(f => ({ ...f, carga_docente_id: elegido.id, fecha_programada: elegido.fecha_programada, hora_inicio: f.hora_inicio || elegido.hora_inicio, duracion_minutos: elegido.duracion_minutos, lugar: f.lugar || elegido.lugar }));
+        }
+      }).catch(() => { if (vigente) setErrorHorario(true); });
+    return () => { vigente = false; };
+  }, [grupo.id, form.fecha, form.fecha_programada, form.extraordinaria, form.tipo_sesion, origen?.carga_docente_id, form.programacion_id, sesion]);
+
+  useEffect(() => {
+    if (!dirty || sesion) return undefined;
     const timer = setTimeout(() => {
       const timestamp = new Date().toISOString();
       localStorage.setItem(draftKey, JSON.stringify({ form, registros, guardadoEn: timestamp }));
@@ -70,11 +96,12 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
     return () => window.removeEventListener("beforeunload", preventLoss);
   }, [dirty]);
 
+  const [participantes, setParticipantes] = useState(() => sesion ? sesion.registros.map(r => String(r.alumno_id)) : alumnos.map(a => String(a.id)));
   const selectedRecords = form.tipo_sesion === "INDIVIDUAL"
     ? registros.filter(record => String(record.alumno_id) === String(form.alumno_id))
-    : registros;
+    : registros.filter(r => participantes.includes(String(r.alumno_id)));
   const present = selectedRecords.filter(record => record.asistio).length;
-  const withNote = selectedRecords.filter(record => record.comentarios.trim()).length;
+  const withNote = selectedRecords.filter(record => (record.comentarios || "").trim()).length;
   const withReferral = selectedRecords.filter(record => record.requiere_canalizacion).length;
   const selectedSchedule = programaciones.find(item => String(item.id) === String(form.programacion_id));
 
@@ -88,26 +115,29 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
 
   const selectSchedule = id => {
     const schedule = programaciones.find(item => String(item.id) === String(id));
-    updateForm({ programacion_id: id, ...(schedule ? { fecha: schedule.fecha_programada } : {}) });
+    updateForm({ programacion_id: id, carga_docente_id: "", extraordinaria: false, ...(schedule ? { fecha: schedule.fecha_programada } : {}) });
   };
 
   const save = async () => {
     if (!form.fecha || !form.hora_inicio) return toast("Indica fecha y hora de inicio", "error");
-    if (!form.tema.trim()) return toast("Describe el tema tratado", "error");
-    if (form.categoria === "OTRO" && !form.categoria_otro.trim()) return toast("Especifica la categoría Otro", "error");
+    if (!(form.tema || "").trim()) return toast("Describe el tema tratado", "error");
+    if (form.categoria === "OTRO" && !(form.categoria_otro || "").trim()) return toast("Especifica la categoría Otro", "error");
     if (form.tipo_sesion === "INDIVIDUAL" && !form.alumno_id) return toast("Selecciona al alumno", "error");
     if (selectedRecords.some(record => record.requiere_canalizacion && (!record.canalizacion.area || !record.canalizacion.motivo.trim()))) {
       return toast("Completa el área y motivo de cada canalización", "error");
     }
+    if (errorHorario) return toast('No se pudo consultar el horario. Vuelve a abrir el registro.', 'error');
     const day = new Date(`${form.fecha}T12:00:00`).getDay();
     if ((day === 0 || day === 6) && !window.confirm("La fecha cae en fin de semana. ¿Deseas registrar una sesión extraordinaria?")) return;
 
     setLoading(true);
     try {
       const { alumno_id, ...sessionFields } = form;
-      await api.post("/tutoria/sesiones", {
+      await api[sesion ? "put" : "post"](sesion ? `/tutoria/sesiones/${sesion.id}` : "/tutoria/sesiones", {
         grupo_tutorado_id: grupo.id,
         ...sessionFields,
+        carga_docente_id: form.carga_docente_id ? Number(form.carga_docente_id) : null,
+        fecha_programada: form.fecha_programada || null,
         programacion_id: form.tipo_sesion === "GRUPAL" && form.programacion_id ? Number(form.programacion_id) : null,
         registros: selectedRecords.map(({ nombre, matricula, nota_abierta, ...record }) => record),
       });
@@ -127,27 +157,39 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
       <section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/70">
         <header className="border-b border-slate-700 p-5 md:p-6">
           <button type="button" onClick={leave} className="mb-3 text-sm font-medium text-emerald-400 hover:text-emerald-300">← Volver a Mis Tutorados</button>
-          <h1 className="text-2xl font-bold">Registro de sesión tutorial</h1>
+          <h1 className="text-2xl font-bold">{sesion ? "Tutoría registrada" : "Registro de sesión tutorial"}</h1>
           <p className="mt-1 text-sm text-slate-400" title={grupo.carrera}>F-DC-07 · {formatCarrera(grupo.carrera)} · {grupo.cuatrimestre}° {grupo.grupo} · {alumnos.length} alumnos</p>
           {form.tipo_sesion === "GRUPAL" ? (
             <p className="mt-3 inline-flex rounded-lg border-l-2 border-emerald-400 bg-slate-800 px-3 py-2 text-xs text-slate-300">
-              {selectedSchedule ? `Vinculada a la sesión programada del ${new Date(`${selectedSchedule.fecha_programada}T12:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}` : "Sesión grupal no programada (registro extraordinario)"}
+              {form.carga_docente_id ? `Vinculada al horario del ${formatDateInMexico(form.fecha_programada || form.fecha)}` : selectedSchedule ? `Vinculada a la sesión programada del ${new Date(`${selectedSchedule.fecha_programada}T12:00:00`).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" })}` : form.extraordinaria ? "Sesión extraordinaria" : "Selecciona la programación o registra una sesión extraordinaria"}
             </p>
           ) : <p className="mt-3 inline-flex rounded-lg border-l-2 border-sky-300 bg-slate-800 px-3 py-2 text-xs text-slate-300">Sesión individual · no completa una programación grupal</p>}
         </header>
 
-        <div className="space-y-6 p-5 md:p-6">
+        {sesion && <div className="px-5 pt-4 text-sm">
+          {sesion.bloqueo_edicion ? <p className="text-amber-300">{sesion.bloqueo_edicion}</p> : !editando && <button onClick={() => setEditando(true)} className="rounded-lg bg-emerald-600 px-4 py-2 text-white">Editar tutoría</button>}
+          <details className="mt-3"><summary>Historial de cambios ({sesion.historial?.length || 0})</summary>{sesion.historial?.map((h, i) => <div key={i} className="mt-2 rounded-lg border border-slate-700 p-3"><p>{h.usuario} · {formatDateTimeInMexico(h.fecha)} · {h.motivo}</p><dl className="mt-2 space-y-2 text-xs">{Object.entries(camposHistorial).filter(([campo]) => JSON.stringify(h.antes?.[campo]) !== JSON.stringify(h.despues?.[campo])).map(([campo, etiqueta]) => <div key={campo}><dt className="font-semibold">{etiqueta}</dt><dd>Antes: {valorHistorial(campo, h.antes?.[campo])}</dd><dd>Después: {valorHistorial(campo, h.despues?.[campo])}</dd></div>)}</dl></div>)}</details>
+        </div>}
+        <fieldset disabled={!editando || Boolean(sesion?.bloqueo_edicion)} className="space-y-6 p-5 md:p-6">
           <div className="inline-flex rounded-xl border border-slate-700 bg-slate-800 p-1">
-            {["GRUPAL", "INDIVIDUAL"].map(type => <button key={type} type="button" onClick={() => updateForm({ tipo_sesion: type, programacion_id: type === "INDIVIDUAL" ? "" : form.programacion_id })} className={`rounded-lg px-4 py-2 text-sm font-semibold ${form.tipo_sesion === type ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"}`}>{type === "GRUPAL" ? "Grupal" : "Individual"}</button>)}
+            {["GRUPAL", "INDIVIDUAL"].map(type => <button key={type} type="button" disabled={Boolean(sesion?.carga_docente_id || sesion?.programacion_id)} onClick={() => updateForm({ tipo_sesion: type, programacion_id: "", carga_docente_id: "", fecha_programada: null, extraordinaria: type === "INDIVIDUAL" })} className={`rounded-lg px-4 py-2 text-sm font-semibold ${form.tipo_sesion === type ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"}`}>{type === "GRUPAL" ? "Grupal" : "Individual"}</button>)}
           </div>
 
           <div className={`grid grid-cols-1 gap-4 ${form.tipo_sesion === "INDIVIDUAL" ? "md:grid-cols-4" : "md:grid-cols-2 xl:grid-cols-5"}`}>
             {form.tipo_sesion === "INDIVIDUAL" && <Field label="Alumno a atender *" wide><select value={form.alumno_id} onChange={event => updateForm({ alumno_id: event.target.value })} className="input-dark w-full"><option value="">Seleccionar alumno</option>{alumnos.map(alumno => <option key={alumno.id} value={alumno.id}>{formatNombre(alumno.nombre)} · {alumno.matricula}</option>)}</select></Field>}
-            {form.tipo_sesion === "GRUPAL" && <Field label="Vincular con una sesión programada" wide><select value={form.programacion_id} onChange={event => selectSchedule(event.target.value)} className="input-dark w-full"><option value="">No vinculada · sesión extraordinaria</option>{programaciones.map(item => <option key={item.id} value={item.id}>{new Date(`${item.fecha_programada}T12:00:00`).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })}{item.objetivo ? ` · ${item.objetivo}` : ""}</option>)}</select></Field>}
-            <Field label="Fecha *"><input type="date" value={form.fecha} onChange={event => updateForm({ fecha: event.target.value, programacion_id: "" })} className="input-dark w-full" /></Field>
+            {!sesion && form.tipo_sesion === "GRUPAL" && <Field label="Vincular con una sesión programada" wide><select value={form.programacion_id} onChange={event => selectSchedule(event.target.value)} className="input-dark w-full"><option value="">Sin programación adicional</option>{programaciones.map(item => <option key={item.id} value={item.id}>{new Date(`${item.fecha_programada}T12:00:00`).toLocaleDateString("es-MX", { weekday: "short", day: "numeric", month: "short" })}{item.objetivo ? ` · ${item.objetivo}` : ""}</option>)}</select></Field>}
+            {!sesion && <Field label="Origen de la tutoría" wide><select value={form.extraordinaria ? 'extra' : form.carga_docente_id || ''} onChange={e => {
+              const b = bloques.find(x => String(x.id) === e.target.value);
+              updateForm({ extraordinaria: e.target.value === 'extra', carga_docente_id: b?.id || '', fecha_programada: b?.fecha_programada || null, programacion_id: '', ...(b ? { hora_inicio: b.hora_inicio, duracion_minutos: b.duracion_minutos, lugar: b.lugar } : {}) });
+            }} className="input-dark w-full"><option value="">Seleccionar programación</option>{form.tipo_sesion === 'GRUPAL' && bloques.map(b => <option key={b.id} value={b.id}>Horario {b.hora_inicio}{b.sesion_id ? ' · Ya registrada' : ''}</option>)}<option value="extra">Extraordinaria (fuera del horario)</option></select></Field>}
+            {errorHorario && <p role="alert">No se pudo consultar el horario. Vuelve a abrir el registro.</p>}
+            {form.extraordinaria && <Field label="Motivo de la sesión extraordinaria" wide><textarea value={form.motivo_extraordinaria || ''} onChange={e => updateForm({ motivo_extraordinaria: e.target.value })} className="input-dark w-full" /></Field>}
+            {sesion && editando && <Field label="Motivo de la corrección *" wide><textarea value={form.motivo_cambio || ''} onChange={e => updateForm({ motivo_cambio: e.target.value })} className="input-dark w-full" /></Field>}
+            <Field label={form.carga_docente_id ? "Fecha realizada *" : "Fecha *"}><input type="date" value={form.fecha} onChange={event => updateForm({ fecha: event.target.value, ...(sesion || form.carga_docente_id ? {} : { programacion_id: "", fecha_programada: null }) })} className="input-dark w-full" /></Field>
+            {form.carga_docente_id && <Field label="Fecha programada original"><input type="date" disabled={Boolean(sesion)} value={form.fecha_programada || form.fecha} onChange={e => updateForm({ fecha_programada: e.target.value, carga_docente_id: '' })} className="input-dark w-full" /><span className="text-xs text-slate-400">Si se atendió otro día, cambia la fecha realizada; se conserva esta programación.</span></Field>}
             <Field label="Hora de inicio *"><input type="time" value={form.hora_inicio} onChange={event => updateForm({ hora_inicio: event.target.value })} className="input-dark w-full" /></Field>
             <Field label="Duración"><select value={form.duracion_minutos} onChange={event => updateForm({ duracion_minutos: Number(event.target.value) })} className="input-dark w-full">{[30,45,60,90,120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutos</option>)}</select></Field>
-            {form.tipo_sesion === "GRUPAL" && <Field label="Lugar"><input value={form.lugar} onChange={event => updateForm({ lugar: event.target.value })} className="input-dark w-full" placeholder="Salón o espacio" /></Field>}
+            {form.tipo_sesion === "GRUPAL" && <Field label="Lugar"><input value={form.lugar || ""} onChange={event => updateForm({ lugar: event.target.value })} className="input-dark w-full" placeholder="Salón o espacio" /></Field>}
           </div>
 
           <section className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/35">
@@ -155,34 +197,36 @@ export default function RegistroSesionTutoria({ grupo, alumnos, onClose, onGuard
             <div className="space-y-4 p-5">
               <fieldset><legend className="mb-2 text-xs font-medium text-slate-400">Categoría *</legend><div className="flex flex-wrap gap-2">{[["ACADEMICO","Académico"],["PERSONAL","Personal"],["OTRO","Otro…"]].map(([value,label]) => <button key={value} type="button" onClick={() => updateForm({ categoria: value })} className={`rounded-full border px-4 py-2 text-sm ${form.categoria === value ? "border-emerald-400 bg-emerald-500/10 text-emerald-300" : "border-slate-700 text-slate-400"}`}>{label}</button>)}</div></fieldset>
               {form.categoria === "OTRO" && <Field label="Especifica la categoría *"><input value={form.categoria_otro} onChange={event => updateForm({ categoria_otro: event.target.value })} className="input-dark w-full" /></Field>}
-              <Field label="Tema tratado *"><textarea rows={3} value={form.tema} onChange={event => updateForm({ tema: event.target.value })} className="input-dark w-full" /></Field>
-              <Field label="Acciones preventivas acordadas"><textarea rows={3} value={form.acciones_preventivas} onChange={event => updateForm({ acciones_preventivas: event.target.value })} className="input-dark w-full" /></Field>
-              <Field label="Observaciones generales"><textarea rows={2} value={form.observaciones_generales} onChange={event => updateForm({ observaciones_generales: event.target.value })} className="input-dark w-full" /></Field>
+              <Field label="Tema tratado *"><textarea rows={3} value={form.tema || ""} onChange={event => updateForm({ tema: event.target.value })} className="input-dark w-full" /></Field>
+              <Field label="Acciones preventivas acordadas"><textarea rows={3} value={form.acciones_preventivas || ""} onChange={event => updateForm({ acciones_preventivas: event.target.value })} className="input-dark w-full" /></Field>
+              <Field label="Observaciones generales"><textarea rows={2} value={form.observaciones_generales || ""} onChange={event => updateForm({ observaciones_generales: event.target.value })} className="input-dark w-full" /></Field>
             </div>
           </section>
 
+          {sesion && form.tipo_sesion === 'GRUPAL' && <details><summary>Corregir participantes</summary>{registros.map(r => <label key={r.alumno_id} className="block py-1"><input type="checkbox" checked={participantes.includes(String(r.alumno_id))} disabled={r.canalizacion_existente} onChange={e => { setParticipantes(ids => e.target.checked ? [...ids, String(r.alumno_id)] : ids.filter(id => id !== String(r.alumno_id))); setDirty(true); }} /> {formatNombre(r.nombre)}</label>)}</details>}
           <section className="overflow-hidden rounded-xl border border-slate-700 bg-slate-800/20">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 px-5 py-3"><span className="text-xs font-bold uppercase tracking-widest text-slate-400">{form.tipo_sesion === "GRUPAL" ? "Asistencia" : `Registro individual${selectedRecords[0] ? ` · ${formatNombre(selectedRecords[0].nombre)}` : ""}`}</span><span className="text-xs text-slate-400">{form.tipo_sesion === "INDIVIDUAL" ? `${present ? "Asistió" : "No asistió"} · ${withNote ? "Con nota" : "Sin nota"} · ${withReferral ? "Con canalización" : "Sin canalización"}` : `${selectedRecords.length} ${selectedRecords.length === 1 ? "alumno" : "alumnos"} · ${present} asistieron · ${withNote} con nota · ${withReferral} canalización`}</span></div>
             <div className="divide-y divide-slate-700/70">
               {registros.map((record, index) => {
                 if (form.tipo_sesion === "INDIVIDUAL" && String(record.alumno_id) !== String(form.alumno_id)) return null;
+                if (form.tipo_sesion === 'GRUPAL' && !participantes.includes(String(record.alumno_id))) return null;
                 return <div key={record.alumno_id} className="px-5 py-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3"><input type="checkbox" checked={record.asistio} onChange={event => updateRecord(index, { asistio: event.target.checked })} className="h-5 w-5 accent-emerald-500" /><span className={record.asistio ? "font-medium text-white" : "text-slate-400"}>{form.tipo_sesion === "INDIVIDUAL" ? "Asistió a la sesión" : <>{formatNombre(record.nombre)} <span className="font-mono text-xs text-slate-500">{record.matricula}</span></>}</span>{!record.asistio && <span className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-300">Faltó</span>}</label>
                     <button type="button" onClick={() => updateRecord(index, { nota_abierta: !record.nota_abierta })} className={`rounded-lg border px-3 py-1.5 text-xs ${record.nota_abierta || record.comentarios ? "border-emerald-500 text-emerald-300" : "border-slate-700 text-slate-400"}`}>Nota</button>
-                    <button type="button" onClick={() => updateRecord(index, { requiere_canalizacion: !record.requiere_canalizacion })} className={`rounded-lg border px-3 py-1.5 text-xs ${record.requiere_canalizacion ? "border-amber-400 bg-amber-500/10 text-amber-300" : "border-slate-700 text-slate-400"}`}>Canalizar…</button>
+                    <button type="button" disabled={record.canalizacion_existente} onClick={() => updateRecord(index, { requiere_canalizacion: !record.requiere_canalizacion })} className={`rounded-lg border px-3 py-1.5 text-xs ${record.requiere_canalizacion ? "border-amber-400 bg-amber-500/10 text-amber-300" : "border-slate-700 text-slate-400"}`}>{record.canalizacion_existente ? "Canalización vinculada" : "Canalizar…"}</button>
                   </div>
                   {(record.nota_abierta || record.comentarios) && <div className="ml-8 mt-3"><Field label="Nota individual"><textarea rows={2} value={record.comentarios} onChange={event => updateRecord(index, { comentarios: event.target.value })} className="input-dark w-full" /></Field></div>}
-                  {record.requiere_canalizacion && <div className="ml-8 mt-3 grid gap-3 rounded-xl border-l-2 border-amber-400 bg-amber-500/10 p-4 md:grid-cols-2"><p className="md:col-span-2 text-xs font-semibold text-amber-300">Se generará una canalización F-DC-08 · requiere área y motivo</p><Field label="Área *"><select value={record.canalizacion.area} onChange={event => updateRecord(index, { canalizacion: { ...record.canalizacion, area: event.target.value } })} className="input-dark w-full"><option value="ASESORIA_ACADEMICA">Asesoría académica</option><option value="PSICOLOGIA">Psicología</option><option value="PEDAGOGIA">Pedagogía</option><option value="PERSONAL">Atención personal</option><option value="MEDICO">Servicio médico</option></select></Field><Field label="Motivo *"><input value={record.canalizacion.motivo} onChange={event => updateRecord(index, { canalizacion: { ...record.canalizacion, motivo: event.target.value } })} className="input-dark w-full" /></Field></div>}
+                  {record.requiere_canalizacion && !record.canalizacion_existente && <div className="ml-8 mt-3 grid gap-3 rounded-xl border-l-2 border-amber-400 bg-amber-500/10 p-4 md:grid-cols-2"><p className="md:col-span-2 text-xs font-semibold text-amber-300">Se generará una canalización F-DC-08 · requiere área y motivo</p><Field label="Área *"><select value={record.canalizacion.area} onChange={event => updateRecord(index, { canalizacion: { ...record.canalizacion, area: event.target.value } })} className="input-dark w-full"><option value="ASESORIA_ACADEMICA">Asesoría académica</option><option value="PSICOLOGIA">Psicología</option><option value="PEDAGOGIA">Pedagogía</option><option value="PERSONAL">Atención personal</option><option value="MEDICO">Servicio médico</option></select></Field><Field label="Motivo *"><input value={record.canalizacion.motivo} onChange={event => updateRecord(index, { canalizacion: { ...record.canalizacion, motivo: event.target.value } })} className="input-dark w-full" /></Field></div>}
                 </div>;
               })}
             </div>
           </section>
-        </div>
+        </fieldset>
 
         <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700 bg-slate-900 px-5 py-4 md:px-6">
-          <p className="text-xs text-slate-400"><span className="font-semibold text-emerald-400">Borrador guardado</span>{guardadoEn ? ` · ${new Date(guardadoEn).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · se conserva en este equipo` : ""}</p>
-          <div className="flex gap-2"><button type="button" onClick={leave} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300">Cancelar</button><button type="button" onClick={save} disabled={loading} className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50">{loading ? "Guardando…" : "Guardar sesión"}</button></div>
+          <p className="text-xs text-slate-400"><span className="font-semibold text-emerald-400">{sesion ? "La edición conserva el historial" : "Borrador local"}</span>{guardadoEn ? ` · ${new Date(guardadoEn).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })} · se conserva en este equipo` : ""}</p>
+          <div className="flex gap-2"><button type="button" onClick={leave} className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300">Cancelar</button><button type="button" onClick={save} disabled={loading || !editando || Boolean(sesion?.bloqueo_edicion)} className="rounded-xl bg-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50">{loading ? "Guardando…" : sesion ? "Guardar cambios" : "Guardar sesión"}</button></div>
         </footer>
       </section>
       <p className="px-2 text-xs text-slate-500">Trazabilidad digital: el registro conserva usuario autenticado, fecha y hora de creación y versión vigente del F-DC-07.</p>

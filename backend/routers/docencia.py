@@ -39,6 +39,7 @@ from models.docencia import (
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
 from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from routers.notificaciones import crear_notificacion
+from services.tutoria_sesiones import sesion_de_bloque
 from services.tutoria_sync import grupo_tutoria_para_academico
 from services.calendario_academico import estado_fecha_academica
 
@@ -1434,6 +1435,10 @@ def clases_de_hoy(
             ClaseDocente.fecha == hoy.date(),
         ).first()
         item = _serializar_carga(carga, db)
+        if carga.tipo_actividad == 'TUTORIA':
+            tutoria = sesion_de_bloque(db, carga.id, hoy.date())
+            item['sesion_tutoria_id'] = tutoria.id if tutoria else None
+            item['fecha'] = hoy.date().isoformat()
         item["clase_id"] = clase.id if clase else None
         item["clase_estado"] = clase.estado if clase else None
         item["calendario"] = estado_fecha_academica(db, carga.periodo_id, hoy.date())
@@ -2959,7 +2964,11 @@ def dashboard_docente(
             estado = "SIN_REGISTRO"
         else:
             estado = "PROGRAMADA"
+        tutoria = sesion_de_bloque(db, carga.id, hoy) if carga.tipo_actividad == 'TUTORIA' else None
+        if tutoria:
+            estado = 'CERRADA'
         jornada.append({
+            'sesion_tutoria_id': tutoria.id if tutoria else None,
             "carga_id": carga.id,
             "clase_id": clase.id if clase else None,
             "tipo_actividad": carga.tipo_actividad,

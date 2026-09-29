@@ -22,7 +22,7 @@ test('no habilita otra fecha ni un día no lectivo', () => {
 });
 test('abre el registro de tutoría desde el panel sin intentar iniciar una clase', () => {
   expect(accion('15:00:00', { tipo_actividad: 'TUTORIA', grupo_tutorado_id: 4 })).toEqual({
-    texto: 'Registrar tutoría', path: '/docente/mis-tutorados?grupo=4&accion=sesion',
+    texto: 'Registrar tutoría', path: '/docente/mis-tutorados?grupo=4&accion=sesion&carga=12&fecha=2026-09-03',
   });
 });
 test('continúa una clase abierta y consulta una cerrada sin volver a iniciarla', () => {
@@ -59,4 +59,9 @@ test('propaga el rechazo del servidor sin navegar', async () => {
   const navigate = jest.fn();
   await expect(abrirClaseDocente(api, navigate, { ...item, id: 12 })).rejects.toThrow('Fuera de horario');
   expect(navigate).not.toHaveBeenCalled();
+});
+
+test('una tutoría registrada se consulta sin duplicar el registro', () => {
+  expect(accion('10:15:00', { tipo_actividad: 'TUTORIA', grupo_tutorado_id: 4, sesion_tutoria_id: 19 }).path).toBe('/docente/mis-tutorados?grupo=4&tab=sesiones&sesion=19');
+  expect(estadoActividad({ sesion_tutoria_id: 19, hora_inicio: '10:00', hora_fin: '11:00' }, 620)).toBe('FINALIZADA');
 });

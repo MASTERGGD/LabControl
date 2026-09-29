@@ -34,6 +34,9 @@ function parseApiDate(value) {
 
 export function formatDateInMexico(value, options = {}) {
   if (!value) return '—';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T12:00:00Z`).toLocaleDateString('es-MX', { ...options, timeZone: 'UTC' });
+  }
   const date = parseApiDate(value);
   return date.toLocaleDateString('es-MX', {
     timeZone: MEXICO_TIME_ZONE,
