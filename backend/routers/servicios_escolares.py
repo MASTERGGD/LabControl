@@ -24,7 +24,7 @@ import urllib.request
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 
 from database import get_db
@@ -212,6 +212,21 @@ def _ensure_organizacion_desde_catalogo(db: Session):
 
 
 def _ensure_organizacion_bloqueada(db: Session):
+    # Precargar índices evita varias consultas por cada alumno en cada visita.
+    periodos = {p.clave: p for p in db.query(PeriodoEscolar).all()}
+    grupos = db.query(GrupoAcademico).options(
+        joinedload(GrupoAcademico.periodo), joinedload(GrupoAcademico.carrera_catalogo),
+    ).all()
+    por_grupo = {(g.periodo_id, g.carrera, g.cuatrimestre, g.grupo): g for g in grupos}
+    periodo_grupo = {g.id: g.periodo_id for g in grupos}
+    inscripciones = {}
+    por_alumno = {}
+    retiros = set()
+    for inscripcion in db.query(InscripcionAlumno).all():
+        inscripciones[(inscripcion.alumno_id, inscripcion.grupo_academico_id)] = inscripcion
+        por_alumno.setdefault(inscripcion.alumno_id, []).append(inscripcion)
+        if inscripcion.estado == "NO_INSCRITO":
+            retiros.add((inscripcion.alumno_id, periodo_grupo.get(inscripcion.grupo_academico_id)))
     cambios = False
     for alumno in db.query(CatalogoAlumno).filter(CatalogoAlumno.activo == True).all():
         clave = _norm_text(alumno.periodo).upper()
@@ -219,51 +234,39 @@ def _ensure_organizacion_bloqueada(db: Session):
         grupo_letra = _norm_text(alumno.grupo).upper()
         if not clave or not carrera or not grupo_letra or not alumno.cuatrimestre:
             continue
-        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
+        periodo = periodos.get(clave)
         if not periodo:
             periodo = PeriodoEscolar(clave=clave, activo=True)
             db.add(periodo); db.flush(); cambios = True
-        # El catálogo heredado no puede revocar un retiro explícito del periodo.
-        retiro = db.query(InscripcionAlumno).join(GrupoAcademico).filter(
-            InscripcionAlumno.alumno_id == alumno.id,
-            GrupoAcademico.periodo_id == periodo.id,
-            InscripcionAlumno.estado == "NO_INSCRITO",
-        ).first()
-        if retiro:
+            periodos[clave] = periodo
+        if (alumno.id, periodo.id) in retiros:
             continue
-        grupo = db.query(GrupoAcademico).filter(
-            GrupoAcademico.periodo_id == periodo.id,
-            GrupoAcademico.carrera == carrera,
-            GrupoAcademico.cuatrimestre == alumno.cuatrimestre,
-            GrupoAcademico.grupo == grupo_letra,
-        ).first()
+        clave_grupo = (periodo.id, carrera, alumno.cuatrimestre, grupo_letra)
+        grupo = por_grupo.get(clave_grupo)
         if not grupo:
-            grupo = GrupoAcademico(periodo_id=periodo.id, carrera=carrera,
+            grupo = GrupoAcademico(periodo_id=periodo.id, periodo=periodo, carrera=carrera,
                 cuatrimestre=alumno.cuatrimestre, grupo=grupo_letra, activo=True)
             db.add(grupo); db.flush()
             grupo.generacion = generacion_grupo(grupo)
+            por_grupo[clave_grupo] = grupo
             cambios = True
         elif not grupo.generacion:
             grupo.generacion = generacion_grupo(grupo)
             cambios = True
-        existe = db.query(InscripcionAlumno).filter(
-            InscripcionAlumno.alumno_id == alumno.id,
-            InscripcionAlumno.grupo_academico_id == grupo.id,
-        ).first()
+        existe = inscripciones.get((alumno.id, grupo.id))
         if not existe:
-            db.add(InscripcionAlumno(alumno_id=alumno.id,
-                grupo_academico_id=grupo.id, estado="ACTIVO")); cambios = True
+            existe = InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO")
+            db.add(existe)
+            inscripciones[(alumno.id, grupo.id)] = existe
+            por_alumno.setdefault(alumno.id, []).append(existe)
+            cambios = True
         elif existe.estado != "ACTIVO":
             # Consultar grupos no equivale a reinscribir ni a deshacer una promoción.
             continue
-        inscripciones_anteriores = db.query(InscripcionAlumno).filter(
-            InscripcionAlumno.alumno_id == alumno.id,
-            InscripcionAlumno.grupo_academico_id != grupo.id,
-            InscripcionAlumno.estado == "ACTIVO",
-        ).all()
-        for inscripcion in inscripciones_anteriores:
-            inscripcion.estado = "INACTIVO"
-            cambios = True
+        for inscripcion in por_alumno.get(alumno.id, []):
+            if inscripcion.grupo_academico_id != grupo.id and inscripcion.estado == "ACTIVO":
+                inscripcion.estado = "INACTIVO"
+                cambios = True
     if cambios:
         db.commit()
 
@@ -1279,13 +1282,15 @@ def resumen_organizacion(
     if periodo.strip():
         grupos_q = grupos_q.filter(PeriodoEscolar.clave == periodo.strip())
         ins_q = ins_q.filter(PeriodoEscolar.clave == periodo.strip())
-    grupos = grupos_q.filter(GrupoAcademico.activo == True).all()
+    grupos = grupos_q.filter(GrupoAcademico.activo == True)
+    grupos_total = grupos.count()
+    grupos_vacios = grupos.filter(~GrupoAcademico.inscripciones.any(InscripcionAlumno.estado == "ACTIVO")).count()
     inscritos = ins_q.filter(InscripcionAlumno.estado == "ACTIVO").count()
     return {
         "periodos": db.query(PeriodoEscolar).filter(PeriodoEscolar.activo == True).count(),
-        "grupos": len(grupos),
+        "grupos": grupos_total,
         "inscripciones_activas": inscritos,
-        "grupos_sin_alumnos": sum(1 for g in grupos if not any(i.estado == "ACTIVO" for i in g.inscripciones)),
+        "grupos_sin_alumnos": grupos_vacios,
         "alumnos_sin_grupo": db.query(CatalogoAlumno).filter(
             CatalogoAlumno.activo == True,
             ~CatalogoAlumno.id.in_(db.query(InscripcionAlumno.alumno_id).filter(InscripcionAlumno.estado == "ACTIVO"))
@@ -1465,12 +1470,17 @@ def listar_grupos_academicos(
 ):
     _require_se(db, current_user)
     _ensure_organizacion_desde_catalogo(db)
-    q = db.query(GrupoAcademico).join(PeriodoEscolar)
+    conteos = db.query(InscripcionAlumno.grupo_academico_id,
+        func.count(InscripcionAlumno.id).label("total")).filter(
+        InscripcionAlumno.estado == "ACTIVO",
+    ).group_by(InscripcionAlumno.grupo_academico_id).subquery()
+    q = db.query(GrupoAcademico, func.coalesce(conteos.c.total, 0)).join(PeriodoEscolar).outerjoin(
+        conteos, conteos.c.grupo_academico_id == GrupoAcademico.id,
+    ).options(joinedload(GrupoAcademico.periodo), joinedload(GrupoAcademico.carrera_catalogo))
     if periodo.strip():
         q = q.filter(PeriodoEscolar.clave == periodo.strip())
     result = []
-    for g in q.order_by(PeriodoEscolar.id.desc(), GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all():
-        total = sum(1 for i in g.inscripciones if i.estado == "ACTIVO")
+    for g, total in q.order_by(PeriodoEscolar.id.desc(), GrupoAcademico.carrera, GrupoAcademico.cuatrimestre, GrupoAcademico.grupo).all():
         result.append({"id": g.id, "periodo": g.periodo.clave, "carrera": g.carrera,
             "carrera_id": g.carrera_id,
             "cuatrimestre": g.cuatrimestre, "grupo": g.grupo, "turno": g.turno,

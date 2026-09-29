@@ -355,3 +355,29 @@ def test_consultar_organizacion_respeta_inscripcion_concluida(db):
     db.refresh(inscripcion)
     assert inscripcion.estado == "CONCLUIDA"
     assert db.query(InscripcionAlumno).filter_by(alumno_id=alumno.id).count() == 1
+
+
+def test_reconstruccion_consultas_constantes_con_muchos_alumnos(db):
+    from sqlalchemy import event
+    periodo = PeriodoEscolar(clave="SEP-DIC 2026", activo=True)
+    db.add(periodo); db.flush()
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera="CONTADURIA", cuatrimestre=7,
+        grupo="A", generacion="LCA-SEP2024", activo=True)
+    db.add(grupo); db.flush()
+    for i in range(50):
+        alumno = CatalogoAlumno(matricula=f"PERF{i:04}", apellido_paterno="PRUEBA",
+            apellido_materno="RENDIMIENTO", nombres="ALUMNO", carrera=grupo.carrera,
+            cuatrimestre=7, grupo="A", periodo=periodo.clave, activo=True)
+        db.add(alumno); db.flush()
+        db.add(InscripcionAlumno(alumno_id=alumno.id, grupo_academico_id=grupo.id, estado="ACTIVO"))
+    db.commit(); db.expire_all()
+    consultas = []
+    def contar(conn, cursor, statement, parameters, context, executemany):
+        consultas.append(statement)
+    event.listen(db.bind, "before_cursor_execute", contar)
+    try:
+        _ensure_organizacion_desde_catalogo(db)
+    finally:
+        event.remove(db.bind, "before_cursor_execute", contar)
+    assert len(consultas) == 4, consultas
+    assert all(sql.lstrip().upper().startswith("SELECT") for sql in consultas)
