@@ -1,3 +1,12 @@
+// Conserva nombres con capitalización propia; normaliza los registros en mayúsculas.
+export const nombreAlumno = valor => {
+  const nombre = String(valor || '').trim();
+  if (nombre !== nombre.toLocaleUpperCase('es')) return nombre;
+  const particulas = new Set(['de', 'del', 'la', 'las', 'los', 'y']);
+  return nombre.toLocaleLowerCase('es').split(/\s+/).map((palabra, index) =>
+    index > 0 && particulas.has(palabra) ? palabra : palabra.replace(/(^|[-’'])[\p{L}]/gu, letra => letra.toLocaleUpperCase('es'))
+  ).join(' ');
+};
 export const normalizar = valor => String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
 export const fecha = valor => {
   if (!valor) return null;
