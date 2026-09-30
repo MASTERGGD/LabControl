@@ -85,6 +85,51 @@ def test_filtro_carrera_y_calendario(db, jornada, monkeypatch):
     assert data['resumen']['grupos_por_iniciar'] == 0
 
 
+def test_serie_deduplica_filtra_y_no_proyecta_despues_del_corte(db, jornada):
+    periodo, _, _, _ = jornada
+    puntos = asistencia_diaria(db, periodo.id)['asistencia_por_horario']['puntos']
+    assert [p['hora'] for p in puntos] == ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30']
+    assert all(p['asistentes'] == 3 for p in puntos)
+    assert puntos[0]['listas_confirmadas'] == 3
+    assert puntos[0]['listas_pendientes'] == 3
+    assert puntos[0]['grupos_pendientes'] == 3
+    filtrado = asistencia_diaria(db, periodo.id, carrera='Software')['asistencia_por_horario']['puntos']
+    assert filtrado[0]['asistentes'] == 1
+    assert filtrado[0]['listas_pendientes'] == 1
+
+
+def test_serie_disminuye_al_terminar_clases_y_respeta_reposiciones(db, jornada):
+    periodo, grupos, alumnos, sesion = jornada
+    # Al terminar a las 09:00 dejan de contar estos alumnos; siguen listas pendientes.
+    for clase in db.query(ClaseDocente).filter(ClaseDocente.estado == 'CERRADA').all():
+        clase.carga.hora_fin = '09:00'
+    sesion(grupos[0], [(alumnos[4], 'RETARDO')], es_reposicion=True,
+           hora_inicio_reposicion='09:30', hora_fin_reposicion='10:00')
+    db.commit()
+    puntos = {p['hora']: p for p in asistencia_diaria(db, periodo.id)['asistencia_por_horario']['puntos']}
+    assert puntos['08:30']['asistentes'] == 3
+    assert puntos['09:00']['asistentes'] is None
+    assert puntos['09:30']['asistentes'] == 1
+    assert puntos['10:00']['asistentes'] is None
+
+
+def test_serie_cero_confirmado_sin_actividad_y_corte_intermedio(db, jornada, monkeypatch):
+    periodo, _, _, _ = jornada
+    for carga in db.query(CargaDocente).all():
+        carga.hora_fin = '09:00'
+    for asistencia in db.query(AsistenciaDocente).all():
+        asistencia.estado = 'FALTA'
+    db.commit()
+    puntos = asistencia_diaria(db, periodo.id)['asistencia_por_horario']['puntos']
+    assert puntos[0]['asistentes'] == 0  # lista cerrada sin presentes, sí es cero
+    assert puntos[-1]['hora'] == '09:00'
+    assert puntos[-1]['asistentes'] == 0  # no hay clases activas
+    monkeypatch.setattr('services.asistencia_diaria.now_mx', lambda: datetime.datetime(
+        2026, 9, 22, 8, 17, tzinfo=ZoneInfo('America/Mexico_City')))
+    puntos = asistencia_diaria(db, periodo.id)['asistencia_por_horario']['puntos']
+    assert puntos[-1]['hora'] == '08:17'
+
+
 def test_endpoint_autorizacion_fecha_y_aislamiento(client, db, admin_user, docente_user, jornada):
     periodo, _, _, _ = jornada
     admin = auth_headers(get_token(client, 'admin@test.com', 'AdminPass123'))

@@ -1,5 +1,5 @@
 const KEY = 'siga_docente_offline_access_v1';
-const VALID_MS = 24 * 60 * 60 * 1000;
+const VALID_MS = 7 * 24 * 60 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 
 const toBase64 = bytes => btoa(String.fromCharCode(...bytes));
@@ -37,7 +37,7 @@ export async function configureOfflineAccess(pin, usuario, periodo) {
 export async function unlockOfflineAccess(pin) {
   const record = read();
   if (!record) throw new Error('No se configuró el acceso offline en este dispositivo.');
-  if (Date.now() > record.expiresAt) throw new Error('El acceso offline venció. Conéctate e inicia sesión para renovarlo.');
+  if (Date.now() >= record.expiresAt) throw new Error('El acceso offline venció. Conéctate e inicia sesión para renovarlo.');
   if (Date.now() < (record.lockedUntil || 0)) throw new Error('Demasiados intentos. Espera 15 minutos o inicia sesión con internet.');
   try {
     const key = await keyFromPin(pin, fromBase64(record.salt));

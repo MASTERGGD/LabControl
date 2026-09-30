@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
+import AsistenciaHorarioChart from '../../components/AsistenciaHorarioChart';
 import { usePeriodo } from '../../context/PeriodoContext';
 import api from '../../hooks/useApi';
 
@@ -91,6 +92,7 @@ export default function AsistenciaHoy() {
         <p><b>Corte: {horaCorte(datos.corte)} (hora de México).</b> Se registró asistencia de <b>{r.asistentes} alumnos únicos</b>; {r.grupos_sin_lista} grupos con actividad iniciada aún no tienen lista confirmada.</p>
         <p className="mt-2 text-xs">El corte cambia al pulsar Actualizar. El Excel consulta un nuevo corte al exportar. Las capturas guardadas sin conexión aparecen después de sincronizarse y cerrar su lista.</p>
       </div>
+      <AsistenciaHorarioChart key={`${periodoId}-${carrera}-${datos.corte}`} serie={datos.asistencia_por_horario} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
         ['Alumnos únicos con asistencia', r.asistentes], ['A tiempo', r.a_tiempo], ['Con retardo', r.retardos], ['Faltaron al corte', r.faltaron], ['Justificados', r.justificados], ['Grupos con lista confirmada', r.grupos_con_lista],
         ['Grupos sin lista confirmada', r.grupos_sin_lista], ['Grupos con clases por iniciar', r.grupos_por_iniciar],

@@ -5,6 +5,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { PeriodoProvider } from './context/PeriodoContext';
 import PWAInstallBanner from './components/PWAInstallBanner';
+import AppUpdateNotice from './components/AppUpdateNotice';
 import { PWAInstallProvider } from './hooks/usePWAInstall';
 import { ROUTE_PERMISSIONS } from './config/permissions';
 
@@ -526,6 +527,7 @@ export default function App() {
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <AppRoutes />
               <PWAInstallBanner />
+              <AppUpdateNotice />
             </BrowserRouter>
           </PeriodoProvider>
         </AuthProvider>

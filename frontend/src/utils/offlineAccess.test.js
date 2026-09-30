@@ -39,11 +39,22 @@ test('bloquea temporalmente después de cinco PIN incorrectos', async () => {
   await expect(unlockOfflineAccess('123456')).resolves.toHaveProperty('usuario.id', 42);
 });
 
-test('vence a las 24 horas y exige renovar con internet', async () => {
+test('permite entrar durante siete días y vence exactamente al completar la semana', async () => {
   await configureOfflineAccess('123456', docente, periodo);
-  expect(getOfflineAccessInfo().expiresAt).toBe(Date.now() + 24 * 60 * 60 * 1000);
-  jest.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
+  expect(getOfflineAccessInfo().expiresAt).toBe(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  jest.advanceTimersByTime(7 * 24 * 60 * 60 * 1000 - 1);
+  await expect(unlockOfflineAccess('123456')).resolves.toHaveProperty('usuario.id', 42);
+  jest.advanceTimersByTime(1);
   await expect(unlockOfflineAccess('123456')).rejects.toThrow('venció');
+});
+
+test('renovar inicia otra semana y reemplaza el PIN anterior', async () => {
+  await configureOfflineAccess('123456', docente, periodo);
+  jest.advanceTimersByTime(7 * 24 * 60 * 60 * 1000);
+  await configureOfflineAccess('654321', docente, periodo);
+  expect(getOfflineAccessInfo().expiresAt).toBe(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await expect(unlockOfflineAccess('123456')).rejects.toThrow('PIN incorrecto');
+  await expect(unlockOfflineAccess('654321')).resolves.toHaveProperty('usuario.id', 42);
 });
 
 test('rechaza PIN débil en longitud y cuentas no docentes', async () => {

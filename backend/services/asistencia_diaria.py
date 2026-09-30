@@ -10,6 +10,51 @@ from services.calendario_academico import estado_fecha_academica
 from services.timezone import now_mx
 
 
+def _serie_horaria(cargas, clases, esperadas, futuras, confirmadas, fecha, corte):
+    """Foto por horario de clase según las listas disponibles al corte, no aforo."""
+    previstas = set().union(*esperadas.values(), *futuras.values())
+    cerradas = set().union(*confirmadas.values())
+    intervalos = []
+    for carga in cargas:
+        if carga.id not in previstas:
+            continue
+        clase = clases.get(carga.id)
+        reposicion = clase and clase.es_reposicion
+        inicio = (clase.hora_inicio_reposicion if reposicion else None) or carga.hora_inicio
+        fin = (clase.hora_fin_reposicion if reposicion else None) or carga.hora_fin
+        def minutos(valor):
+            h, m = map(int, valor.split(':'))
+            return h * 60 + m
+        inicio, fin = minutos(inicio), minutos(fin)
+        if fin <= inicio:
+            continue
+        alumnos = {a.alumno_id for a in clase.asistencias if a.estado in {'PRESENTE', 'RETARDO'}} if carga.id in cerradas else set()
+        intervalos.append((inicio, fin, carga.grupo_academico_id, carga.id in cerradas, alumnos))
+    if not intervalos:
+        return []
+    limite = corte.hour * 60 + corte.minute if fecha == corte.date() else 1439
+    inicio = min(i[0] for i in intervalos) // 30 * 30
+    fin = min(max(i[1] for i in intervalos), limite)
+    if inicio > fin:
+        return []
+    puntos = list(range(inicio, fin + 1, 30))
+    if puntos[-1] != fin:
+        puntos.append(fin)
+    resultado = []
+    for minuto in puntos:
+        activas = [i for i in intervalos if i[0] <= minuto < i[1]]
+        conocidas = [i for i in activas if i[3]]
+        pendientes = [i for i in activas if not i[3]]
+        resultado.append({
+            'hora': f'{minuto // 60:02d}:{minuto % 60:02d}',
+            # Una franja sin ninguna lista confirmada no equivale a cero presentes.
+            'asistentes': len(set().union(*(i[4] for i in conocidas))) if conocidas or not activas else None,
+            'listas_confirmadas': len(conocidas), 'listas_pendientes': len(pendientes),
+            'grupos_pendientes': len({i[2] for i in pendientes}),
+        })
+    return resultado
+
+
 def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
     corte = now_mx()
     fecha = fecha or corte.date()
@@ -138,6 +183,11 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
         'periodo': {'id': periodo.id, 'clave': periodo.clave},
         'carrera': carrera, 'carreras_disponibles': carreras,
         'resumen': resumen(filas), 'grupos': filas,
+        'asistencia_por_horario': {
+            'intervalo_minutos': 30,
+            'puntos': _serie_horaria(cargas, por_id, esperadas, futuras, confirmadas, fecha, corte),
+            'criterio': 'Alumnos únicos con PRESENTE o RETARDO en clases cuyo horario incluye cada punto (inicio incluido, fin excluido). Solo listas cerradas disponibles al corte. Los horarios de reposición sustituyen al horario original. Una franja sin listas confirmadas se muestra sin dato; con listas pendientes el total es parcial. No mide entradas, salidas ni permanencia física en el plantel.',
+        },
         'detalle': sorted(detalle, key=lambda d: (d['carrera'], d['grupo'], d['alumno'], d['hora_inicio'], d['clase_id'])),
         'carreras': [{'carrera': nombre, **resumen([g for g in filas if g['carrera'] == nombre])}
                      for nombre in sorted({g['carrera'] for g in filas})],

@@ -2,7 +2,7 @@
 
 ## Alcance de esta entrega
 
-El docente con sesión institucional activa descarga su jornada y las listas del periodo actual. Después de comprobar que el paquete se guardó en el dispositivo, configura un PIN de seis dígitos. El PIN permite reabrir la copia local tras cerrar la pestaña o el navegador, durante un máximo de 24 horas. La credencial local se cifra con AES-GCM y una clave derivada del PIN mediante PBKDF2; el PIN no se guarda. Cinco intentos fallidos bloquean el acceso durante 15 minutos.
+El docente con sesión institucional activa descarga su jornada y las listas del periodo actual. Después de comprobar que el paquete se guardó en el dispositivo, configura un PIN de seis dígitos. El PIN permite reabrir la copia local tras cerrar la pestaña o el navegador, durante un máximo de 7 días desde su creación o renovación. Los PIN configurados antes de este cambio conservan su vencimiento original; deben renovarse con una sesión institucional para obtener la nueva vigencia. La credencial local se cifra con AES-GCM y una clave derivada del PIN mediante PBKDF2; el PIN no se guarda. Cinco intentos fallidos bloquean el acceso durante 15 minutos.
 
 El PIN no es una sesión del servidor. Durante el acceso local solo se permiten Inicio docente y las clases descargadas. Las capturas quedan en cola en el dispositivo. Al recuperar la conexión, el docente debe volver a iniciar sesión institucional; entonces SIGA intenta sincronizar las operaciones. Cerrar sesión no borra la cola, y se advierte al docente cuando hay capturas pendientes.
 
@@ -14,6 +14,12 @@ El PIN no es una sesión del servidor. Durante el acceso local solo se permiten 
 4. Abrir una clase previamente descargada y probar la operación sin conexión antes de depender de ella en una jornada completa.
 
 Si se cierra el navegador, se abre la página habitual de SIGA y se elige **Continuar sin conexión**. Una vez disponible internet, se inicia sesión con correo y contraseña para sincronizar. El indicador permanece visible también en móvil y abre el detalle de capturas pendientes o rechazadas. Desde el quinto día advierte que el plazo de aceptación automática está próximo a vencer.
+
+## Actualizaciones de la aplicación instalada
+
+La aplicación comprueba el manifiesto de la versión publicada al abrirse, recuperar conexión, volver al primer plano y cada cinco minutos mientras está visible. Si el archivo principal difiere del que está ejecutándose, muestra **Nueva versión disponible**. El docente debe guardar la captura en curso y pulsar **Actualizar aplicación** con internet. No se recarga automáticamente ni se borran los datos locales.
+
+Las instalaciones anteriores a este aviso necesitan una primera reapertura o recarga con internet después del despliegue. La vigencia semanal se obtiene al configurar o renovar el PIN en la nueva versión. El PIN no amplía el plazo de aceptación de capturas del servidor: conviene sincronizar en cuanto regrese la conexión.
 
 ## Límites de seguridad y operación
 
