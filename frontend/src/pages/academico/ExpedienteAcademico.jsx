@@ -592,7 +592,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
   const baseSuficiente = r.clases_registradas >= r.minimo_clases_semaforo;
   return (
     <div className="space-y-4">
-      <Panel className="sticky top-0 z-20 p-4 shadow-lg">
+      <Panel className="p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Grupo seleccionado</p><h2 className="font-bold">{panorama.grupo.cuatrimestre}° {panorama.grupo.grupo} · {panorama.grupo.carrera}</h2><p className="text-xs text-slate-500">{panorama.grupo.periodo} · {r.total_alumnos} alumnos{materiaSeleccionada?.docentes?.length ? ` · Docente: ${materiaSeleccionada.docentes.join(', ')}` : ''}</p></div>
           <div className="flex flex-wrap items-end gap-2"><label className="text-xs font-bold text-blue-400">Alcance del panorama<select value={materiaClave} onChange={e => setMateriaClave(e.target.value)} className="input-dark mt-1 min-w-64 border-blue-500/40"><option value="">Todas las materias</option>{panorama.materias.map(materia => <option key={materia.clave} value={materia.clave}>{materia.nombre}</option>)}</select></label><button type="button" onClick={() => { setMateriaClave(''); setEstado('TODOS'); setBusqueda(''); setPagina(1); }} className="rounded-xl border border-slate-500/20 px-3 py-2.5 text-xs font-semibold text-slate-500">Limpiar</button><button type="button" onClick={onCambiarGrupo} className="rounded-xl border border-blue-500/30 px-3 py-2.5 text-xs font-semibold text-blue-400">Cambiar grupo</button></div>
@@ -637,12 +637,12 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
         </div>
       )}
 
-      <Panel className="p-4">
+      <Panel className={`sticky top-0 z-20 p-4 shadow-lg ${isDay ? '!bg-white' : '!bg-slate-900'}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-bold">Alumnos <span className="font-normal text-slate-500">({r.total_alumnos})</span></h2>
           <input value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1); }} className="input-dark w-full sm:w-64" placeholder="Buscar nombre o matrícula…" aria-label="Buscar alumno en este grupo" />
         </div>
-        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar alumnos">
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap" role="group" aria-label="Filtrar alumnos">
           {[
             ['TODOS', 'Todos', r.total_alumnos],
             ['RIESGO', '▲ Riesgo', r.alumnos_riesgo],
@@ -652,7 +652,7 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
             ['REGULAR', 'Regulares', r.total_alumnos - r.alumnos_riesgo - r.alumnos_atencion - r.base_insuficiente - r.sin_datos],
             ['CON_REPORTES', 'Con reportes', r.alumnos_con_reportes],
             ['CON_ACUERDOS', 'Con acuerdos pendientes', r.alumnos_con_acuerdos],
-          ].map(([valor, etiqueta, cantidad]) => <button key={valor} type="button" aria-pressed={estado === valor} onClick={() => { setEstado(valor); setPagina(1); }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${estado === valor ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-slate-500/25 text-slate-500 hover:bg-slate-500/10'}`}>{etiqueta} ({cantidad ?? '—'})</button>)}
+          ].map(([valor, etiqueta, cantidad]) => <button key={valor} type="button" aria-pressed={estado === valor} onClick={() => { setEstado(valor); setPagina(1); }} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${estado === valor ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-slate-500/25 text-slate-500 hover:bg-slate-500/10'}`}>{etiqueta} ({cantidad ?? '—'})</button>)}
         </div>
       </Panel>
 
