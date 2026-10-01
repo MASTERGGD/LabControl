@@ -22,13 +22,13 @@ export default function AsistenciaHorarioChart({ serie }) {
   });
   const descripcion = p => `${p.hora}: ${p.asistentes === null ? 'Sin dato' : `${p.asistentes} alumnos`}, ${p.grupos_pendientes} grupos con lista pendiente`;
 
-  return <section className="glass rounded-2xl p-4 sm:p-5" aria-labelledby="asistencia-horario-titulo">
+  return <section className="attendance-chart rounded-xl border border-white/10 p-4" aria-labelledby="asistencia-horario-titulo">
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div><h2 id="asistencia-horario-titulo" className="font-semibold text-white">Asistencia por horario</h2>
         <p className="mt-1 text-sm text-slate-400">Cada 30 minutos · Hora de México · Según listas disponibles al corte</p></div>
       {conocidos.length > 0 && <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-600">Mayor asistencia en un mismo horario: {Math.max(...conocidos.map(p => p.asistentes))} alumnos</p>}
     </div>
-    <p className="mt-3 text-sm leading-relaxed text-slate-300">El total del día cuenta a cada alumno una sola vez, aunque asista en distintos horarios. Cada punto cuenta solo a los alumnos con asistencia confirmada en clases de ese horario; por eso el máximo puede ser menor que el total diario. La diferencia no representa alumnos faltantes.</p>
+
     {!puntos.length ? <p className="py-8 text-center text-sm text-slate-400">Aún no hay horarios iniciados para mostrar en este corte.</p> : <>
       <div className="mt-4 overflow-x-auto">
         <svg viewBox="0 0 900 285" className="w-full min-w-[600px] text-slate-400" aria-label="Gráfica de alumnos con asistencia por horario">
@@ -61,6 +61,9 @@ export default function AsistenciaHorarioChart({ serie }) {
       </div>
       <p className="mt-2 text-xs text-slate-400">Toca un punto para consultar su detalle. Las franjas sin dato interrumpen la línea.</p>
     </>}
-    <p className="mt-3 text-xs leading-relaxed text-slate-400">{serie?.criterio || 'Alumnos únicos en clases de cada horario. No representa entradas, salidas ni permanencia física en el plantel.'}</p>
+    <details className="attendance-disclosure mt-3 text-xs text-slate-400"><summary className="cursor-pointer font-semibold">Cómo leer la gráfica</summary>
+      <p className="mt-3 text-sm leading-relaxed text-slate-300">El total del día cuenta a cada alumno una sola vez, aunque asista en distintos horarios. Cada punto cuenta solo a los alumnos con asistencia confirmada en clases de ese horario; por eso el máximo puede ser menor que el total diario. La diferencia no representa alumnos faltantes.</p>
+      <p className="mt-3 text-xs leading-relaxed text-slate-400">{serie?.criterio || 'Alumnos únicos en clases de cada horario. No representa entradas, salidas ni permanencia física en el plantel.'}</p>
+    </details>
   </section>;
 }

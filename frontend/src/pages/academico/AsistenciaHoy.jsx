@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
-import AsistenciaHorarioChart from '../../components/AsistenciaHorarioChart';
+import AsistenciaHoyResumen from '../../components/AsistenciaHoyResumen';
 import { usePeriodo } from '../../context/PeriodoContext';
 import api from '../../hooks/useApi';
 
@@ -71,45 +71,22 @@ export default function AsistenciaHoy() {
       setError('No se pudo exportar el Excel. Vuelve a intentarlo.');
     } finally { setExportando(false); }
   };
-  const r = datos?.resumen;
   return <AdminLayout><div className="asistencia-hoy space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><h1 className="text-2xl font-bold text-white">Asistencia al corte</h1><p className="mt-1 text-sm text-slate-400">Alumnos únicos con asistencia confirmada durante el día · {periodo?.clave || 'Selecciona un periodo'}</p></div>
+      <div><h1 className="text-2xl font-bold text-white">Asistencia de hoy</h1><p className="mt-1 text-sm text-slate-400">{periodo?.clave || 'Selecciona un periodo'}</p></div>
       <Link to="/division-carrera/reportes-academicos" className="text-sm font-semibold text-blue-300 underline">Reportes académicos</Link>
     </header>
-    <section className="glass flex flex-wrap items-end gap-3 rounded-2xl p-4">
-      <label className="min-w-0 flex-1 text-sm text-slate-300">Carrera<select value={carrera} disabled={cargando || !periodoId} onChange={e => setCarrera(e.target.value)} className="input-dark mt-1">
+    <section className="flex flex-wrap items-end gap-3">
+      <label className="min-w-[200px] flex-1 text-sm text-slate-300">Carrera<select value={carrera} disabled={cargando || !periodoId} onChange={e => setCarrera(e.target.value)} className="input-dark mt-1">
         <option value="">Todas las carreras</option>
         {(datos?.carreras_disponibles || (carrera ? [carrera] : [])).map(nombre => <option key={nombre}>{nombre}</option>)}
       </select></label>
+      {datos && <span className="pb-2 text-xs text-slate-400">Corte: <time dateTime={datos.corte}>{horaCorte(datos.corte)}</time> · México</span>}
       <button onClick={() => setRevision(v => v + 1)} disabled={cargando || !periodoId} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{cargando ? 'Actualizando…' : 'Actualizar corte'}</button>
       <button onClick={exportar} disabled={!datos || cargando || exportando} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm text-slate-200 disabled:opacity-50">{exportando ? 'Exportando…' : 'Exportar Excel con detalle'}</button>
     </section>
     {error && <p role="alert" className="attendance-error rounded-xl border p-4">{error}</p>}
     {cargando && <p role="status" className="text-sm text-slate-400">Consultando las listas confirmadas en el servidor…</p>}
-    {datos && <>
-      <div className="attendance-cutoff rounded-xl border p-4 text-sm">
-        <p><b>Corte: {horaCorte(datos.corte)} (hora de México).</b> <b>Total de alumnos distintos durante el día: {r.asistentes}</b>, con al menos una asistencia confirmada hasta este corte; {r.grupos_sin_lista} grupos con actividad iniciada aún no tienen lista confirmada.</p>
-        <p className="mt-2 text-xs">El corte cambia al pulsar Actualizar. El Excel consulta un nuevo corte al exportar. Las capturas guardadas sin conexión aparecen después de sincronizarse y cerrar su lista.</p>
-      </div>
-      <AsistenciaHorarioChart key={`${periodoId}-${carrera}-${datos.corte}`} serie={datos.asistencia_por_horario} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
-        ['Alumnos distintos durante el día', r.asistentes], ['A tiempo', r.a_tiempo], ['Con retardo', r.retardos], ['Faltaron al corte', r.faltaron], ['Justificados', r.justificados], ['Grupos con lista confirmada', r.grupos_con_lista],
-        ['Grupos sin lista confirmada', r.grupos_sin_lista], ['Grupos con clases por iniciar', r.grupos_por_iniciar],
-      ].map(([etiqueta, cantidad]) => <div key={etiqueta} className="glass rounded-xl p-4"><p className="text-3xl font-bold text-white">{cantidad}</p><p className="mt-1 text-sm text-slate-300">{etiqueta}</p></div>)}</div>
-      <p className="text-sm text-slate-300">{r.listas_confirmadas} listas confirmadas · {r.listas_pendientes} listas pendientes al corte. Un grupo con lista puede tener otras materias pendientes. Sin lista no significa que sus alumnos faltaron.</p>
-      {datos.nota_calendario && <p className="attendance-calendar rounded-xl border p-3 text-sm">Calendario: {datos.nota_calendario}</p>}
-      <section className="glass rounded-2xl p-4"><h2 className="mb-3 font-semibold text-white">Por carrera</h2><div className="grid gap-3 md:grid-cols-2">{datos.carreras.map(c => <div key={c.carrera} className="rounded-xl border border-white/10 p-3"><h3 className="text-sm text-slate-300">{c.carrera}</h3><p className="mt-1 font-bold text-white">{c.asistentes} alumnos únicos</p><p className="mt-1 text-xs text-slate-300">{c.a_tiempo} a tiempo · {c.retardos} con retardo · {c.faltaron} faltaron al corte · {c.justificados} justificados</p><p className="text-xs text-slate-400">{c.grupos_con_lista} grupos con lista · {c.grupos_sin_lista} sin lista confirmada</p></div>)}</div></section>
-      <section className="glass overflow-hidden rounded-2xl"><h2 className="p-4 font-semibold text-white">Detalle por grupo</h2>
-        <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-white/5 text-slate-400"><tr>{['Grupo / carrera', 'Asistieron', 'A tiempo', 'Con retardo', 'Faltaron al corte', 'Justificados', 'Con registro', 'Listas confirmadas', 'Listas pendientes', 'Estado'].map(t => <th key={t} className="px-4 py-3">{t}</th>)}</tr></thead>
-          <tbody className="divide-y divide-white/10 text-slate-200">{datos.grupos.map(g => <tr key={g.id}>
-            <td className="px-4 py-3"><b>{g.nombre}{g.turno ? ` · ${g.turno}` : ''}</b><span className="block max-w-xs text-xs text-slate-400">{g.carrera}</span></td>
-            {['asistentes', 'a_tiempo', 'retardos', 'faltaron', 'justificados'].map(campo => <td key={campo} className="px-4 py-3 font-bold">{g.listas_confirmadas ? g[campo] : '—'}</td>)}<td className="px-4 py-3">{g.alumnos_con_registro}</td><td className="px-4 py-3">{g.listas_confirmadas}</td><td className="px-4 py-3">{g.listas_pendientes}</td>
-            <td className={`px-4 py-3 ${g.estado === 'SIN_LISTA' ? 'text-amber-300' : 'text-slate-300'}`}>{ESTADOS[g.estado]}{g.listas_en_captura > 0 && <small className="block">{g.listas_en_captura} en captura o corrección</small>}</td>
-          </tr>)}</tbody>
-        </table></div>{!datos.grupos.length && <p className="p-5 text-slate-400">No hay grupos activos en este periodo.</p>}
-      </section>
-      <p className="rounded-xl bg-white/5 p-4 text-xs leading-relaxed text-slate-400">{datos.criterio} “Con registro” incluye cualquier estado de asistencia. Los totales se deduplican en cada nivel; no deben obtenerse sumando filas si un alumno aparece en varios grupos.</p>
-    </>}
+    {datos && <AsistenciaHoyResumen key={`${periodoId}-${carrera}`} datos={datos} />}
   </div></AdminLayout>;
 }

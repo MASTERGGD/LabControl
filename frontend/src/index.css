@@ -121,6 +121,26 @@ body.theme-day .themed-date-input { color-scheme: light; }
 .theme-divider { border-color: var(--surface-border); }
 
 /* Asistencia diaria: colores semánticos para avisos en ambos temas. */
+.asistencia-hoy .attendance-kpi { padding: 1rem; border: 1px solid #334155; border-radius: .75rem; background: rgba(30,41,59,.3); }
+.asistencia-hoy .attendance-kpi.is-primary { background: #083b33; border-color: #15735e; }
+.asistencia-hoy .attendance-chart, .asistencia-hoy .attendance-table { background: rgba(15,23,42,.25); }
+.asistencia-hoy .attendance-tabs button { color: #94a3b8; border-bottom: 3px solid transparent; }
+.asistencia-hoy .attendance-tabs button[aria-selected="true"] { color: #6ee7b7; border-bottom-color: #10b981; }
+.asistencia-hoy .attendance-pending-row { color: #fde68a; background: #292313; }
+.asistencia-hoy .attendance-badge { display: inline-block; border-radius: .375rem; padding: .2rem .45rem; font-size: .7rem; font-weight: 600; white-space: nowrap; }
+.asistencia-hoy .attendance-badge.is-complete { color: #a7f3d0; background: #064e3b; }
+.asistencia-hoy .attendance-badge.is-pending { color: #fde68a; background: #713f12; }
+.asistencia-hoy .attendance-badge.is-neutral { color: #cbd5e1; background: #334155; }
+.asistencia-hoy button:focus-visible, .asistencia-hoy summary:focus-visible, .asistencia-hoy input:focus-visible { outline: 2px solid #10b981; outline-offset: 3px; }
+body.theme-day .asistencia-hoy .attendance-kpi { background: #fff; border-color: #dce5eb; }
+body.theme-day .asistencia-hoy .attendance-kpi.is-primary { background: #ecfdf5; border-color: #a7f3d0; }
+body.theme-day .asistencia-hoy .attendance-chart, body.theme-day .asistencia-hoy .attendance-table { background: #fff; }
+body.theme-day .asistencia-hoy .attendance-tabs button { color: #64748b; }
+body.theme-day .asistencia-hoy .attendance-tabs button[aria-selected="true"] { color: #047857; }
+body.theme-day .asistencia-hoy .attendance-pending-row { color: #854d0e; background: #fef9c3; }
+body.theme-day .asistencia-hoy .attendance-badge.is-complete { color: #065f46; background: #d1fae5; }
+body.theme-day .asistencia-hoy .attendance-badge.is-pending { color: #854d0e; background: #fef3c7; }
+body.theme-day .asistencia-hoy .attendance-badge.is-neutral { color: #475569; background: #f1f5f9; }
 .asistencia-hoy .attendance-cutoff {
   color: #dbeafe; background: #17243d; border-color: #28436b;
 }
