@@ -590,7 +590,6 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
   const cumplimiento = r.cumplimiento_sesiones;
   const materiaSeleccionada = panorama.materia_seleccionada;
   const baseSuficiente = r.clases_registradas >= r.minimo_clases_semaforo;
-  if (loading) return <div className="space-y-4" aria-live="polite"><Panel className="p-5"><div className="h-5 w-2/3 animate-pulse rounded bg-slate-500/20"/><div className="mt-3 h-10 animate-pulse rounded bg-slate-500/10"/></Panel><div className="grid gap-3 md:grid-cols-3">{[1, 2, 3].map(item => <div key={item} className="h-28 animate-pulse rounded-2xl bg-slate-500/10"/>)}</div><Panel className="h-64 animate-pulse"/></div>;
   return (
     <div className="space-y-4">
       <Panel className="sticky top-0 z-20 p-4 shadow-lg">
@@ -599,48 +598,23 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
           <div className="flex flex-wrap items-end gap-2"><label className="text-xs font-bold text-blue-400">Alcance del panorama<select value={materiaClave} onChange={e => setMateriaClave(e.target.value)} className="input-dark mt-1 min-w-64 border-blue-500/40"><option value="">Todas las materias</option>{panorama.materias.map(materia => <option key={materia.clave} value={materia.clave}>{materia.nombre}</option>)}</select></label><button type="button" onClick={() => { setMateriaClave(''); setEstado('TODOS'); setBusqueda(''); setPagina(1); }} className="rounded-xl border border-slate-500/20 px-3 py-2.5 text-xs font-semibold text-slate-500">Limpiar</button><button type="button" onClick={onCambiarGrupo} className="rounded-xl border border-blue-500/30 px-3 py-2.5 text-xs font-semibold text-blue-400">Cambiar grupo</button></div>
         </div>
       </Panel>
-      <div className={`rounded-xl border px-4 py-3 text-xs ${baseSuficiente ? 'border-blue-500/20 bg-blue-500/[0.06] text-blue-400' : 'border-slate-500/30 bg-slate-500/[0.06] text-slate-500'}`}>{materiaSeleccionada ? `Indicadores de ${materiaSeleccionada.nombre}.` : 'Indicadores consolidados de todas las materias.'} {baseSuficiente ? `${r.clases_registradas} clases registradas.` : `Base preliminar: ${r.clases_registradas} de ${r.minimo_clases_semaforo} clases mínimas; los porcentajes aún no generan semáforo.`}</div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <Kpi label={materiaSeleccionada ? 'Asistencia de la materia' : 'Asistencia global'} value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_registradas} clase(s) registrada(s) · Presente, retardo o justificada sobre pases capturados`} tone={!baseSuficiente ? 'text-slate-500' : r.asistencia_global != null && r.asistencia_global < 80 ? 'text-red-400' : 'text-emerald-400'} />
-        <Kpi label="Alumnos en riesgo" value={r.alumnos_riesgo} hint={baseSuficiente ? 'Según asistencia, rachas y seguimientos disponibles' : 'El semáforo espera suficientes asistencias'} tone={r.alumnos_riesgo ? 'text-red-400' : 'text-slate-500'} />
-        <Kpi
-          label="Listas completas"
-          value={r.cobertura_asistencia_detalle ? `${r.cobertura_asistencia_detalle.registros_capturados} de ${r.cobertura_asistencia_detalle.registros_esperados}` : '—'}
-          hint={r.cobertura_asistencia_detalle
-            ? `Pases capturados en ${r.cobertura_asistencia_detalle.clases_registradas} clase(s) registrada(s); no mide clases programadas`
-            : 'Asistencias capturadas'}
-          tone="text-blue-400"
-        />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi label={materiaSeleccionada ? 'Asistencia de la materia' : 'Asistencia global'} value={r.asistencia_global != null ? `${r.asistencia_global}%` : '—'} hint={`${r.clases_registradas} clases registradas${baseSuficiente ? '' : ' · Base preliminar'}`} tone={!baseSuficiente ? 'text-slate-500' : r.asistencia_global < 80 ? 'text-red-500' : 'text-emerald-500'} />
+        <Kpi label="Sesiones con registro" value={cumplimiento?.disponible ? `${cumplimiento.porcentaje}%` : '—'} hint={cumplimiento?.disponible ? `${cumplimiento.sesiones_registradas} de ${cumplimiento.sesiones_esperadas} programadas` : 'No calculable sin calendario y horario'} />
+        <Kpi label="Alumnos en riesgo" value={r.alumnos_riesgo} hint={`${r.base_insuficiente} con base insuficiente · ${r.sin_datos} sin información`} tone={r.alumnos_riesgo ? 'text-red-500' : 'text-slate-500'} />
+        <button type="button" onClick={() => setMostrarSesionesPendientes(true)} disabled={!cumplimiento?.disponible || !cumplimiento.sesiones_sin_registro} className="rounded-xl text-left enabled:hover:ring-2 enabled:hover:ring-orange-400/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-default" aria-label="Ver sesiones pendientes de lista">
+          <Kpi label="Sesiones sin lista" value={cumplimiento?.disponible ? cumplimiento.sesiones_sin_registro : '—'} hint={cumplimiento?.disponible ? cumplimiento.sesiones_sin_registro ? 'Ver pendientes →' : 'Sin pendientes de captura' : 'No calculable'} tone={cumplimiento?.sesiones_sin_registro ? 'text-orange-500' : 'text-slate-500'} />
+        </button>
       </div>
-      <Panel className="px-4 py-3 text-sm text-slate-500"><span className="font-semibold">{r.total_alumnos} alumnos</span> · <span className={r.alumnos_atencion ? 'text-amber-500' : ''}>{r.alumnos_atencion} requieren atención</span> · {r.base_insuficiente} con base insuficiente · {r.sin_datos} sin información · <span className={r.acuerdos_pendientes ? 'text-orange-500' : ''}>{r.acuerdos_pendientes} acuerdos pendientes</span> · <span className={r.reportes_abiertos ? 'text-orange-500' : ''}>{r.reportes_abiertos} reportes abiertos</span></Panel>
-
-      {cumplimiento && <Panel className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-semibold">Cumplimiento de sesiones programadas</h2>
-              <Badge className={cumplimiento.disponible ? 'border-blue-500/30 bg-blue-500/10 text-blue-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-500'}>{cumplimiento.disponible ? 'CALENDARIO OFICIAL' : 'NO CALCULABLE'}</Badge>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">{cumplimiento.mensaje}</p>
-            {cumplimiento.disponible && <div className="mt-3">
-              <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${cumplimiento.porcentaje >= 85 ? 'bg-emerald-500' : cumplimiento.porcentaje >= 70 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.min(100, cumplimiento.porcentaje || 0)}%` }} /></div>
-              <p className="mt-2 text-[10px] text-slate-500">Del {fmt(cumplimiento.fecha_inicio)} al {fmt(cumplimiento.fecha_corte)} · Se excluyen suspensiones y recesos publicados.</p>
-            </div>}
-          </div>
-          {cumplimiento.disponible && <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-2 text-center sm:grid-cols-4">
-            <div><p className="text-2xl font-bold text-blue-400">{cumplimiento.porcentaje ?? '—'}%</p><p className="text-[10px] text-slate-500">Cumplimiento</p></div>
-            <div><p className="text-xl font-bold">{cumplimiento.sesiones_registradas}/{cumplimiento.sesiones_esperadas}</p><p className="text-[10px] text-slate-500">Registradas</p></div>
-            <button
-              type="button"
-              onClick={() => setMostrarSesionesPendientes(true)}
-              disabled={!cumplimiento.sesiones_sin_registro}
-              className={`rounded-xl px-2 py-1 transition ${cumplimiento.sesiones_sin_registro ? 'cursor-pointer hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-400/50' : 'cursor-default'}`}
-              title={cumplimiento.sesiones_sin_registro ? 'Ver las sesiones esperadas que todavía no tienen lista capturada' : 'No hay sesiones pendientes de captura'}
-            ><p className="text-xl font-bold text-red-400">{cumplimiento.sesiones_sin_registro}</p><p className="text-[10px] font-semibold text-slate-500">Sesiones sin lista ↗</p></button>
-            <div><p className="text-xl font-bold text-violet-400">{cumplimiento.sesiones_adicionales}</p><p className="text-[10px] text-slate-500">Adicionales</p></div>
-          </div>}
+      <details className="rounded-xl border border-slate-500/20 px-4 py-2 text-xs text-slate-500">
+        <summary className="cursor-pointer font-semibold focus-visible:outline-blue-500">Detalle de captura y cálculo</summary>
+        <div className="mt-2 space-y-1 pb-1">
+          <p>Asistencia: presentes, retardos y justificadas sobre pases capturados. El semáforo requiere una base suficiente por alumno.</p>
+          {r.cobertura_asistencia_detalle && <p>Pases capturados: {r.cobertura_asistencia_detalle.registros_capturados} de {r.cobertura_asistencia_detalle.registros_esperados} esperados en las clases registradas.</p>}
+          {cumplimiento && <p>{cumplimiento.mensaje}</p>}
+          {cumplimiento?.disponible && <p>Del {fmt(cumplimiento.fecha_inicio)} al {fmt(cumplimiento.fecha_corte)} · {cumplimiento.sesiones_adicionales} sesiones adicionales. Se excluyen suspensiones y recesos publicados.</p>}
         </div>
-      </Panel>}
+      </details>
 
       {mostrarSesionesPendientes && cumplimiento?.disponible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="sesiones-pendientes-titulo">
@@ -665,29 +639,27 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
 
       <Panel className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-bold">{panorama.grupo.cuatrimestre}° {panorama.grupo.grupo} · {panorama.grupo.carrera}</h2>
-            <p className="text-xs text-slate-500">{panorama.grupo.periodo} · {materiaSeleccionada ? materiaSeleccionada.nombre : `${r.materias} materias`} · {r.clases_registradas} clases registradas · {r.faltas_totales} faltas</p>
-            {materiaSeleccionada?.docentes?.length > 0 && <p className="mt-1 text-xs font-medium text-blue-400">Docente{materiaSeleccionada.docentes.length === 1 ? '' : 's'}: {materiaSeleccionada.docentes.join(', ')}</p>}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-64" placeholder="Buscar en este grupo…" />
-            <select value={estado} onChange={e => setEstado(e.target.value)} className="input-dark w-48">
-              <option value="TODOS">Todos los estados</option>
-              <option value="RIESGO">En riesgo</option>
-              <option value="ATENCION">Requieren atención</option>
-              <option value="REGULAR">Regulares</option>
-              <option value="BASE_INSUFICIENT">Base insuficiente</option>
-              <option value="SIN_DATOS">Sin información</option>
-            </select>
-          </div>
+          <h2 className="font-bold">Alumnos <span className="font-normal text-slate-500">({r.total_alumnos})</span></h2>
+          <input value={busqueda} onChange={e => { setBusqueda(e.target.value); setPagina(1); }} className="input-dark w-full sm:w-64" placeholder="Buscar nombre o matrícula…" aria-label="Buscar alumno en este grupo" />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtrar alumnos">
+          {[
+            ['TODOS', 'Todos', r.total_alumnos],
+            ['RIESGO', '▲ Riesgo', r.alumnos_riesgo],
+            ['ATENCION', 'Atención', r.alumnos_atencion],
+            ['BASE_INSUFICIENT', 'Base insuficiente', r.base_insuficiente],
+            ['SIN_DATOS', 'Sin información', r.sin_datos],
+            ['REGULAR', 'Regulares', r.total_alumnos - r.alumnos_riesgo - r.alumnos_atencion - r.base_insuficiente - r.sin_datos],
+            ['CON_REPORTES', 'Con reportes', r.alumnos_con_reportes],
+            ['CON_ACUERDOS', 'Con acuerdos pendientes', r.alumnos_con_acuerdos],
+          ].map(([valor, etiqueta, cantidad]) => <button key={valor} type="button" aria-pressed={estado === valor} onClick={() => { setEstado(valor); setPagina(1); }} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${estado === valor ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-slate-500/25 text-slate-500 hover:bg-slate-500/10'}`}>{etiqueta} ({cantidad ?? '—'})</button>)}
         </div>
       </Panel>
 
       {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
       <Panel className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left text-sm">
+          <table className="w-full min-w-[800px] text-left text-sm">
             <thead className={`text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-white/[0.035] text-slate-400'}`}>
               <tr>
                 <th className="px-5 py-3">Alumno</th>
@@ -696,23 +668,31 @@ function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estado
                 <th className="px-3 py-3 text-center">Consecutivas</th>
                 <th className="px-3 py-3 text-center">Pendientes</th>
                 <th className="px-3 py-3">Estado</th>
-                <th className="px-5 py-3"></th>
+
               </tr>
             </thead>
             <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>
               {panorama.alumnos.map(alumno => (
-                <tr key={alumno.id} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
+                <tr key={alumno.id} onClick={e => { if (!e.target.closest('button, a, details')) seleccionarAlumno(alumno.id); }} className={`cursor-pointer ${isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}`}>
                   <td className="px-5 py-3">
-                    <p className="font-semibold">{alumno.nombre}</p>
+                    <button type="button" onClick={() => seleccionarAlumno(alumno.id)} className="text-left font-semibold hover:text-blue-500 hover:underline focus-visible:outline-blue-500" aria-label={`Ver expediente de ${alumno.nombre}`}>{alumno.nombre}</button>
                     <p className="text-xs text-slate-500">{alumno.matricula}</p>
-                    {!!alumno.razones_estado?.length && <p className="mt-1 max-w-md text-[10px] leading-4 text-slate-500">{alumno.razones_estado.slice(0, 2).join(' · ')}</p>}
                   </td>
                   <td className={`px-3 py-3 text-center font-bold ${alumno.estado === 'BASE_INSUFICIENT' ? 'text-slate-500' : alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-400'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td>
                   <td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td>
                   <td className="px-3 py-3 text-center">{alumno.faltas_consecutivas || '—'}</td>
                   <td className="px-3 py-3 text-center">{alumno.acuerdos_pendientes + alumno.reportes_abiertos}</td>
-                  <td className="px-3 py-3"><Badge className={ESTADO_ALUMNO[alumno.estado]}>{ICONO_ESTADO_ALUMNO[alumno.estado]} {labelEstado(alumno.estado)}</Badge></td>
-                  <td className="px-5 py-3 text-right"><button onClick={() => seleccionarAlumno(alumno.id)} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-400 hover:bg-blue-500/10">Ver expediente →</button></td>
+                  <td className="px-3 py-3">
+                    <details className="group relative w-fit" onKeyDown={e => { if (e.key === 'Escape') { e.currentTarget.open = false; e.currentTarget.querySelector('summary')?.focus(); } }}>
+                      <summary className="list-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [&::-webkit-details-marker]:hidden" title={alumno.razones_estado?.join(" · ")} aria-label={`Motivo del estado de ${alumno.nombre}`}>
+                        <Badge className={ESTADO_ALUMNO[alumno.estado]}>{ICONO_ESTADO_ALUMNO[alumno.estado]} {alumno.estado === 'BASE_INSUFICIENT' ? 'BASE INSUFICIENTE' : labelEstado(alumno.estado)} ⓘ</Badge>
+                      </summary>
+                      <div className={`mt-2 max-w-64 rounded-lg border p-3 text-xs shadow-lg ${isDay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-600 bg-slate-900 text-slate-200'}`}>
+                        {(alumno.razones_estado?.length ? alumno.razones_estado : ['Sin motivos adicionales']).map((razon, i) => <p key={i} className="mb-1 last:mb-0">{razon}</p>)}
+                        <p className="mt-2 text-slate-500">{alumno.acuerdos_pendientes} acuerdos pendientes · {alumno.reportes_abiertos} reportes abiertos</p>
+                      </div>
+                    </details>
+                  </td>
                 </tr>
               ))}
             </tbody>

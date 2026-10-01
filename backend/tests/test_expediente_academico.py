@@ -559,3 +559,37 @@ def test_solo_tutor_asignado_consulta_expediente(client, db):
         headers=auth_headers(get_token(client, ajeno.email, "Ajeno123!")),
     )
     assert denegado.status_code == 403
+
+
+def test_filtros_panorama_cuentan_alumnos_no_reportes(client, db, admin_user):
+    from models.tutoria import ReporteTutor
+
+    reportante, tutor, alumno, carga, _ = _escenario(db)
+    headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+    url = f"/expediente-academico/panorama/grupos/{carga.grupo_academico_id}/alumnos"
+    for estado in ("CON_REPORTES", "CON_ACUERDOS"):
+        response = client.get(url, params={"estado": estado}, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["paginacion"]["total"] == 0
+
+    db.add_all([
+        ReporteTutor(alumno_id=alumno.id, reportado_por_id=reportante.id,
+                     tutor_destinatario_id=tutor.id, titulo=f"Reporte {i}", estado="ENVIADO")
+        for i in range(2)
+    ])
+    db.add(SeguimientoAlumnoDocente(
+        docente_id=reportante.id, carga_docente_id=carga.id, alumno_id=alumno.id,
+        tipo="ACUERDO", titulo="Asesoría", estado="PENDIENTE",
+    ))
+    db.commit()
+    for estado in ("CON_REPORTES", "CON_ACUERDOS"):
+        response = client.get(url, params={"estado": estado}, headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert [fila["id"] for fila in data["alumnos"]] == [alumno.id]
+        assert data["resumen"]["reportes_abiertos"] == 2
+        assert data["resumen"]["alumnos_con_reportes"] == 1
+        assert data["resumen"]["alumnos_con_acuerdos"] == 1
+        vacio = client.get(url, params={"estado": estado, "q": "no existe"}, headers=headers).json()
+        assert vacio["paginacion"]["total"] == 0
+        assert vacio["resumen"]["alumnos_con_reportes"] == 1

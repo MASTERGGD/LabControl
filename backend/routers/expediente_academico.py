@@ -991,7 +991,7 @@ def panorama_alumnos_grupo(
     grupo_id: int,
     materia_clave: Optional[str] = Query(default=None, max_length=250),
     q: str = Query(default="", max_length=100),
-    estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|BASE_INSUFICIENT|SIN_DATOS)$"),
+    estado: str = Query(default="TODOS", pattern="^(TODOS|RIESGO|ATENCION|REGULAR|BASE_INSUFICIENT|SIN_DATOS|CON_REPORTES|CON_ACUERDOS)$"),
     pagina: int = Query(default=1, ge=1),
     limite: int = Query(default=25, ge=10, le=100),
     db: Session = Depends(get_db),
@@ -1160,7 +1160,11 @@ def panorama_alumnos_grupo(
             fila for fila in filas
             if termino in fila["nombre"].lower() or termino in fila["matricula"].lower()
         ]
-    if estado != "TODOS":
+    if estado == "CON_REPORTES":
+        filas = [fila for fila in filas if fila["reportes_abiertos"] > 0]
+    elif estado == "CON_ACUERDOS":
+        filas = [fila for fila in filas if fila["acuerdos_pendientes"] > 0]
+    elif estado != "TODOS":
         filas = [fila for fila in filas if fila["estado"] == estado]
     prioridad = {"RIESGO": 0, "ATENCION": 1, "BASE_INSUFICIENT": 2, "SIN_DATOS": 3, "REGULAR": 4}
     filas.sort(key=lambda fila: (prioridad[fila["estado"]], fila["nombre"]))
@@ -1208,6 +1212,8 @@ def panorama_alumnos_grupo(
             "faltas_totales": sum(fila["faltas"] for fila in todas_filas),
             "acuerdos_pendientes": sum(fila["acuerdos_pendientes"] for fila in todas_filas),
             "reportes_abiertos": sum(fila["reportes_abiertos"] for fila in todas_filas),
+            "alumnos_con_reportes": sum(1 for fila in todas_filas if fila["reportes_abiertos"] > 0),
+            "alumnos_con_acuerdos": sum(1 for fila in todas_filas if fila["acuerdos_pendientes"] > 0),
             "materias": len({
                 carga.materia_id or carga.actividad_nombre.strip().upper()
                 for carga in cargas
