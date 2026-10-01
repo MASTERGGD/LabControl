@@ -567,12 +567,14 @@ function HistorialIncidenciasPanel({ items = [], resumen = {}, expanded, locked,
   );
 }
 
-function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
+export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const navigate = useNavigate();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const vinculoFijo = Boolean(incidente.computadora_id || incidente.activo_id);
-  const estaCerrado = ESTADOS_TERMINALES.includes(incidente.estado);
+  const [estadoGuardado, setEstadoGuardado] = useState(incidente.estado);
+  const estaCerrado = ESTADOS_TERMINALES.includes(estadoGuardado);
+  const seguimientoRef = useRef(null);
   const [form, setForm] = useState({
     estado:            incidente.estado,
     prioridad:         incidente.prioridad,
@@ -608,6 +610,13 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const { toast } = useToast();
 
   useEffect(() => {
+    if (modoSeguimiento) {
+      seguimientoRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      seguimientoRef.current?.querySelector('textarea')?.focus({ preventScroll: true });
+    }
+  }, [modoSeguimiento]);
+
+  useEffect(() => {
     if (vinculoFijo || !identificandoEquipo || !incidente.laboratorio_id) return;
     let mounted = true;
     setCargandoEquipos(true);
@@ -632,6 +641,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   }, [incidente.laboratorio_id, vinculoFijo, identificandoEquipo]);
 
   const handleGuardar = async () => {
+    if (estaCerrado || modoSeguimiento) return;
     setSaving(true); setError('');
     try {
       const [tipoAsignacion, idAsignacion] = asignacion.split(':');
@@ -670,28 +680,36 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       setError('Escribe el seguimiento realizado.');
       return;
     }
-    const esCierreReparacion = modoSeguimiento === 'REPARACION';
+    const esCierreReparacion = modoSeguimiento === 'CIERRE';
+    const costo = form.costo_reparacion === '' ? null : Number(form.costo_reparacion);
+    if (esCierreReparacion && costo !== null && (!Number.isFinite(costo) || costo < 0)) {
+      setError('El costo de reparación debe ser un número mayor o igual a cero.');
+      return;
+    }
     setGuardandoSeguimiento(true); setError('');
     try {
-      if (esCierreReparacion) {
-        await api.put(`/inventario/incidentes/${incidente.id}`, {
-          estado: 'REPARADO',
+      const { data } = esCierreReparacion
+        ? await api.put(`/inventario/incidentes/${incidente.id}`, {
+          estado: 'CERRADO',
           prioridad: form.prioridad,
-          costo_reparacion: form.costo_reparacion ? parseFloat(form.costo_reparacion) : null,
-        });
-      }
-      const { data } = await api.post(
+          costo_reparacion: costo,
+          notas_seguimiento: texto,
+        })
+        : await api.post(
         `/inventario/incidentes/${incidente.id}/seguimientos`,
         { texto }
       );
       setSeguimientos(data.seguimientos || []);
       if (esCierreReparacion) {
-        setForm(prev => ({ ...prev, estado: 'REPARADO' }));
+        setEstadoGuardado(data.estado);
+        setForm(prev => ({ ...prev, estado: data.estado }));
+        setMostrarDetallesAvanzados(false);
+        setMostrarReasignacion(false);
       }
       setNuevoSeguimiento('');
       setModoSeguimiento('');
       toast(
-        esCierreReparacion ? 'Incidente cerrado como reparado' : 'Seguimiento agregado al historial',
+        esCierreReparacion ? 'Incidencia cerrada correctamente. No hay cambios pendientes.' : 'Seguimiento agregado al historial',
         'success'
       );
       onActualizado();
@@ -734,6 +752,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       await api.put(`/inventario/incidentes/${incidente.id}`, { estado: 'CANALIZADO' });
       setSeguimientos(data.seguimientos || []);
       setForm(prev => ({ ...prev, estado: 'CANALIZADO' }));
+      setEstadoGuardado('CANALIZADO');
       setNotaCanalizacion('');
       toast(`Reporte canalizado a ${area.label}`, 'success', { title: 'Canalizacion registrada' });
       onActualizado();
@@ -747,15 +766,17 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
   const handleCambioRapido = async (estado) => {
     setSaving(true); setError('');
     try {
-      await api.put(`/inventario/incidentes/${incidente.id}`, {
+      const { data } = await api.put(`/inventario/incidentes/${incidente.id}`, {
         estado,
         prioridad: form.prioridad,
         costo_reparacion: form.costo_reparacion ? parseFloat(form.costo_reparacion) : null,
       });
       setForm(prev => ({ ...prev, estado }));
+      setEstadoGuardado(data.estado);
+      setSeguimientos(data.seguimientos || []);
       toast(
         estado === 'REPARADO'
-          ? 'Incidente marcado como reparado'
+          ? 'Reparación guardada. Pendiente de confirmar cierre.'
           : estado === 'CERRADO'
             ? 'Incidente cerrado'
             : estado === 'EN_ESPERA'
@@ -796,7 +817,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
       : ORIGENES[incidente.origen] || origenNombre || incidente.origen || 'Sin origen definido';
   const textoSeguimientoPlaceholder = modoSeguimiento === 'INFO'
     ? 'Indica que informacion necesitas del area o persona que reporto...'
-    : modoSeguimiento === 'REPARACION'
+    : modoSeguimiento === 'CIERRE'
       ? 'Describe la reparacion realizada, refaccion usada o accion de cierre...'
       : 'Describe la llamada, revision, reparacion o accion realizada...';
 
@@ -849,7 +870,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
                 : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-100'
             }`}>
-              <p className="text-sm font-bold">Expediente cerrado</p>
+              <p className="text-sm font-bold">Incidencia cerrada. No hay cambios pendientes.</p>
               <p className="text-xs mt-1">
                 Los datos del reporte ya no se modifican. Puedes agregar seguimiento al historial
                 o reabrir la incidencia indicando el motivo.
@@ -913,7 +934,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                         : form.estado === 'EN_ESPERA'
                           ? 'En pausa por informacion, refaccion o presupuesto.'
                           : form.estado === 'REPARADO'
-                            ? 'Reparado; pendiente de confirmacion/cierre.'
+                            ? 'Reparación guardada · Pendiente de confirmar cierre.'
                             : 'Estado registrado en el expediente.'}
                 </p>
               </div>
@@ -924,7 +945,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
               </span>
             </div>
 
-            {!estaCerrado && (
+            {!estaCerrado && !modoSeguimiento && (
               <div className="grid grid-cols-2 gap-2 mt-4">
                 {form.estado !== 'EN_REVISION' && (
                   <button
@@ -941,11 +962,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                 {form.estado !== 'REPARADO' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setForm(prev => ({ ...prev, estado: 'REPARADO' }));
-                      setModoSeguimiento('REPARACION');
-                      setMostrarReasignacion(false);
-                    }}
+                    onClick={() => handleCambioRapido('REPARADO')}
                     disabled={saving}
                     className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
                       isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/20'
@@ -954,10 +971,15 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                     Marcar reparado
                   </button>
                 )}
-                {form.estado === 'REPARADO' && (
+                {estadoGuardado === 'REPARADO' && (
                   <button
                     type="button"
-                    onClick={() => handleCambioRapido('CERRADO')}
+                    onClick={() => {
+                      setModoSeguimiento('CIERRE');
+                      setMostrarReasignacion(false);
+                      setMostrarDetallesAvanzados(false);
+                      setError('');
+                    }}
                     disabled={saving}
                     className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
                       isDay ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/30'
@@ -1259,12 +1281,12 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           )}
 
           {/* Costo */}
-          {(mostrarDetallesAvanzados || modoSeguimiento === 'REPARACION') && (
+          {(mostrarDetallesAvanzados || modoSeguimiento === 'CIERRE') && (
           <div className={`rounded-xl border p-4 ${
             isDay ? 'bg-white border-slate-200' : 'bg-slate-900/35 border-white/10'
           }`}>
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Costo estimado</label>
-            {modoSeguimiento === 'REPARACION' && (
+            {modoSeguimiento === 'CIERRE' && (
               <p className={`text-xs mb-2 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
                 Opcional. Capturalo solo si la reparacion tuvo gasto, refaccion o servicio externo.
               </p>
@@ -1337,7 +1359,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
           </div>
 
           {/* Nuevo seguimiento: disponible incluso con el expediente cerrado */}
-          <div>
+          <div ref={seguimientoRef}>
             {!modoSeguimiento && (
               <button
                 type="button"
@@ -1359,27 +1381,33 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
               {modoSeguimiento === 'INFO'
                 ? 'Solicitar informacion'
-                : modoSeguimiento === 'REPARACION'
-                  ? 'Cierre de reparacion'
+                : modoSeguimiento === 'CIERRE'
+                  ? 'Confirmar cierre de incidencia'
                   : 'Agregar seguimiento'}
             </label>
                   <button
                     type="button"
+                    disabled={guardandoSeguimiento}
                     onClick={() => {
-                      if (modoSeguimiento === 'REPARACION') {
-                        setForm(prev => ({ ...prev, estado: incidente.estado }));
-                      }
                       setModoSeguimiento('');
                       setNuevoSeguimiento('');
                       setError('');
                     }}
                     className={`text-xs font-semibold ${isDay ? 'text-slate-500 hover:text-slate-900' : 'text-slate-400 hover:text-white'}`}
                   >
-                    Cancelar nota
+                    {modoSeguimiento === 'CIERRE' ? 'Cancelar cierre' : 'Cancelar nota'}
                   </button>
                 </div>
+            {modoSeguimiento === 'CIERRE' && (
+              <p className="text-sm text-slate-500 mb-3">
+                Describe la reparación realizada. Al guardar se registrarán la nota y el costo,
+                y la incidencia quedará cerrada en modo lectura.
+              </p>
+            )}
             <textarea
               rows={3}
+              disabled={guardandoSeguimiento}
+              maxLength={2000}
               placeholder={textoSeguimientoPlaceholder}
               value={nuevoSeguimiento}
               onChange={e => setNuevoSeguimiento(e.target.value)}
@@ -1393,8 +1421,8 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
             >
               {guardandoSeguimiento
                 ? 'Guardando...'
-                : modoSeguimiento === 'REPARACION'
-                  ? 'Guardar cierre'
+                : modoSeguimiento === 'CIERRE'
+                  ? 'Guardar y cerrar incidencia'
                   : 'Guardar en historial'}
             </button>
               </div>
@@ -1508,7 +1536,7 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
 
           <div className="flex gap-3 pb-4">
             <button onClick={onClose} className="btn-ghost flex-1">
-              {estaCerrado ? 'Cerrar' : 'Cancelar'}
+              {estaCerrado ? 'Listo' : 'Salir'}
             </button>
             {estaCerrado ? (
               !mostrarReapertura && (
@@ -1523,11 +1551,11 @@ function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado }) {
                   Reabrir incidencia
                 </button>
               )
-            ) : (
+            ) : !modoSeguimiento && (mostrarDetallesAvanzados || identificandoEquipo) ? (
               <button onClick={handleGuardar} disabled={saving} className="btn-blue flex-1">
                 {saving ? 'Guardando…' : '💾 Guardar'}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
