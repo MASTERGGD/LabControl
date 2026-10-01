@@ -1,7 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function AsistenciaHorarioChart({ serie }) {
   const puntos = serie?.puntos || [];
+  const contenedorRef = useRef(null);
+  const [ancho, setAncho] = useState(900);
+  const hayPuntos = puntos.length > 0;
+  useEffect(() => {
+    const contenedor = contenedorRef.current;
+    if (!contenedor) return undefined;
+    const actualizar = width => setAncho(Math.max(600, Math.round(width)));
+    actualizar(contenedor.getBoundingClientRect().width);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => actualizar(entry.contentRect.width));
+    observer.observe(contenedor);
+    return () => observer.disconnect();
+  }, [hayPuntos]);
   const [seleccion, setSeleccion] = useState(null);
   const elegido = puntos.find(p => p.hora === seleccion) || puntos[puntos.length - 1];
   const conocidos = puntos.filter(p => p.asistentes !== null);
@@ -11,7 +24,8 @@ export default function AsistenciaHorarioChart({ serie }) {
   const minuto = hora => Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3));
   const primero = puntos.length ? minuto(puntos[0].hora) : 0;
   const rango = puntos.length ? Math.max(30, minuto(puntos[puntos.length - 1].hora) - primero) : 30;
-  const x = p => 60 + (minuto(p.hora) - primero) / rango * 800;
+  const derecha = ancho - 40;
+  const x = p => 60 + (minuto(p.hora) - primero) / rango * (derecha - 60);
   const y = p => 230 - p.asistentes / techo * 180;
   let trazo = '';
   let conectado = false;
@@ -30,11 +44,11 @@ export default function AsistenciaHorarioChart({ serie }) {
     </div>
 
     {!puntos.length ? <p className="py-8 text-center text-sm text-slate-400">Aún no hay horarios iniciados para mostrar en este corte.</p> : <>
-      <div className="mt-4 overflow-x-auto">
-        <svg viewBox="0 0 900 285" className="w-full min-w-[600px] text-slate-400" aria-label="Gráfica de alumnos con asistencia por horario">
+      <div ref={contenedorRef} className="mt-4 overflow-x-auto">
+        <svg viewBox={`0 0 ${ancho} 285`} width={ancho} height="285" className="block text-slate-400" aria-label="Gráfica de alumnos con asistencia por horario">
           <text x="60" y="22" fill="currentColor" fontSize="12">Alumnos</text>
           {[0, 1, 2, 3, 4].map(i => <g key={i}>
-            <line x1="60" x2="860" y1={230 - i * 45} y2={230 - i * 45} stroke="currentColor" strokeOpacity="0.18" />
+            <line x1="60" x2={derecha} y1={230 - i * 45} y2={230 - i * 45} stroke="currentColor" strokeOpacity="0.18" />
             <text x="48" y={234 - i * 45} textAnchor="end" fill="currentColor" fontSize="12">{techo * i / 4}</text>
           </g>)}
           <path d={trazo} fill="none" stroke="#059669" strokeWidth="3" strokeLinejoin="round" />
@@ -49,7 +63,7 @@ export default function AsistenciaHorarioChart({ serie }) {
                 fill={p.asistentes === null ? '#94a3b8' : p.listas_pendientes ? '#d97706' : '#059669'} stroke="white" strokeWidth="2" />
             </g>
           </g>)}
-          <text x="860" y="280" textAnchor="end" fill="currentColor" fontSize="11">Horario de clase</text>
+          <text x={derecha} y="280" textAnchor="end" fill="currentColor" fontSize="11">Horario de clase</text>
         </svg>
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400"><span><span style={{ color: '#059669' }}>●</span> Verde: sin listas pendientes</span><span><span style={{ color: '#d97706' }}>●</span> Ámbar: datos parciales</span><span><span style={{ color: '#94a3b8' }}>●</span> Gris: sin dato</span></div>
