@@ -32,7 +32,7 @@ test('consulta el corte, filtra por carrera y no muestra datos anteriores ante u
   const root = createRoot(container);
   try {
     await act(async () => root.render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AsistenciaHoy /></MemoryRouter>));
-    expect(container.textContent).toContain('3 alumnos únicos');
+    expect(container.textContent).toContain('Total de alumnos distintos durante el día: 3');
     expect(container.textContent).toContain('2A tiempo');
     expect(container.textContent).toContain('1Con retardo');
     expect(container.textContent).toContain('0Faltaron al corte');
@@ -44,7 +44,7 @@ test('consulta el corte, filtra por carrera y no muestra datos anteriores ante u
     api.get.mockRejectedValueOnce(new Error('offline'));
     await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent === 'Actualizar corte').click());
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
-    expect(container.textContent).not.toContain('3 alumnos únicos');
+    expect(container.textContent).not.toContain('Total de alumnos distintos durante el día: 3');
     expect([...container.querySelectorAll('button')].find(b => b.textContent.startsWith('Exportar')).disabled).toBe(true);
   } finally {
     act(() => root.unmount()); container.remove();

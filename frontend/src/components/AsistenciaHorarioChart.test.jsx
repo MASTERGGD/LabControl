@@ -14,7 +14,7 @@ test('interrumpe la línea sin datos y permite consultar puntos con teclado y cl
   try {
     act(() => root.render(<AsistenciaHorarioChart serie={serie} />));
     expect(host.querySelector('path').getAttribute('d').match(/M/g)).toHaveLength(2);
-    expect(host.textContent).toContain('Máximo registrado: 30 alumnos');
+    expect(host.textContent).toContain('Mayor asistencia en un mismo horario: 30 alumnos');
     const botones = host.querySelectorAll('[role="button"]');
     act(() => botones[1].dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(host.querySelector('[aria-live]').textContent).toContain('08:30 · Sin dato');

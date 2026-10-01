@@ -89,12 +89,12 @@ export default function AsistenciaHoy() {
     {cargando && <p role="status" className="text-sm text-slate-400">Consultando las listas confirmadas en el servidor…</p>}
     {datos && <>
       <div className="attendance-cutoff rounded-xl border p-4 text-sm">
-        <p><b>Corte: {horaCorte(datos.corte)} (hora de México).</b> Se registró asistencia de <b>{r.asistentes} alumnos únicos</b>; {r.grupos_sin_lista} grupos con actividad iniciada aún no tienen lista confirmada.</p>
+        <p><b>Corte: {horaCorte(datos.corte)} (hora de México).</b> <b>Total de alumnos distintos durante el día: {r.asistentes}</b>, con al menos una asistencia confirmada hasta este corte; {r.grupos_sin_lista} grupos con actividad iniciada aún no tienen lista confirmada.</p>
         <p className="mt-2 text-xs">El corte cambia al pulsar Actualizar. El Excel consulta un nuevo corte al exportar. Las capturas guardadas sin conexión aparecen después de sincronizarse y cerrar su lista.</p>
       </div>
       <AsistenciaHorarioChart key={`${periodoId}-${carrera}-${datos.corte}`} serie={datos.asistencia_por_horario} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[
-        ['Alumnos únicos con asistencia', r.asistentes], ['A tiempo', r.a_tiempo], ['Con retardo', r.retardos], ['Faltaron al corte', r.faltaron], ['Justificados', r.justificados], ['Grupos con lista confirmada', r.grupos_con_lista],
+        ['Alumnos distintos durante el día', r.asistentes], ['A tiempo', r.a_tiempo], ['Con retardo', r.retardos], ['Faltaron al corte', r.faltaron], ['Justificados', r.justificados], ['Grupos con lista confirmada', r.grupos_con_lista],
         ['Grupos sin lista confirmada', r.grupos_sin_lista], ['Grupos con clases por iniciar', r.grupos_por_iniciar],
       ].map(([etiqueta, cantidad]) => <div key={etiqueta} className="glass rounded-xl p-4"><p className="text-3xl font-bold text-white">{cantidad}</p><p className="mt-1 text-sm text-slate-300">{etiqueta}</p></div>)}</div>
       <p className="text-sm text-slate-300">{r.listas_confirmadas} listas confirmadas · {r.listas_pendientes} listas pendientes al corte. Un grupo con lista puede tener otras materias pendientes. Sin lista no significa que sus alumnos faltaron.</p>
