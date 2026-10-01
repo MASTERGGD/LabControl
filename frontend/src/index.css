@@ -145,8 +145,14 @@ body.theme-day .asistencia-hoy .attendance-badge.is-neutral { color: #475569; ba
   color: #dbeafe; background: #17243d; border-color: #28436b;
 }
 .asistencia-hoy .attendance-calendar {
-  color: #fde68a; background: #292313; border-color: #78581b;
+  color: #cbd5e1; background: rgba(30,41,59,.3); border-color: #334155;
 }
+.asistencia-hoy .attendance-guide {
+  width: min(40rem, calc(100% - 2rem)); max-height: calc(100dvh - 2rem);
+  overflow-y: auto; color: #e2e8f0; background: #0f172a; border-color: #334155;
+}
+.asistencia-hoy .attendance-guide::backdrop { background: rgba(2,6,23,.65); }
+body.theme-day .asistencia-hoy .attendance-guide { color: #334155; background: #fff; border-color: #cbd5e1; }
 .asistencia-hoy .attendance-error {
   color: #fecaca; background: #3b1820; border-color: #92404a;
 }
@@ -154,7 +160,7 @@ body.theme-day .asistencia-hoy .attendance-cutoff {
   color: #1e3a5f; background: #eff6ff; border-color: #93c5fd;
 }
 body.theme-day .asistencia-hoy .attendance-calendar {
-  color: #78350f; background: #fffbeb; border-color: #fcd34d;
+  color: #475569; background: #f8fafc; border-color: #dce5eb;
 }
 body.theme-day .asistencia-hoy .attendance-error {
   color: #991b1b; background: #fef2f2; border-color: #fca5a5;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import AsistenciaHorarioChart from './AsistenciaHorarioChart';
 
 const TABS = ['Vista general', 'Por carrera', 'Por grupo'];
@@ -15,11 +15,13 @@ function EstadoGrupo({ grupo: g }) {
 }
 
 export default function AsistenciaHoyResumen({ datos }) {
+  const guiaRef = useRef(null);
   const [tab, setTab] = useState(0);
   const [mostrarSinActividad, setMostrarSinActividad] = useState(false);
   const [soloPendientes, setSoloPendientes] = useState(false);
   const [orden, setOrden] = useState({ campo: 'asistentes', asc: false });
   const r = datos.resumen;
+  const gruposPendientes = datos.grupos.filter(g => g.listas_pendientes > 0).length;
   const sinActividad = datos.grupos.filter(g => g.estado === 'SIN_ACTIVIDAD').length;
   const grupos = datos.grupos.filter(g => (mostrarSinActividad || g.estado !== 'SIN_ACTIVIDAD') && (!soloPendientes || g.listas_pendientes > 0));
   const carreras = [...datos.carreras].sort((a, b) => {
@@ -30,21 +32,22 @@ export default function AsistenciaHoyResumen({ datos }) {
   return <>
     <section aria-label="Indicadores principales" className="attendance-kpis grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
-        ['Alumnos del día', r.asistentes, 'Distintos, con asistencia confirmada'],
+        ['Alumnos del día', r.asistentes, 'Alumnos únicos con asistencia'],
         ['A tiempo', r.a_tiempo, 'Sin retardos registrados'],
         ['Con retardo', r.retardos, 'Al menos un retardo registrado'],
-        ['Listas pendientes', r.listas_pendientes, 'De clases iniciadas al corte'],
+        ['Listas pendientes', r.listas_pendientes, 'Clases iniciadas sin confirmación'],
       ].map(([nombre, cantidad, nota], i) => <div key={nombre} className={`attendance-kpi ${i === 0 ? 'is-primary' : ''}`}>
         <p className="text-sm text-slate-300">{nombre}</p><p className="my-1 text-3xl font-bold tabular-nums text-white">{cantidad}</p><p className="text-xs text-slate-400">{nota}</p>
       </div>)}
     </section>
     {r.listas_pendientes > 0 && <div className="attendance-pending-row flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm" role="status">
-      <span><b>{r.listas_pendientes} listas pendientes.</b> {r.grupos_sin_lista} grupos aún sin lista confirmada. El corte está incompleto.</span>
+      <span><b>{r.listas_pendientes} {r.listas_pendientes === 1 ? 'lista pendiente' : 'listas pendientes'} en {gruposPendientes} {gruposPendientes === 1 ? 'grupo' : 'grupos'}.</b> La asistencia del corte está incompleta.</span>
       <button type="button" onClick={pendientes} className="font-semibold underline underline-offset-2">Ver pendientes</button>
     </div>}
     {datos.nota_calendario && <p className="attendance-calendar rounded-lg border px-3 py-2 text-sm">Calendario: {datos.nota_calendario}</p>}
     <div>
-      <div role="tablist" aria-label="Vistas de asistencia" className="attendance-tabs flex gap-1 overflow-x-auto border-b border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/10">
+      <div role="tablist" aria-label="Vistas de asistencia" className="attendance-tabs flex gap-1 overflow-x-auto">
         {TABS.map((nombre, i) => <button type="button" role="tab" id={`asistencia-tab-${i}`} aria-selected={tab === i} aria-controls={`asistencia-panel-${i}`} tabIndex={tab === i ? 0 : -1} key={nombre}
           onClick={() => setTab(i)} onKeyDown={e => {
             let siguiente;
@@ -54,6 +57,9 @@ export default function AsistenciaHoyResumen({ datos }) {
             if (e.key === 'End') siguiente = TABS.length - 1;
             if (siguiente !== undefined) { e.preventDefault(); setTab(siguiente); document.getElementById(`asistencia-tab-${siguiente}`)?.focus(); }
           }} className="whitespace-nowrap px-4 py-3 text-sm font-semibold">{nombre}</button>)}
+      </div>
+      <button type="button" onClick={() => guiaRef.current.showModal()} aria-haspopup="dialog" aria-controls="guia-asistencia"
+        className="theme-muted rounded-lg px-3 py-2 text-sm font-semibold underline underline-offset-4">Guía de asistencia</button>
       </div>
       <section role="tabpanel" id={`asistencia-panel-${tab}`} aria-labelledby={`asistencia-tab-${tab}`} tabIndex="0" className="pt-4">
         {tab === 0 && <>
@@ -91,12 +97,25 @@ export default function AsistenciaHoyResumen({ datos }) {
         </>}
       </section>
     </div>
-    <details className="attendance-disclosure text-sm text-slate-400"><summary className="cursor-pointer font-semibold">Cómo interpretar estos datos</summary>
-      <div className="mt-3 space-y-2 text-xs leading-relaxed"><p>El total diario cuenta a cada alumno una sola vez. A tiempo y con retardo forman ese total; las faltas al corte no indican necesariamente ausencia de todo el día.</p>
-        <p>Sin lista confirmada se muestra —, no una falta. Un grupo puede tener listas confirmadas y otras pendientes. Las capturas sin conexión aparecen tras sincronizarse y cerrar su lista.</p>
-        <p>El corte cambia al pulsar Actualizar. El Excel consulta un nuevo corte al exportar e incluye todos los grupos de la carrera seleccionada, aunque estén ocultos en esta vista.</p>
-        <p>{datos.criterio} “Con registro” incluye cualquier estado. Los totales se deduplican en cada nivel; no se obtienen sumando filas.</p>
+    <dialog ref={guiaRef} id="guia-asistencia" aria-labelledby="guia-asistencia-titulo" className="attendance-guide rounded-2xl border p-5 shadow-2xl">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="guia-asistencia-titulo" className="text-lg font-bold">Guía de asistencia</h2>
+        <form method="dialog"><button type="submit" className="rounded-lg border px-3 py-2 text-sm font-semibold">Cerrar guía</button></form>
       </div>
-    </details>
+      <div className="mt-4 space-y-4 text-sm leading-relaxed">
+        <section><h3 className="font-semibold">Indicadores del día</h3>
+        <p>El total diario cuenta a cada alumno una sola vez, aunque asista a varias clases. A tiempo incluye a quienes no tienen retardos registrados; con retardo incluye a quienes tienen al menos uno. Ambas cifras forman el total del día.</p>
+        <p className="mt-2">Las listas pendientes corresponden a clases que ya comenzaron y cuya asistencia aún no se confirma. Una lista pendiente no significa que los alumnos hayan faltado. Las faltas al corte tampoco indican necesariamente ausencia de todo el día.</p></section>
+        <section><h3 className="font-semibold">Asistencia por horario</h3>
+        <p>Cada punto cuenta solo a los alumnos con asistencia confirmada en clases de ese horario. El máximo puede ser menor que el total diario; la diferencia no representa alumnos faltantes.</p>
+        <p className="mt-2">Verde: sin listas pendientes. Ámbar: datos parciales. Gris: sin dato. Selecciona un punto para consultar su detalle; también puedes usar Tab y Enter. Las franjas sin dato interrumpen la línea.</p>
+        <p className="mt-2">{datos.asistencia_por_horario?.criterio || 'Alumnos únicos en clases de cada horario. No representa entradas, salidas ni permanencia física en el plantel.'}</p></section>
+        <section><h3 className="font-semibold">Carreras, grupos y cobertura</h3>
+        <p>Sin lista confirmada se muestra —, no una falta. Un grupo puede tener listas confirmadas y otras pendientes. Las capturas sin conexión aparecen tras sincronizarse y cerrar su lista.</p>
+        <p className="mt-2">{datos.criterio} “Con registro” incluye cualquier estado. Los totales cuentan alumnos únicos en cada nivel; no se obtienen sumando filas.</p></section>
+        <section><h3 className="font-semibold">Actualizar y exportar</h3>
+        <p>El corte cambia al pulsar Actualizar corte. El Excel consulta un nuevo corte al exportar e incluye todos los grupos de la carrera seleccionada, aunque estén ocultos en esta vista.</p></section>
+      </div>
+    </dialog>
   </>;
 }

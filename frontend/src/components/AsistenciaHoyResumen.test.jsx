@@ -20,6 +20,15 @@ test('pestañas, ordenación y filtros conservan pendientes y distinguen falta d
     expect(host.querySelectorAll('.attendance-kpi')).toHaveLength(4);
     expect(host.querySelector('table')).toBeNull();
     expect(host.querySelector('details').open).toBe(false);
+    expect(host.querySelectorAll('details')).toHaveLength(1);
+    expect(host.querySelector('summary').textContent).toBe('Ver desglose y cobertura del día');
+    expect(host.querySelector('[role="status"]').textContent).toContain('2 listas pendientes en 2 grupos.');
+    const guia = host.querySelector('dialog');
+    guia.showModal = jest.fn();
+    click('Guía de asistencia');
+    expect(guia.showModal).toHaveBeenCalledTimes(1);
+    expect(guia.querySelector('form').getAttribute('method')).toBe('dialog');
+    expect(guia.textContent).toContain('Una lista pendiente no significa que los alumnos hayan faltado.');
     click('Ver pendientes');
     expect(host.querySelector('[aria-selected="true"]').textContent).toBe('Por grupo');
     expect(host.querySelectorAll('tbody tr')).toHaveLength(2);

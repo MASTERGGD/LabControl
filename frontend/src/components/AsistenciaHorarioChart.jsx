@@ -75,9 +75,5 @@ export default function AsistenciaHorarioChart({ serie }) {
       </div>
       <p className="mt-2 text-xs text-slate-400">Toca un punto para consultar su detalle. Las franjas sin dato interrumpen la línea.</p>
     </>}
-    <details className="attendance-disclosure mt-3 text-xs text-slate-400"><summary className="cursor-pointer font-semibold">Cómo leer la gráfica</summary>
-      <p className="mt-3 text-sm leading-relaxed text-slate-300">El total del día cuenta a cada alumno una sola vez, aunque asista en distintos horarios. Cada punto cuenta solo a los alumnos con asistencia confirmada en clases de ese horario; por eso el máximo puede ser menor que el total diario. La diferencia no representa alumnos faltantes.</p>
-      <p className="mt-3 text-xs leading-relaxed text-slate-400">{serie?.criterio || 'Alumnos únicos en clases de cada horario. No representa entradas, salidas ni permanencia física en el plantel.'}</p>
-    </details>
   </section>;
 }
