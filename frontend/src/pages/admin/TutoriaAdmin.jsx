@@ -5,7 +5,7 @@ import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
 import AdminLayout from "../../components/AdminLayout";
 import BandejaTutorial from "../../components/tutoria/BandejaTutorial";
-import { nombreAlumno } from "../../components/tutoria/casosTutoriales";
+import DetalleReporteTutorial, { ModalTutorial } from "../../components/tutoria/DetalleReporteTutorial";
 import { useTheme } from "../../context/ThemeContext";
 import { usePeriodo } from "../../context/PeriodoContext";
 import { todayISOInMexico } from "../../utils/timezone";
@@ -61,15 +61,6 @@ const ESTADO_REPORTE = {
   ATENDIDO: { label: "Atendido", cls: "bg-emerald-500/15 text-emerald-400" },
   CERRADO: { label: "Cerrado", cls: "bg-slate-500/15 text-slate-400" },
   CERRADO_ADMINISTRATIVO: { label: "Cierre administrativo", cls: "bg-slate-500/15 text-slate-500" },
-};
-const fechaReporte = (valor) => valor ? new Date(valor.endsWith?.("Z") ? valor : `${valor}Z`) : null;
-const antiguedadReporte = (valor) => {
-  const fecha = fechaReporte(valor);
-  if (!fecha || Number.isNaN(fecha.getTime())) return "Sin fecha";
-  const dias = Math.max(0, Math.floor((Date.now() - fecha.getTime()) / 86400000));
-  if (dias === 0) return "Hoy";
-  if (dias === 1) return "Hace 1 día";
-  return `Hace ${dias} días`;
 };
 
 const estadoCumplimientoTutor = (tutor) => {
@@ -1343,6 +1334,7 @@ export default function TutoriaAdmin() {
   const [cargandoReportes, setCargandoReportes] = useState(true);
   const [errorReportes, setErrorReportes] = useState(false);
   const [resultadoCierreReporte, setResultadoCierreReporte] = useState("");
+  const [errorCierreReporte, setErrorCierreReporte] = useState('');
   const [informes, setInformes] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [modal, setModal] = useState(null); // null | "grupo" | "importar" | {type:"atender", can}
@@ -1462,6 +1454,7 @@ export default function TutoriaAdmin() {
       cargarReportesTutor();
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo asignar el reporte", "error");
+      return { error: err.response?.data?.detail || 'No se pudo asignar el reporte' };
     }
   };
 
@@ -1506,6 +1499,7 @@ export default function TutoriaAdmin() {
 
   const cerrarReporteInstitucional = async (e) => {
     e.preventDefault();
+    setErrorCierreReporte('');
     if (resultadoCierreReporte.trim().length < 5) return;
     try {
       await api.put(`/tutoria/reportes-tutor/${modal.reporte.id}/estado`, {
@@ -1517,16 +1511,20 @@ export default function TutoriaAdmin() {
       cargarReportesTutor();
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo cerrar el reporte", "error");
+      setErrorCierreReporte(err.response?.data?.detail || 'No se pudo cerrar el reporte');
     }
   };
 
   const recordarTutor = async (reporte) => {
     try {
-      await api.post(`/tutoria/reportes-tutor/${reporte.id}/recordar`);
+      const { data } = await api.post(`/tutoria/reportes-tutor/${reporte.id}/recordar`);
+      setModal(actual => actual?.type === 'detalle-reporte' && actual.reporte.id === reporte.id
+        ? { ...actual, reporte: data } : actual);
       showToast("Recordatorio enviado al tutor", "success");
       cargarReportesTutor();
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo enviar el recordatorio", "error");
+      return { error: err.response?.data?.detail || 'No se pudo enviar el recordatorio' };
     }
   };
 
@@ -2868,20 +2866,25 @@ export default function TutoriaAdmin() {
         <ModalAtenderCan can={modal.can} onClose={() => setModal(null)}
           onAtendida={() => { setModal(null); cargarCanalizaciones(); cargarDash(); }} />
       )}
-      {modal?.type === "detalle-reporte" && (() => {
-        const r = modal.reporte;
-        const estado = ESTADO_REPORTE[r.estado] || { label: toTitleCase(r.estado), cls: "bg-slate-500/15 text-slate-400" };
-        const recordatorioReciente = fechaReporte(r.ultimo_recordatorio_en) && Date.now() - fechaReporte(r.ultimo_recordatorio_en).getTime() < 48 * 3600000;
-        return <div className="fixed inset-0 z-[80] bg-slate-950/55" onMouseDown={() => setModal(null)}><aside onMouseDown={e => e.stopPropagation()} className={`ml-auto flex h-full w-full max-w-xl flex-col shadow-2xl ${isDay ? "bg-white" : "bg-slate-900"}`}><header className="flex items-start justify-between border-b border-white/10 p-5"><div><span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${estado.cls}`}>{estado.label}</span><h2 className={`mt-2 text-lg font-semibold ${isDay ? "text-slate-950" : "text-white"}`}>{r.es_reporte_grupal ? r.alumno_nombre : nombreAlumno(r.alumno_nombre)}</h2><p className="text-xs text-slate-500">{r.matricula} · {r.materia}</p></div><button onClick={() => setModal(null)} className="text-2xl text-slate-400" aria-label="Cerrar detalle">×</button></header><div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5"><section><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Motivo</p><p className={`mt-1 font-medium ${isDay ? "text-slate-800" : "text-slate-200"}`}>{r.titulo}</p>{r.detalle && <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-400">{r.detalle}</p>}</section><section className="grid grid-cols-2 gap-3 rounded-xl border border-white/10 p-4 text-sm"><div><p className="text-xs text-slate-500">Reportó</p><p>{r.reportado_por}</p></div><div><p className="text-xs text-slate-500">Tutor actual</p><p>{r.tutor_destinatario || "Sin asignar"}</p></div><div><p className="text-xs text-slate-500">Fecha de envío</p><p title={fechaReporte(r.creado_en)?.toLocaleString("es-MX")}>{antiguedadReporte(r.creado_en)}</p></div><div><p className="text-xs text-slate-500">Prioridad</p><p>{r.prioridad_confirmada ? toTitleCase(r.prioridad) : "No confirmada (registro histórico)"}</p></div></section><section><p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Trazabilidad</p><ol className="mt-2 space-y-2 border-l border-slate-600 pl-4 text-sm"><li><b>Enviado</b><span className="block text-xs text-slate-500">{fechaReporte(r.creado_en)?.toLocaleString("es-MX")}</span></li>{r.recibido_en && <li><b>Visto por el tutor</b><span className="block text-xs text-slate-500">{fechaReporte(r.recibido_en)?.toLocaleString("es-MX")}</span></li>}{r.ultimo_recordatorio_en && <li><b>Recordatorio enviado</b><span className="block text-xs text-slate-500">{fechaReporte(r.ultimo_recordatorio_en)?.toLocaleString("es-MX")}</span></li>}{r.reasignado_en && <li><b>Reasignado</b><span className="block text-xs text-slate-500">{fechaReporte(r.reasignado_en)?.toLocaleString("es-MX")}</span></li>}{r.cerrado_en && <li><b>{estado.label}</b><span className="block text-xs text-slate-500">{fechaReporte(r.cerrado_en)?.toLocaleString("es-MX")}</span></li>}</ol></section>{r.resultado && <section className="rounded-xl bg-emerald-500/10 p-4 text-sm text-emerald-300"><b>Resultado:</b><p className="mt-1 whitespace-pre-wrap">{r.resultado}</p></section>}</div>{!["CERRADO", "CERRADO_ADMINISTRATIVO", "ATENDIDO", "CANALIZADO"].includes(r.estado) && <footer className="space-y-2 border-t border-white/10 p-4"><div className="flex gap-2"><select value={asignandoReporte[r.id] || ""} onChange={e => setAsignandoReporte({ ...asignandoReporte, [r.id]: e.target.value })} className="input-dark min-w-0 flex-1"><option value="">{r.tutor_destinatario ? "Seleccionar otro tutor" : "Asignar tutor"}</option>{grupos.map(g => <option key={g.id} value={g.id}>{g.grupo} · {g.tutor_nombre}</option>)}</select><button onClick={() => asignarReporte(r)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">{r.tutor_destinatario ? "Reasignar" : "Asignar"}</button></div><div className="flex justify-between gap-2">{r.tutor_destinatario && <button disabled={recordatorioReciente} onClick={() => recordarTutor(r)} className="rounded-lg border border-amber-500/30 px-3 py-2 text-xs text-amber-400 disabled:text-slate-500">{recordatorioReciente ? `Recordado ${antiguedadReporte(r.ultimo_recordatorio_en).toLowerCase()}` : "Recordar al tutor"}</button>}<button onClick={() => { setResultadoCierreReporte(""); setModal({ type: "cerrar-reporte", reporte: r }); }} className="ml-auto rounded-lg px-3 py-2 text-xs text-slate-500">Cierre administrativo</button></div></footer>}</aside></div>;
-      })()}
+      {modal?.type === "detalle-reporte" && (
+        <DetalleReporteTutorial key={modal.reporte.id} reporte={modal.reporte}
+          estado={ESTADO_REPORTE[modal.reporte.estado] || { label: toTitleCase(modal.reporte.estado), cls: "bg-slate-500/15 text-slate-400" }}
+          prioridad={toTitleCase(modal.reporte.prioridad)} isDay={isDay} grupos={grupos}
+          asignacion={asignandoReporte[modal.reporte.id]}
+          onAsignacion={value => setAsignandoReporte(prev => ({ ...prev, [modal.reporte.id]: value }))}
+          onAsignar={() => asignarReporte(modal.reporte)} onRecordar={() => recordarTutor(modal.reporte)}
+          onCerrarReporte={() => { setResultadoCierreReporte(""); setErrorCierreReporte(''); setModal({ type: "cerrar-reporte", reporte: modal.reporte }); }}
+          onClose={() => setModal(null)} />
+      )}
       {modal?.type === "cerrar-reporte" && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={() => setModal(null)}>
-          <form onSubmit={cerrarReporteInstitucional} onMouseDown={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl">
-            <header className="border-b border-white/10 p-5"><h2 className="font-semibold">Cerrar reporte institucionalmente</h2><p className="mt-1 text-xs text-slate-400">{modal.reporte.alumno_nombre} · {modal.reporte.titulo}</p></header>
-            <div className="space-y-3 p-5"><p className="text-sm text-amber-300">Usa esta acción solo cuando exista evidencia de atención o el caso deba cerrarse administrativamente.</p><label className="block text-sm text-slate-300">Resultado y justificación *<textarea required minLength={5} rows={5} spellCheck="true" value={resultadoCierreReporte} onChange={e => setResultadoCierreReporte(e.target.value)} className="input-dark mt-1" placeholder="Describe la atención realizada o el motivo del cierre" /></label></div>
-            <footer className="flex justify-end gap-2 border-t border-white/10 p-4"><button type="button" onClick={() => setModal(null)} className="rounded-lg border border-white/10 px-4 py-2 text-sm">Cancelar</button><button disabled={resultadoCierreReporte.trim().length < 5} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-700">Registrar cierre</button></footer>
+        <ModalTutorial tituloId="cerrar-reporte-titulo" isDay={isDay} compacto onClose={() => setModal({ type: "detalle-reporte", reporte: modal.reporte })}>
+          <form onSubmit={cerrarReporteInstitucional} className="min-h-0 overflow-y-auto">
+            <header className="tutorial-detail-header"><div><h2 id="cerrar-reporte-titulo" data-dialog-heading tabIndex={-1} className="font-semibold">Cerrar reporte institucionalmente</h2><p className="tutorial-muted mt-1 text-xs">{modal.reporte.alumno_nombre} · {modal.reporte.titulo}</p></div></header>
+            <div className="space-y-3 p-5"><p className="tutorial-muted text-sm">Usa esta acción solo cuando exista evidencia de atención o el caso deba cerrarse administrativamente.</p><label className="block text-sm">Resultado y justificación *<textarea required minLength={5} rows={5} spellCheck="true" value={resultadoCierreReporte} onChange={e => setResultadoCierreReporte(e.target.value)} className="tutorial-select mt-1 w-full rounded-lg border p-3" placeholder="Describe la atención realizada o el motivo del cierre" /></label></div>
+            {errorCierreReporte && <p role="alert" className="mx-5 mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm">{errorCierreReporte}</p>}
+            <footer className="tutorial-detail-footer"><button type="button" onClick={() => setModal({ type: "detalle-reporte", reporte: modal.reporte })} className="tutorial-secondary">Cancelar</button><button disabled={resultadoCierreReporte.trim().length < 5} className="tutorial-primary">Registrar cierre</button></footer>
           </form>
-        </div>
+        </ModalTutorial>
       )}
       {modalSeguimiento && (
         <ModalSeguimientoAlumno
