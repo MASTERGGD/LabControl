@@ -174,6 +174,11 @@ class CierreInput(BaseModel):
         return self
 
 
+class EstadoSeguimientoClaseInput(BaseModel):
+    tipo: str = Field(..., pattern=r"^(TEMA|TAREA)$")
+    estado: str = Field(..., pattern=r"^(PENDIENTE|EN_PROCESO|VISTO|NO_APLICA)$")
+
+
 class CorreccionInput(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=500)
 
@@ -728,6 +733,8 @@ def _serializar_clase(clase: ClaseDocente):
             "incidencia_requiere_seguimiento": clase.incidencia_requiere_seguimiento,
             "incidencia_solicita_justificacion": clase.incidencia_solicita_justificacion,
             "tema_pendiente": clase.tema_pendiente,
+            "tema_pendiente_estado": clase.tema_pendiente_estado,
+            "tarea_asignada_estado": clase.tarea_asignada_estado,
         },
         "carga": {
             "id": carga.id,
@@ -1795,6 +1802,10 @@ def cerrar_clase(
         valor = getattr(data, campo)
         if valor is not None:
             setattr(clase, campo, valor)
+    if data.tema_pendiente is not None:
+        clase.tema_pendiente_estado = "PENDIENTE" if (clase.tema_pendiente or "").strip() else "VISTO"
+    if data.tarea_asignada is not None:
+        clase.tarea_asignada_estado = "PENDIENTE" if (clase.tarea_asignada or "").strip() else "VISTO"
     canalizacion = None
     if clase.incidencia_requiere_seguimiento and clase.incidencias:
         grupo_tutorado = grupo_tutoria_para_academico(db, clase.carga.grupo_academico_id)
@@ -1865,6 +1876,31 @@ def cerrar_clase(
     respuesta = _serializar_clase(clase)
     respuesta["canalizacion_tutoria"] = canalizacion
     return respuesta
+
+
+@router.patch("/clases/{clase_id}/seguimiento")
+def actualizar_estado_seguimiento_clase(
+    clase_id: int,
+    data: EstadoSeguimientoClaseInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    clase = db.query(ClaseDocente).join(CargaDocente).filter(
+        ClaseDocente.id == clase_id,
+        CargaDocente.docente_id == current_user.id,
+    ).first()
+    if not clase:
+        raise HTTPException(404, "Clase no encontrada")
+    if clase.estado != "CERRADA":
+        raise HTTPException(409, "El seguimiento solo se puede actualizar después de cerrar la clase")
+    texto = clase.tema_pendiente if data.tipo == "TEMA" else clase.tarea_asignada
+    if not (texto or "").strip():
+        raise HTTPException(409, "Este registro ya no contiene un pendiente")
+    campo_estado = "tema_pendiente_estado" if data.tipo == "TEMA" else "tarea_asignada_estado"
+    setattr(clase, campo_estado, data.estado)
+    db.commit()
+    db.refresh(clase)
+    return _serializar_clase(clase)
 
 
 @router.post("/clases/{clase_id}/habilitar-correccion")

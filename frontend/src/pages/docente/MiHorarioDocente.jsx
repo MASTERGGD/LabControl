@@ -573,14 +573,26 @@ export default function MiHorarioDocente() {
       setReposicionesPendientes(periodoElegido?.es_actual ? reposicionesRes.data : []);
       setCierre(cierreRes.data);
       const fechaLocal = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
-      const ultimos = historialRes.data
-        .filter((clase) => clase.estado === 'CERRADA' && clase.fecha < fechaLocal && (clase.bitacora?.tarea_asignada?.trim() || clase.bitacora?.tema_pendiente?.trim()))
-        .sort((a, b) => b.fecha.localeCompare(a.fecha))
-        .reduce((acc, clase) => {
-          if (!acc[clase.carga.id]) acc[clase.carga.id] = clase;
-          return acc;
-        }, {});
-      setRecordatorios(ultimos);
+      const seguimientosAbiertos = historialRes.data.flatMap((clase) => {
+        if (clase.estado !== 'CERRADA' || clase.fecha >= fechaLocal) return [];
+        return [
+          {
+            tipo: 'TEMA', texto: clase.bitacora?.tema_pendiente?.trim(),
+            estado: clase.bitacora?.tema_pendiente_estado || 'PENDIENTE',
+          },
+          {
+            tipo: 'TAREA', texto: clase.bitacora?.tarea_asignada?.trim(),
+            estado: clase.bitacora?.tarea_asignada_estado || 'PENDIENTE',
+          },
+        ].filter((item) => item.texto && ['PENDIENTE', 'EN_PROCESO'].includes(item.estado))
+          .map((item) => ({ ...item, clase_id: clase.id, fecha: clase.fecha, carga: clase.carga }));
+      }).reduce((acc, seguimiento) => {
+        const clave = String(seguimiento.carga.id);
+        acc[clave] = [...(acc[clave] || []), seguimiento];
+        return acc;
+      }, {});
+      Object.values(seguimientosAbiertos).forEach((items) => items.sort((a, b) => b.fecha.localeCompare(a.fecha)));
+      setRecordatorios(seguimientosAbiertos);
     } catch {
       const local = await getOfflineSnapshot(`paquete-docente:${usuario?.id || 'anon'}`).catch(() => null);
       if (local?.data?.horario) {
@@ -854,8 +866,29 @@ export default function MiHorarioDocente() {
       setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
     }
   };
+  const cambiarEstadoSeguimiento = async (seguimiento, estado) => {
+    try {
+      await api.patch(`/docencia/clases/${seguimiento.clase_id}/seguimiento`, {
+        tipo: seguimiento.tipo,
+        estado,
+      });
+      const clave = String(seguimiento.carga.id);
+      setRecordatorios((actuales) => {
+        const restantes = (actuales[clave] || []).filter((item) => (
+          item.clase_id !== seguimiento.clase_id || item.tipo !== seguimiento.tipo
+        ));
+        if (estado !== 'VISTO' && estado !== 'NO_APLICA') {
+          restantes.push({ ...seguimiento, estado });
+          restantes.sort((a, b) => b.fecha.localeCompare(a.fecha));
+        }
+        return { ...actuales, [clave]: restantes };
+      });
+    } catch (err) {
+      setMensaje(err.response?.data?.detail || 'No se pudo actualizar el seguimiento.');
+    }
+  };
   const esNoLectiva = (item) => item?.estadoDia === 'NO_LECTIVA';
-  const recordatorioPrincipal = actividadPrincipal ? recordatorios[actividadPrincipal.id] : null;
+  const recordatorioPrincipal = actividadPrincipal ? recordatorios[String(actividadPrincipal.id)] : null;
 
   return (
     <AdminLayout>
@@ -919,12 +952,20 @@ export default function MiHorarioDocente() {
                       {actividadPrincipal.calendario?.motivo} · No se requiere registrar clase ni asistencia.
                     </p>
                   )}
-                  {!esNoLectiva(actividadPrincipal) && recordatorioPrincipal && (
-                    <div className="mt-3 text-sm">
-                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2" style={{ color: 'var(--accent-warning-ui)' }}>
-                        <span className="block text-[10px] font-bold uppercase tracking-wider">Pendiente de la sesión anterior</span>
-                        {[recordatorioPrincipal.bitacora?.tema_pendiente?.trim(), recordatorioPrincipal.bitacora?.tarea_asignada?.trim()].filter(Boolean).map((pendiente, indice) => <span key={`${pendiente}-${indice}`} className="mt-1 block whitespace-pre-wrap break-words">{pendiente}</span>)}
-                      </div>
+                  {!esNoLectiva(actividadPrincipal) && recordatorioPrincipal?.length > 0 && (
+                    <div className="mt-3 space-y-2 text-sm">
+                      {recordatorioPrincipal.map((seguimiento) => (
+                        <div key={`${seguimiento.clase_id}-${seguimiento.tipo}`} className="rounded-xl border border-amber-500/20 bg-amber-500/[0.07] px-3 py-2" style={{ color: 'var(--accent-warning-ui)' }}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{seguimiento.tipo === 'TEMA' ? 'Tema por retomar' : 'Trabajo por revisar'} · {seguimiento.estado === 'EN_PROCESO' ? 'En seguimiento' : 'Pendiente'} desde {new Date(`${seguimiento.fecha}T12:00:00`).toLocaleDateString('es-MX')}</span>
+                            <div className="flex gap-2">
+                              {seguimiento.estado !== 'EN_PROCESO' && <button type="button" onClick={() => cambiarEstadoSeguimiento(seguimiento, 'EN_PROCESO')} className="rounded-lg border border-amber-500/30 px-2 py-1 text-xs font-semibold hover:bg-amber-500/10">Continuar</button>}
+                              <button type="button" onClick={() => cambiarEstadoSeguimiento(seguimiento, 'VISTO')} className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-500">Marcar visto</button>
+                            </div>
+                          </div>
+                          <span className="mt-1 block whitespace-pre-wrap break-words">{seguimiento.texto}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

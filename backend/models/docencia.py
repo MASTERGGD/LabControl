@@ -71,6 +71,8 @@ class ClaseDocente(Base):
         Boolean, nullable=False, default=False, server_default=false(),
     )
     tema_pendiente = Column(Text, nullable=True)
+    tema_pendiente_estado = Column(String(20), nullable=False, default="PENDIENTE", server_default="PENDIENTE")
+    tarea_asignada_estado = Column(String(20), nullable=False, default="PENDIENTE", server_default="PENDIENTE")
     es_extemporanea = Column(Boolean, nullable=False, default=False, server_default=false())
     motivo_extemporaneo = Column(Text, nullable=True)
     capturada_extemporanea_en = Column(DateTime, nullable=True)
