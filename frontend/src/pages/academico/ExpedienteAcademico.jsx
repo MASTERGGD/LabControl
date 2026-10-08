@@ -56,6 +56,44 @@ function Badge({ children, className = '' }) {
   return <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${className}`}>{children}</span>;
 }
 
+function FaltasDetalle({ materia }) {
+  const { themeKey } = useTheme();
+  const [abierta, setAbierta] = useState(false);
+  const faltas = Number(materia.falta || 0);
+  const detalle = materia.faltas_detalle || [];
+  const id = `faltas-${materia.clave}`;
+  if (!faltas) return <span className="text-slate-500">0</span>;
+
+  return (
+    <div className={abierta ? 'w-full' : 'inline-flex'}>
+      <button
+        type="button"
+        aria-expanded={abierta}
+        aria-controls={id}
+        onClick={() => setAbierta(valor => !valor)}
+        className="font-semibold text-red-500 underline decoration-red-500/40 underline-offset-2 hover:text-red-400"
+      >
+        {faltas} {faltas === 1 ? 'falta' : 'faltas'} · {abierta ? 'ocultar fechas' : 'ver fechas'}
+      </button>
+      {abierta && (
+        <div id={id} className={`mt-2 rounded-lg border p-3 text-left text-xs ${themeKey === 'day' ? 'border-red-200 bg-red-50/70 text-slate-700' : 'border-red-500/20 bg-red-500/5 text-slate-300'}`}>
+          <p className="mb-2 font-semibold">Fechas de falta · {materia.materia}</p>
+          {detalle.length ? (
+            <ul className="space-y-1.5">
+              {detalle.map((falta, indice) => (
+                <li key={`${falta.fecha}-${falta.hora_inicio}-${indice}`} className="flex flex-wrap justify-between gap-x-4 gap-y-0.5">
+                  <span>{new Date(`${falta.fecha}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                  <span className="font-medium tabular-nums">{falta.hora_inicio}–{falta.hora_fin}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-slate-500">No hay fechas de falta disponibles.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Kpi({ label, value, hint, tone = 'text-blue-400' }) {
   const { themeKey } = useTheme();
   return (
@@ -119,7 +157,7 @@ function MateriasTable({ materias, compact = false }) {
                 {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600">{m.clases_abiertas} abiertas · provisionales</span>}
               </td>
               <td className="px-4 py-3 text-center">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
-              <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
+              <td className="px-4 py-3 text-center"><FaltasDetalle materia={m} /></td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>
               <td className="px-4 py-3"><Badge className={`${ESTADO_MATERIA[m.estado]} whitespace-nowrap`}>{ICONO_ESTADO_MATERIA[m.estado]} {m.estado === 'BASE_INSUFICIENT' ? 'SIN BASE' : labelEstado(m.estado)}</Badge></td>
             </tr>
@@ -268,7 +306,7 @@ function Asistencia({ data }) {
                   <span className={`shrink-0 font-bold ${muestraInsuficiente ? 'text-slate-400' : ''}`}>{muestraInsuficiente ? '—' : m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : 'Sin datos'}</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-slate-500/15"><div className={`h-full rounded-full ${color}`} style={{ width: muestraInsuficiente ? '100%' : `${porcentaje * 100 / max}%` }} /></div>
-                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500"><span>{m.clases_registradas || 0} clases impartidas</span>{muestraInsuficiente && <span className="font-semibold text-slate-400">Muestra insuficiente</span>}<span>{m.presente} presentes</span><span>{m.falta} faltas</span><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span>{Number(m.sin_registro || 0) > 0 && <span className="font-semibold text-slate-400">{m.sin_registro} sin registro</span>}</div>
+                <div className="mt-1 flex flex-wrap items-start gap-3 text-[10px] text-slate-500"><span>{m.clases_registradas || 0} clases impartidas</span>{muestraInsuficiente && <span className="font-semibold text-slate-400">Muestra insuficiente</span>}<span>{m.presente} presentes</span><FaltasDetalle materia={m} /><span>{m.retardo} retardos</span><span>{m.justificada} justificadas</span>{Number(m.sin_registro || 0) > 0 && <span className="font-semibold text-slate-400">{m.sin_registro} sin registro</span>}</div>
               </div>
             );
           })}

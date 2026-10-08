@@ -688,6 +688,20 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
         total = len(asistencias)
         asistio = conteos["presente"] + conteos["retardo"] + conteos["justificada"]
         porcentaje = round(asistio * 100 / total, 1) if total else None
+        faltas_detalle = []
+        clase_por_id = {clase.id: clase for clase in clases}
+        for asistencia in asistencias:
+            if asistencia.estado != "FALTA":
+                continue
+            clase = clase_por_id.get(asistencia.clase_docente_id)
+            carga = carga_por_id.get(clase.carga_docente_id) if clase else None
+            if clase and carga:
+                faltas_detalle.append({
+                    "fecha": clase.fecha.isoformat(),
+                    "hora_inicio": carga.hora_inicio,
+                    "hora_fin": carga.hora_fin,
+                })
+        faltas_detalle.sort(key=lambda falta: (falta["fecha"], falta["hora_inicio"]))
 
         registros = db.query(SeguimientoAlumnoDocente).filter(
             SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
@@ -715,6 +729,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
             "clases_abiertas": clases_abiertas,
             "asistencias_registradas": total,
             "sin_registro": max(0, len(clases) - total),
+            "faltas_detalle": faltas_detalle,
             **conteos,
             "porcentaje_asistencia": porcentaje,
             "promedio_evidencias": promedio,

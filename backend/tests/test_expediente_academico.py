@@ -458,6 +458,10 @@ def test_expediente_suma_faltas_historicas_y_excluye_listas_abiertas(db):
     assert materias[0]["clases_abiertas"] == 1
     assert materias[0]["falta"] == 2
     assert materias[0]["presente"] == 0
+    assert [falta["fecha"] for falta in materias[0]["faltas_detalle"]] == [
+        "2026-09-22", "2026-10-07",
+    ]
+    assert len(materias[0]["faltas_detalle"]) == materias[0]["falta"]
 
 
 def test_trayectoria_agrupa_inscripciones_equivalentes_y_conserva_movimientos(client, db, admin_user):
