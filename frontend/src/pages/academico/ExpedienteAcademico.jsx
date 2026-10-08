@@ -114,7 +114,10 @@ function MateriasTable({ materias, compact = false }) {
             <tr key={m.clave} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
               <td className={`px-4 py-3 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{m.materia}</td>
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
-              <td className="px-4 py-3 text-center">{m.clases_registradas}</td>
+              <td className="px-4 py-3 text-center">
+                <span>{m.clases_registradas}</span>
+                {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600">{m.clases_abiertas} abiertas · provisionales</span>}
+              </td>
               <td className="px-4 py-3 text-center">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
               <td className={`px-4 py-3 text-center ${m.falta ? 'text-red-400' : 'text-slate-500'}`}>{m.falta}</td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>

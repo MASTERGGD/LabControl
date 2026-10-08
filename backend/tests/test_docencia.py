@@ -174,6 +174,7 @@ def test_cambiar_horario_con_clases_crea_version_y_conserva_historial(client, db
     assert clase.carga_docente_id == carga.id and clase.estado == "CERRADA"
     assert nueva.activo is True and nueva.estado == "BORRADOR"
     assert nueva.dia_semana == 4 and nueva.hora_inicio == "08:00"
+    assert nueva.carga_linaje_id == carga.id
 
     nueva.estado = "ACTIVO"
     no_impartida = ClaseDocente(
@@ -687,6 +688,31 @@ def test_captura_extemporanea_solo_dentro_de_7_dias(client, db, monkeypatch):
     assert duplicada.status_code == 409
 
     clase_extemporanea = db.query(ClaseDocente).filter(ClaseDocente.id == creada.json()["id"]).one()
+    version_anterior = CargaDocente(
+        docente_id=docente.id, periodo_id=periodo.id, grupo_academico_id=grupo.id,
+        tipo_actividad="CLASE", actividad_nombre="Clase del jueves",
+        dia_semana=3, hora_inicio="08:00", hora_fin="09:00",
+        estado="RETIRADO", activo=False,
+    )
+    db.add(version_anterior)
+    db.flush()
+    vigente.carga_linaje_id = version_anterior.id
+    version_anterior.activo = False
+    clase_extemporanea.carga_docente_id = version_anterior.id
+    db.commit()
+    disponibles_con_historial = client.get(
+        "/docencia/capturas-extemporaneas/disponibles", headers=headers,
+    )
+    assert disponibles_con_historial.status_code == 200, disponibles_con_historial.text
+    assert (vigente.id, "2026-07-30") not in [
+        (item["carga_id"], item["fecha"]) for item in disponibles_con_historial.json()
+    ]
+    duplicada_en_version_anterior = client.post(
+        f"/docencia/horario/{vigente.id}/captura-extemporanea",
+        headers=headers,
+        json={"fecha": "2026-07-30", "motivo": "Intento de otra versión."},
+    )
+    assert duplicada_en_version_anterior.status_code == 409
     db.delete(clase_extemporanea)
     db.commit()
     no_impartida = client.post(

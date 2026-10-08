@@ -13,6 +13,7 @@ from tests.test_reportes_tutor import _escenario
 from routers.expediente_academico import (
     _clasificar_panorama, _estado_materia, _racha_reciente_por_materia,
     _tendencias_asistencia, _cumplimiento_sesiones, _semaforo,
+    _agrupar_materias, _grupo_y_cargas,
 )
 
 
@@ -417,6 +418,46 @@ def test_expediente_consolida_materias_asistencia_y_acuerdos(client, db, admin_u
     ).first()
     assert auditoria is not None
     assert auditoria.detalle["alumno_id"] == alumno.id
+
+
+def test_expediente_suma_faltas_historicas_y_excluye_listas_abiertas(db):
+    _reportante, _tutor, alumno, carga, _ = _escenario(db)
+    anterior = CargaDocente(
+        docente_id=carga.docente_id, periodo_id=carga.periodo_id,
+        grupo_academico_id=carga.grupo_academico_id, materia_id=carga.materia_id,
+        tipo_actividad="CLASE", actividad_nombre=carga.actividad_nombre,
+        dia_semana=carga.dia_semana, hora_inicio=carga.hora_inicio,
+        hora_fin=carga.hora_fin, estado="RETIRADO", activo=False,
+    )
+    db.add(anterior)
+    db.flush()
+    carga.carga_linaje_id = anterior.id
+    clase_historica = ClaseDocente(
+        carga_docente_id=anterior.id, fecha=datetime.date(2026, 9, 22), estado="CERRADA",
+    )
+    clase_cerrada = ClaseDocente(
+        carga_docente_id=carga.id, fecha=datetime.date(2026, 10, 7), estado="CERRADA",
+    )
+    clase_abierta = ClaseDocente(
+        carga_docente_id=carga.id, fecha=datetime.date(2026, 10, 8), estado="ABIERTA",
+    )
+    db.add_all([clase_historica, clase_cerrada, clase_abierta])
+    db.flush()
+    db.add_all([
+        AsistenciaDocente(clase_docente_id=clase_historica.id, alumno_id=alumno.id, estado="FALTA"),
+        AsistenciaDocente(clase_docente_id=clase_cerrada.id, alumno_id=alumno.id, estado="FALTA"),
+        AsistenciaDocente(clase_docente_id=clase_abierta.id, alumno_id=alumno.id, estado="PRESENTE"),
+    ])
+    db.commit()
+
+    _grupo, cargas = _grupo_y_cargas(db, alumno)
+    materias = _agrupar_materias(db, alumno, cargas)
+
+    assert len(materias) == 1
+    assert materias[0]["clases_registradas"] == 2
+    assert materias[0]["clases_abiertas"] == 1
+    assert materias[0]["falta"] == 2
+    assert materias[0]["presente"] == 0
 
 
 def test_trayectoria_agrupa_inscripciones_equivalentes_y_conserva_movimientos(client, db, admin_user):

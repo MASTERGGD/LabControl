@@ -620,8 +620,8 @@ def _grupo_y_cargas(
     cargas = (
         db.query(CargaDocente).filter(
             CargaDocente.grupo_academico_id == grupo.id,
-            CargaDocente.activo == True,
             CargaDocente.tipo_actividad == "CLASE",
+            or_(CargaDocente.activo == True, CargaDocente.clases.any()),
         ).order_by(CargaDocente.actividad_nombre, CargaDocente.dia_semana).all()
         if grupo else []
     )
@@ -653,7 +653,27 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
     materias = []
     for item in grupos.values():
         carga_ids = item["carga_ids"]
-        clases = db.query(ClaseDocente).filter(ClaseDocente.carga_docente_id.in_(carga_ids)).all()
+        cargas_materia = [carga for carga in cargas if carga.id in carga_ids]
+        carga_por_id = {carga.id: carga for carga in cargas_materia}
+        candidatas = db.query(ClaseDocente).filter(
+            ClaseDocente.carga_docente_id.in_(carga_ids),
+        ).all()
+        # Una clase puede existir en la carga anterior y en su versión vigente.
+        # Consolidamos por linaje y fecha, dando prioridad al acta cerrada.
+        por_linaje_fecha = {}
+        for clase in candidatas:
+            carga = carga_por_id.get(clase.carga_docente_id)
+            if not carga:
+                continue
+            linaje = carga.carga_linaje_id or carga.id
+            clave_sesion = (linaje, clase.fecha)
+            preferencia = (clase.estado == "CERRADA", clase.fin is not None, clase.id)
+            actual = por_linaje_fecha.get(clave_sesion)
+            if actual is None or preferencia > actual[0]:
+                por_linaje_fecha[clave_sesion] = (preferencia, clase)
+        sesiones = [fila[1] for fila in por_linaje_fecha.values()]
+        clases_abiertas = sum(1 for clase in sesiones if clase.estado in {"ABIERTA", "CORRECCION"})
+        clases = [clase for clase in sesiones if clase.estado == "CERRADA"]
         clase_ids = [c.id for c in clases]
         asistencias = (
             db.query(AsistenciaDocente).filter(
@@ -682,7 +702,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
         racha = _racha_reciente_por_materia(
             asistencias,
             {clase.id: clase for clase in clases},
-            {carga.id: carga for carga in cargas if carga.id in carga_ids},
+            carga_por_id,
         )
         estado = _estado_materia(
             porcentaje, promedio, total, len(calificaciones),
@@ -692,6 +712,7 @@ def _agrupar_materias(db: Session, alumno: CatalogoAlumno, cargas: list[CargaDoc
         materias.append({
             **item,
             "clases_registradas": len(clases),
+            "clases_abiertas": clases_abiertas,
             "asistencias_registradas": total,
             "sin_registro": max(0, len(clases) - total),
             **conteos,

@@ -22,6 +22,7 @@ class CargaDocente(Base):
     grupo_academico_id = Column(Integer, ForeignKey("grupos_academicos.id"), nullable=True, index=True)
     materia_id = Column(Integer, ForeignKey("catalogo_materias.id"), nullable=True)
     grupo_tutorado_id = Column(Integer, ForeignKey("grupos_tutorados.id"), nullable=True, index=True)
+    carga_linaje_id = Column(Integer, nullable=True, index=True)
     tipo_actividad = Column(String(20), nullable=False, default="CLASE")
     actividad_nombre = Column(String(200), nullable=False)
     dia_semana = Column(Integer, nullable=False)

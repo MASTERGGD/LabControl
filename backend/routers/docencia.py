@@ -63,6 +63,21 @@ def _solo_docente(user: Usuario):
         raise HTTPException(403, "Acceso exclusivo del personal docente")
 
 
+def _carga_linaje_ids(db: Session, carga: CargaDocente) -> list[int]:
+    """Obtiene las versiones de una carga para no duplicar una clase histórica."""
+    raiz = carga.carga_linaje_id or carga.id
+    return [fila.id for fila in db.query(CargaDocente.id).filter(
+        or_(CargaDocente.id == raiz, CargaDocente.carga_linaje_id == raiz),
+    ).all()]
+
+
+def _clase_existente_en_linaje(db: Session, carga: CargaDocente, fecha: datetime.date) -> bool:
+    ids = _carga_linaje_ids(db, carga)
+    return bool(ids and db.query(ClaseDocente.id).filter(
+        ClaseDocente.carga_docente_id.in_(ids), ClaseDocente.fecha == fecha,
+    ).first())
+
+
 class CargaInput(BaseModel):
     periodo_id: int
     grupo_academico_id: Optional[int] = None
@@ -1102,6 +1117,7 @@ def actualizar_carga(
         nueva_carga = CargaDocente(
             docente_id=current_user.id,
             estado="BORRADOR",
+            carga_linaje_id=carga.carga_linaje_id or carga.id,
             **data.model_dump(),
         )
         db.add(nueva_carga)
@@ -1272,11 +1288,7 @@ def capturas_extemporaneas_disponibles(
             fin_programado = _fecha_programada_carga(carga, fecha, usar_fin=True)
             if fin_programado > ahora or ahora - fin_programado > PLAZO_CAPTURA_EXTEMPORANEA:
                 continue
-            existe = db.query(ClaseDocente.id).filter(
-                ClaseDocente.carga_docente_id == carga.id,
-                ClaseDocente.fecha == fecha,
-            ).first()
-            if existe:
+            if _clase_existente_en_linaje(db, carga, fecha):
                 continue
             opciones.append({
                 "carga_id": carga.id,
@@ -1313,11 +1325,7 @@ def crear_captura_extemporanea(
         raise HTTPException(404, "Clase programada no encontrada")
     _validar_carga_actual(db, carga)
     _validar_ventana_extemporanea(db, carga, data.fecha)
-    existente = db.query(ClaseDocente).filter(
-        ClaseDocente.carga_docente_id == carga.id,
-        ClaseDocente.fecha == data.fecha,
-    ).first()
-    if existente:
+    if _clase_existente_en_linaje(db, carga, data.fecha):
         raise HTTPException(409, "Esta clase ya tiene un registro de asistencia")
     clase = ClaseDocente(
         carga_docente_id=carga.id,
@@ -1362,10 +1370,7 @@ def declarar_clase_no_impartida(
         raise HTTPException(404, "Clase programada no encontrada")
     _validar_carga_actual(db, carga)
     _validar_ventana_extemporanea(db, carga, data.fecha)
-    if db.query(ClaseDocente.id).filter(
-        ClaseDocente.carga_docente_id == carga.id,
-        ClaseDocente.fecha == data.fecha,
-    ).first():
+    if _clase_existente_en_linaje(db, carga, data.fecha):
         raise HTTPException(409, "Esta clase ya tiene un registro")
 
     original = ClaseDocente(
