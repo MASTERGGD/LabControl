@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import useOfflineSync from '../hooks/useOfflineSync';
-import { discardOfflineOperation, getOfflineSnapshot, retryOfflineOperation } from '../utils/offlineStore';
+import { countPendingOfflineClasses, discardOfflineOperation, getOfflineSnapshot, retryOfflineOperation } from '../utils/offlineStore';
 
 const DIA = 86_400_000;
 const inicioCaptura = item => new Date(item.data?.capturada_en || item.createdAt);
@@ -14,6 +14,7 @@ export const getOfflineOperationTiming = (item, now = Date.now()) => {
 };
 const fechaHora = value => new Date(value).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 export const conflictoPorClaseCerrada = item => /(?:asistencia|clase).{0,80}cerrad/i.test(item?.error || '');
+export const conflictoPorDispositivoTransferido = item => /cambió su dispositivo offline autorizado/i.test(item?.error || '');
 const detalleClase = (item, contextoResuelto) => item.context || contextoResuelto || {};
 
 export default function OfflineStatus({ enabled }) {
@@ -22,8 +23,9 @@ export default function OfflineStatus({ enabled }) {
   const [contextosResueltos, setContextosResueltos] = useState({});
   const canSync = online && Boolean(sessionStorage.getItem('token'));
   const urgentes = useMemo(() => operations.filter(item => getOfflineOperationTiming(item).edadDias >= 5).length, [operations]);
-  const cantidad = pending + conflicts;
-  const label = !online ? `${cantidad} local${cantidad === 1 ? '' : 'es'}` : syncing ? 'Sincronizando…' : conflicts ? `${conflicts} requiere${conflicts === 1 ? '' : 'n'} revisión` : `${pending} pendiente${pending === 1 ? '' : 's'}`;
+  const cantidad = countPendingOfflineClasses(operations);
+  const cantidadConflictos = countPendingOfflineClasses(operations.filter(item => item.status === 'CONFLICT'));
+  const label = syncing ? 'Sincronizando…' : conflicts ? `${cantidadConflictos} clase${cantidadConflictos === 1 ? '' : 's'} requiere${cantidadConflictos === 1 ? '' : 'n'} revisión` : !online ? `${cantidad} clase${cantidad === 1 ? '' : 's'} local${cantidad === 1 ? '' : 'es'}` : `${cantidad} clase${cantidad === 1 ? '' : 's'} pendiente${cantidad === 1 ? '' : 's'}`;
   useEffect(() => {
     let activo = true;
     const resolverContextosAnteriores = async () => {
@@ -35,6 +37,7 @@ export default function OfflineStatus({ enabled }) {
         const clase = snapshot?.data?.clase;
         if (!clase) return null;
         return [item.id, {
+          carga_id: clase.carga?.id,
           fecha: clase.fecha,
           materia: clase.carga?.actividad_nombre,
           grupo: clase.carga?.grupo,
@@ -47,6 +50,11 @@ export default function OfflineStatus({ enabled }) {
     resolverContextosAnteriores();
     return () => { activo = false; };
   }, [operations, contextosResueltos]);
+  useEffect(() => {
+    const solicitarSincronizacion = () => sync();
+    window.addEventListener('siga:offline-sync-request', solicitarSincronizacion);
+    return () => window.removeEventListener('siga:offline-sync-request', solicitarSincronizacion);
+  }, [sync]);
   if (!enabled || (online && !pending && !conflicts)) return null;
 
   const descartar = async item => {
@@ -77,15 +85,16 @@ export default function OfflineStatus({ enabled }) {
           const alerta = restantes <= 2;
           const contexto = detalleClase(item, contextosResueltos[item.id]);
           const errorClaseCerrada = item.status === 'CONFLICT' && conflictoPorClaseCerrada(item);
+          const dispositivoTransferido = item.status === 'CONFLICT' && conflictoPorDispositivoTransferido(item);
           const fechaClase = contexto.fecha || item.data?.fecha;
           const detalleFecha = [fechaClase, contexto.hora_inicio, contexto.grupo].filter(Boolean).join(' · ') || 'Fecha no disponible';
           const tituloCaptura = item.label || 'Captura local';
           const titulo = contexto.materia && !tituloCaptura.toLocaleLowerCase().includes(contexto.materia.toLocaleLowerCase()) ? `${tituloCaptura} · ${contexto.materia}` : tituloCaptura;
           return <article key={item.id} className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel-soft)', color: 'var(--text-primary)' }}>
-            <div className="flex flex-wrap items-start justify-between gap-2"><div><strong>{titulo}</strong><p className="text-sm" style={{ color: 'var(--text-muted)' }}>{detalleFecha} · guardada {fechaHora(item.data?.capturada_en || item.createdAt)}</p></div><span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ background: 'var(--surface-panel)', color: 'var(--text-secondary)' }}>{errorClaseCerrada ? 'Clase cerrada en SIGA' : item.status === 'CONFLICT' ? 'Requiere revisión' : vencida ? 'Plazo vencido' : `Vence en ${restantes} día${restantes === 1 ? '' : 's'}`}</span></div>
-            {errorClaseCerrada ? <div className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', color: 'var(--text-secondary)' }}><b style={{ color: 'var(--text-primary)' }}>Este cambio no se aplicó:</b> la asistencia de esta clase ya está cerrada en SIGA. Revisa el registro en Historial de clases. Si el cambio no aparece, descarga el respaldo y solicita una corrección.</div> : item.error && <p className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}><b style={{ color: 'var(--text-primary)' }}>Respuesta del servidor:</b> {item.error}</p>}
+            <div className="flex flex-wrap items-start justify-between gap-2"><div><strong>{titulo}</strong><p className="text-sm" style={{ color: 'var(--text-muted)' }}>{detalleFecha} · guardada {fechaHora(item.data?.capturada_en || item.createdAt)}</p></div><span className="rounded-full px-2 py-1 text-xs font-semibold" style={{ background: 'var(--surface-panel)', color: 'var(--text-secondary)' }}>{errorClaseCerrada ? 'Clase cerrada en SIGA' : dispositivoTransferido ? 'Dispositivo transferido' : item.status === 'CONFLICT' ? 'Requiere revisión' : vencida ? 'Plazo vencido' : `Vence en ${restantes} día${restantes === 1 ? '' : 's'}`}</span></div>
+            {errorClaseCerrada ? <div className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', color: 'var(--text-secondary)' }}><b style={{ color: 'var(--text-primary)' }}>Este cambio no se aplicó:</b> la asistencia de esta clase ya está cerrada en SIGA. Revisa el registro en Historial de clases. Si el cambio no aparece, descarga el respaldo y solicita una corrección.</div> : dispositivoTransferido ? <div className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', color: 'var(--text-secondary)' }}><b style={{ color: 'var(--text-primary)' }}>La captura sigue guardada aquí.</b> Se autorizó otro dispositivo offline. Para enviar esta captura, inicia sesión y vuelve a activar este dispositivo; no la elimines antes de verificarla.</div> : item.error && <p className="mt-3 rounded-lg border p-3 text-sm" style={{ borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}><b style={{ color: 'var(--text-primary)' }}>Respuesta del servidor:</b> {item.error}</p>}
             {vencida && !item.error && <p className="mt-3 text-sm" style={{ color: 'var(--text-secondary)' }}>La captura se conserva, pero el envío automático ya venció. Inicia sesión para validarla o tramitar su revisión.</p>}
-            <div className="mt-3 flex flex-wrap gap-2"><button onClick={() => respaldar(item)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>Descargar respaldo</button>{errorClaseCerrada && <a href="/docente/historial-clases" onClick={() => setAbierto(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'var(--accent-success-ui)', color: '#fff' }}>Abrir Historial de clases</a>}{item.status === 'CONFLICT' && !errorClaseCerrada && <button onClick={() => retryOfflineOperation(item.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ borderColor: 'var(--accent-warning-ui)', color: 'var(--accent-warning-ui)' }}>Reintentar</button>}<button onClick={() => descartar(item)} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>Eliminar copia local</button></div>
+            <div className="mt-3 flex flex-wrap gap-2"><button onClick={() => respaldar(item)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>Descargar respaldo</button>{errorClaseCerrada && <a href="/docente/historial-clases" onClick={() => setAbierto(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'var(--accent-success-ui)', color: '#fff' }}>Abrir Historial de clases</a>}{dispositivoTransferido && <a href="/docente" onClick={() => setAbierto(false)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ background: 'var(--accent-success-ui)', color: '#fff' }}>Revisar dispositivo offline</a>}{item.status === 'CONFLICT' && !errorClaseCerrada && !dispositivoTransferido && <button onClick={() => retryOfflineOperation(item.id)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ borderColor: 'var(--accent-warning-ui)', color: 'var(--accent-warning-ui)' }}>Reintentar</button>}<button onClick={() => descartar(item)} className="rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-80" style={{ color: 'var(--text-secondary)' }}>Eliminar copia local</button></div>
           </article>;
         })}</div>}
         </div>

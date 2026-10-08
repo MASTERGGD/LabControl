@@ -30,7 +30,7 @@ from .tutoria import (
 from .consultorio import Paciente, ConsultaMedica, CanalizacionMedica
 from .ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from .docencia import (
-    CargaDocente, ClaseDocente, AsistenciaDocente,
+    CargaDocente, ClaseDocente, AsistenciaDocente, DispositivoCapturaOffline,
     JustificacionAsistenciaDocente, DetalleJustificacionAsistencia,
     CorreccionAsistenciaDocente,
 )

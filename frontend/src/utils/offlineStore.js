@@ -1,3 +1,5 @@
+import { getOfflineDeviceId } from './offlineDevice';
+
 const DB_NAME = 'siga-docente-offline';
 const DB_VERSION = 1;
 const SNAPSHOTS = 'snapshots';
@@ -57,7 +59,7 @@ export async function listOfflineSnapshots(prefix) {
 }
 
 export async function enqueueOfflineOperation(operation) {
-  const item = { id: uuid(), createdAt: new Date().toISOString(), order: performance.timeOrigin + performance.now(), status: 'PENDING', attempts: 0, ...operation };
+  const item = { id: uuid(), createdAt: new Date().toISOString(), order: performance.timeOrigin + performance.now(), status: 'PENDING', attempts: 0, deviceId: getOfflineDeviceId(), ...operation };
   await transact(QUEUE, 'readwrite', store => store.put(item));
   notify();
   return item;
@@ -72,6 +74,19 @@ export async function listOfflineOperations(ownerId = null) {
       .sort((a, b) => (a.order || 0) - (b.order || 0) || a.createdAt.localeCompare(b.createdAt)));
     request.onerror = () => reject(request.error);
   }).finally(() => db.close());
+}
+
+export function countPendingOfflineClasses(operations = []) {
+  const keys = new Set();
+  for (const item of operations) {
+    const context = item.context || {};
+    const data = item.data || {};
+    const claseId = item.url?.match(/\/docencia\/clases\/([^/]+)/)?.[1];
+    const cargaId = context.carga_id || data.carga_id;
+    const fecha = context.fecha || data.fecha;
+    keys.add(cargaId && fecha ? `${cargaId}:${fecha}` : claseId ? `clase:${claseId}` : `operacion:${item.id}`);
+  }
+  return keys.size;
 }
 
 async function updateOperation(item) {
@@ -102,27 +117,55 @@ export async function flushOfflineQueue(api, ownerId) {
   let conflicts = 0;
   for (const item of operations) {
     if (item.status === 'CONFLICT') { conflicts += 1; continue; }
+    const deviceId = item.deviceId || getOfflineDeviceId();
+    const headers = { 'X-SIGA-Offline-Operation': item.id, 'X-SIGA-Offline-Device': deviceId };
     try {
       if (item.kind === 'OFFLINE_CLASS') {
-        const { data: clase } = await api.post(`/docencia/horario/${item.data.carga_id}/iniciar-offline`, { fecha: item.data.fecha, capturada_en: item.data.capturada_en }, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+        const { data: clase } = await api.post(`/docencia/horario/${item.data.carga_id}/iniciar-offline`, { fecha: item.data.fecha, capturada_en: item.data.capturada_en }, { headers });
         if (clase.estado === 'CERRADA') {
-          await removeOperation(item.id);
-          synced += 1;
+          const porAlumno = new Map((clase.alumnos || []).map(alumno => [String(alumno.alumno_id), alumno]));
+          const capturaAlumnos = item.data.alumnos || [];
+          const asistenciaCoincide = capturaAlumnos.length === porAlumno.size && capturaAlumnos.every(alumno => {
+            const servidor = porAlumno.get(String(alumno.alumno_id));
+            return servidor && servidor.estado === alumno.estado && (servidor.observacion || null) === (alumno.observacion || null);
+          });
+          const bitacora = item.data.bitacora || {};
+          const bitacoraServidor = clase.bitacora || {};
+          const camposBitacoraCoinciden = ['tema_impartido', 'avance_planeacion', 'actividades_realizadas', 'tarea_asignada', 'tema_pendiente']
+            .every(campo => bitacora[campo] == null || String(bitacora[campo] ?? '') === String(bitacoraServidor[campo] ?? ''));
+          const incidencia = item.data.incidencia;
+          const incidenciaEnServidor = Boolean(bitacoraServidor.incidencia_tipo || bitacoraServidor.incidencias);
+          const incidenciaCoincide = incidencia
+            ? (incidencia.tipo || null) === (bitacoraServidor.incidencia_tipo || null) && (incidencia.descripcion || null) === (bitacoraServidor.incidencias || null)
+            : !incidenciaEnServidor;
+          if (asistenciaCoincide && camposBitacoraCoinciden && incidenciaCoincide) {
+            await removeOperation(item.id);
+            synced += 1;
+          } else {
+            await updateOperation({ ...item, status: 'CONFLICT', attempts: item.attempts + 1, error: 'Ya existe una captura cerrada para esta clase y fecha con datos distintos. La copia de este dispositivo se conservó; revisa ambas antes de resolver.' });
+            conflicts += 1;
+          }
           continue;
         }
         const asistenciaPorAlumno = new Map((clase.alumnos || []).map(alumno => [String(alumno.alumno_id), alumno]));
-        for (const alumno of item.data.alumnos || []) {
+        const capturaAlumnos = item.data.alumnos || [];
+        if (capturaAlumnos.length !== asistenciaPorAlumno.size || capturaAlumnos.some(alumno => !asistenciaPorAlumno.has(String(alumno.alumno_id)))) {
+          await updateOperation({ ...item, status: 'CONFLICT', attempts: item.attempts + 1, error: 'La lista de alumnos cambió desde que se descargó esta clase. La captura local se conservó para revisión.' });
+          conflicts += 1;
+          continue;
+        }
+        for (const alumno of capturaAlumnos) {
           const servidor = asistenciaPorAlumno.get(String(alumno.alumno_id));
           if (servidor && (servidor.estado !== alumno.estado || (servidor.observacion || null) !== (alumno.observacion || null))) {
-            await api.patch(`/docencia/clases/${clase.id}/asistencia/${servidor.asistencia_id}`, { estado: alumno.estado, observacion: alumno.observacion || null }, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+            await api.patch(`/docencia/clases/${clase.id}/asistencia/${servidor.asistencia_id}`, { estado: alumno.estado, observacion: alumno.observacion || null }, { headers });
           }
         }
         if (item.data.incidencia?.tipo && item.data.incidencia?.descripcion) {
-          await api.patch(`/docencia/clases/${clase.id}/incidencia`, item.data.incidencia, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+          await api.patch(`/docencia/clases/${clase.id}/incidencia`, item.data.incidencia, { headers });
         }
-        await api.post(`/docencia/clases/${clase.id}/cerrar`, item.data.bitacora, { headers: { 'X-SIGA-Offline-Operation': item.id } });
+        await api.post(`/docencia/clases/${clase.id}/cerrar`, item.data.bitacora, { headers });
       } else {
-        await api.request({ method: item.method, url: item.url, data: item.data, headers: { 'X-SIGA-Offline-Operation': item.id } });
+        await api.request({ method: item.method, url: item.url, data: item.data, headers });
       }
       await removeOperation(item.id);
       synced += 1;
@@ -131,8 +174,8 @@ export async function flushOfflineQueue(api, ownerId) {
       const detail = String(error.response?.data?.detail || 'El servidor rechazó el registro.');
       const cierreYaAplicado = item.kind === 'CLOSE_CLASS' && error.response.status === 409 && detail.toLowerCase().includes('cerrad');
       if (cierreYaAplicado) {
-        await removeOperation(item.id);
-        synced += 1;
+        await updateOperation({ ...item, status: 'CONFLICT', attempts: item.attempts + 1, error: 'La asistencia de esta clase ya está cerrada en SIGA. Verifica en Historial de clases si la bitácora y el cierre coinciden; la copia local se conservó.' });
+        conflicts += 1;
       } else if (error.response.status >= 400 && error.response.status < 500 && error.response.status !== 408 && error.response.status !== 429) {
         await updateOperation({ ...item, status: 'CONFLICT', attempts: item.attempts + 1, error: detail });
         conflicts += 1;

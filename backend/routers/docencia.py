@@ -5,7 +5,7 @@ from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 import openpyxl
 from openpyxl.formatting.rule import CellIsRule
@@ -31,7 +31,7 @@ from models.laboratorio import Laboratorio
 from models.espacio import EspacioInstitucional
 from models.horario import BloqueoSlot, HorarioDisponible, Reservacion, SolicitudConflicto
 from models.docencia import (
-    AsistenciaDocente, CargaDocente, ClaseDocente,
+    AsistenciaDocente, CargaDocente, ClaseDocente, DispositivoCapturaOffline,
     CorreccionAsistenciaDocente,
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
     SeguimientoAlumnoDocente,
@@ -61,6 +61,31 @@ def _ahora_mx():
 def _solo_docente(user: Usuario):
     if user.rol not in {RolUsuario.DOCENTE, RolUsuario.SUPER_ADMIN}:
         raise HTTPException(403, "Acceso exclusivo del personal docente")
+
+
+def _validar_dispositivo_captura_offline(request: Request, db: Session, docente: Usuario):
+    """Impide que una cola vieja de otro dispositivo cambie la asistencia vigente."""
+    if not request.headers.get("X-SIGA-Offline-Operation"):
+        return
+    dispositivo_id = request.headers.get("X-SIGA-Offline-Device")
+    if not dispositivo_id:
+        raise HTTPException(409, "La captura no identifica su dispositivo. Actualiza SIGA e inténtalo de nuevo.")
+    activo = db.query(DispositivoCapturaOffline).filter(
+        DispositivoCapturaOffline.docente_id == docente.id,
+    ).first()
+    if activo is None:
+        db.add(DispositivoCapturaOffline(
+            docente_id=docente.id,
+            dispositivo_id=dispositivo_id,
+            nombre="Dispositivo offline registrado",
+        ))
+        db.flush()
+        return
+    if activo.dispositivo_id != dispositivo_id:
+        raise HTTPException(
+            409,
+            "La captura se conservó aquí, pero el docente cambió su dispositivo offline autorizado. Reactiva este dispositivo para sincronizarla o descarga un respaldo.",
+        )
 
 
 def _carga_linaje_ids(db: Session, carga: CargaDocente) -> list[int]:
@@ -201,6 +226,12 @@ class CorreccionInput(BaseModel):
 class InicioOfflineInput(BaseModel):
     fecha: datetime.date
     capturada_en: datetime.datetime
+
+
+class DispositivoOfflineInput(BaseModel):
+    dispositivo_id: str = Field(..., min_length=12, max_length=80)
+    nombre: str = Field(..., min_length=2, max_length=120)
+    confirmar_transferencia: bool = False
 
 
 class ReclasificarNoImpartidaInput(BaseModel):
@@ -1715,10 +1746,12 @@ def detalle_clase(
 def cambiar_asistencia(
     clase_id: int,
     asistencia_id: int,
+    request: Request,
     data: AsistenciaInput,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    _validar_dispositivo_captura_offline(request, db, current_user)
     estado = data.estado.upper()
     if estado not in ESTADOS_ASISTENCIA:
         raise HTTPException(422, "Estado de asistencia no válido")
@@ -1770,10 +1803,12 @@ def cambiar_asistencia(
 @router.post("/clases/{clase_id}/cerrar")
 def cerrar_clase(
     clase_id: int,
+    request: Request,
     data: CierreInput,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    _validar_dispositivo_captura_offline(request, db, current_user)
     clase = db.query(ClaseDocente).join(CargaDocente).filter(
         ClaseDocente.id == clase_id,
         CargaDocente.docente_id == current_user.id,
@@ -1938,11 +1973,13 @@ def habilitar_correccion(
 @router.post("/horario/{carga_id}/iniciar-offline")
 def iniciar_clase_offline(
     carga_id: int,
+    request: Request,
     data: InicioOfflineInput,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
     """Materializa una clase capturada localmente dentro de su horario real."""
+    _validar_dispositivo_captura_offline(request, db, current_user)
     carga = db.query(CargaDocente).filter(
         CargaDocente.id == carga_id,
         CargaDocente.docente_id == current_user.id,
@@ -2033,10 +2070,12 @@ def reclasificar_clase_no_impartida(
 @router.patch("/clases/{clase_id}/incidencia")
 def registrar_incidencia_clase(
     clase_id: int,
+    request: Request,
     data: IncidenciaClaseInput,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    _validar_dispositivo_captura_offline(request, db, current_user)
     clase = db.query(ClaseDocente).join(CargaDocente).filter(
         ClaseDocente.id == clase_id,
         CargaDocente.docente_id == current_user.id,
@@ -3266,6 +3305,60 @@ def dashboard_docente(
         "proxima_clase": proxima_clase,
         "grupos": grupos,
         "alumnos_prioritarios": alumnos_prioritarios[:8],
+    }
+
+
+@router.get("/offline/dispositivo", summary="Consultar dispositivo autorizado para captura offline")
+def consultar_dispositivo_offline(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    dispositivo = db.query(DispositivoCapturaOffline).filter(
+        DispositivoCapturaOffline.docente_id == current_user.id,
+    ).first()
+    return None if not dispositivo else {
+        "dispositivo_id": dispositivo.dispositivo_id,
+        "nombre": dispositivo.nombre,
+        "actualizado_en": dispositivo.actualizado_en.isoformat(),
+    }
+
+
+@router.post("/offline/dispositivo/activar", summary="Activar o transferir captura offline a este dispositivo")
+def activar_dispositivo_offline(
+    data: DispositivoOfflineInput,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    _solo_docente(current_user)
+    nombre = data.nombre.strip()
+    dispositivo = db.query(DispositivoCapturaOffline).filter(
+        DispositivoCapturaOffline.docente_id == current_user.id,
+    ).with_for_update().first()
+    anterior = dispositivo.nombre if dispositivo and dispositivo.dispositivo_id != data.dispositivo_id else None
+    if anterior and not data.confirmar_transferencia:
+        raise HTTPException(409, detail={
+            "codigo": "CONFIRMAR_TRANSFERENCIA_OFFLINE",
+            "dispositivo_anterior": anterior,
+            "mensaje": "Hay otro dispositivo autorizado. No podemos revisar desde aquí si conserva capturas sin sincronizar.",
+        })
+    if dispositivo is None:
+        dispositivo = DispositivoCapturaOffline(
+            docente_id=current_user.id,
+            dispositivo_id=data.dispositivo_id,
+            nombre=nombre,
+        )
+        db.add(dispositivo)
+    else:
+        dispositivo.dispositivo_id = data.dispositivo_id
+        dispositivo.nombre = nombre
+        dispositivo.actualizado_en = datetime.datetime.utcnow()
+    db.commit()
+    return {
+        "dispositivo_id": dispositivo.dispositivo_id,
+        "nombre": dispositivo.nombre,
+        "dispositivo_anterior": anterior,
+        "transferido": bool(anterior),
     }
 
 

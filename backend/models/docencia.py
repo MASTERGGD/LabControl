@@ -46,6 +46,18 @@ class CargaDocente(Base):
     clases = relationship("ClaseDocente", back_populates="carga")
 
 
+class DispositivoCapturaOffline(Base):
+    """Dispositivo elegido por el docente para sincronizar capturas offline."""
+    __tablename__ = "dispositivos_captura_offline"
+
+    docente_id = Column(Integer, ForeignKey("usuarios.id", ondelete="CASCADE"), primary_key=True)
+    dispositivo_id = Column(String(80), nullable=False)
+    nombre = Column(String(120), nullable=False)
+    actualizado_en = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
+
+    docente = relationship("Usuario")
+
+
 class ClaseDocente(Base):
     __tablename__ = "clases_docentes"
     __table_args__ = (

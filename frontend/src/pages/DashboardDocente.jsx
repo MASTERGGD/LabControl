@@ -11,8 +11,9 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { abreviarCarrera } from '../utils/resumenConsultaHorario';
 import { formatNombre } from '../utils/presentacion';
 import { MEXICO_TIME_ZONE, todayISOInMexico } from '../utils/timezone';
-import { getOfflineSnapshot, listOfflineSnapshots, saveOfflineSnapshot } from '../utils/offlineStore';
+import { countPendingOfflineClasses, getOfflineSnapshot, listOfflineOperations, listOfflineSnapshots, OFFLINE_EVENT, retryOfflineOperation, saveOfflineSnapshot } from '../utils/offlineStore';
 import { configureOfflineAccess, getOfflineAccessInfo } from '../utils/offlineAccess';
+import { getOfflineDeviceId, getOfflineDeviceName } from '../utils/offlineDevice';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toTitleCase = formatNombre;
@@ -246,8 +247,23 @@ export default function DashboardDocente() {
   const [offlineInfo, setOfflineInfo] = useState(() => getOfflineAccessInfo(usuario?.id));
   const [offlinePinError, setOfflinePinError] = useState('');
   const [modalPinAbierto, setModalPinAbierto] = useState(false);
+  const [capturasPendientesOffline, setCapturasPendientesOffline] = useState([]);
   const pinInputRef = useRef(null);
   const paqueteKey = `paquete-docente:${usuario?.id || 'anon'}`;
+
+  useEffect(() => {
+    if (!usuario?.id) return undefined;
+    let activo = true;
+    const actualizarCapturas = () => listOfflineOperations(usuario.id).then(items => {
+      if (activo) setCapturasPendientesOffline(items);
+    }).catch(() => {});
+    actualizarCapturas();
+    window.addEventListener(OFFLINE_EVENT, actualizarCapturas);
+    return () => {
+      activo = false;
+      window.removeEventListener(OFFLINE_EVENT, actualizarCapturas);
+    };
+  }, [usuario?.id]);
 
   useEffect(() => {
     if (!modalPinAbierto) return undefined;
@@ -347,6 +363,13 @@ export default function DashboardDocente() {
   }, [paqueteKey, usuario?.id, offlineAccess]);
 
   useEffect(() => { cargarDatos(); }, [cargarDatos]);
+  useEffect(() => {
+    const recargarDespuesDeSincronizar = () => {
+      if (!offlineAccess && navigator.onLine) cargarDatos(true);
+    };
+    window.addEventListener('siga:offline-synced', recargarDespuesDeSincronizar);
+    return () => window.removeEventListener('siga:offline-synced', recargarDespuesDeSincronizar);
+  }, [cargarDatos, offlineAccess]);
 
   // El reloj cambia las acciones sin recargar; al volver a la pestaña se actualizan los estados.
   useEffect(() => {
@@ -449,15 +472,33 @@ export default function DashboardDocente() {
     event.preventDefault();
     setOfflinePinError('');
     if (pinOffline !== pinOfflineConfirmacion) { setOfflinePinError('Los PIN no coinciden.'); return; }
+    if (!/^\d{6}$/.test(pinOffline)) { setOfflinePinError('El PIN debe tener exactamente 6 dígitos.'); return; }
+    if (!globalThis.crypto?.subtle) { setOfflinePinError('Este navegador no admite acceso offline protegido.'); return; }
     setConfigurandoPin(true);
     try {
       const paqueteGuardado = await getOfflineSnapshot(paqueteKey);
       if (!paqueteGuardado?.data?.operacion) throw new Error('Primero actualiza los datos offline y comprueba que se descargaron en este dispositivo.');
+      const dispositivo = { dispositivo_id: getOfflineDeviceId(), nombre: getOfflineDeviceName() };
+      try {
+        await api.post('/docencia/offline/dispositivo/activar', { ...dispositivo, confirmar_transferencia: false });
+      } catch (error) {
+        const detail = error.response?.data?.detail;
+        if (error.response?.status !== 409 || detail?.codigo !== 'CONFIRMAR_TRANSFERENCIA_OFFLINE') throw error;
+        const pendientesLocal = capturasPendientesOffline.length;
+        const confirmada = window.confirm(
+          `SIGA tiene autorizado otro dispositivo${detail.dispositivo_anterior ? ` (${detail.dispositivo_anterior})` : ''}. No puede comprobar si allí quedaron capturas pendientes.${pendientesLocal ? ` En este dispositivo tienes ${countPendingOfflineClasses(capturasPendientesOffline)} clase(s) pendiente(s).` : ''} Al cambiar, ese otro dispositivo conservará sus datos pero sus capturas podrían requerir revisión cuando se conecte. ¿Activar este dispositivo?`
+        );
+        if (!confirmada) throw new Error('No se cambió el dispositivo offline.');
+        await api.post('/docencia/offline/dispositivo/activar', { ...dispositivo, confirmar_transferencia: true });
+      }
       const info = await configureOfflineAccess(pinOffline, usuario, periodo);
       setOfflineInfo(info);
+      const dispositivoConflicto = capturasPendientesOffline.filter(item => item.status === 'CONFLICT' && /cambió su dispositivo offline autorizado/i.test(item.error || ''));
+      await Promise.all(dispositivoConflicto.map(item => retryOfflineOperation(item.id)));
       setPinOffline('');
       setPinOfflineConfirmacion('');
       setModalPinAbierto(false);
+      if (dispositivoConflicto.length) window.dispatchEvent(new Event('siga:offline-sync-request'));
     } catch (error) { setOfflinePinError(error.message || 'No se pudo configurar el acceso offline.'); }
     finally { setConfigurandoPin(false); }
   };
@@ -469,6 +510,8 @@ export default function DashboardDocente() {
     setOfflinePinError('');
   };
   const pinActivo = Boolean(offlineInfo && Date.now() < offlineInfo.expiresAt);
+  const clasesPendientesOffline = countPendingOfflineClasses(capturasPendientesOffline);
+  const clasesConflictoOffline = countPendingOfflineClasses(capturasPendientesOffline.filter(item => item.status === 'CONFLICT'));
 
   // Items de "Atención requerida"
   const atencionItems = [];
@@ -490,7 +533,7 @@ export default function DashboardDocente() {
       <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {modoLocal && !(offlineAccess && navigator.onLine) && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>{navigator.onLine ? 'Trabajando con datos descargados' : 'Modo sin conexión'}</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}
-        {offlineAccess && navigator.onLine && <div className={`rounded-xl border p-4 text-sm ${themeKey === 'day' ? 'border-sky-300 bg-sky-50 text-sky-950' : 'border-sky-400/60 bg-sky-950/50 text-sky-100'}`}>El dispositivo detecta conexión. Inicia sesión con tu cuenta institucional para sincronizar los cambios. <button type="button" onClick={() => { logout(); navigate('/login'); }} className="ml-2 font-semibold underline">Ir a iniciar sesión</button></div>}
+        {(capturasPendientesOffline.length > 0 || (offlineAccess && navigator.onLine)) && <div role="status" className={`rounded-xl border p-4 text-sm ${themeKey === 'day' ? 'border-emerald-300 bg-emerald-50 text-emerald-950' : 'border-emerald-400/40 bg-emerald-950/30 text-emerald-100'}`}><b>{capturasPendientesOffline.length ? `${clasesPendientesOffline} clase(s) guardada(s) en este dispositivo todavía no confirmadas por SIGA.` : 'Hay conexión disponible; el acceso offline aún no está sincronizado.'}</b><p className="mt-1">{!navigator.onLine ? 'Conéctate a internet para enviar las capturas. Se conservarán aquí mientras tanto.' : offlineAccess ? 'El PIN permite abrir los datos locales, pero inicia sesión con tu cuenta institucional para enviarlas.' : 'SIGA intentará sincronizarlas automáticamente mientras la conexión y la sesión sigan activas.'}{paqueteOffline?.generado_en ? ` Última descarga: ${new Date(paqueteOffline.generado_en).toLocaleString('es-MX')}.` : ''}</p>{clasesConflictoOffline > 0 && <p className="mt-2 font-semibold">{clasesConflictoOffline} clase(s) requiere(n) revisión. Abre “Capturas de este dispositivo” para ver el motivo.</p>}{clasesPendientesOffline >= 3 && <p className="mt-2 font-semibold">Hay varias clases pendientes. Mantén este dispositivo conectado y confirma que SIGA termine de sincronizarlas.</p>}{offlineAccess && navigator.onLine && <button type="button" onClick={() => { logout(); navigate('/login'); }} className="mt-2 rounded-lg bg-emerald-700 px-3 py-1.5 font-semibold text-white">Iniciar sesión y sincronizar</button>}{!offlineAccess && navigator.onLine && capturasPendientesOffline.some(item => item.status === 'PENDING') && <button type="button" onClick={() => window.dispatchEvent(new Event('siga:offline-sync-request'))} className="mt-2 rounded-lg bg-emerald-700 px-3 py-1.5 font-semibold text-white">Sincronizar ahora</button>}</div>}
         {sinDatosLocales && !loading && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="font-bold text-amber-700">No hay información disponible sin conexión</h2><p className="mt-1 text-sm text-slate-500">Conéctate a internet y pulsa “Actualizar datos offline” para descargar tu jornada y listas.</p></section>}
 
         {/* ── Saludo ──────────────────────────────────────────────────── */}

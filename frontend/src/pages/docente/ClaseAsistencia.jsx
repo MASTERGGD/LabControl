@@ -49,6 +49,7 @@ export default function ClaseAsistencia() {
   const esClaseLocal = String(claseId).startsWith('local-');
   const snapshotKey = `clase:${usuario?.id || 'anon'}:${claseId}`;
   const contextoOffline = () => ({
+    carga_id: clase.carga?.id,
     fecha: clase.fecha,
     materia: clase.carga?.actividad_nombre,
     grupo: clase.carga?.grupo,
