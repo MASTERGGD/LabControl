@@ -48,6 +48,12 @@ export default function ClaseAsistencia() {
   const [modoLocal, setModoLocal] = useState(false);
   const esClaseLocal = String(claseId).startsWith('local-');
   const snapshotKey = `clase:${usuario?.id || 'anon'}:${claseId}`;
+  const contextoOffline = () => ({
+    fecha: clase.fecha,
+    materia: clase.carga?.actividad_nombre,
+    grupo: clase.carga?.grupo,
+    hora_inicio: clase.carga?.hora_inicio,
+  });
 
   const guardarSnapshotClase = useCallback((data, contextosActuales = contextos) => {
     if (!data) return;
@@ -123,7 +129,7 @@ export default function ClaseAsistencia() {
         cargar();
         return false;
       }
-      await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'ATTENDANCE', method: 'patch', url: `/docencia/clases/${claseId}/asistencia/${asistenciaId}`, data: { estado, observacion }, label: 'Cambio de asistencia' });
+      await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'ATTENDANCE', method: 'patch', url: `/docencia/clases/${claseId}/asistencia/${asistenciaId}`, data: { estado, observacion }, context: contextoOffline(), label: `Cambio de asistencia · ${clase.carga?.actividad_nombre || 'Clase'}` });
       await aplicarLocal();
       setModoLocal(true);
       setMensaje('Cambio guardado en este dispositivo. Se sincronizará al recuperar internet.');
@@ -142,7 +148,7 @@ export default function ClaseAsistencia() {
           requiere_seguimiento: Boolean(clase.bitacora.incidencia_requiere_seguimiento),
           solicita_justificacion: Boolean(clase.bitacora.incidencia_solicita_justificacion),
         } : null;
-        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'OFFLINE_CLASS', method: 'post', url: '/docencia/offline/clase', data: { carga_id: clase.carga.id, fecha: clase.fecha, capturada_en: clase.inicio, alumnos: clase.alumnos.map(alumno => ({ alumno_id: alumno.alumno_id, estado: alumno.estado, observacion: alumno.observacion || null })), bitacora: payload, incidencia }, label: `Clase ${clase.carga.actividad_nombre}` });
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'OFFLINE_CLASS', method: 'post', url: '/docencia/offline/clase', data: { carga_id: clase.carga.id, fecha: clase.fecha, capturada_en: clase.inicio, alumnos: clase.alumnos.map(alumno => ({ alumno_id: alumno.alumno_id, estado: alumno.estado, observacion: alumno.observacion || null })), bitacora: payload, incidencia }, context: contextoOffline(), label: `Clase ${clase.carga.actividad_nombre}` });
         const local = { ...clase, estado: 'CERRADA', bitacora: { ...(clase.bitacora || {}), ...payload } };
         setClase(local);
         guardarSnapshotClase(local);
@@ -175,7 +181,7 @@ export default function ClaseAsistencia() {
       if (err.response) setError(err.response?.data?.detail || 'No se pudo cerrar la clase.');
       else {
         const payload = { ...bitacora, tarea_asignada: '', avance_planeacion: Number(bitacora.avance_planeacion) };
-        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLOSE_CLASS', method: 'post', url: `/docencia/clases/${claseId}/cerrar`, data: payload, label: 'Cierre de clase' });
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLOSE_CLASS', method: 'post', url: `/docencia/clases/${claseId}/cerrar`, data: payload, context: contextoOffline(), label: `Cierre de clase · ${clase.carga?.actividad_nombre || 'Clase'}` });
         const local = { ...clase, estado: 'CERRADA', bitacora: { ...(clase.bitacora || {}), ...payload } };
         setClase(local);
         guardarSnapshotClase(local);
@@ -297,7 +303,7 @@ export default function ClaseAsistencia() {
       if (err.response) setError(err.response?.data?.detail || 'No se pudo guardar la nota de la clase.');
       else {
         const payload = { tipo: incidenciaGrupo.tipo, descripcion: incidenciaGrupo.descripcion.trim(), requiere_seguimiento: incidenciaGrupo.requiere_seguimiento, solicita_justificacion: incidenciaGrupo.solicita_justificacion };
-        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLASS_NOTE', method: 'patch', url: `/docencia/clases/${claseId}/incidencia`, data: payload, label: 'Nota de clase' });
+        await enqueueOfflineOperation({ ownerId: usuario?.id, kind: 'CLASS_NOTE', method: 'patch', url: `/docencia/clases/${claseId}/incidencia`, data: payload, context: contextoOffline(), label: `Nota de clase · ${clase.carga?.actividad_nombre || 'Clase'}` });
         const local = { ...clase, bitacora: { ...(clase.bitacora || {}), incidencia_tipo: payload.tipo, incidencias: payload.descripcion, incidencia_requiere_seguimiento: payload.requiere_seguimiento, incidencia_solicita_justificacion: payload.solicita_justificacion } };
         setClase(local);
         guardarSnapshotClase(local);
