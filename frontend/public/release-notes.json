@@ -1,0 +1,27 @@
+{
+  "version": "1.0.1",
+  "fecha": "2026-10-12",
+  "resumen": "Mejoras para cerrar clases y sesiones de laboratorio de forma coordinada.",
+  "destacados": [
+    "Al cerrar la asistencia, también se cierra la sesión de laboratorio vinculada.",
+    "Se liberan las computadoras asignadas y se registra la misma hora de cierre.",
+    "La notificación ahora muestra un resumen de las novedades antes de actualizar."
+  ],
+  "secciones": [
+    {
+      "area": "Asistencia y laboratorios",
+      "cambios": [
+        "El cierre del pase de lista finaliza la sesión de laboratorio iniciada para esa clase.",
+        "Las computadoras que seguían asignadas se liberan al cerrar la clase.",
+        "La reservación sale del estado En curso cuando termina la sesión."
+      ]
+    },
+    {
+      "area": "Actualizaciones",
+      "cambios": [
+        "El aviso muestra hasta tres mejoras principales, la versión y la fecha de publicación.",
+        "Puedes abrir el detalle completo o descartar el aviso."
+      ]
+    }
+  ]
+}
