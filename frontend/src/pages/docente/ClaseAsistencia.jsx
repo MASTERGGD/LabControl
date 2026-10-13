@@ -173,7 +173,10 @@ export default function ClaseAsistencia() {
       setMensaje('');
       setCierreConfirmado({
         titulo: eraCorreccion ? 'Corrección guardada correctamente' : 'Asistencia registrada y clase cerrada correctamente',
-        detalle: data.canalizacion_tutoria?.mensaje || '',
+        detalle: [
+          data.laboratorio_cerrado ? 'La sesión del laboratorio también quedó cerrada.' : '',
+          data.canalizacion_tutoria?.mensaje || '',
+        ].filter(Boolean).join(' '),
       });
       setRedireccionAutomatica(true);
       setError('');

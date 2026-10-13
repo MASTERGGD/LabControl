@@ -13,6 +13,7 @@ export async function abrirClaseDocente(api, navigate, item) {
     const [hf, mf] = item.hora_fin.split(':').map(Number);
     const { data: sesion } = await api.post('/sesiones', {
       laboratorio_id: item.laboratorio_id,
+      clase_docente_id: clase.id,
       reservacion_id: item.reservacion_laboratorio_id,
       fin_estimado_min: Math.max(15, Math.min(300, hf * 60 + mf - hi * 60 - mi)),
     });

@@ -36,9 +36,13 @@ from models.docencia import (
     DetalleJustificacionAsistencia, JustificacionAsistenciaDocente,
     SeguimientoAlumnoDocente,
 )
+from models.sesion import SesionClase
 from models.tutoria import AsignacionTutoria, Canalizacion, GrupoTutorado, ReporteTutor
 from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from routers.notificaciones import crear_notificacion
+from services.auditoria import registrar, Accion, Recurso
+from services.cierre_sesion_laboratorio import cerrar_sesion_laboratorio
+from ws.mapa import manager
 from services.tutoria_sesiones import sesion_de_bloque
 from services.tutoria_sync import grupo_tutoria_para_academico
 from services.calendario_academico import estado_fecha_academica
@@ -1801,7 +1805,7 @@ def cambiar_asistencia(
 
 
 @router.post("/clases/{clase_id}/cerrar")
-def cerrar_clase(
+async def cerrar_clase(
     clase_id: int,
     request: Request,
     data: CierreInput,
@@ -1912,9 +1916,81 @@ def cerrar_clase(
                 "Nota registrada; el grupo no tiene tutor asignado y Tutoría fue notificada."
             ),
         }
+    sesion_laboratorio = db.query(SesionClase).filter(
+        SesionClase.clase_docente_id == clase.id,
+        SesionClase.estado == "ABIERTA",
+    ).first()
+    if not sesion_laboratorio:
+        # Cierra sesiones abiertas antes de que existiera el vínculo explícito.
+        sesion_laboratorio = db.query(SesionClase).join(Reservacion).filter(
+            Reservacion.carga_docente_id == clase.carga_docente_id,
+            SesionClase.docente_id == current_user.id,
+            SesionClase.estado == "ABIERTA",
+        ).first()
+    asignaciones_liberadas = []
+    overtime_laboratorio = 0
+    if sesion_laboratorio:
+        asignaciones_liberadas, overtime_laboratorio = cerrar_sesion_laboratorio(
+            db, sesion_laboratorio, clase.fin,
+        )
+
     db.commit()
+    if sesion_laboratorio:
+        registrar(
+            db,
+            accion=Accion.CERRAR_SESION,
+            recurso=Recurso.SESION,
+            usuario=current_user,
+            recurso_id=sesion_laboratorio.id,
+            detalle={
+                "laboratorio_id": sesion_laboratorio.laboratorio_id,
+                "codigo": sesion_laboratorio.codigo_sesion,
+                "overtime_min": overtime_laboratorio,
+                "pcs_liberadas": len(asignaciones_liberadas),
+                "cierre_con_clase_id": clase.id,
+            },
+            request=request,
+        )
+        await manager.broadcast(sesion_laboratorio.laboratorio_id, {
+            "tipo": "sesion_cerrada",
+            "sesion_id": sesion_laboratorio.id,
+            "cerrada_por": {
+                "id": current_user.id,
+                "nombre": current_user.nombre,
+                "rol": current_user.rol.value if hasattr(current_user.rol, "value") else str(current_user.rol),
+            },
+        })
+        if overtime_laboratorio > 0:
+            try:
+                lab = db.query(Laboratorio).filter(
+                    Laboratorio.id == sesion_laboratorio.laboratorio_id,
+                ).first()
+                lab_nombre = lab.nombre if lab else f"Lab {sesion_laboratorio.laboratorio_id}"
+                admins = db.query(Usuario).filter(
+                    Usuario.laboratorio_id == sesion_laboratorio.laboratorio_id,
+                ).all()
+                if not admins:
+                    admins = db.query(Usuario).filter(
+                        Usuario.rol == RolUsuario.SUPER_ADMIN,
+                    ).all()
+                for admin in admins:
+                    crear_notificacion(
+                        db, admin.id,
+                        tipo="OVERTIME",
+                        titulo=f"Sesión cerrada con tiempo extra — {lab_nombre}",
+                        mensaje=(
+                            f"La sesión #{sesion_laboratorio.id} de {current_user.nombre} en {lab_nombre} "
+                            f"tuvo {overtime_laboratorio} min de tiempo extra al cerrar la clase."
+                        ),
+                        url="/admin/sesiones",
+                    )
+                db.commit()
+            except Exception:
+                pass
     respuesta = _serializar_clase(clase)
     respuesta["canalizacion_tutoria"] = canalizacion
+    respuesta["laboratorio_cerrado"] = sesion_laboratorio is not None
+    respuesta["sesion_laboratorio_id"] = sesion_laboratorio.id if sesion_laboratorio else None
     return respuesta
 
 

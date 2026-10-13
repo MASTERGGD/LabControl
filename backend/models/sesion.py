@@ -13,6 +13,7 @@ class SesionClase(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     reservacion_id = Column(Integer, ForeignKey("reservaciones.id"), nullable=True)
+    clase_docente_id = Column(Integer, ForeignKey("clases_docentes.id"), nullable=True, index=True)
     laboratorio_id = Column(Integer, ForeignKey("laboratorios.id"), nullable=False)
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     tipo_sesion  = Column(String, default="CLASE")   # CLASE | LIBRE
@@ -34,6 +35,7 @@ class SesionClase(Base):
     # True cuando el docente completó la inspección inicial de PCs
 
     reservacion = relationship("Reservacion", back_populates="sesiones")
+    clase_docente = relationship("ClaseDocente")
     docente = relationship("Usuario", back_populates="sesiones")
     asignaciones = relationship("AsignacionPC", back_populates="sesion")
     observaciones_pc = relationship("ObservacionPC", back_populates="sesion")

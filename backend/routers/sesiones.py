@@ -17,6 +17,7 @@ from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
 from services.timezone import now_mx
 from services.calendario_academico import estado_fecha_academica
+from services.cierre_sesion_laboratorio import cerrar_sesion_laboratorio
 import datetime
 import uuid
 
@@ -32,6 +33,7 @@ router = APIRouter(prefix="/sesiones", tags=["Sesiones de Clase"])
 
 class SesionCreate(BaseModel):
     laboratorio_id: int
+    clase_docente_id: Optional[int] = None
     tipo_sesion:         Optional[str]  = Field(None, max_length=20,
         description="CLASE | LIBRE")
     materia:             Optional[str]  = Field(None, max_length=200)
@@ -92,8 +94,8 @@ def _serializar_sesion(s: SesionClase, db: Session) -> dict:
     total_alumnos = db.query(AsignacionPC).filter(
         AsignacionPC.sesion_id == s.id
     ).count()
-    clase_docente_id = None
-    if s.reservacion_id and s.reservacion and s.reservacion.carga_docente_id:
+    clase_docente_id = s.clase_docente_id
+    if not clase_docente_id and s.reservacion_id and s.reservacion and s.reservacion.carga_docente_id:
         clase = db.query(ClaseDocente).filter(
             ClaseDocente.carga_docente_id == s.reservacion.carga_docente_id,
             ClaseDocente.fecha == now_mx().date(),
@@ -556,6 +558,7 @@ async def abrir_sesion(
     tipo_sesion = "LIBRE" if es_libre else "CLASE"
 
     # Identidad académica: heredar de la reservación si viene de una; si no, usar lo enviado
+    res_ref = None
     if data.reservacion_id:
         res_ref = db.query(Reservacion).filter(Reservacion.id == data.reservacion_id).first()
         materia_final     = res_ref.materia if res_ref else data.materia
@@ -604,8 +607,24 @@ async def abrir_sesion(
                 )
             )
 
+    clase_ref = None
+    if data.clase_docente_id is not None:
+        clase_ref = db.query(ClaseDocente).filter(
+            ClaseDocente.id == data.clase_docente_id,
+            ClaseDocente.estado == "ABIERTA",
+        ).first()
+        if not clase_ref or clase_ref.carga.docente_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Clase abierta no encontrada")
+        if (
+            not res_ref
+            or res_ref.carga_docente_id != clase_ref.carga_docente_id
+            or res_ref.laboratorio_id != data.laboratorio_id
+        ):
+            raise HTTPException(status_code=422, detail="La reservación no corresponde a esta clase y laboratorio")
+
     sesion = SesionClase(
         reservacion_id=data.reservacion_id,
+        clase_docente_id=clase_ref.id if clase_ref else None,
         laboratorio_id=data.laboratorio_id,
         docente_id=current_user.id,
         tipo_sesion=tipo_sesion,
@@ -793,29 +812,9 @@ async def cerrar_sesion(
     if current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
         raise HTTPException(status_code=403, detail="No puedes cerrar una sesión que no es tuya")
 
-    # Liberar todas las PCs que quedaron asignadas
-    asigs_abiertas = db.query(AsignacionPC).filter(
-        AsignacionPC.sesion_id == sesion_id,
-        AsignacionPC.hora_liberacion == None  # noqa: E711
-    ).all()
     ahora = _utcnow()
-    for a in asigs_abiertas:
-        a.hora_liberacion = ahora
-
-    s.estado = "CERRADA"
-    s.fin_real = ahora
+    asigs_abiertas, overtime_min = cerrar_sesion_laboratorio(db, s, ahora)
     s.observacion_general = data.observacion_general
-    # Calcular tiempo extra
-    overtime_min = 0
-    if s.fin_estimado and ahora > s.fin_estimado:
-        overtime_min = int((ahora - s.fin_estimado).total_seconds() / 60)
-    s.overtime_min = overtime_min
-
-    # Revertir reservacion a PROGRAMADA si estaba EN_CURSO
-    if s.reservacion_id is not None:
-        res = db.query(Reservacion).filter(Reservacion.id == s.reservacion_id).first()
-        if res and res.estado == "EN_CURSO":
-            res.estado = "PROGRAMADA"
 
     db.commit()
     registrar(db, accion=Accion.CERRAR_SESION, recurso=Recurso.SESION,
