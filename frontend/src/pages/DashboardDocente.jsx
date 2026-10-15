@@ -303,6 +303,23 @@ export default function DashboardDocente() {
         }
         return;
       }
+
+      // Mostrar la última jornada guardada al volver al panel; la red actualiza
+      // los datos después sin mantener bloqueada la pantalla.
+      const guardado = await getOfflineSnapshot(paqueteKey).catch(() => null);
+      if (guardado?.data?.operacion) {
+        const datosGuardados = guardado.data;
+        setOperacion(datosGuardados.operacion);
+        setPaqueteOffline(datosGuardados);
+        setModoLocal(false);
+        setSinDatosLocales(false);
+        setProximaClase(datosGuardados.operacion.proxima_clase ? {
+          ...datosGuardados.operacion.proxima_clase,
+          _proxFecha: new Date(datosGuardados.operacion.proxima_clase.inicio),
+        } : null);
+        setLoading(false);
+      }
+
       const [resComunicados, resSesion, resSolicitudes, resOperacion] = await Promise.allSettled([
         api.get('/comunicados/pendientes-count'),
         api.get('/sesiones/activas'),
@@ -335,12 +352,17 @@ export default function DashboardDocente() {
         setPaqueteOffline(paquete);
         setModoLocal(false);
         setSinDatosLocales(false);
-        await saveOfflineSnapshot(paqueteKey, paquete);
-        await Promise.all(Object.entries(paquete.clases || {}).map(([id, clase]) => saveOfflineSnapshot(`clase:${usuario?.id}:${id}`, { clase, contextos: {} })));
         setProximaClase(datosOperacion?.proxima_clase ? {
           ...datosOperacion.proxima_clase,
           _proxFecha: new Date(datosOperacion.proxima_clase.inicio),
         } : null);
+        // La persistencia offline no debe retrasar el primer render del panel.
+        void Promise.all([
+          saveOfflineSnapshot(paqueteKey, paquete),
+          ...Object.entries(paquete.clases || {}).map(([id, clase]) =>
+            saveOfflineSnapshot(`clase:${usuario?.id}:${id}`, { clase, contextos: {} })
+          ),
+        ]).catch(() => {});
       } else {
         const local = await getOfflineSnapshot(paqueteKey).catch(() => null);
         if (local?.data?.operacion) {

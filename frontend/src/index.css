@@ -218,8 +218,9 @@ body.theme-day .dashboard-surface.dashboard-urgent {
 /* Identidad Flip7 aplicada a los espacios de trabajo SIGA. */
 .siga-flip7-panel {
   --flip7-teal: #0f766e;
-  --flip7-cream: #fff9e9;
-  --flip7-border: #e8dfc7;
+  --flip7-surface: #ffffff;
+  --flip7-surface-soft: #f2f8f5;
+  --flip7-border: #dce8e3;
   --flip7-ink: #123b3b;
 }
 .siga-flip7-panel .btn-blue,
@@ -255,9 +256,9 @@ body.theme-day .siga-flip7-panel [class*="bg-slate-900"],
 body.theme-day .siga-flip7-panel [class*="bg-slate-800"],
 body.theme-day .siga-flip7-panel [class*="bg-slate-700"],
 body.theme-day .siga-flip7-panel [class*="bg-white/"] {
-  background-color: var(--flip7-cream) !important;
+  background-color: var(--flip7-surface) !important;
   border-color: var(--flip7-border) !important;
-  box-shadow: 0 5px 18px rgba(18,59,59,.045);
+  box-shadow: 0 4px 16px rgba(18,59,59,.035);
 }
 body.theme-day .siga-flip7-panel h1,
 body.theme-day .siga-flip7-panel h2,
@@ -285,9 +286,9 @@ body.theme-day .siga-flip7-panel [class~="text-cyan-400"] { color: #087487 !impo
 body.theme-day .siga-flip7-panel [class*="border-white/"],
 body.theme-day .siga-flip7-panel [class*="border-slate-"] { border-color: var(--flip7-border) !important; }
 body.theme-day .siga-flip7-panel [style*="rgba(15, 23, 42"] {
-  background: var(--flip7-cream) !important;
+  background: var(--flip7-surface) !important;
   border-color: var(--flip7-border) !important;
-  box-shadow: 0 5px 18px rgba(18,59,59,.045) !important;
+  box-shadow: 0 4px 16px rgba(18,59,59,.035) !important;
 }
 body.theme-day .siga-flip7-panel input:not([type="checkbox"]),
 body.theme-day .siga-flip7-panel select,
@@ -296,8 +297,8 @@ body.theme-day .siga-flip7-panel textarea {
   color: #183b3c !important;
   border-color: #d6e2df !important;
 }
-body.theme-day .siga-flip7-panel thead { background-color: #f2f5ed !important; }
-body.theme-day .siga-flip7-panel tbody tr { border-color: #e8dfc7 !important; }
+body.theme-day .siga-flip7-panel thead { background-color: var(--flip7-surface-soft) !important; }
+body.theme-day .siga-flip7-panel tbody tr { border-color: var(--flip7-border) !important; }
 body.theme-day .siga-flip7-panel .btn-blue,
 body.theme-day .siga-flip7-panel button[class~="bg-blue-600"] { color: #fff !important; }
 body.theme-day .siga-flip7-panel .btn-blue *,
