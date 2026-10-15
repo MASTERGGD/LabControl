@@ -1841,7 +1841,7 @@ export default function TutoriaAdmin() {
 
   return (
     <AdminLayout>
-    <div className={`${isDay ? "text-slate-950" : "text-white"} w-full max-w-[1920px] 2xl:mx-auto space-y-6`}>
+    <div className={`siga-flip7-panel siga-flip7-panel--tutoria ${isDay ? "text-slate-950" : "text-white"} w-full max-w-[1920px] 2xl:mx-auto space-y-6`}>
       {/* Encabezado */}
       <div className={`rounded-2xl border p-5 2xl:p-6 flex items-center justify-between flex-wrap gap-4 ${isDay ? "border-slate-200 bg-white" : "border-white/10 bg-slate-900/45"}`}>
         <div className="min-w-0">

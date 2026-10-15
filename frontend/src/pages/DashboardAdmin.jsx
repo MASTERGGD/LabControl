@@ -818,7 +818,7 @@ export default function DashboardAdmin() {
 
   return (
     <AdminLayout>
-      <div className="space-y-5">
+      <div className="siga-flip7-panel siga-flip7-panel--laboratorios space-y-5">
 
         {/* Encabezado */}
         <div className="flex items-start justify-between flex-wrap gap-3">

@@ -187,7 +187,7 @@ export default function DashboardAdministrativo() {
 
   return (
     <AdminLayout>
-      <div className="w-full max-w-[1920px] 2xl:mx-auto space-y-6">
+      <div className="siga-flip7-panel siga-flip7-panel--departamentos w-full max-w-[1920px] 2xl:mx-auto space-y-6">
         <div className="rounded-2xl border border-white/10 bg-white/4 p-5">
           <div className="flex flex-col xl:flex-row xl:items-center gap-4">
             <div className="flex-1">

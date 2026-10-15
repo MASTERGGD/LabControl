@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../hooks/useApi';
 import { getOfflineAccessInfo } from '../utils/offlineAccess';
 import PWAInstallAccess from '../components/PWAInstallAccess';
+import './Login.css';
 
 const ROLES_REDIRECT = {
   SUPER_ADMIN: '/admin',
@@ -65,13 +66,13 @@ export default function Login() {
     return <Navigate to={getRedirectPath(usuario)} replace />;
   }
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (event) => {
+    setForm({ ...form, [event.target.name]: event.target.value });
     setError('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
     try {
@@ -94,181 +95,230 @@ export default function Login() {
     }
   };
 
-  const handleOfflineSubmit = async event => {
+  const handleOfflineSubmit = async (event) => {
     event.preventDefault();
     setOfflineLoading(true);
     setOfflineError('');
     try {
       await loginOffline(pin);
       navigate('/docente', { replace: true });
-    } catch (err) { setOfflineError(err.message || 'No se pudo abrir la copia offline.'); }
-    finally { setOfflineLoading(false); setPin(''); }
+    } catch (err) {
+      setOfflineError(err.message || 'No se pudo abrir la copia offline.');
+    } finally {
+      setOfflineLoading(false);
+      setPin('');
+    }
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 py-10"
-      style={{
-        background: 'linear-gradient(135deg, #F5F7FA 0%, #EEF6F2 52%, #E6F3EC 100%)',
-      }}
-    >
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'linear-gradient(rgba(0,122,83,0.055) 1px,transparent 1px),linear-gradient(90deg,rgba(0,122,83,0.055) 1px,transparent 1px)',
-          backgroundSize: '48px 48px',
-        }}
-      />
-      <div
-        className="fixed inset-x-0 top-0 h-2 pointer-events-none"
-        style={{ background: 'linear-gradient(90deg,#007A53,#00A36C)' }}
-      />
-
-      <div className="w-full max-w-md relative z-10 animate-fadeUp">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl mb-5 shadow-lg bg-white border border-emerald-100">
-            <img src="/icons/icon-192.png" alt="UTECAN" className="w-20 h-20 object-contain" draggable="false" />
+    <div className="siga-login">
+      <div className="siga-login__dot-grid" aria-hidden="true" />
+      <div className="siga-login__page">
+        <header className="siga-login__header">
+          <div className="siga-login__brand">
+            <span className="siga-login__brand-icon">
+              <img src="/icons/icon-192.png" alt="" draggable="false" />
+            </span>
+            <span>
+              <span className="siga-login__brand-name">SIGA</span>
+              <span className="siga-login__brand-subtitle">Gestión académica · UTECAN</span>
+            </span>
           </div>
-          <p className="text-xs font-bold tracking-[0.2em] uppercase mb-1" style={{ color: '#059669' }}>
-            Sistema Integral de Gestión Académica
-          </p>
-          <h1 className="text-5xl font-black tracking-[0.25em]" style={{ color: '#0F172A' }}>SIGA</h1>
-          <p className="text-sm mt-2 tracking-wide" style={{ color: '#374151' }}>Universidad Tecnológica de Candelaria</p>
-        </div>
+          <div className="siga-login__institution">Universidad Tecnológica de Candelaria</div>
+        </header>
 
-        <div className="bg-white/95 border border-slate-200 shadow-xl p-8 rounded-2xl">
-          <h2 className="text-lg font-semibold text-slate-950 mb-6">{offlineMode ? 'Acceder sin conexión' : 'Iniciar sesión'}</h2>
-
-          {offlineMode && offlineInfo && (
-            <form onSubmit={handleOfflineSubmit} className="space-y-5 text-slate-900">
-              <p id="offline-pin-help" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">Introduce tu PIN de 6 dígitos para abrir las clases guardadas en este dispositivo.</p>
-              <div>
-                <label htmlFor="offline-pin" className="mb-1.5 block text-sm font-medium text-slate-600">PIN de acceso</label>
-                <div className="relative">
-                  <input id="offline-pin" type={showPin ? 'text' : 'password'} inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} required value={pin} aria-describedby="offline-pin-help" aria-invalid={Boolean(offlineError)} onChange={event => { setPin(event.target.value.replace(/\D/g, '')); setOfflineError(''); }} placeholder="••••••" className="w-full rounded-lg border border-slate-300 bg-white py-3 pl-4 pr-24 text-lg tracking-[0.3em] text-slate-950 outline-none placeholder:text-slate-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
-                  <button type="button" onClick={() => setShowPin(value => !value)} aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'} aria-pressed={showPin} className="absolute right-3 top-1/2 -translate-y-1/2 rounded px-2 py-3 text-sm font-semibold text-emerald-700 focus-visible:outline-emerald-600">{showPin ? 'Ocultar' : 'Mostrar'}</button>
-                </div>
-              </div>
-              {offlineError && <p role="alert" className="text-sm text-red-700">{offlineError}</p>}
-              <button type="submit" disabled={offlineLoading} className="w-full rounded-xl bg-emerald-700 px-4 py-3.5 font-semibold text-white transition hover:bg-emerald-800 disabled:opacity-50">{offlineLoading ? 'Abriendo…' : 'Abrir clases guardadas'}</button>
-              <p className="text-center text-xs leading-relaxed text-slate-500">Disponible hasta el {new Date(offlineInfo.expiresAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.</p>
-            </form>
-          )}
-
-          {offlineMode && !offlineInfo && (
-            <p role="status" className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">No hay acceso sin conexión configurado en este dispositivo. Conéctate a internet para iniciar sesión.</p>
-          )}
-
-          {!offlineMode && (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5" htmlFor="email">
-                Correo institucional
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                value={form.email}
-                onChange={handleChange}
-                placeholder="usuario@utecan.edu.mx"
-                className="w-full border bg-white px-4 py-3 text-slate-950 outline-none transition placeholder:text-slate-400"
-                style={{ borderRadius: 8, borderColor: '#E5E7EB', boxShadow: 'none' }}
-                onFocus={e => { e.target.style.borderColor = '#059669'; e.target.style.boxShadow = '0 0 0 3px rgba(5,150,105,0.12)'; }}
-                onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.boxShadow = 'none'; }}
-                autoComplete="username"
-              />
+        <main className="siga-login__layout">
+          <section className="siga-login__welcome" aria-labelledby="siga-login-title">
+            <div className="siga-login__eyebrow">Tu espacio académico</div>
+            <div className="siga-login__card-art" aria-hidden="true">
+              <span className="siga-login__fan-card siga-login__fan-card--coral">A</span>
+              <span className="siga-login__fan-card siga-login__fan-card--blue">2</span>
+              <span className="siga-login__fan-card siga-login__fan-card--gold">7</span>
+              <span className="siga-login__fan-card siga-login__fan-card--cream">S</span>
+              <span className="siga-login__ribbon">SIGA</span>
             </div>
+            <h1 id="siga-login-title">Todo listo para empezar.</h1>
+            <p className="siga-login__welcome-copy">
+              Accede a tus clases, servicios y gestiones desde un solo lugar.
+            </p>
+            <div className="siga-login__welcome-foot">
+              <span className="siga-login__welcome-check" aria-hidden="true">✓</span>
+              <span>Una plataforma para la comunidad UTECAN</span>
+            </div>
+          </section>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-600 mb-1.5" htmlFor="password">
-                Contraseña
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPass ? 'text' : 'password'}
-                  required
-                  value={form.password}
-                  onChange={handleChange}
-                  placeholder="••••••••"
-                  className="w-full border bg-white px-4 py-3 pr-11 text-slate-950 outline-none transition placeholder:text-slate-400"
-                  style={{ borderRadius: 8, borderColor: '#E5E7EB', boxShadow: 'none' }}
-                  onFocus={e => { e.target.style.borderColor = '#059669'; e.target.style.boxShadow = '0 0 0 3px rgba(5,150,105,0.12)'; }}
-                  onBlur={e => { e.target.style.borderColor = '#E5E7EB'; e.target.style.boxShadow = 'none'; }}
-                  autoComplete="current-password"
-                />
+          <section className="siga-login__access" aria-labelledby="siga-access-title">
+            <div className="siga-login__form-panel">
+              <div className="siga-login__form-eyebrow">Bienvenido a SIGA</div>
+              <h2 id="siga-access-title" className="siga-login__form-title">
+                {offlineMode ? 'Acceder sin conexión' : 'Inicia sesión'}
+              </h2>
+
+              {offlineMode && offlineInfo && (
+                <form onSubmit={handleOfflineSubmit} className="siga-login__form">
+                  <p id="offline-pin-help" className="siga-login__info">
+                    Introduce tu PIN de 6 dígitos para abrir las clases guardadas en este dispositivo.
+                  </p>
+                  <div>
+                    <label htmlFor="offline-pin" className="siga-login__label">PIN de acceso</label>
+                    <div className="siga-login__input-wrap">
+                      <input
+                        id="offline-pin"
+                        type={showPin ? 'text' : 'password'}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        pattern="[0-9]{6}"
+                        maxLength={6}
+                        required
+                        value={pin}
+                        aria-describedby="offline-pin-help"
+                        aria-invalid={Boolean(offlineError)}
+                        onChange={event => {
+                          setPin(event.target.value.replace(/\D/g, ''));
+                          setOfflineError('');
+                        }}
+                        placeholder="••••••"
+                        className="siga-login__input siga-login__input--pin"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPin(value => !value)}
+                        aria-label={showPin ? 'Ocultar PIN' : 'Mostrar PIN'}
+                        aria-pressed={showPin}
+                        className="siga-login__visibility"
+                      >
+                        {showPin ? 'Ocultar' : 'Mostrar'}
+                      </button>
+                    </div>
+                  </div>
+                  {offlineError && <p role="alert" className="siga-login__error">{offlineError}</p>}
+                  <button type="submit" disabled={offlineLoading} className="siga-login__submit">
+                    {offlineLoading ? 'Abriendo…' : 'Abrir clases guardadas'}
+                  </button>
+                  <p className="siga-login__fine-print">
+                    Disponible hasta el {new Date(offlineInfo.expiresAt).toLocaleString('es-MX', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}.
+                  </p>
+                </form>
+              )}
+
+              {offlineMode && !offlineInfo && (
+                <p role="status" className="siga-login__info">
+                  No hay acceso sin conexión configurado en este dispositivo. Conéctate a internet para iniciar sesión.
+                </p>
+              )}
+
+              {!offlineMode && (
+                <form onSubmit={handleSubmit} className="siga-login__form">
+                  <p className="siga-login__form-copy">Usa tu cuenta institucional para continuar.</p>
+                  <div>
+                    <label className="siga-login__label" htmlFor="email">Correo institucional</label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={handleChange}
+                      placeholder="usuario@utecan.edu.mx"
+                      className="siga-login__input"
+                      autoComplete="username"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="siga-login__label" htmlFor="password">Contraseña</label>
+                    <div className="siga-login__input-wrap">
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPass ? 'text' : 'password'}
+                        required
+                        value={form.password}
+                        onChange={handleChange}
+                        placeholder="••••••••"
+                        className="siga-login__input siga-login__input--password"
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPass(value => !value)}
+                        className="siga-login__visibility"
+                        aria-label={showPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        aria-pressed={showPass}
+                      >
+                        {showPass ? (
+                          <svg className="siga-login__eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                          </svg>
+                        ) : (
+                          <svg className="siga-login__eye-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                    <div className="siga-login__forgot">
+                      <Link to="/recuperar-password">¿Necesitas restablecer tu contraseña?</Link>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div role="alert" className="siga-login__error">
+                      <svg className="siga-login__error-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p>{error}</p>
+                    </div>
+                  )}
+
+                  <button type="submit" disabled={loading} className="siga-login__submit">
+                    {loading ? (
+                      <span className="siga-login__loading">
+                        <span className="siga-login__spinner" aria-hidden="true" />
+                        Verificando…
+                      </span>
+                    ) : 'Entrar a SIGA'}
+                  </button>
+                </form>
+              )}
+
+              {online && offlineInfo && (
                 <button
                   type="button"
-                  onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                  tabIndex={-1}
+                  onClick={() => {
+                    setOfflineSelected(value => !value);
+                    setPin('');
+                    setShowPin(false);
+                    setOfflineError('');
+                  }}
+                  className="siga-login__offline-toggle"
                 >
-                  {showPass ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                    </svg>
-                  )}
+                  {offlineMode ? 'Volver a iniciar sesión' : 'Acceder sin conexión'}
                 </button>
+              )}
+
+              <div className="siga-login__install">
+                <PWAInstallAccess />
               </div>
-              <div className="mt-2 text-right">
-                <Link to="/recuperar-password" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800 hover:underline">
-                  ¿Necesitas restablecer tu contraseña?
-                </Link>
+
+              <div className="siga-login__restricted">
+                <span>Acceso restringido al personal autorizado</span>
               </div>
             </div>
+            <p className="siga-login__version">SIGA v1.0 · UTECAN {new Date().getFullYear()}</p>
+          </section>
+        </main>
 
-            {error && (
-              <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <svg className="w-4 h-4 text-red-600 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-emerald-700 px-4 text-base font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 mt-2"
-              style={{ paddingTop: 14, paddingBottom: 14 }}
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Verificando...
-                </span>
-              ) : 'Acceder al sistema'}
-            </button>
-          </form>
-          )}
-
-          {online && offlineInfo && (
-            <button type="button" onClick={() => { setOfflineSelected(value => !value); setPin(''); setShowPin(false); setOfflineError(''); }} className="mt-5 w-full rounded-lg px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 focus-visible:outline-emerald-600">
-              {offlineMode ? 'Volver a iniciar sesión' : 'Acceder sin conexión'}
-            </button>
-          )}
-
-          <PWAInstallAccess />
-
-          <div className="mt-6 pt-5" style={{ borderTop: '1px solid #E2E8F0' }}>
-            <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
-              <span>Acceso restringido al personal autorizado</span>
-            </div>
-          </div>
-        </div>
-
-        <p className="text-center text-xs text-slate-500 mt-6">
-          SIGA v1.0 - UTECAN {new Date().getFullYear()}
-        </p>
+        <footer className="siga-login__footer">
+          <span>© {new Date().getFullYear()} Universidad Tecnológica de Candelaria</span>
+          <span>Plataforma institucional · SIGA</span>
+        </footer>
       </div>
     </div>
   );

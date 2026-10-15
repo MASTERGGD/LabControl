@@ -509,6 +509,7 @@ export default function Laboratorios() {
 
   return (
     <AdminLayout>
+      <div className="siga-flip7-panel siga-flip7-panel--laboratorios">
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between mb-6">
@@ -637,6 +638,7 @@ export default function Laboratorios() {
           onConfirm={handleDesactivar}
         />
       )}
+      </div>
     </AdminLayout>
   );
 }

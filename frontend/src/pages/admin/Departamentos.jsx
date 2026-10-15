@@ -611,7 +611,7 @@ export default function Departamentos() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="siga-flip7-panel siga-flip7-panel--departamentos space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-white">Departamentos</h1>
