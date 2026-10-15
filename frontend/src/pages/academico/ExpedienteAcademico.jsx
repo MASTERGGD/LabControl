@@ -583,6 +583,63 @@ const ESTADO_ALUMNO = {
 
 const ICONO_ESTADO_ALUMNO = { RIESGO: '▲', ATENCION: '●', REGULAR: '✓', BASE_INSUFICIENT: '◌', SIN_DATOS: '○' };
 
+function PanoramaDivision({ data, loading, error, onAbrirAlumno, onAbrirGrupo }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const [estado, setEstado] = useState('PRIORITARIOS');
+  const [carrera, setCarrera] = useState('TODAS');
+  const [busqueda, setBusqueda] = useState('');
+  const resumen = data?.resumen || {};
+  const carreras = useMemo(() => [...new Set((data?.alumnos || []).map(alumno => alumno.carrera).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es-MX')), [data?.alumnos]);
+  const filas = useMemo(() => {
+    const termino = busqueda.trim().toLocaleLowerCase('es-MX');
+    return (data?.alumnos || []).filter(alumno => (
+      (estado === 'PRIORITARIOS' ? ['RIESGO', 'ATENCION'].includes(alumno.estado) : estado === 'TODOS' || alumno.estado === estado)
+      && (carrera === 'TODAS' || alumno.carrera === carrera)
+      && (!termino || `${alumno.nombre} ${alumno.matricula} ${alumno.carrera} ${alumno.cuatrimestre} ${alumno.grupo}`.toLocaleLowerCase('es-MX').includes(termino))
+    ));
+  }, [data?.alumnos, estado, carrera, busqueda]);
+  const filtros = [
+    ['PRIORITARIOS', 'Atención prioritaria', Number(resumen.alumnos_riesgo || 0) + Number(resumen.alumnos_atencion || 0)],
+    ['RIESGO', 'Riesgo', resumen.alumnos_riesgo], ['ATENCION', 'Atención', resumen.alumnos_atencion],
+    ['BASE_INSUFICIENT', 'Base insuficiente', resumen.base_insuficiente], ['SIN_DATOS', 'Sin información', resumen.sin_datos],
+    ['REGULAR', 'Regulares', resumen.regulares], ['TODOS', 'Todos', resumen.alumnos],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div><h2 className="text-lg font-bold">Riesgo académico de la división</h2><p className="mt-1 text-sm text-slate-500">Vista consolidada de {resumen.grupos || 0} grupos · {data?.periodo || 'periodo seleccionado'}. Abre un expediente o revisa el contexto de su grupo.</p></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi label="Riesgo detectado" value={resumen.alumnos_riesgo ?? '—'} hint="Revisar primero" tone={resumen.alumnos_riesgo ? 'text-red-500' : 'text-slate-500'} />
+        <Kpi label="Requieren atención" value={resumen.alumnos_atencion ?? '—'} hint="Señales preventivas" tone={resumen.alumnos_atencion ? 'text-amber-500' : 'text-slate-500'} />
+        <Kpi label="Base insuficiente" value={resumen.base_insuficiente ?? '—'} hint="Faltan registros para evaluar" tone={resumen.base_insuficiente ? 'text-slate-500' : 'text-emerald-500'} />
+        <Kpi label="Sin información" value={resumen.sin_datos ?? '—'} hint="Sin asistencias capturadas" tone={resumen.sin_datos ? 'text-slate-500' : 'text-emerald-500'} />
+      </div>
+      <Panel className="p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_260px]"><label className="text-xs font-semibold text-slate-500">Buscar alumno, grupo o carrera<input value={busqueda} onChange={event => setBusqueda(event.target.value)} className="input-dark mt-1" placeholder="Nombre, matrícula, 7° A…" /></label><label className="text-xs font-semibold text-slate-500">Carrera<select value={carrera} onChange={event => setCarrera(event.target.value)} className="input-dark mt-1"><option value="TODAS">Todas las carreras</option>{carreras.map(item => <option key={item} value={item}>{item}</option>)}</select></label></div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap" role="group" aria-label="Filtrar casos de riesgo académico">{filtros.map(([valor, etiqueta, cantidad]) => <button key={valor} type="button" aria-pressed={estado === valor} onClick={() => setEstado(valor)} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold transition ${estado === valor ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-slate-500/25 text-slate-500 hover:bg-slate-500/10'}`}>{etiqueta} ({cantidad ?? 0})</button>)}</div>
+      </Panel>
+      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+      {loading && <Panel className="p-8 text-center text-sm text-slate-500">Consolidando indicadores de los grupos…</Panel>}
+      {!loading && data && <Panel className="overflow-hidden">
+        <div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm">
+          <thead className={`text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-white/[0.035] text-slate-400'}`}><tr><th className="px-5 py-3">Alumno</th><th className="px-4 py-3">Carrera · grupo</th><th className="px-3 py-3 text-center">Asistencia</th><th className="px-3 py-3 text-center">Faltas</th><th className="px-3 py-3 text-center">Consecutivas</th><th className="px-3 py-3 text-center">Pendientes</th><th className="px-4 py-3">Estado</th><th className="px-4 py-3 text-right">Acción</th></tr></thead>
+          <tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>{filas.map(alumno => <tr key={alumno.id} className={isDay ? 'hover:bg-slate-50' : 'hover:bg-white/[0.025]'}>
+            <td className="px-5 py-3"><button type="button" onClick={() => onAbrirAlumno(alumno.id)} className="text-left font-semibold hover:text-blue-500 hover:underline">{alumno.nombre}</button><p className="text-xs text-slate-500">{alumno.matricula}</p></td>
+            <td className="px-4 py-3"><p className="max-w-[300px] truncate" title={alumno.carrera}>{alumno.carrera}</p><p className="text-xs text-slate-500">{alumno.cuatrimestre}° {alumno.grupo} · {alumno.periodo}</p>{alumno.grupos?.length > 1 && <p className="text-[10px] text-slate-400">También inscrito en {alumno.grupos.length - 1} grupo(s)</p>}</td>
+            <td className={`px-3 py-3 text-center font-semibold ${['BASE_INSUFICIENT', 'SIN_DATOS'].includes(alumno.estado) ? 'text-slate-500' : alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-500'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td><td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td><td className="px-3 py-3 text-center">{alumno.faltas_consecutivas || '—'}</td><td className="px-3 py-3 text-center">{alumno.acuerdos_pendientes + alumno.reportes_abiertos}</td>
+            <td className="px-4 py-3"><details className="group relative w-fit"><summary className="list-none rounded-full [&::-webkit-details-marker]:hidden"><Badge className={ESTADO_ALUMNO[alumno.estado]}>{ICONO_ESTADO_ALUMNO[alumno.estado]} {alumno.estado === 'BASE_INSUFICIENT' ? 'BASE INSUFICIENTE' : labelEstado(alumno.estado)} ⓘ</Badge></summary><div className={`absolute left-0 top-full z-20 mt-2 w-72 rounded-lg border p-3 text-xs shadow-xl ${isDay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-600 bg-slate-900 text-slate-200'}`}>{(alumno.razones_estado?.length ? alumno.razones_estado : ['Sin motivos adicionales']).map((razon, index) => <p key={index} className="mb-1 last:mb-0">{razon}</p>)}<p className="mt-2 text-slate-500">{alumno.acuerdos_pendientes} acuerdos pendientes · {alumno.reportes_abiertos} reportes abiertos</p></div></details></td>
+            <td className="px-4 py-3 text-right"><button type="button" onClick={() => onAbrirGrupo(alumno.grupo_id, alumno.estado)} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/10">Ver grupo</button></td>
+          </tr>)}</tbody>
+        </table>{!filas.length && <p className="p-8 text-center text-sm text-slate-500">No hay alumnos que coincidan con este filtro en los grupos accesibles.</p>}</div>
+        <div className={`border-t px-5 py-3 text-xs text-slate-500 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>{filas.length} registro(s) visibles · Se usa el mismo semáforo del expediente individual. “Base insuficiente” indica que hacen falta capturas para evaluar.</div>
+      </Panel>}
+      {!loading && !data && !error && <Panel className="p-8 text-center text-sm text-slate-500">Selecciona un periodo para consultar el panorama de riesgo.</Panel>}
+      {!loading && !!data?.grupos?.length && <Panel className="overflow-hidden"><div className="border-b border-slate-500/15 px-5 py-4"><h3 className="font-semibold">Resumen por grupo</h3><p className="mt-1 text-xs text-slate-500">Prioriza los grupos con más casos y abre su lista para revisar el contexto.</p></div><div className="max-h-72 overflow-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className={`sticky top-0 text-xs uppercase ${isDay ? 'bg-slate-50 text-slate-600' : 'bg-slate-900 text-slate-400'}`}><tr><th className="px-5 py-3">Grupo · carrera</th><th className="px-3 py-3 text-center">Alumnos</th><th className="px-3 py-3 text-center">Riesgo</th><th className="px-3 py-3 text-center">Atención</th><th className="px-3 py-3 text-center">Base insuficiente</th><th className="px-5 py-3 text-right">Acción</th></tr></thead><tbody className={isDay ? 'divide-y divide-slate-100' : 'divide-y divide-white/5'}>{data.grupos.map(grupo => <tr key={grupo.id}><td className="px-5 py-3"><p className="font-semibold">{grupo.cuatrimestre}° {grupo.grupo} · {grupo.carrera}</p><p className="text-xs text-slate-500">{grupo.periodo}{grupo.turno ? ` · ${grupo.turno}` : ''}</p></td><td className="px-3 py-3 text-center">{grupo.total_alumnos}</td><td className="px-3 py-3 text-center font-semibold text-red-500">{grupo.alumnos_riesgo}</td><td className="px-3 py-3 text-center text-amber-500">{grupo.alumnos_atencion}</td><td className="px-3 py-3 text-center text-slate-500">{grupo.base_insuficiente}</td><td className="px-5 py-3 text-right"><button type="button" onClick={() => onAbrirGrupo(grupo.id, grupo.alumnos_riesgo ? 'RIESGO' : grupo.alumnos_atencion ? 'ATENCION' : 'BASE_INSUFICIENT')} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/10">Revisar</button></td></tr>)}</tbody></table></div></Panel>}
+    </div>
+  );
+}
+
 function PanoramaGrupo({ grupoId, seleccionarAlumno, materiaInicial = '', estadoInicial = 'TODOS', paginaInicial = 1, onFiltros, onCambiarGrupo }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -764,6 +821,10 @@ export default function ExpedienteAcademico() {
   const [grupos, setGrupos] = useState([]);
   const [grupoId, setGrupoId] = useState(Number(searchParams.get('grupo')) || null);
   const [mostrarSelectorGrupos, setMostrarSelectorGrupos] = useState(!searchParams.get('grupo'));
+  const [vistaSelector, setVistaSelector] = useState('RIESGO');
+  const [resumenRiesgos, setResumenRiesgos] = useState(null);
+  const [cargandoRiesgos, setCargandoRiesgos] = useState(false);
+  const [errorRiesgos, setErrorRiesgos] = useState('');
   const [busquedaGrupo, setBusquedaGrupo] = useState('');
   const [filtroCuatrimestre, setFiltroCuatrimestre] = useState('TODOS');
   const [filtroConfiguracion, setFiltroConfiguracion] = useState('TODOS');
@@ -801,6 +862,24 @@ export default function ExpedienteAcademico() {
       .catch(err => setError(err.response?.data?.detail || 'No se pudieron consultar los grupos.'));
   }, [usuario?.rol, alumnoId]);
   useEffect(() => {
+    if (alumnoId || !mostrarSelectorGrupos) return;
+    if (!periodo?.id) {
+      setResumenRiesgos(null);
+      setErrorRiesgos('');
+      setCargandoRiesgos(false);
+      return;
+    }
+    let cancelado = false;
+    setResumenRiesgos(null);
+    setCargandoRiesgos(true);
+    setErrorRiesgos('');
+    api.get('/expediente-academico/panorama/riesgos', { params: { periodo_id: periodo.id } })
+      .then(({ data: resultado }) => { if (!cancelado) setResumenRiesgos(resultado); })
+      .catch(err => { if (!cancelado) setErrorRiesgos(err.response?.data?.detail || 'No se pudo cargar el concentrado de riesgo.'); })
+      .finally(() => { if (!cancelado) setCargandoRiesgos(false); });
+    return () => { cancelado = true; };
+  }, [alumnoId, mostrarSelectorGrupos, periodo?.id]);
+  useEffect(() => {
     const timer = setTimeout(() => buscar(busqueda), 300);
     return () => clearTimeout(timer);
   }, [busqueda, buscar]);
@@ -835,12 +914,13 @@ export default function ExpedienteAcademico() {
     params.delete('alumno');
     setSearchParams(params);
   };
-  const seleccionarGrupo = id => {
+  const seleccionarGrupo = (id, estadoInicialGrupo = null) => {
     setGrupoId(id);
     setMostrarSelectorGrupos(false);
     const params = new URLSearchParams(searchParams);
     params.set('grupo', String(id));
     params.delete('materia'); params.delete('estado'); params.delete('pagina');
+    if (estadoInicialGrupo && estadoInicialGrupo !== 'TODOS') params.set('estado', estadoInicialGrupo);
     setSearchParams(params);
   };
   const guardarFiltrosPanorama = useCallback(({ materia, estado, pagina }) => {
@@ -930,7 +1010,15 @@ export default function ExpedienteAcademico() {
 
         {!alumnoId && (
           <div className="space-y-4">
-            {mostrarSelectorGrupos && <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {mostrarSelectorGrupos && <div className="space-y-4">
+              <div className={`inline-flex rounded-xl border p-1 ${isDay ? 'border-slate-200 bg-white' : 'border-white/10 bg-white/[0.035]'}`} role="tablist" aria-label="Vista del panorama académico">
+                <button type="button" role="tab" aria-selected={vistaSelector === 'RIESGO'} onClick={() => setVistaSelector('RIESGO')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${vistaSelector === 'RIESGO' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Riesgo académico</button>
+                <button type="button" role="tab" aria-selected={vistaSelector === 'GRUPOS'} onClick={() => setVistaSelector('GRUPOS')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${vistaSelector === 'GRUPOS' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Explorar grupos</button>
+              </div>
+              {vistaSelector === 'RIESGO' ? (
+                <PanoramaDivision data={resumenRiesgos} loading={cargandoRiesgos} error={errorRiesgos} onAbrirAlumno={seleccionar} onAbrirGrupo={seleccionarGrupo} />
+              ) : <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Kpi label="Grupos activos" value={grupos.length} hint={`${resumenGrupos.carreras} carrera(s)`} tone="text-blue-400" />
               <Kpi label="Alumnos inscritos" value={resumenGrupos.alumnos} hint="En los grupos accesibles" tone="text-emerald-500" />
               <Kpi label="Grupos configurados" value={resumenGrupos.configurados} hint="Con al menos una materia" tone="text-violet-400" />
@@ -977,7 +1065,8 @@ export default function ExpedienteAcademico() {
             )}
             {!gruposFiltrados.length && grupos.length > 0 && <Panel className="p-10 text-center text-sm text-slate-500">No hay grupos que coincidan con los filtros seleccionados.</Panel>}
             {!grupos.length && <Panel className="p-10 text-center text-sm text-slate-500">No hay grupos académicos accesibles.</Panel>}</>}
-            <PanoramaGrupo
+            </div>}
+            {!mostrarSelectorGrupos && <PanoramaGrupo
               key={grupoId}
               grupoId={grupoId}
               seleccionarAlumno={seleccionar}
@@ -986,7 +1075,7 @@ export default function ExpedienteAcademico() {
               paginaInicial={Math.max(1, Number(searchParams.get('pagina')) || 1)}
               onFiltros={guardarFiltrosPanorama}
               onCambiarGrupo={() => setMostrarSelectorGrupos(true)}
-            />
+            />}
           </div>
         )}
 

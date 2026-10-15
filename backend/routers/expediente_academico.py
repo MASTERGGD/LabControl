@@ -1019,6 +1019,121 @@ def panorama_grupos(
     return resultado
 
 
+@router.get("/panorama/riesgos", summary="Resumen de riesgo académico de los grupos accesibles")
+def panorama_riesgos_division(
+    periodo_id: Optional[int] = Query(default=None, gt=0),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Consolida el semáforo de los grupos visibles sin ampliar permisos del expediente."""
+    grupos = _grupos_accesibles(db, current_user)
+    periodo_etiqueta = None
+    if periodo_id is not None:
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_id).first()
+        if not periodo:
+            raise HTTPException(404, "Periodo académico no encontrado")
+        periodo_etiqueta = periodo.clave
+        grupos = [grupo for grupo in grupos if grupo.periodo_id == periodo_id]
+    elif grupos and grupos[0].periodo:
+        periodo_etiqueta = grupos[0].periodo.clave
+
+    grupos_resultado = []
+    alumnos_por_id = {}
+    prioridad = {"RIESGO": 0, "ATENCION": 1, "BASE_INSUFICIENT": 2, "SIN_DATOS": 3, "REGULAR": 4}
+    for grupo in grupos:
+        panorama = panorama_alumnos_grupo(
+            grupo_id=grupo.id,
+            materia_clave=None,
+            q="",
+            estado="TODOS",
+            pagina=1,
+            limite=100,
+            db=db,
+            current_user=current_user,
+        )
+        # Los grupos suelen ser pequeños, pero se recorren las páginas restantes
+        # para que el concentrado no omita casos en grupos numerosos.
+        alumnos_grupo = list(panorama["alumnos"])
+        for pagina in range(2, panorama["paginacion"]["paginas"] + 1):
+            pagina_data = panorama_alumnos_grupo(
+                grupo_id=grupo.id,
+                materia_clave=None,
+                q="",
+                estado="TODOS",
+                pagina=pagina,
+                limite=100,
+                db=db,
+                current_user=current_user,
+            )
+            alumnos_grupo.extend(pagina_data["alumnos"])
+
+        contexto = {
+            "id": grupo.id,
+            "carrera": grupo.carrera,
+            "cuatrimestre": grupo.cuatrimestre,
+            "grupo": grupo.grupo,
+            "turno": grupo.turno,
+            "periodo": grupo.periodo.clave if grupo.periodo else None,
+        }
+        resumen = panorama["resumen"]
+        grupos_resultado.append({
+            **contexto,
+            "total_alumnos": resumen["total_alumnos"],
+            "alumnos_riesgo": resumen["alumnos_riesgo"],
+            "alumnos_atencion": resumen["alumnos_atencion"],
+            "base_insuficiente": resumen["base_insuficiente"],
+            "sin_datos": resumen["sin_datos"],
+            "clases_registradas": resumen["clases_registradas"],
+        })
+        for alumno in alumnos_grupo:
+            fila = {
+                **alumno,
+                "grupo_id": grupo.id,
+                "carrera": grupo.carrera,
+                "cuatrimestre": grupo.cuatrimestre,
+                "grupo": grupo.grupo,
+                "periodo": grupo.periodo.clave if grupo.periodo else None,
+                "grupos": [],
+            }
+            clave = str(alumno["id"])
+            existente = alumnos_por_id.get(clave)
+            informacion_grupo = {"id": grupo.id, "carrera": grupo.carrera, "cuatrimestre": grupo.cuatrimestre, "grupo": grupo.grupo}
+            if existente:
+                existente["grupos"].append(informacion_grupo)
+                if prioridad.get(alumno["estado"], 99) < prioridad.get(existente["estado"], 99):
+                    fila["grupos"] = existente["grupos"]
+                    alumnos_por_id[clave] = fila
+            else:
+                fila["grupos"] = [informacion_grupo]
+                alumnos_por_id[clave] = fila
+
+    alumnos_unicos = list(alumnos_por_id.values())
+    totales = {estado: sum(1 for alumno in alumnos_unicos if alumno["estado"] == estado) for estado in prioridad}
+    grupos_resultado.sort(key=lambda fila: (
+        -fila["alumnos_riesgo"], -fila["alumnos_atencion"],
+        str(fila["carrera"] or "").lower(), fila["cuatrimestre"], str(fila["grupo"] or "").lower(),
+    ))
+    alumnos_unicos.sort(key=lambda fila: (
+        prioridad.get(fila["estado"], 99),
+        str(fila["carrera"] or "").lower(), fila["cuatrimestre"], str(fila["grupo"] or "").lower(),
+        str(fila["nombre"] or "").lower(),
+    ))
+    return {
+        "periodo": periodo_etiqueta,
+        "resumen": {
+            "grupos": len(grupos_resultado),
+            "alumnos": len(alumnos_unicos),
+            "alumnos_riesgo": totales["RIESGO"],
+            "alumnos_atencion": totales["ATENCION"],
+            "base_insuficiente": totales["BASE_INSUFICIENT"],
+            "sin_datos": totales["SIN_DATOS"],
+            "regulares": totales["REGULAR"],
+        },
+        "grupos": grupos_resultado,
+        "alumnos": alumnos_unicos,
+    }
+
+
 @router.get(
     "/panorama/grupos/{grupo_id}/alumnos",
     summary="Indicadores y alumnos paginados de un grupo",
