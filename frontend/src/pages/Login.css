@@ -24,8 +24,8 @@
 }
 body.theme-day .siga-login {
   --login-page: #e8f4f1;
-  --login-panel: #fff8e7;
-  --login-panel-soft: #f7f1e3;
+  --login-panel: #ffffff;
+  --login-panel-soft: #f2f8f5;
   --login-field: #ffffff;
   --login-text: #173d39;
   --login-muted: #526b66;
@@ -71,7 +71,6 @@ body.theme-day .siga-login {
 .siga-login__brand-icon img { width: 34px; height: 34px; object-fit: contain; }
 .siga-login__brand-name { display: block; font-size: 16px; font-weight: 800; letter-spacing: .13em; }
 .siga-login__brand-subtitle { display: block; margin-top: 1px; color: var(--login-muted); font-size: 12px; }
-.siga-login__institution { color: var(--login-muted); font-size: 12px; }
 .siga-login__layout {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
@@ -103,16 +102,6 @@ body.theme-day .siga-login {
   background: rgba(43, 168, 162, .2);
   content: "";
 }
-.siga-login__welcome::after {
-  position: absolute;
-  top: 42px;
-  right: 48px;
-  width: 30px;
-  height: 30px;
-  border: 6px solid #ffd23f;
-  border-radius: 50%;
-  content: "";
-}
 .siga-login__eyebrow {
   position: relative;
   z-index: 1;
@@ -123,62 +112,70 @@ body.theme-day .siga-login {
   letter-spacing: .13em;
   text-transform: uppercase;
 }
-.siga-login__card-art {
+.siga-login__product-preview {
   position: relative;
   z-index: 1;
-  width: 310px;
-  height: 172px;
-  margin: 4px 0 17px;
+  width: min(100%, 390px);
+  margin: 15px 0 25px;
+  padding: 13px;
+  border: 1px solid rgba(218, 247, 239, .2);
+  border-radius: 17px;
+  background: rgba(8, 55, 54, .22);
+  box-shadow: 0 16px 32px rgba(6, 48, 46, .16);
 }
-.siga-login__fan-card {
-  position: absolute;
-  top: 15px;
+.siga-login__preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 3px 11px;
+  color: #f2fbf8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .025em;
+}
+.siga-login__preview-mark { display: flex; align-items: center; gap: 3px; }
+.siga-login__preview-mark span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #9be4cb;
+}
+.siga-login__preview-status {
+  margin-left: auto;
+  padding: 3px 7px;
+  border: 1px solid rgba(220, 247, 237, .2);
+  border-radius: 999px;
+  color: #c9f0e2;
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+.siga-login__preview-list { display: grid; gap: 6px; }
+.siga-login__preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 49px;
+  padding: 6px 9px;
+  border: 1px solid rgba(223, 246, 240, .1);
+  border-radius: 11px;
+  background: rgba(248, 255, 252, .08);
+  color: #f4fbf8;
+}
+.siga-login__preview-icon {
   display: grid;
-  width: 102px;
-  height: 130px;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
   place-items: center;
-  border: 2px solid #15534e;
-  border-radius: 16px;
-  box-shadow: 0 9px 16px rgba(0, 0, 0, .18);
-  font-size: 25px;
-  font-weight: 850;
+  border-radius: 9px;
+  background: rgba(130, 219, 192, .15);
+  color: #a9ead1;
 }
-.siga-login__fan-card--coral { left: 24px; transform: rotate(-18deg); background: #ef6c4a; color: #fff8e7; }
-.siga-login__fan-card--blue { left: 78px; top: 7px; transform: rotate(-7deg); background: #5daade; color: #103e55; }
-.siga-login__fan-card--gold { left: 132px; transform: rotate(6deg); background: #ffd23f; color: #594400; }
-.siga-login__fan-card--cream { left: 183px; top: 22px; transform: rotate(17deg); background: #fff8e7; color: #1e7772; }
-.siga-login__ribbon {
-  position: absolute;
-  z-index: 2;
-  top: 56px;
-  left: 42px;
-  display: grid;
-  width: 196px;
-  height: 55px;
-  place-items: center;
-  transform: rotate(-3deg);
-  border: 2px solid #15534e;
-  border-radius: 8px;
-  background: #fff8e7;
-  box-shadow: 0 6px 0 rgba(255, 210, 63, .85);
-  color: #1e7772;
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: .16em;
-}
-.siga-login__ribbon::before,
-.siga-login__ribbon::after {
-  position: absolute;
-  z-index: -1;
-  top: 9px;
-  width: 28px;
-  height: 38px;
-  border: 2px solid #15534e;
-  background: #eadfca;
-  content: "";
-}
-.siga-login__ribbon::before { left: -17px; transform: skewY(25deg); }
-.siga-login__ribbon::after { right: -17px; transform: skewY(-25deg); }
+.siga-login__preview-icon svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.siga-login__preview-row b, .siga-login__preview-row small { display: block; }
+.siga-login__preview-row b { font-size: 10px; font-weight: 700; }
+.siga-login__preview-row small { margin-top: 2px; color: #c2ded7; font-size: 9px; }
+.siga-login__preview-arrow { margin-left: auto; color: #9fcac0; font-size: 20px; line-height: 1; }
 .siga-login__welcome h1 {
   position: relative;
   z-index: 1;
@@ -199,30 +196,10 @@ body.theme-day .siga-login {
   font-size: 15px;
   line-height: 1.65;
 }
-.siga-login__welcome-foot {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 25px;
-  color: #e0f1ed;
-  font-size: 12px;
-}
-.siga-login__welcome-check {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid rgba(255, 248, 231, .38);
-  border-radius: 50%;
-  color: #ffd23f;
-  font-weight: 800;
-}
 .siga-login__access { display: flex; flex-direction: column; justify-content: center; }
 .siga-login__form-panel {
   padding: 32px;
-  border: 1px solid color-mix(in srgb, #ffd23f 28%, var(--login-border));
+  border: 1px solid var(--login-border);
   border-radius: 24px;
   background: var(--login-panel);
   box-shadow: 0 10px 28px rgba(0, 0, 0, .14), 0 3px 18px rgba(43, 168, 162, .08);
@@ -336,25 +313,41 @@ body.theme-day .siga-login {
 .siga-login__error-icon { flex: 0 0 auto; width: 18px; height: 18px; }
 .siga-login__fine-print { margin: -6px 0 0; color: var(--login-muted); font-size: 12px; text-align: center; }
 .siga-login__offline-toggle {
-  width: 100%;
-  min-height: 44px;
-  margin-top: 15px;
-  border: 1px solid var(--login-border);
-  border-radius: 999px;
+  align-self: flex-start;
+  min-height: 0;
+  margin-top: 13px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--login-link);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.siga-login__offline-toggle:hover { background: var(--login-panel-soft); }
-.siga-login__install { margin-top: 16px; }
+.siga-login__offline-toggle:hover { color: var(--login-text); }
+.siga-login__install { margin-top: 6px; }
 .siga-login__install > div {
-  border-color: var(--login-border);
-  background: var(--login-panel-soft);
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
   color: var(--login-muted);
 }
-.siga-login__install button { color: var(--login-link); }
-.siga-login__install button:hover { background: rgba(43, 168, 162, .11); }
+.siga-login__install button {
+  width: auto !important;
+  min-height: 0 !important;
+  padding: 4px 0 !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: var(--login-muted) !important;
+  font-size: 12px !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.siga-login__install button:hover { color: var(--login-link) !important; }
+.siga-login__install > div > p:first-of-type { display: none; }
 .siga-login__install p, .siga-login__install [role="status"] { color: var(--login-muted); }
 .siga-login__restricted {
   margin-top: 21px;
@@ -379,17 +372,16 @@ body.theme-day .siga-login__welcome { box-shadow: 0 12px 32px rgba(17, 91, 84, .
   .siga-login { padding: 20px; }
   .siga-login__layout { grid-template-columns: minmax(0, 1fr); max-width: 560px; margin: 0 auto; }
   .siga-login__welcome { min-height: 370px; padding: 28px 30px; }
-  .siga-login__card-art { height: 145px; margin-bottom: 6px; }
+  .siga-login__product-preview { margin: 15px 0 4px; }
   .siga-login__form-panel { padding: 27px; }
 }
 @media (max-width: 520px) {
   .siga-login { align-items: flex-start; padding: 15px 12px 22px; }
   .siga-login__header { align-items: flex-start; margin-bottom: 17px; }
-  .siga-login__institution { max-width: 135px; padding-top: 4px; text-align: right; }
   .siga-login__welcome { min-height: 330px; padding: 23px 20px; border-radius: 21px; }
   .siga-login__welcome h1 { font-size: 34px; }
   .siga-login__welcome-copy { font-size: 14px; }
-  .siga-login__card-art { transform: scale(.88); transform-origin: left center; margin-top: -5px; margin-bottom: -2px; }
+  .siga-login__product-preview { margin: 10px 0 19px; }
   .siga-login__form-panel { padding: 23px 19px; border-radius: 21px; }
   .siga-login__footer { flex-direction: column; gap: 4px; }
   .siga-login__form-title { font-size: 23px; }

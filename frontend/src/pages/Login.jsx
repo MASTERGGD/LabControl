@@ -124,26 +124,44 @@ export default function Login() {
               <span className="siga-login__brand-subtitle">Gestión académica · UTECAN</span>
             </span>
           </div>
-          <div className="siga-login__institution">Universidad Tecnológica de Candelaria</div>
         </header>
 
         <main className="siga-login__layout">
           <section className="siga-login__welcome" aria-labelledby="siga-login-title">
-            <div className="siga-login__eyebrow">Tu espacio académico</div>
-            <div className="siga-login__card-art" aria-hidden="true">
-              <span className="siga-login__fan-card siga-login__fan-card--coral">A</span>
-              <span className="siga-login__fan-card siga-login__fan-card--blue">2</span>
-              <span className="siga-login__fan-card siga-login__fan-card--gold">7</span>
-              <span className="siga-login__fan-card siga-login__fan-card--cream">S</span>
-              <span className="siga-login__ribbon">SIGA</span>
-            </div>
+            <div className="siga-login__eyebrow">Una sola plataforma</div>
             <h1 id="siga-login-title">Todo listo para empezar.</h1>
             <p className="siga-login__welcome-copy">
-              Accede a tus clases, servicios y gestiones desde un solo lugar.
+              Organiza tu jornada y consulta las herramientas que acompañan tu trabajo académico.
             </p>
-            <div className="siga-login__welcome-foot">
-              <span className="siga-login__welcome-check" aria-hidden="true">✓</span>
-              <span>Una plataforma para la comunidad UTECAN</span>
+            <div className="siga-login__product-preview" role="img" aria-label="Clases, espacios y tutorías disponibles en SIGA">
+              <div className="siga-login__preview-heading">
+                <span className="siga-login__preview-mark" aria-hidden="true"><span /><span /><span /></span>
+                <span>Mi espacio académico</span>
+                <span className="siga-login__preview-status">UTE</span>
+              </div>
+              <div className="siga-login__preview-list">
+                <div className="siga-login__preview-row">
+                  <span className="siga-login__preview-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+                  </span>
+                  <span><b>Clases y horarios</b><small>Tu jornada académica</small></span>
+                  <span className="siga-login__preview-arrow" aria-hidden="true">›</span>
+                </div>
+                <div className="siga-login__preview-row">
+                  <span className="siga-login__preview-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V8l8-4 8 4v12M2.5 20h19M8 10h.01M12 10h.01M16 10h.01M9 20v-5h6v5"/></svg>
+                  </span>
+                  <span><b>Espacios y laboratorios</b><small>Consulta y gestión</small></span>
+                  <span className="siga-login__preview-arrow" aria-hidden="true">›</span>
+                </div>
+                <div className="siga-login__preview-row">
+                  <span className="siga-login__preview-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-1.5A4.5 4.5 0 0 1 8 14h2a4.5 4.5 0 0 1 4.5 4.5V20M16 5.5a3 3 0 0 1 0 5.8M17 14h.5a3 3 0 0 1 3 3v3"/></svg>
+                  </span>
+                  <span><b>Tutorías y seguimiento</b><small>Acompañamiento académico</small></span>
+                  <span className="siga-login__preview-arrow" aria-hidden="true">›</span>
+                </div>
+              </div>
             </div>
           </section>
 
