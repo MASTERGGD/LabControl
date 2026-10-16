@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../hooks/useApi";
 import { useToast } from "../../context/ToastContext";
+import { useTheme } from "../../context/ThemeContext";
 import AdminLayout from "../../components/AdminLayout";
 import SelectDark from "../../components/SelectDark";
 import RegistroSesionTutoria from "./RegistroSesionTutoria";
@@ -31,6 +32,45 @@ const ESTADO_REPORTE = {
   EN_SEGUIMIENTO: "En seguimiento", CANALIZADO: "Canalizado", ATENDIDO: "Atendido",
   CERRADO: "Cerrado", CERRADO_ADMINISTRATIVO: "Cierre administrativo",
 };
+
+function seccionesResultado(texto) {
+  const valor = String(texto || '').replace(/^\s*Resultado\s*:\s*/i, '').trim();
+  const patron = /\b(Objetivo(?: de (?:la )?intervención)?|Seguimiento)\s*:/gi;
+  const coincidencias = [...valor.matchAll(patron)];
+  if (!coincidencias.length) return [{ titulo: 'Resultado de la atención', texto: valor }];
+
+  const partes = [];
+  const inicial = valor.slice(0, coincidencias[0].index).trim();
+  if (inicial) partes.push({ titulo: 'Resultado de la atención', texto: inicial });
+  coincidencias.forEach((coincidencia, indice) => {
+    const inicio = coincidencia.index + coincidencia[0].length;
+    const fin = coincidencias[indice + 1]?.index ?? valor.length;
+    const contenido = valor.slice(inicio, fin).trim();
+    if (contenido) {
+      const titulo = /^Objetivo/i.test(coincidencia[1]) ? 'Objetivo de la intervención' : 'Seguimiento';
+      partes.push({ titulo, texto: contenido });
+    }
+  });
+  return partes.length ? partes : [{ titulo: 'Resultado de la atención', texto: valor }];
+}
+
+function ResultadoAtencion({ texto }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const secciones = seccionesResultado(texto);
+  return (
+    <section className={`mt-5 max-w-5xl rounded-xl border p-4 sm:p-5 ${isDay ? 'border-emerald-200 bg-emerald-50/80' : 'border-emerald-500/20 bg-emerald-500/[0.07]'}`} aria-label="Resultado de la atención">
+      <div className="space-y-5">
+        {secciones.map((seccion, indice) => (
+          <div key={`${seccion.titulo}-${indice}`} className={indice ? `border-t pt-4 ${isDay ? 'border-emerald-200' : 'border-emerald-500/15'}` : ''}>
+            <h4 className={`text-sm font-semibold ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>{seccion.titulo}</h4>
+            <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-7 ${isDay ? 'text-slate-700' : 'text-slate-200'}`}>{seccion.texto}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 const CATEGORIAS_F09 = {
   BAJA: "🚪 Baja escolar", VULNERABILIDAD_ACADEMICA: "📚 Vulnerabilidad académica",
@@ -935,8 +975,8 @@ export default function MisTutorados() {
                     <h3 className="mt-2 font-semibold text-white">{r.titulo}</h3>
                     <p className="mt-0.5 text-sm text-slate-300">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || 'sin identificar'}` : `${r.alumno_nombre} · ${r.matricula}`}</p>
                     <p className="text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</p>
-                    {r.detalle && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-400">{r.detalle}</p>}
-                    {r.resultado && <p className="mt-3 rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-200"><b>Resultado:</b> {r.resultado}</p>}
+                    {r.detalle && <p className="mt-4 max-w-5xl whitespace-pre-wrap break-words text-sm leading-7 text-slate-400">{r.detalle}</p>}
+                    {r.resultado && <ResultadoAtencion texto={r.resultado} />}
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-xs font-semibold text-amber-300">{ESTADO_REPORTE[r.estado] || toTitleCase(r.estado)}</p>
