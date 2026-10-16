@@ -607,6 +607,7 @@ export default function MisTutorados() {
   const [alumnos, setAlumnos] = useState([]);
   const [canalizaciones, setCanalizaciones] = useState([]);
   const [reportesTutor, setReportesTutor] = useState([]);
+  const [reportesExpandidos, setReportesExpandidos] = useState(() => new Set());
   const [pendientes, setPendientes] = useState(null);
   const [tab, setTab] = useState(() => {
     const solicitado = searchParams.get("tab");
@@ -960,29 +961,69 @@ export default function MisTutorados() {
 
         {tab === "reportes" && (
           <div className="space-y-3">
+            {reportesTutor.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+                <p className="text-sm text-slate-300">
+                  <span className="font-semibold text-white">{reportesTutor.length}</span>{' '}
+                  {reportesTutor.length === 1 ? 'reporte recibido' : 'reportes recibidos'}
+                  <span className="ml-2 text-xs text-slate-500">Abre cada reporte para consultar el detalle y el seguimiento.</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setReportesExpandidos(actuales => (
+                    reportesTutor.every(reporte => actuales.has(reporte.id))
+                      ? new Set()
+                      : new Set(reportesTutor.map(reporte => reporte.id))
+                  ))}
+                  className="rounded-lg border border-emerald-500/30 px-3 py-2 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/10"
+                >
+                  {reportesTutor.every(reporte => reportesExpandidos.has(reporte.id)) ? 'Contraer todos' : 'Expandir todos'}
+                </button>
+              </div>
+            )}
             {reportesTutor.length === 0 && (
               <p className="py-8 text-center text-sm text-slate-500">No tienes reportes de docentes pendientes o históricos.</p>
             )}
             {reportesTutor.map(r => (
               <article key={r.id} className={`rounded-xl border p-4 ${r.prioridad === "ALTA" ? "border-red-500/30 bg-red-500/[0.07]" : "border-slate-700/60 bg-slate-800/60"}`}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  aria-expanded={reportesExpandidos.has(r.id)}
+                  aria-controls={`detalle-reporte-tutoria-${r.id}`}
+                  onClick={() => setReportesExpandidos(actuales => {
+                    const siguientes = new Set(actuales);
+                    if (siguientes.has(r.id)) siguientes.delete(r.id);
+                    else siguientes.add(r.id);
+                    return siguientes;
+                  })}
+                  className="flex w-full flex-wrap items-start justify-between gap-3 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 focus-visible:outline-offset-4"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap gap-2 text-[11px] font-semibold">
                       <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-300">{r.categoria}</span>
                       <span className={`rounded-full px-2 py-0.5 ${r.prioridad_confirmada && r.prioridad === "ALTA" ? "bg-red-500/20 text-red-300" : "bg-white/5 text-slate-400"}`}>{r.prioridad_confirmada ? `Prioridad ${toTitleCase(r.prioridad)}` : "Prioridad no confirmada"}</span>
                       {r.confidencial && <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-purple-300">Confidencial</span>}
-                    </div>
-                    <h3 className="mt-2 font-semibold text-white">{r.titulo}</h3>
-                    <p className="mt-0.5 text-sm text-slate-300">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || 'sin identificar'}` : `${r.alumno_nombre} · ${r.matricula}`}</p>
-                    <p className="text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</p>
-                    {r.detalle && <p className="mt-4 max-w-5xl whitespace-pre-wrap break-words text-sm leading-7 text-slate-400">{r.detalle}</p>}
+                    </span>
+                    <span className="mt-2 block font-semibold text-white">{r.titulo}</span>
+                    <span className="mt-0.5 block text-sm text-slate-300">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || 'sin identificar'}` : `${r.alumno_nombre} · ${r.matricula}`}</span>
+                    <span className="block text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</span>
+                    {!reportesExpandidos.has(r.id) && r.detalle && <span className="mt-2 block max-w-5xl line-clamp-2 text-sm leading-6 text-slate-400">{r.detalle}</span>}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3 self-start sm:pl-3">
+                    <span className="text-right">
+                      <span className="block text-xs font-semibold text-amber-300">{ESTADO_REPORTE[r.estado] || toTitleCase(r.estado)}</span>
+                      <span className="mt-1 block text-xs text-slate-500">{r.creado_en ? new Date(r.creado_en).toLocaleString("es-MX") : ""}</span>
+                    </span>
+                    <span className={`grid h-8 w-8 place-items-center rounded-full border border-white/10 text-slate-300 transition-transform ${reportesExpandidos.has(r.id) ? 'rotate-180 bg-white/10' : ''}`} aria-hidden="true">⌄</span>
+                  </span>
+                </button>
+                <div id={`detalle-reporte-tutoria-${r.id}`} hidden={!reportesExpandidos.has(r.id)} className="mt-4 border-t border-white/10 pt-4">
+                  {reportesExpandidos.has(r.id) && <>
+                    {r.detalle && <p className="max-w-5xl whitespace-pre-wrap break-words text-sm leading-7 text-slate-400">{r.detalle}</p>}
                     {r.resultado && <ResultadoAtencion texto={r.resultado} />}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold text-amber-300">{ESTADO_REPORTE[r.estado] || toTitleCase(r.estado)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{r.creado_en ? new Date(r.creado_en).toLocaleString("es-MX") : ""}</p>
-                  </div>
+                  </>}
                 </div>
+                {reportesExpandidos.has(r.id) && <>
                 <div className="mt-4 grid grid-cols-4 gap-1 text-center text-[10px]">
                   {[["Enviado", true], ["Visto", Boolean(r.recibido_en)], ["Seguimiento", ["REUNION_SOLICITADA", "EN_SEGUIMIENTO", "CANALIZADO", "ATENDIDO", "CERRADO"].includes(r.estado)], ["Resuelto", ["CANALIZADO", "ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"].includes(r.estado)]].map(([etiqueta, completo]) => <div key={etiqueta}><div className={"mb-1 h-1 rounded-full " + (completo ? "bg-emerald-500" : "bg-slate-700")} /><span className={completo ? "text-emerald-400" : "text-slate-600"}>{etiqueta}</span></div>)}
                 </div>
@@ -994,6 +1035,7 @@ export default function MisTutorados() {
                     {!r.es_reporte_grupal && <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>}
                   </div>
                 )}
+                </>}
               </article>
             ))}
           </div>
