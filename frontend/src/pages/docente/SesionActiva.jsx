@@ -325,15 +325,15 @@ function ModalPCOcupada({ pc, sesionId, onClose, onLiberada, onObservacion, onRe
           <div className="flex flex-col gap-2">
             <button onClick={handleLiberar} disabled={loading}
               className="w-full bg-red-700 hover:bg-red-600 disabled:bg-red-900 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-              {loading ? 'Liberando...' : '🔓 Liberar PC'}
+              {loading ? 'Liberando...' : 'Liberar PC'}
             </button>
             <button onClick={() => onObservacion(pc)}
               className="w-full bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-              ⚠️ Registrar observación
+              Registrar observación
             </button>
             <button onClick={() => onReportarDano(pc)}
               className="w-full bg-orange-700 hover:bg-orange-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
-              💥 Reportar daño al inventario
+              Reportar daño al inventario
             </button>
             <button onClick={onClose}
               className="w-full bg-gray-700 hover:bg-gray-600 text-white rounded-lg py-2.5 text-sm font-medium transition-colors">
@@ -370,7 +370,7 @@ function ModalReportarDano({ pc, sesion, onClose }) {
         origen_id: sesion?.id ?? null,
         tipo:      form.tipo,
         prioridad: form.prioridad,
-        descripcion: form.descripcion || `Daño reportado durante sesión ${sesion?.materia || ''} — PC ${pc?.codigo}`,
+        descripcion: form.descripcion.trim(),
       });
       setGuardado(true);
       setTimeout(onClose, 1500);
@@ -419,14 +419,18 @@ function ModalReportarDano({ pc, sesion, onClose }) {
         }}>
         {guardado ? (
           <div className="text-center py-6">
-            <div className="text-4xl mb-3">✅</div>
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m5 12 4 4L19 6" />
+              </svg>
+            </div>
             <p className="text-green-400 font-semibold">Incidente reportado al administrador</p>
             <p className="text-slate-400 text-sm mt-1">El responsable del laboratorio recibirá el reporte</p>
           </div>
         ) : (
           <>
             <div className="mb-4">
-              <h3 className="font-semibold text-white">💥 Reportar daño — PC {pc?.codigo}</h3>
+              <h3 className="font-semibold text-white">Reportar daño — PC {pc?.codigo}</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Este reporte irá directamente al módulo de Mantenimiento
               </p>
@@ -438,16 +442,16 @@ function ModalReportarDano({ pc, sesion, onClose }) {
                   value={form.tipo}
                   onChange={v => setForm({...form, tipo: v})}
                   options={[
-                    { value: 'DAÑO',          label: '💥 Daño físico' },
-                    { value: 'MANTENIMIENTO', label: '🔧 Requiere mantenimiento' },
-                    { value: 'OTRO',          label: '📌 Otro' },
+                    { value: 'DAÑO',          label: 'Daño físico' },
+                    { value: 'MANTENIMIENTO', label: 'Requiere mantenimiento' },
+                    { value: 'OTRO',          label: 'Otro' },
                   ]}
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-1">Prioridad</label>
                 <div className="flex gap-2">
-                  {[['ALTA','🔴 Alta'],['MEDIA','🟡 Media'],['BAJA','🟢 Baja']].map(([v, l]) => (
+                  {[['ALTA','Alta'],['MEDIA','Media'],['BAJA','Baja']].map(([v, l]) => (
                     <button key={v} type="button" onClick={() => setForm({...form, prioridad: v})}
                       className="flex-1 py-2 rounded-lg text-xs transition"
                       style={estiloPrioridad(v)}>
@@ -675,12 +679,12 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosi
 // ─── Modal Observación (PC + Aula) ────────────────────────────────────────────
 
 const CATEGORIAS_AULA = [
-  { id: 'CANON',       icon: '🎥', label: 'Cañón / Proyector',  tipo: 'DAÑO',          prioridad: 'ALTA'  },
-  { id: 'ILUMINACION', icon: '💡', label: 'Iluminación / AC',   tipo: 'MANTENIMIENTO', prioridad: 'MEDIA' },
-  { id: 'MOBILIARIO',  icon: '🪑', label: 'Mobiliario dañado',  tipo: 'DAÑO',          prioridad: 'MEDIA' },
-  { id: 'LIMPIEZA',    icon: '🧹', label: 'Limpieza del aula',  tipo: 'OTRO',          prioridad: 'BAJA'  },
-  { id: 'SEGURIDAD',   icon: '🔒', label: 'Seguridad',          tipo: 'OTRO',          prioridad: 'ALTA'  },
-  { id: 'OTRO',        icon: '📝', label: 'Otro',               tipo: 'OTRO',          prioridad: 'MEDIA' },
+  { id: 'CANON',       label: 'Cañón / Proyector',  tipo: 'DAÑO',          prioridad: 'ALTA'  },
+  { id: 'ILUMINACION', label: 'Iluminación / AC',   tipo: 'MANTENIMIENTO', prioridad: 'MEDIA' },
+  { id: 'MOBILIARIO',  label: 'Mobiliario dañado',  tipo: 'DAÑO',          prioridad: 'MEDIA' },
+  { id: 'LIMPIEZA',    label: 'Limpieza del aula',  tipo: 'OTRO',          prioridad: 'BAJA'  },
+  { id: 'SEGURIDAD',   label: 'Seguridad',          tipo: 'OTRO',          prioridad: 'ALTA'  },
+  { id: 'OTRO',        label: 'Otro',               tipo: 'OTRO',          prioridad: 'MEDIA' },
 ];
 
 function ModalObservacion({ pc, sesionId, sesion, onClose }) {
@@ -707,9 +711,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
     setLoading(true);
     setError('');
     try {
-      const descripcionFinal = aulaDesc.trim()
-        ? `[${categoriaSeleccionada.label}] ${aulaDesc.trim()}`
-        : `${categoriaSeleccionada.label} — reportado durante sesión ${sesion?.materia || ''}`;
+      const descripcionFinal = `Categoría: ${categoriaSeleccionada.label}${aulaDesc.trim() ? `\n\n${aulaDesc.trim()}` : ''}`;
       await api.post('/inventario/incidentes', {
         computadora_id: null,
         laboratorio_id: sesion?.laboratorio_id ?? null,
@@ -762,7 +764,11 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
 
         {guardado ? (
           <div className="text-center py-10 px-6">
-            <div className="text-5xl mb-3">✅</div>
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m5 12 4 4L19 6" />
+              </svg>
+            </div>
             <p className="text-green-400 font-semibold text-base">
               {pc ? 'Observación registrada en la sesión' : 'Reporte enviado al responsable del laboratorio'}
             </p>
@@ -778,7 +784,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
               isDay ? 'border-slate-200' : 'border-white/5'
             }`}>
               <div>
-                <h3 className="font-semibold text-white">⚠️ Observación — {pc.codigo.replace('--', '-')}</h3>
+                <h3 className="font-semibold text-white">Observación — {pc.codigo.replace('--', '-')}</h3>
                 {pc.fila && <p className="text-xs text-slate-400 mt-0.5">Fila {pc.fila}</p>}
               </div>
               <button onClick={onClose} className={isDay ? 'text-slate-500 hover:text-slate-950' : 'text-slate-400 hover:text-white'}>
@@ -792,20 +798,20 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                 value={pcForm.tipo}
                 onChange={v => setPcForm({...pcForm, tipo: v})}
                 options={[
-                  { value: 'FALLA_HARDWARE', label: '🔩 Falla de hardware' },
-                  { value: 'FALLA_SOFTWARE', label: '💻 Falla de software' },
-                  { value: 'LIMPIEZA',       label: '🧹 Requiere limpieza' },
-                  { value: 'SIN_NOVEDAD',    label: '✅ Sin novedad' },
-                  { value: 'OTRO',           label: '📌 Otro' },
+                  { value: 'FALLA_HARDWARE', label: 'Falla de hardware' },
+                  { value: 'FALLA_SOFTWARE', label: 'Falla de software' },
+                  { value: 'LIMPIEZA',       label: 'Requiere limpieza' },
+                  { value: 'SIN_NOVEDAD',    label: 'Sin novedad' },
+                  { value: 'OTRO',           label: 'Otro' },
                 ]}
               />
               <SelectDark
                 value={pcForm.prioridad}
                 onChange={v => setPcForm({...pcForm, prioridad: v})}
                 options={[
-                  { value: 'BAJA',  label: '🟢 Prioridad baja' },
-                  { value: 'MEDIA', label: '🟡 Prioridad media' },
-                  { value: 'ALTA',  label: '🔴 Prioridad alta' },
+                  { value: 'BAJA',  label: 'Prioridad baja' },
+                  { value: 'MEDIA', label: 'Prioridad media' },
+                  { value: 'ALTA',  label: 'Prioridad alta' },
                 ]}
               />
               <textarea value={pcForm.descripcion} onChange={e => setPcForm({...pcForm, descripcion: e.target.value})}
@@ -839,7 +845,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
             }`}>
               <div>
                 <h3 className={`font-semibold flex items-center gap-2 ${isDay ? 'text-slate-900' : 'text-white'}`}>
-                  <span>⚠️</span> Reportar problema del aula
+                  Reportar problema del aula
                 </h3>
                 <p className={`text-xs mt-0.5 ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>El reporte llegará al responsable del laboratorio</p>
               </div>
@@ -856,14 +862,13 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                   {CATEGORIAS_AULA.map(cat => (
                     <button key={cat.id} type="button"
                       onClick={() => handleSelectCategoria(cat)}
-                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition-all text-center
+                      className={`flex min-h-14 items-center justify-center p-3 rounded-xl border transition-all text-center
                         ${categoriaId === cat.id
                           ? 'border-emerald-500 bg-emerald-500/10'
                           : isDay
                             ? 'border-slate-200 hover:border-emerald-400 hover:bg-emerald-50'
                             : 'border-slate-600 hover:border-slate-500 hover:bg-white/5'
                         }`}>
-                      <span className="text-xl">{cat.icon}</span>
                       <span className={`text-xs leading-tight font-medium ${
                         categoriaId === cat.id
                           ? 'text-emerald-600'
@@ -879,7 +884,7 @@ function ModalObservacion({ pc, sesionId, sesion, onClose }) {
                   <div>
                     <p className={`text-xs mb-2 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>Prioridad</p>
                     <div className="flex gap-2">
-                      {[['ALTA','🔴 Alta'],['MEDIA','🟡 Media'],['BAJA','🟢 Baja']].map(([v, l]) => (
+                      {[['ALTA','Alta'],['MEDIA','Media'],['BAJA','Baja']].map(([v, l]) => (
                         <button key={v} type="button" onClick={() => setAulaPri(v)}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition
                             ${aulaPri === v
@@ -1211,11 +1216,11 @@ function RecepcionInicial({ pcs, sesion, sesionId, onConfirmada }) {
     try {
       const items = pcsMapeables.map(pc => {
         const est = estados[pc.pc_id] || {};
-        // build descripcion with tipo prefix
+        // Keep the category as a separate, readable line for the incident view.
         let desc = est.descripcion || '';
         if (est.conProblema && est.tipo) {
           const tipoLabel = TIPO_PROBLEMA_OPTS.find(t => t.id === est.tipo)?.label || est.tipo;
-          desc = desc ? `[${tipoLabel}] ${desc}` : `[${tipoLabel}]`;
+          desc = `Categoría: ${tipoLabel}${desc ? `\n\n${desc}` : ''}`;
         }
         return {
           computadora_id: pc.pc_id,

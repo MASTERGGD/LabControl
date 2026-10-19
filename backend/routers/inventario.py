@@ -1657,11 +1657,12 @@ def _meta_prestamo(p: Prestamo) -> dict:
 
 def _serializar_incidente(i: Incidente, db: Session) -> dict:
     from models.laboratorio import Computadora
-    from models.sesion import AsignacionPC
+    from models.sesion import AsignacionPC, SesionClase
     activo    = db.query(Activo).filter(Activo.id == i.activo_id).first() if i.activo_id else None
     lab       = db.query(Laboratorio).filter(Laboratorio.id == i.laboratorio_id).first() if i.laboratorio_id else None
     dep_activo = db.query(Departamento).filter(Departamento.id == activo.departamento_id).first() if activo and activo.departamento_id else None
     dep_origen = db.query(Departamento).filter(Departamento.id == i.origen_id).first() if i.origen == "DEPARTAMENTO" and i.origen_id else None
+    sesion = db.query(SesionClase).filter(SesionClase.id == i.origen_id).first() if i.origen in ("SESION", "RECEPCION") and i.origen_id else None
     ubicacion_activo = db.query(UbicacionInventario).filter(UbicacionInventario.id == activo.ubicacion_id).first() if activo and activo.ubicacion_id else None
     responsable_activo = db.query(Usuario).filter(Usuario.id == activo.responsable_id).first() if activo and activo.responsable_id else None
     # Para computadoras, intentar obtener datos básicos
@@ -1754,6 +1755,8 @@ def _serializar_incidente(i: Incidente, db: Session) -> dict:
         "laboratorio_nombre": lab.nombre if lab else None,
         "origen":           i.origen,
         "origen_id":        i.origen_id,
+        "sesion_codigo":    sesion.codigo_sesion if sesion else None,
+        "sesion_materia":   sesion.materia if sesion else None,
         "tipo":             i.tipo,
         "descripcion":      i.descripcion,
         "reportado_por":    reporter.nombre if reporter else None,

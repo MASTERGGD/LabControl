@@ -1,19 +1,19 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "fecha": "2026-10-19",
-  "resumen": "Simplificamos la revisión de incidencias: ahora puedes documentar la reparación y cerrar el reporte en un solo flujo.",
+  "resumen": "Los reportes de laboratorio ahora separan categoría, descripción y datos de sesión para facilitar la lectura.",
   "destacados": [
-    "El botón Cerrar incidencia permite anotar qué se hizo y guardar el cierre de una vez.",
-    "Ya no hace falta marcar como reparado y después confirmar el cierre por separado.",
-    "Al cerrar una incidencia de equipo, el equipo relacionado vuelve a estar disponible."
+    "La categoría aparece como un dato propio y el texto del problema se muestra limpio, sin corchetes ni datos repetidos.",
+    "El reportante y la sesión se consultan en sus campos correspondientes.",
+    "Los reportes de sesión usan iconos y etiquetas de texto con un estilo más uniforme."
   ],
   "secciones": [
     {
-      "area": "Incidencias de mantenimiento",
+      "area": "Reportes de laboratorio",
       "cambios": [
-        "Documenta la reparación y el costo opcional dentro del flujo de cierre.",
-        "Guardar y cerrar registra el seguimiento y cambia el estado en una sola solicitud.",
-        "Al cerrar, la computadora o activo relacionado se libera para volver a utilizarse."
+        "Los reportes nuevos guardan la categoría en una línea legible y la interfaz la presenta separada de la descripción.",
+        "Se eliminaron del texto visible el nombre del reportante y la sesión cuando ya aparecen como metadatos.",
+        "Se reemplazaron emojis decorativos del flujo de reportes por iconos SVG y texto claro."
       ]
     }
   ]

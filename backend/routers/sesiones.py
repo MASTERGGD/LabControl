@@ -1047,7 +1047,7 @@ async def reportar_pc_cierre(
 
     # Crear incidente en Mantenimiento
     from models.inventario import Incidente
-    descripcion = f"[PC {pc.codigo}] {data.nota} — reportado al cierre de sesión {s.codigo_sesion} ({s.materia})"
+    descripcion = data.nota.strip()
     incidente = Incidente(
         computadora_id=pc.id,
         laboratorio_id=s.laboratorio_id,
@@ -1146,10 +1146,7 @@ def confirmar_recepcion(
 
         if obs.estado == "CON_PROBLEMA":
             # Crear Incidente vinculado a esta sesión con origen RECEPCION
-            descripcion_inc = (
-                obs.descripcion or f"Daño detectado al recibir laboratorio — PC {pc.codigo}"
-            )
-            descripcion_inc += f" [Reportado por {current_user.nombre} al iniciar sesión {s.codigo_sesion}]"
+            descripcion_inc = obs.descripcion or f"Daño detectado al recibir laboratorio — PC {pc.codigo}"
 
             incidente = Incidente(
                 computadora_id   = pc.id,

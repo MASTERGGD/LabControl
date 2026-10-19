@@ -113,7 +113,7 @@ function folioIncidente(incidente = {}) {
 }
 
 function tituloIncidente(incidente = {}) {
-  const descripcion = String(incidente.descripcion || '').trim();
+  const descripcion = presentarDescripcionIncidente(incidente).descripcion;
   const base = incidente.activo_nombre
     || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '')
     || (descripcion ? descripcion.slice(0, 58) : '')
@@ -122,7 +122,43 @@ function tituloIncidente(incidente = {}) {
 }
 
 function descripcionIncidente(incidente = {}) {
-  return String(incidente.descripcion || 'Sin descripcion registrada').trim();
+  const reporte = presentarDescripcionIncidente(incidente);
+  return [reporte.categoria, reporte.descripcion].filter(Boolean).join(' · ') || 'Sin descripción adicional.';
+}
+
+function presentarDescripcionIncidente(incidente = {}) {
+  let descripcion = String(incidente.descripcion || '').trim();
+  let categoria = null;
+  let sesionCodigo = incidente.sesion_codigo || null;
+  let sesionMateria = incidente.sesion_materia || null;
+
+  const categoriaEntreCorchetes = descripcion.match(/^\[([^\]]+)\]\s*/);
+  if (categoriaEntreCorchetes) {
+    const valor = categoriaEntreCorchetes[1].trim();
+    if (!/^PC\s/i.test(valor)) categoria = valor;
+    descripcion = descripcion.slice(categoriaEntreCorchetes[0].length).trim();
+  } else {
+    const categoriaEtiquetada = descripcion.match(/^Categor[ií]a\s*:\s*([^\r\n]+)(?:\r?\n+|$)/i);
+    if (categoriaEtiquetada) {
+      categoria = categoriaEtiquetada[1].trim();
+      descripcion = descripcion.slice(categoriaEtiquetada[0].length).trim();
+    }
+  }
+
+  const notaRecepcion = descripcion.match(/\s*\[Reportado por [^\]]*?(?:al iniciar|al cierre) sesi[oó]n\s+([^\]\s)]+)[^\]]*\]\s*$/i);
+  if (notaRecepcion) {
+    sesionCodigo = sesionCodigo || notaRecepcion[1];
+    descripcion = descripcion.replace(notaRecepcion[0], '').trim();
+  }
+
+  const notaCierre = descripcion.match(/\s*[—–-]\s*reportado al cierre de sesi[oó]n\s+([^\s(]+)\s*\(([^)]+)\)\s*$/i);
+  if (notaCierre) {
+    sesionCodigo = sesionCodigo || notaCierre[1];
+    sesionMateria = sesionMateria || notaCierre[2].trim();
+    descripcion = descripcion.replace(notaCierre[0], '').trim();
+  }
+
+  return { categoria, descripcion, sesionCodigo, sesionMateria };
 }
 
 function fechaUltimaActividadIncidente(incidente = {}) {
@@ -144,7 +180,7 @@ function formatFechaHistorial(iso) {
   });
 }
 
-const ORIGENES = { PRESTAMO:'📦 Préstamo', SESION:'🖥️ Sesión', MANUAL:'✍️ Manual' };
+const ORIGENES = { PRESTAMO:'Préstamo', SESION:'Sesión', MANUAL:'Manual' };
 
 const OPCIONES_ORIGEN_FILTRO = [
   { value: '', label: 'Todos los origenes' },
@@ -257,13 +293,14 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
   const isDay = themeKey === 'day';
   const tipo  = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
   const pri   = PRIORIDAD_BADGE[incidente.prioridad] || PRIORIDAD_BADGE.MEDIA;
-  const extra = iconFromDesc(incidente.descripcion);
+  const reporte = presentarDescripcionIncidente(incidente);
+  const extra = iconFromDesc(reporte.descripcion);
   const areaKey = inferirAreaAtencion(incidente);
   const area = AREAS_ATENCION[areaKey] || AREAS_ATENCION.INFRAESTRUCTURA;
   const origen = origenIncidente(incidente);
   const detalleOrigen = detalleOrigenIncidente(incidente);
   // Nombre limpio: quitar doble guion y formatear
-  const resumenProblema = String(incidente.descripcion || '').trim();
+  const resumenProblema = reporte.descripcion;
   const nombreRaw = incidente.activo_nombre
     || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : '')
     || (resumenProblema ? resumenProblema.slice(0, 58) : '')
@@ -291,7 +328,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       {/* Cabecera: ícono tipo + nombre + badge prioridad */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-base shrink-0" title={tipo.label}>{tipo.emoji}</span>
+          <span className={`shrink-0 ${isDay ? 'text-slate-500' : 'text-slate-400'}`} title={tipo.label}>{tipo.svg}</span>
           <div className="min-w-0">
             <p className={`text-sm font-semibold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
             <p className={`text-[10px] font-mono ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>{folio}</p>
@@ -303,18 +340,22 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
       </div>
 
       {/* Descripción */}
-      {incidente.descripcion && (
+      {(reporte.categoria || reporte.descripcion) && (
         <div className="flex items-start gap-1.5 mb-2">
           {extra && <span className="mt-0.5 shrink-0">{extra}</span>}
-          <p className={`text-xs line-clamp-2 leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
-            {incidente.descripcion.charAt(0).toUpperCase() + incidente.descripcion.slice(1)}
-          </p>
+          <div className="min-w-0">
+            {reporte.categoria && <p className={`mb-0.5 text-[10px] font-semibold uppercase tracking-wide ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>{reporte.categoria}</p>}
+            {reporte.descripcion && (
+              <p className={`text-xs line-clamp-2 leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
+                {reporte.descripcion.charAt(0).toUpperCase() + reporte.descripcion.slice(1)}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-1.5 mb-2">
         <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${isDay ? area.dayCls : area.darkCls}`}>
-          <span>{area.icon}</span>
           {area.short}
         </span>
         {incidente.activo_departamento_nombre && (
@@ -333,7 +374,7 @@ function KanbanCard({ incidente, onDragStart, onClick, isDragOver }) {
               : isDay ? 'bg-orange-50 border-orange-300 text-orange-800' : 'bg-orange-900/30 border-orange-500/40 text-orange-300'}`}
             title={`Adeudo #${incidente.adeudo_id} — ${incidente.adeudo_persona || ''}`}
           >
-            ⚖️ Adeudo #{incidente.adeudo_id}
+            Adeudo #{incidente.adeudo_id}
             {incidente.adeudo_estado === 'RESUELTO' || incidente.adeudo_estado === 'CANCELADO'
               ? ' · Resuelto' : ' · Pendiente'}
           </span>
@@ -395,7 +436,7 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
       <div className="px-4 py-3 flex items-center justify-between"
            style={{ borderBottom: `1px solid ${col.border}`, background: col.bg }}>
         <div className="flex items-center gap-2">
-          <span className="text-base">{col.icon}</span>
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: col.color }} aria-hidden="true" />
           <span className={`font-semibold text-sm ${isDay ? 'text-slate-950' : 'text-white'}`}>{col.label}</span>
         </div>
         <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
@@ -408,7 +449,6 @@ function KanbanColumn({ col, cards, onDrop, onDragOver, onDragLeave, isDragTarge
       <div className="flex-1 p-3 space-y-2.5 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
         {cards.length === 0 ? (
           <div className={`flex flex-col items-center justify-center py-10 text-xs text-center ${isDay ? 'text-slate-500' : 'text-slate-500'}`}>
-            <div className="text-3xl mb-2 opacity-40">{col.icon}</div>
             <p className="font-medium">Sin incidentes aquí.</p>
             {isDragTarget && <p className="text-slate-400 mt-1">Suelta aquí para mover</p>}
           </div>
@@ -552,7 +592,7 @@ function HistorialIncidenciasPanel({ items = [], resumen = {}, expanded, locked,
                     className="rounded-full border px-2 py-0.5 font-semibold"
                     style={{ color: area.color, borderColor: `${area.color}55`, background: `${area.color}16` }}
                   >
-                    {area.icon} {area.label}
+                    {area.label}
                   </span>
                   <span className={isDay ? 'text-slate-500' : 'text-slate-400'}>
                     {formatFechaHistorial(fechaUltimaActividadIncidente(item))}
@@ -793,6 +833,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
   };
 
   const tipo = TIPOS_ICON[incidente.tipo] || TIPOS_ICON.OTRO;
+  const reporte = presentarDescripcionIncidente(incidente);
   const nombre = incidente.activo_nombre || (incidente.pc_codigo ? `PC ${incidente.pc_codigo}` : 'Reporte general');
   const opcionesCanalizacion = ['INFRAESTRUCTURA', 'SISTEMAS'];
   const seguimientosOrdenados = [...seguimientos].reverse();
@@ -848,7 +889,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                backdropFilter:'blur(12px)',
                borderBottom: isDay ? '1px solid #dbe3ef' : '1px solid rgba(255,255,255,0.06)'
              }}>
-          <span className="text-2xl">{tipo.emoji}</span>
+          <span className={`${isDay ? 'text-slate-500' : 'text-slate-400'}`} title={tipo.label}>{tipo.svg}</span>
           <div className="flex-1 min-w-0">
             <p className={`font-bold truncate ${isDay ? 'text-slate-950' : 'text-white'}`}>{nombre}</p>
             {!esReporteLaboratorio && subtituloHeader && subtituloHeader !== 'Sin origen definido' && (
@@ -913,10 +954,26 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
               <span className="text-slate-500">Fecha</span>
               <span className={isDay ? 'text-slate-800' : 'text-slate-300'}>{new Date(incidente.fecha_reporte).toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric' })}</span>
             </div>
-            {incidente.descripcion && (
+            {(reporte.sesionCodigo || reporte.sesionMateria) && (
+              <div className="flex items-start justify-between gap-3">
+                <span className="shrink-0 text-slate-500">Sesión</span>
+                <span className={`${isDay ? 'text-slate-700' : 'text-slate-400'} text-right text-xs`}>
+                  {[reporte.sesionCodigo, reporte.sesionMateria].filter(Boolean).join(' · ')}
+                </span>
+              </div>
+            )}
+            {reporte.categoria && (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-500">Categoría</span>
+                <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${isDay ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-white/10 bg-white/5 text-slate-300'}`}>
+                  {reporte.categoria}
+                </span>
+              </div>
+            )}
+            {reporte.descripcion && (
               <div className="pt-2 border-t border-white/5">
                 <p className="text-slate-500 text-xs mb-1">Descripción</p>
-                <p className={`${isDay ? 'text-slate-800' : 'text-slate-300'} leading-relaxed`}>{incidente.descripcion}</p>
+                <p className={`${isDay ? 'text-slate-800' : 'text-slate-300'} leading-relaxed whitespace-pre-line`}>{reporte.descripcion}</p>
               </div>
             )}
           </div>
@@ -1192,7 +1249,6 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span>{area.icon}</span>
                         <span className={`text-xs font-semibold ${isDay ? 'text-slate-800' : 'text-slate-200'}`}>{area.short}</span>
                       </div>
                       <p className={`mt-1 text-[11px] leading-snug ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
@@ -1229,11 +1285,11 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Estado</p>
             <div className="grid grid-cols-2 gap-2">
               {[
-                ['PENDIENTE',   '⏳', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
-                ['EN_REVISION', '🔍', isDay ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-blue-500/50 bg-blue-500/10 text-blue-300'],
-                ['REPARADO',    '✅', isDay ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'],
-                ['DADO_DE_BAJA','📦', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400'],
-              ].filter(([val]) => val !== 'DADO_DE_BAJA' || vinculoFijo).map(([val, icon, cls]) => (
+                ['PENDIENTE',   isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
+                ['EN_REVISION', isDay ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-blue-500/50 bg-blue-500/10 text-blue-300'],
+                ['REPARADO',    isDay ? 'border-emerald-500 bg-emerald-50 text-emerald-800' : 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'],
+                ['DADO_DE_BAJA',isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400'],
+              ].filter(([val]) => val !== 'DADO_DE_BAJA' || vinculoFijo).map(([val, cls]) => (
                 <label key={val} className={`flex items-center gap-2 p-2.5 rounded-xl border-2 text-sm transition-all
                   ${estaCerrado ? 'cursor-default opacity-80' : 'cursor-pointer'}
                   ${form.estado === val ? `${cls} border-opacity-100` : isDay ? 'border-slate-200 hover:border-slate-300 text-slate-600 bg-white' : 'border-white/5 hover:border-white/10 text-slate-400'}`}>
@@ -1241,7 +1297,6 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                     disabled={estaCerrado}
                     checked={form.estado === val}
                     onChange={() => setForm({...form, estado: val})} />
-                  <span>{icon}</span>
                   <span className="font-medium text-xs">
                     {val === 'PENDIENTE' ? 'Pendiente' : val === 'EN_REVISION' ? 'En revisión' : val === 'REPARADO' ? 'Reparado' : 'Dado de baja'}
                   </span>
@@ -1254,16 +1309,16 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
           <div>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Prioridad</p>
             <div className="flex gap-2">
-              {[['ALTA','🔴', isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/50 bg-red-500/10 text-red-300'],
-                ['MEDIA','🟡', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
-                ['BAJA','⚪', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,icon,cls]) => (
+              [['ALTA', isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/50 bg-red-500/10 text-red-300'],
+                ['MEDIA', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
+                ['BAJA', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,cls]) => (
                 <button key={val} type="button"
                   disabled={estaCerrado}
                   onClick={() => setForm({...form, prioridad: val})}
                   className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-semibold transition-all flex items-center justify-center gap-1.5
                     ${estaCerrado ? 'cursor-default opacity-80' : ''}
                     ${form.prioridad === val ? `${cls}` : isDay ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white' : 'border-white/5 text-slate-500 hover:border-white/10'}`}>
-                  {icon} {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
+                  {val === 'ALTA' ? 'Alta' : val === 'MEDIA' ? 'Media' : 'Baja'}
                 </button>
               ))}
             </div>
@@ -1439,7 +1494,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                         ? isDay ? 'text-emerald-800 border-emerald-300 bg-emerald-50 hover:bg-emerald-100' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20'
                         : isDay ? 'text-orange-800 border-orange-300 bg-orange-50 hover:bg-orange-100' : 'text-orange-300 border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20'}`}
                   >
-                    ⚖️ Adeudo #{incidente.adeudo_id}
+                    Adeudo #{incidente.adeudo_id}
                     {' · '}{incidente.adeudo_estado === 'RESUELTO' ? 'Resuelto'
                           : incidente.adeudo_estado === 'CANCELADO' ? 'Cancelado'
                           : 'Pendiente'}
@@ -1741,13 +1796,13 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
           <div>
             <label className="block text-xs text-slate-400 font-medium tracking-wide mb-2">{labelTipo}</label>
             <div className="grid grid-cols-2 gap-2">
-              {Object.entries(TIPOS_ICON).map(([val, { label, emoji }]) => (
+              {Object.entries(TIPOS_ICON).map(([val, { label, svg }]) => (
                 <label key={val}
                   className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer text-sm transition-all
                     ${form.tipo === val ? 'border-blue-500/60 bg-blue-500/10 text-white font-medium' : 'border-white/5 text-slate-400 hover:border-white/10'}`}>
                   <input type="radio" name="tipo" value={val} className="sr-only"
                     checked={form.tipo === val} onChange={() => setForm({...form, tipo: val})} />
-                  <span>{emoji}</span> {label}
+                  <span className="text-slate-500">{svg}</span> {label}
                 </label>
               ))}
             </div>
@@ -1786,7 +1841,6 @@ function ModalNuevoIncidente({ laboratorios, activos, onClose, onCreado }) {
                   )}
                 </div>
                 <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold ${isDay ? areaSugerida.dayCls : areaSugerida.darkCls}`}>
-                  <span>{areaSugerida.icon}</span>
                   {areaSugerida.short}
                 </span>
               </div>
@@ -3109,7 +3163,6 @@ export default function Mantenimiento() {
                 ? isDay ? 'bg-emerald-50 text-slate-950 shadow border border-emerald-100' : 'bg-slate-700/80 text-white shadow-lg'
                 : isDay ? 'text-slate-600 hover:text-slate-950 hover:bg-slate-50' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
           >
-            {t.icon}
             <span>{t.label}</span>
             {t.badge ? (
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${t.badgeColor}`}>
@@ -3145,7 +3198,6 @@ export default function Mantenimiento() {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-lg">{areaItem.icon}</span>
                       <span className={`text-lg font-bold ${isDay ? 'text-slate-950' : 'text-white'}`}>{areaItem.count}</span>
                     </div>
                     <div className={`mt-1 text-xs font-semibold ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>{areaItem.short}</div>
