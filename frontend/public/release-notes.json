@@ -1,26 +1,19 @@
 {
-  "version": "1.0.1",
-  "fecha": "2026-10-12",
-  "resumen": "Mejoras para cerrar clases y sesiones de laboratorio de forma coordinada.",
+  "version": "1.0.2",
+  "fecha": "2026-10-19",
+  "resumen": "Simplificamos la revisión de incidencias: ahora puedes documentar la reparación y cerrar el reporte en un solo flujo.",
   "destacados": [
-    "Al cerrar la asistencia, también se cierra la sesión de laboratorio vinculada.",
-    "Se liberan las computadoras asignadas y se registra la misma hora de cierre.",
-    "La notificación ahora muestra un resumen de las novedades antes de actualizar."
+    "El botón Cerrar incidencia permite anotar qué se hizo y guardar el cierre de una vez.",
+    "Ya no hace falta marcar como reparado y después confirmar el cierre por separado.",
+    "Al cerrar una incidencia de equipo, el equipo relacionado vuelve a estar disponible."
   ],
   "secciones": [
     {
-      "area": "Asistencia y laboratorios",
+      "area": "Incidencias de mantenimiento",
       "cambios": [
-        "El cierre del pase de lista finaliza la sesión de laboratorio iniciada para esa clase.",
-        "Las computadoras que seguían asignadas se liberan al cerrar la clase.",
-        "La reservación sale del estado En curso cuando termina la sesión."
-      ]
-    },
-    {
-      "area": "Actualizaciones",
-      "cambios": [
-        "El aviso muestra hasta tres mejoras principales, la versión y la fecha de publicación.",
-        "Puedes abrir el detalle completo o descartar el aviso."
+        "Documenta la reparación y el costo opcional dentro del flujo de cierre.",
+        "Guardar y cerrar registra el seguimiento y cambia el estado en una sola solicitud.",
+        "Al cerrar, la computadora o activo relacionado se libera para volver a utilizarse."
       ]
     }
   ]

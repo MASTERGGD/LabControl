@@ -3929,8 +3929,8 @@ def actualizar_incidente(
             valor = valor.upper() if campo in ("estado", "prioridad") else valor
         setattr(i, campo, valor)
 
-    # Si se marca como REPARADO → registrar fecha y reactivar el equipo
-    if "estado" in campos and campos["estado"].upper() == "REPARADO":
+    # Reparar y cerrar una incidencia liberan el equipo relacionado.
+    if "estado" in campos and campos["estado"].upper() in ("REPARADO", "CERRADO"):
         i.fecha_resolucion = _utcnow()
         # Activo de inventario → vuelve a OPERATIVO
         if i.activo_id:
@@ -3944,7 +3944,7 @@ def actualizar_incidente(
             if pc:
                 pc.estado = "OPERATIVO"
 
-    # Si se cierra sin adeudo → solo registrar fecha de resolución
+    # Al cerrar la incidencia se registra la fecha de resolución.
     if "estado" in campos and campos["estado"].upper() in ("CERRADO", "CERRADO_SIN_ADEUDO"):
         i.fecha_resolucion = _utcnow()
 

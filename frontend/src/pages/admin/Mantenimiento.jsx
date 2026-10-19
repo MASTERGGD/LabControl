@@ -964,35 +964,21 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                     Tomar en revision
                   </button>
                 )}
-                {form.estado !== 'REPARADO' && (
-                  <button
-                    type="button"
-                    onClick={() => handleCambioRapido('REPARADO')}
-                    disabled={saving}
-                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
-                      isDay ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200 hover:bg-emerald-500/20'
-                    }`}
-                  >
-                    Marcar reparado
-                  </button>
-                )}
-                {estadoGuardado === 'REPARADO' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setModoSeguimiento('CIERRE');
-                      setMostrarReasignacion(false);
-                      setMostrarDetallesAvanzados(false);
-                      setError('');
-                    }}
-                    disabled={saving}
-                    className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
-                      isDay ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/30'
-                    }`}
-                  >
-                    Confirmar cierre
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModoSeguimiento('CIERRE');
+                    setMostrarReasignacion(false);
+                    setMostrarDetallesAvanzados(false);
+                    setError('');
+                  }}
+                  disabled={saving}
+                  className={`rounded-xl px-3 py-2 text-sm font-semibold border transition-colors ${
+                    isDay ? 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-100 hover:bg-emerald-500/30'
+                  }`}
+                >
+                  Cerrar incidencia
+                </button>
                 {form.estado !== 'EN_ESPERA' && form.estado !== 'REPARADO' && (
                   <button
                     type="button"
@@ -1384,10 +1370,10 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
               }`}>
                 <div className="flex items-center justify-between gap-2 mb-2">
             <label className="block text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">
-              {modoSeguimiento === 'INFO'
+                  {modoSeguimiento === 'INFO'
                 ? 'Solicitar informacion'
                 : modoSeguimiento === 'CIERRE'
-                  ? 'Confirmar cierre de incidencia'
+                  ? 'Cerrar incidencia'
                   : 'Agregar seguimiento'}
             </label>
                   <button
@@ -1405,8 +1391,8 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
                 </div>
             {modoSeguimiento === 'CIERRE' && (
               <p className="text-sm text-slate-500 mb-3">
-                Describe la reparación realizada. Al guardar se registrarán la nota y el costo,
-                y la incidencia quedará cerrada en modo lectura.
+                Describe la reparación o acción realizada. Al guardar, SIGA registrará la nota y el costo
+                (si aplica) y cerrará la incidencia en esta misma operación.
               </p>
             )}
             <textarea
@@ -1427,7 +1413,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
               {guardandoSeguimiento
                 ? 'Guardando...'
                 : modoSeguimiento === 'CIERRE'
-                  ? 'Guardar y cerrar incidencia'
+                  ? 'Guardar y cerrar'
                   : 'Guardar en historial'}
             </button>
               </div>

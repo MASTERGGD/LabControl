@@ -38,73 +38,69 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); jest.clearAllMocks(); });
 
-test('guarda reparación y después cierra con nota y costo en una sola solicitud', async () => {
+test('cierra con nota y costo en una sola solicitud', async () => {
   render();
-  await click('Marcar reparado');
-  expect(api.put).toHaveBeenCalledWith('/inventario/incidentes/12', expect.objectContaining({ estado: 'REPARADO' }));
-  await click('Confirmar cierre');
-  expect(api.put).toHaveBeenCalledTimes(1);
+  await click('Cerrar incidencia');
+  expect(api.put).not.toHaveBeenCalled();
   expect(button('💾 Guardar')).toBeUndefined();
   input('textarea', 'Se cambió el cable de red y se verificó la conexión.');
   input('input[type="number"]', '150');
-  await click('Guardar y cerrar incidencia');
+  await click('Guardar y cerrar');
   expect(api.put).toHaveBeenLastCalledWith('/inventario/incidentes/12', {
     estado: 'CERRADO', prioridad: 'MEDIA', costo_reparacion: 150,
     notas_seguimiento: 'Se cambió el cable de red y se verificó la conexión.',
   });
-  expect(api.put).toHaveBeenCalledTimes(2);
+  expect(api.put).toHaveBeenCalledTimes(1);
   expect(api.post).not.toHaveBeenCalled();
   expect(container.textContent).toContain('Incidencia cerrada. No hay cambios pendientes.');
-  ['Marcar reparado', 'Confirmar cierre', 'Guardar y cerrar incidencia', '💾 Guardar', 'Editar detalles avanzados'].forEach(text => expect(button(text)).toBeUndefined());
+  ['Marcar reparado', 'Confirmar cierre', 'Guardar y cerrar', '💾 Guardar', 'Editar detalles avanzados'].forEach(text => expect(button(text)).toBeUndefined());
   expect(button('Listo')).toBeDefined();
   expect(button('Reabrir incidencia')).toBeDefined();
 });
 
-test('cancelar la confirmación conserva el estado reparado sin cerrar', async () => {
-  render('REPARADO');
-  await click('Confirmar cierre');
+test('cancelar el cierre conserva el estado original', async () => {
+  render('EN_REVISION');
+  await click('Cerrar incidencia');
   await click('Cancelar cierre');
   expect(api.put).not.toHaveBeenCalled();
-  expect(button('Confirmar cierre')).toBeDefined();
+  expect(button('Cerrar incidencia')).toBeDefined();
 });
 
-test('si falla marcar reparado, no ofrece confirmar el cierre', async () => {
+test('abrir el cierre no cambia el estado antes de guardar', async () => {
   render();
-  api.put.mockRejectedValueOnce({ response: { data: { detail: 'Sin conexión' } } });
-  await click('Marcar reparado');
-  expect(button('Confirmar cierre')).toBeUndefined();
-  expect(button('Marcar reparado')).toBeDefined();
-  expect(container.textContent).toContain('Sin conexión');
+  await click('Cerrar incidencia');
+  expect(api.put).not.toHaveBeenCalled();
+  expect(button('Guardar y cerrar')).toBeDefined();
 });
 
 test('rechaza costos negativos antes de cerrar', async () => {
   render('REPARADO');
-  await click('Confirmar cierre');
+  await click('Cerrar incidencia');
   input('textarea', 'Reparación verificada');
   input('input[type="number"]', '-1');
-  await click('Guardar y cerrar incidencia');
+  await click('Guardar y cerrar');
   expect(api.put).not.toHaveBeenCalled();
   expect(container.textContent).toContain('mayor o igual a cero');
 });
 
 test('un cierre fallido conserva la nota y permite reintentar', async () => {
-  render('REPARADO');
-  await click('Confirmar cierre');
-  await click('Guardar y cerrar incidencia');
+  render('EN_REVISION');
+  await click('Cerrar incidencia');
+  await click('Guardar y cerrar');
   expect(api.put).not.toHaveBeenCalled();
   input('textarea', 'Reparación verificada');
   api.put.mockRejectedValueOnce({ response: { data: { detail: 'No fue posible guardar' } } });
-  await click('Guardar y cerrar incidencia');
+  await click('Guardar y cerrar');
   expect(container.textContent).toContain('No fue posible guardar');
   expect(container.querySelector('textarea').value).toBe('Reparación verificada');
-  expect(button('Guardar y cerrar incidencia')).toBeDefined();
-  await click('Guardar y cerrar incidencia');
+  expect(button('Guardar y cerrar')).toBeDefined();
+  await click('Guardar y cerrar');
   expect(button('Listo')).toBeDefined();
 });
 
 test('una incidencia cerrada permite agregar seguimiento sin editar su estado', async () => {
   render('CERRADO');
-  expect(button('Marcar reparado')).toBeUndefined();
+  expect(button('Cerrar incidencia')).toBeUndefined();
   await click('Agregar nota al seguimiento');
   input('textarea', 'Se confirmó que el equipo funciona');
   api.post.mockResolvedValueOnce({ data: { seguimientos: [{ id: 2, texto: 'Se confirmó que el equipo funciona' }] } });
