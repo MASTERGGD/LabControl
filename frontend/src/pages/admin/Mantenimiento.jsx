@@ -826,18 +826,23 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
       {/* Overlay */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
 
-      {/* Drawer */}
-      <div className="fixed right-0 top-0 h-full w-full max-w-md z-50 overflow-y-auto"
+      {/* Expediente de incidencia */}
+      <div
+           role="dialog"
+           aria-modal="true"
+           aria-label={`Revisión de incidencia: ${nombre}`}
+           className="fixed inset-0 md:inset-4 lg:inset-6 z-50 mx-auto flex max-w-[1600px] flex-col overflow-hidden border shadow-2xl"
            style={{
              background: isDay ? '#f8fafc' : 'linear-gradient(180deg,#0d1b2e,#0f172a)',
-             borderLeft: isDay ? '1px solid #dbe3ef' : '1px solid rgba(255,255,255,0.07)',
-             boxShadow: isDay ? '-20px 0 60px rgba(15,23,42,0.16)' : '-20px 0 60px rgba(0,0,0,0.5)',
-             animation: 'slideInRight .25s ease',
+             borderColor: isDay ? '#dbe3ef' : 'rgba(255,255,255,0.07)',
+             borderRadius: '1rem',
+             boxShadow: isDay ? '0 24px 80px rgba(15,23,42,0.24)' : '0 24px 80px rgba(0,0,0,0.55)',
+             animation: 'reviewIn .2s ease',
            }}>
-        <style>{`@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+        <style>{`@keyframes reviewIn { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: scale(1); } }`}</style>
 
-        {/* Header drawer */}
-        <div className="sticky top-0 z-10 px-5 py-4 flex items-center gap-3"
+        {/* Encabezado fijo del expediente */}
+        <div className="shrink-0 px-5 py-4 flex items-center gap-3"
              style={{
                background: isDay ? 'rgba(248,250,252,0.96)' : 'rgba(13,27,46,0.95)',
                backdropFilter:'blur(12px)',
@@ -862,7 +867,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6 grid grid-cols-1 xl:grid-cols-2 content-start gap-4 md:gap-5">
 
           {estaCerrado && (
             <div className={`rounded-xl border px-4 py-3 ${
