@@ -2344,20 +2344,26 @@ def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_
 
 
 def _cargas_equivalentes(db: Session, carga: CargaDocente):
-    """Agrupa los bloques semanales de una misma materia, grupo y periodo."""
+    """Agrupa los bloques semanales y versiones históricas de la misma carga."""
     candidatas = db.query(CargaDocente).filter(
         CargaDocente.docente_id == carga.docente_id,
         CargaDocente.periodo_id == carga.periodo_id,
         CargaDocente.grupo_academico_id == carga.grupo_academico_id,
         CargaDocente.tipo_actividad == "CLASE",
-        CargaDocente.activo == True,
     ).all()
+    ids_linaje = set(_carga_linaje_ids(db, carga))
     if carga.materia_id:
-        return [item for item in candidatas if item.materia_id == carga.materia_id]
+        return [
+            item for item in candidatas
+            if item.id in ids_linaje or (item.activo and item.materia_id == carga.materia_id)
+        ]
     nombre = (carga.actividad_nombre or "").strip().casefold()
     return [
         item for item in candidatas
-        if not item.materia_id and (item.actividad_nombre or "").strip().casefold() == nombre
+        if item.id in ids_linaje or (
+            item.activo and not item.materia_id
+            and (item.actividad_nombre or "").strip().casefold() == nombre
+        )
     ]
 
 
@@ -2584,6 +2590,8 @@ def faltas_justificables(
         .filter(
             ClaseDocente.carga_docente_id.in_(carga_ids),
             ClaseDocente.fecha.between(fecha_inicio, fecha_fin),
+            ClaseDocente.estado.in_({"CERRADA", "CORRECCION"}),
+            ClaseDocente.motivo_no_impartida.is_(None),
             AsistenciaDocente.alumno_id == alumno.id,
             AsistenciaDocente.estado == "FALTA",
         )
@@ -2633,6 +2641,8 @@ def justificar_faltas_multiples(
             AsistenciaDocente.alumno_id == alumno.id,
             ClaseDocente.carga_docente_id.in_(carga_ids),
             ClaseDocente.fecha.between(data.fecha_inicio, data.fecha_fin),
+            ClaseDocente.estado.in_({"CERRADA", "CORRECCION"}),
+            ClaseDocente.motivo_no_impartida.is_(None),
         )
         .all()
     )
@@ -2884,8 +2894,9 @@ def exportar_seguimiento_excel(
     cargas = _cargas_equivalentes(db, carga)
     clases = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id.in_([item.id for item in cargas]),
-        ClaseDocente.estado == "CERRADA",
+        ClaseDocente.estado.in_({"CERRADA", "CORRECCION"}),
     ).order_by(ClaseDocente.fecha.asc()).all()
+    clases = [clase for clase in clases if not clase.motivo_no_impartida]
     inscripciones = db.query(InscripcionAlumno).filter(
         InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id,
         InscripcionAlumno.estado == "ACTIVO",
