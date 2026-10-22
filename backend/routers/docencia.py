@@ -2344,7 +2344,7 @@ def _carga_y_alumno_docente(db: Session, carga_id: int, alumno_id: int, docente_
 
 
 def _cargas_equivalentes(db: Session, carga: CargaDocente):
-    """Agrupa los bloques semanales y versiones históricas de la misma carga."""
+    """Agrupa los bloques actuales y cargas históricas de la misma materia."""
     candidatas = db.query(CargaDocente).filter(
         CargaDocente.docente_id == carga.docente_id,
         CargaDocente.periodo_id == carga.periodo_id,
@@ -2352,16 +2352,24 @@ def _cargas_equivalentes(db: Session, carga: CargaDocente):
         CargaDocente.tipo_actividad == "CLASE",
     ).all()
     ids_linaje = set(_carga_linaje_ids(db, carga))
+    ids_con_historial = {
+        fila[0] for fila in db.query(ClaseDocente.carga_docente_id).filter(
+            ClaseDocente.carga_docente_id.in_([item.id for item in candidatas]),
+        ).distinct().all()
+    } if candidatas else set()
     if carga.materia_id:
         return [
             item for item in candidatas
-            if item.id in ids_linaje or (item.activo and item.materia_id == carga.materia_id)
+            if item.id in ids_linaje or (
+                item.materia_id == carga.materia_id
+                and (item.activo or item.id in ids_con_historial)
+            )
         ]
     nombre = (carga.actividad_nombre or "").strip().casefold()
     return [
         item for item in candidatas
         if item.id in ids_linaje or (
-            item.activo and not item.materia_id
+            not item.materia_id and (item.activo or item.id in ids_con_historial)
             and (item.actividad_nombre or "").strip().casefold() == nombre
         )
     ]
