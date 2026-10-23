@@ -2873,7 +2873,7 @@ def exportar_resumen_asistencia_alumno(
     estilos = getSampleStyleSheet()
     estilos.add(ParagraphStyle(
         name="ReporteTitulo", parent=estilos["Title"], fontName="Helvetica-Bold",
-        fontSize=17, leading=21, textColor=azul, alignment=TA_LEFT, spaceAfter=3,
+        fontSize=17, leading=21, textColor=azul, alignment=TA_CENTER, spaceAfter=3,
     ))
     estilos.add(ParagraphStyle(
         name="ReporteSubtitulo", parent=estilos["Normal"], fontSize=8.5,
@@ -2945,11 +2945,12 @@ def exportar_resumen_asistencia_alumno(
         return texto
 
     def parrafo(valor, estilo="ReporteTabla"):
-        texto = escape(corregir_acentos_es(valor)).replace("\n", "<br/>")
+        texto = escape(corregir_acentos_es("—" if valor is None else valor)).replace("\n", "<br/>")
         return Paragraph(texto or "—", estilos[estilo])
 
     nombre_alumno = f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip().title()
     nombre_docente = (current_user.nombre or "—").strip().title()
+    nombre_docente = re.sub(r"\b(Mtro|Mtra|Dr|Dra)\.(?=\S)", r"\1. ", nombre_docente)
     nombre_materia = (carga.actividad_nombre or "—").strip()
     if re.match(r"(?i)^aprendizaje profundo\b", nombre_materia):
         nombre_materia = re.sub(r"(?i)\s+deep learning\s*$", "", nombre_materia).strip()
@@ -2978,7 +2979,7 @@ def exportar_resumen_asistencia_alumno(
         [parrafo(nombre_materia, "ReporteDato"), parrafo(f"{grupo} · {periodo}", "ReporteDato")],
         [parrafo("DOCENTE", "ReporteEtiqueta"), parrafo("FECHA DE EMISIÓN", "ReporteEtiqueta")],
         [parrafo(nombre_docente, "ReporteDato"), parrafo(fecha_emision, "ReporteDato")],
-    ], colWidths=[10.1 * cm, 7.2 * cm])
+    ], colWidths=[10.1 * cm, 7.2 * cm], hAlign="LEFT")
     ficha.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F8FA")),
         ("BOX", (0, 0), (-1, -1), 0.6, borde),
@@ -2996,7 +2997,7 @@ def exportar_resumen_asistencia_alumno(
     kpis = Table([
         [parrafo(valor, "ReporteKpi") for _, valor in kpi_labels],
         [parrafo(etiqueta, "ReporteKpiLabel") for etiqueta, _ in kpi_labels],
-    ], colWidths=[3.46 * cm] * 5)
+    ], colWidths=[3.46 * cm] * 5, hAlign="LEFT")
     kpis.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), verde_claro),
         ("BOX", (0, 0), (-1, -1), 0.6, borde),
