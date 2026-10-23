@@ -2837,34 +2837,36 @@ def exportar_resumen_asistencia_alumno(
     gris = colors.HexColor("#475569")
     borde = colors.HexColor("#D8E2E8")
     ancho, alto = letter
+    margen_lateral = 1.45 * cm
+    ancho_disponible = ancho - 2 * margen_lateral
     logo_path = Path(__file__).resolve().parent.parent / "assets" / "tutoria" / "utecan_logo.jpg"
 
     def encabezado_pie(canvas, doc):
         canvas.saveState()
         if logo_path.exists():
             canvas.drawImage(
-                str(logo_path), 1.45 * cm, alto - 1.38 * cm,
+                str(logo_path), margen_lateral, alto - 1.38 * cm,
                 width=4.0 * cm, height=1.18 * cm,
                 preserveAspectRatio=True, mask="auto",
             )
         canvas.setFillColor(verde)
         canvas.setFont("Helvetica-Bold", 9)
-        canvas.drawRightString(ancho - 1.45 * cm, alto - 0.66 * cm, "SEGUIMIENTO ACADÉMICO")
+        canvas.drawRightString(ancho - margen_lateral, alto - 0.66 * cm, "SEGUIMIENTO ACADÉMICO")
         canvas.setFillColor(gris)
         canvas.setFont("Helvetica", 7.5)
-        canvas.drawRightString(ancho - 1.45 * cm, alto - 0.98 * cm, "REPORTE INDIVIDUAL")
+        canvas.drawRightString(ancho - margen_lateral, alto - 0.98 * cm, "REPORTE INDIVIDUAL")
         canvas.setStrokeColor(borde)
         canvas.setLineWidth(1)
-        canvas.line(1.45 * cm, alto - 1.5 * cm, ancho - 1.45 * cm, alto - 1.5 * cm)
+        canvas.line(margen_lateral, alto - 1.5 * cm, ancho - margen_lateral, alto - 1.5 * cm)
         canvas.setFillColor(gris)
         canvas.setFont("Helvetica", 7.5)
-        canvas.drawString(1.45 * cm, 0.78 * cm, "Documento informativo · Seguimiento académico · UTECAN")
-        canvas.drawRightString(ancho - 1.45 * cm, 0.78 * cm, f"Página {doc.page}")
+        canvas.drawString(margen_lateral, 0.78 * cm, "Documento informativo · Seguimiento académico · UTECAN")
+        canvas.drawRightString(ancho - margen_lateral, 0.78 * cm, f"Página {doc.page}")
         canvas.restoreState()
 
     doc = SimpleDocTemplate(
         salida, pagesize=letter,
-        leftMargin=1.45 * cm, rightMargin=1.45 * cm,
+        leftMargin=margen_lateral, rightMargin=margen_lateral,
         topMargin=1.75 * cm, bottomMargin=1.45 * cm,
         title="Resumen individual de asistencia",
         author="SIGA · UTECAN",
@@ -2979,7 +2981,7 @@ def exportar_resumen_asistencia_alumno(
         [parrafo(nombre_materia, "ReporteDato"), parrafo(f"{grupo} · {periodo}", "ReporteDato")],
         [parrafo("DOCENTE", "ReporteEtiqueta"), parrafo("FECHA DE EMISIÓN", "ReporteEtiqueta")],
         [parrafo(nombre_docente, "ReporteDato"), parrafo(fecha_emision, "ReporteDato")],
-    ], colWidths=[10.1 * cm, 7.2 * cm], hAlign="LEFT")
+    ], colWidths=[ancho_disponible * (10.1 / 17.3), ancho_disponible * (7.2 / 17.3)], hAlign="LEFT")
     ficha.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F8FA")),
         ("BOX", (0, 0), (-1, -1), 0.6, borde),
@@ -2997,7 +2999,7 @@ def exportar_resumen_asistencia_alumno(
     kpis = Table([
         [parrafo(valor, "ReporteKpi") for _, valor in kpi_labels],
         [parrafo(etiqueta, "ReporteKpiLabel") for etiqueta, _ in kpi_labels],
-    ], colWidths=[3.46 * cm] * 5, hAlign="LEFT")
+    ], colWidths=[ancho_disponible / 5] * 5, hAlign="LEFT")
     kpis.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), verde_claro),
         ("BOX", (0, 0), (-1, -1), 0.6, borde),
@@ -3013,7 +3015,11 @@ def exportar_resumen_asistencia_alumno(
         if (carga_item := clase.carga).hora_inicio and carga_item.hora_fin
     }
     mostrar_horario = len(horarios) > 1
-    anchos = ([2.5, 3.1, 2.2, 9.5] if mostrar_horario else [2.4, 2.4, 12.5])
+    ancho_disponible_cm = ancho_disponible / cm
+    anchos = (
+        [2.5, 3.1, 2.2, ancho_disponible_cm - 7.8]
+        if mostrar_horario else [2.4, 2.4, ancho_disponible_cm - 4.8]
+    )
     encabezados = ["FECHA"] + (["HORARIO"] if mostrar_horario else []) + ["ESTADO", "TEMA Y ACTIVIDAD"]
     filas = [[parrafo(texto, "ReporteTablaCabeza") for texto in encabezados]]
     for clase, asistencia in sesiones:
