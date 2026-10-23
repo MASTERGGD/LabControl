@@ -2739,6 +2739,14 @@ def ficha_alumno_docente(
                 "hora_fin": clase.carga.hora_fin,
                 "estado": asistencia.estado,
                 "observacion": asistencia.observacion,
+                "tema_impartido": clase.tema_impartido,
+                "actividades_realizadas": clase.actividades_realizadas,
+                "tarea_asignada": clase.tarea_asignada,
+                "tarea_asignada_estado": clase.tarea_asignada_estado,
+                "tema_pendiente": clase.tema_pendiente,
+                "tema_pendiente_estado": clase.tema_pendiente_estado,
+                "avance_planeacion": clase.avance_planeacion,
+                "incidencias": clase.incidencias or clase.observacion_general,
             })
     registros = db.query(SeguimientoAlumnoDocente).filter(
         SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
