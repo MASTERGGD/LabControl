@@ -2,6 +2,7 @@ import datetime
 import io
 import re
 from xml.sax.saxutils import escape
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Optional
 
@@ -13,7 +14,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from pydantic import BaseModel, Field, model_validator
@@ -2746,7 +2748,6 @@ def ficha_alumno_docente(
                 "tema_pendiente": clase.tema_pendiente,
                 "tema_pendiente_estado": clase.tema_pendiente_estado,
                 "avance_planeacion": clase.avance_planeacion,
-                "incidencias": clase.incidencias or clase.observacion_general,
             })
     registros = db.query(SeguimientoAlumnoDocente).filter(
         SeguimientoAlumnoDocente.carga_docente_id.in_(carga_ids),
@@ -2781,6 +2782,255 @@ def ficha_alumno_docente(
             "creado_en": r.creado_en.isoformat(),
         } for r in registros],
     }
+
+
+@router.get("/seguimiento/{carga_id}/alumnos/{alumno_id}/asistencia.pdf")
+def exportar_resumen_asistencia_alumno(
+    carga_id: int,
+    alumno_id: int,
+    periodo_fecha: str = "TODOS",
+    fecha_desde: Optional[datetime.date] = None,
+    fecha_hasta: Optional[datetime.date] = None,
+    estado: str = "TODOS",
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Genera un resumen académico para compartir con un alumno, sin notas internas."""
+    carga, alumno = _carga_y_alumno_docente(db, carga_id, alumno_id, current_user.id)
+    if periodo_fecha not in {"TODOS", "30_DIAS"}:
+        raise HTTPException(422, "El periodo seleccionado no es válido")
+    if estado not in ESTADOS_ASISTENCIA | {"TODOS"}:
+        raise HTTPException(422, "El estado de asistencia seleccionado no es válido")
+    if fecha_desde and fecha_hasta and fecha_desde > fecha_hasta:
+        raise HTTPException(422, "La fecha inicial no puede ser posterior a la fecha final")
+
+    carga_ids = [item.id for item in _cargas_equivalentes(db, carga)]
+    clases = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id.in_(carga_ids),
+    ).order_by(ClaseDocente.fecha.desc()).all()
+    hoy = _ahora_mx().date()
+    limite_30_dias = hoy - datetime.timedelta(days=30)
+    sesiones = []
+    conteos = {estado: 0 for estado in ESTADOS_ASISTENCIA}
+    for clase in clases:
+        asistencia = next((item for item in clase.asistencias if item.alumno_id == alumno.id), None)
+        if not asistencia:
+            continue
+        if periodo_fecha == "30_DIAS" and clase.fecha < limite_30_dias:
+            continue
+        if fecha_desde and clase.fecha < fecha_desde:
+            continue
+        if fecha_hasta and clase.fecha > fecha_hasta:
+            continue
+        if estado != "TODOS" and asistencia.estado != estado:
+            continue
+        conteos[asistencia.estado] += 1
+        sesiones.append((clase, asistencia))
+
+    if not sesiones:
+        raise HTTPException(404, "No hay sesiones que coincidan con los filtros seleccionados")
+
+    salida = io.BytesIO()
+    verde = colors.HexColor("#08745A")
+    verde_claro = colors.HexColor("#E8F4F0")
+    azul = colors.HexColor("#18324B")
+    gris = colors.HexColor("#475569")
+    borde = colors.HexColor("#D8E2E8")
+    ancho, alto = letter
+    logo_path = Path(__file__).resolve().parent.parent / "assets" / "tutoria" / "utecan_logo.jpg"
+
+    def encabezado_pie(canvas, doc):
+        canvas.saveState()
+        if logo_path.exists():
+            canvas.drawImage(
+                str(logo_path), 1.45 * cm, alto - 1.38 * cm,
+                width=4.0 * cm, height=1.18 * cm,
+                preserveAspectRatio=True, mask="auto",
+            )
+        canvas.setFillColor(verde)
+        canvas.setFont("Helvetica-Bold", 9)
+        canvas.drawRightString(ancho - 1.45 * cm, alto - 0.66 * cm, "SEGUIMIENTO ACADÉMICO")
+        canvas.setFillColor(gris)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawRightString(ancho - 1.45 * cm, alto - 0.98 * cm, "REPORTE INDIVIDUAL")
+        canvas.setStrokeColor(borde)
+        canvas.setLineWidth(1)
+        canvas.line(1.45 * cm, alto - 1.5 * cm, ancho - 1.45 * cm, alto - 1.5 * cm)
+        canvas.setFillColor(gris)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.drawString(1.45 * cm, 0.78 * cm, "Resumen informativo para seguimiento académico")
+        canvas.drawRightString(ancho - 1.45 * cm, 0.78 * cm, f"Página {doc.page}")
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(
+        salida, pagesize=letter,
+        leftMargin=1.45 * cm, rightMargin=1.45 * cm,
+        topMargin=1.75 * cm, bottomMargin=1.45 * cm,
+        title="Resumen individual de asistencia",
+        author="SIGA · UTECAN",
+        subject="Seguimiento académico individual",
+    )
+    estilos = getSampleStyleSheet()
+    estilos.add(ParagraphStyle(
+        name="ReporteTitulo", parent=estilos["Title"], fontName="Helvetica-Bold",
+        fontSize=17, leading=21, textColor=azul, alignment=TA_LEFT, spaceAfter=3,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteSubtitulo", parent=estilos["Normal"], fontSize=8.5,
+        leading=12, textColor=gris, spaceAfter=10,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteMeta", parent=estilos["Normal"], fontSize=8.5,
+        leading=12, textColor=azul,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteTabla", parent=estilos["Normal"], fontSize=8,
+        leading=11, textColor=azul,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteTablaCabeza", parent=estilos["Normal"], fontName="Helvetica-Bold",
+        fontSize=8, leading=10, textColor=colors.white,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteNota", parent=estilos["Normal"], fontSize=7.5,
+        leading=10, textColor=gris,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteKpi", parent=estilos["Normal"], fontName="Helvetica-Bold",
+        fontSize=13, leading=16, textColor=verde, alignment=TA_CENTER,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteKpiLabel", parent=estilos["Normal"], fontSize=7,
+        leading=9, textColor=gris, alignment=TA_CENTER,
+    ))
+    tonos_estado = {
+        "PRESENTE": ("Presente", colors.HexColor("#08745A"), colors.HexColor("#E8F4F0")),
+        "FALTA": ("Falta", colors.HexColor("#B42318"), colors.HexColor("#FEF0EF")),
+        "RETARDO": ("Retardo", colors.HexColor("#9A5B00"), colors.HexColor("#FFF6E5")),
+        "JUSTIFICADA": ("Justificada", colors.HexColor("#175CD3"), colors.HexColor("#EFF6FF")),
+    }
+    for clave, (_, color_texto, _) in tonos_estado.items():
+        estilos.add(ParagraphStyle(
+            name=f"ReporteEstado{clave}", parent=estilos["ReporteTabla"],
+            fontName="Helvetica-Bold", textColor=color_texto,
+        ))
+
+    def parrafo(valor, estilo="ReporteTabla"):
+        texto = escape(str(valor or "")).replace("\n", "<br/>")
+        return Paragraph(texto or "—", estilos[estilo])
+
+    nombre_alumno = f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip()
+    periodo = carga.periodo.clave if carga.periodo else "—"
+    grupo = (
+        f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
+        if carga.grupo_academico else "—"
+    )
+    fecha_emision = _ahora_mx().strftime("%d/%m/%Y")
+    rango = "Últimos 30 días" if periodo_fecha == "30_DIAS" else "Todo el periodo"
+    if fecha_desde:
+        rango += f" · desde {fecha_desde.strftime('%d/%m/%Y')}"
+    if fecha_hasta:
+        rango += f" · hasta {fecha_hasta.strftime('%d/%m/%Y')}"
+    if estado != "TODOS":
+        rango += f" · {estado.lower().capitalize()}"
+
+    resumen = [
+        [parrafo("RESUMEN INDIVIDUAL DE ASISTENCIA", "ReporteTitulo")],
+        [parrafo("Documento informativo para acompañamiento académico del alumno.", "ReporteSubtitulo")],
+    ]
+    ficha = Table([
+        [parrafo("ALUMNO", "ReporteNota"), parrafo("MATRÍCULA", "ReporteNota")],
+        [Paragraph(f"<b>{escape(nombre_alumno)}</b>", estilos["ReporteTabla"]), Paragraph(f"<b>{escape(alumno.matricula or '—')}</b>", estilos["ReporteTabla"])],
+        [parrafo("MATERIA", "ReporteNota"), parrafo("GRUPO · PERIODO", "ReporteNota")],
+        [parrafo(carga.actividad_nombre or "—"), parrafo(f"{grupo} · {periodo}")],
+        [parrafo("DOCENTE", "ReporteNota"), parrafo("FECHA DE EMISIÓN", "ReporteNota")],
+        [parrafo(escape(current_user.nombre or "—")), parrafo(fecha_emision)],
+    ], colWidths=[10.1 * cm, 7.2 * cm])
+    ficha.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F8FA")),
+        ("BOX", (0, 0), (-1, -1), 0.6, borde),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, borde),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 9), ("RIGHTPADDING", (0, 0), (-1, -1), 9),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+
+    kpi_labels = [
+        ("Sesiones", len(sesiones)), ("Presentes", conteos["PRESENTE"]),
+        ("Faltas", conteos["FALTA"]), ("Retardos", conteos["RETARDO"]),
+        ("Justificadas", conteos["JUSTIFICADA"]),
+    ]
+    kpis = Table([
+        [parrafo(valor, "ReporteKpi") for _, valor in kpi_labels],
+        [parrafo(etiqueta, "ReporteKpiLabel") for etiqueta, _ in kpi_labels],
+    ], colWidths=[3.46 * cm] * 5)
+    kpis.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), verde_claro),
+        ("BOX", (0, 0), (-1, -1), 0.6, borde),
+        ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, 0), 7), ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
+        ("TOPPADDING", (0, 1), (-1, 1), 1), ("BOTTOMPADDING", (0, 1), (-1, 1), 7),
+    ]))
+
+    horarios = {
+        f"{carga_item.hora_inicio}–{carga_item.hora_fin}"
+        for clase, _ in sesiones
+        if (carga_item := clase.carga).hora_inicio and carga_item.hora_fin
+    }
+    mostrar_horario = len(horarios) > 1
+    anchos = ([2.2, 2.0, 2.5, 10.6] if mostrar_horario else [2.5, 2.5, 12.3])
+    encabezados = ["FECHA"] + (["HORARIO"] if mostrar_horario else []) + ["ESTADO", "TEMA Y ACTIVIDAD"]
+    filas = [[parrafo(texto, "ReporteTablaCabeza") for texto in encabezados]]
+    for clase, asistencia in sesiones:
+        contenido = [f"<b>Tema:</b> {escape(clase.tema_impartido or 'Sin tema registrado')}"]
+        if clase.actividades_realizadas:
+            contenido.append(f"<b>Actividad:</b> {escape(clase.actividades_realizadas).replace(chr(10), '<br/>')}")
+        if clase.tarea_asignada:
+            contenido.append(f"<b>Trabajo asignado:</b> {escape(clase.tarea_asignada).replace(chr(10), '<br/>')}")
+        if clase.tema_pendiente:
+            contenido.append(f"<b>Para retomar:</b> {escape(clase.tema_pendiente).replace(chr(10), '<br/>')}")
+        fila = [parrafo(clase.fecha.strftime("%d/%m/%Y"))]
+        if mostrar_horario:
+            fila.append(parrafo(f"{clase.carga.hora_inicio or '—'}–{clase.carga.hora_fin or '—'}"))
+        texto_estado = tonos_estado[asistencia.estado][0]
+        fila.extend([
+            Paragraph(escape(texto_estado), estilos[f"ReporteEstado{asistencia.estado}"]),
+            Paragraph("<br/>".join(contenido), estilos["ReporteTabla"]),
+        ])
+        filas.append(fila)
+    tabla_sesiones = Table(filas, colWidths=[medida * cm for medida in anchos], repeatRows=1, hAlign="LEFT")
+    estilo_tabla_sesiones = [
+        ("BACKGROUND", (0, 0), (-1, 0), azul),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F9FB")]),
+        ("GRID", (0, 0), (-1, -1), 0.45, borde),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]
+    columna_estado = 2 if mostrar_horario else 1
+    for numero_fila, (_, asistencia) in enumerate(sesiones, start=1):
+        estilo_estado = tonos_estado[asistencia.estado]
+        estilo_tabla_sesiones.append(("BACKGROUND", (columna_estado, numero_fila), (columna_estado, numero_fila), estilo_estado[2]))
+    tabla_sesiones.setStyle(TableStyle(estilo_tabla_sesiones))
+    contenido_pdf = [
+        Spacer(1, 0.15 * cm), resumen[0][0], resumen[1][0], ficha,
+        Spacer(1, 0.3 * cm),
+        Paragraph(f"<b>Periodo consultado:</b> {escape(rango)}", estilos["ReporteMeta"]),
+        Spacer(1, 0.2 * cm), kpis, Spacer(1, 0.4 * cm),
+        parrafo("Detalle de sesiones", "Heading2"), Spacer(1, 0.12 * cm), tabla_sesiones,
+        Spacer(1, 0.3 * cm),
+        parrafo("La asistencia se registra por sesión impartida. Los temas sin información aparecen como “Sin tema registrado”. Este resumen no incluye notas internas ni incidencias de otras personas.", "ReporteNota"),
+    ]
+    doc.build(contenido_pdf, onFirstPage=encabezado_pie, onLaterPages=encabezado_pie)
+    salida.seek(0)
+    nombre_archivo = _nombre_archivo(f"Resumen_Asistencia_{alumno.matricula}_{carga.actividad_nombre}")
+    return StreamingResponse(
+        salida,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_archivo}.pdf"'},
+    )
 
 
 @router.post("/seguimiento/{carga_id}/alumnos/{alumno_id}/registros")

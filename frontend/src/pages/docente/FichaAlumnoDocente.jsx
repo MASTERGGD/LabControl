@@ -44,6 +44,7 @@ export default function FichaAlumnoDocente() {
   const [fechaHasta, setFechaHasta] = useState('');
   const [estadoAsistencia, setEstadoAsistencia] = useState('TODOS');
   const [paginaAsistencia, setPaginaAsistencia] = useState(1);
+  const [exportandoAsistencia, setExportandoAsistencia] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -105,6 +106,36 @@ export default function FichaAlumnoDocente() {
     }
   };
 
+  const descargarResumenAsistencia = async () => {
+    setExportandoAsistencia(true);
+    try {
+      const { data, headers } = await api.get(
+        `/docencia/seguimiento/${cargaId}/alumnos/${alumnoId}/asistencia.pdf`,
+        {
+          responseType: 'blob',
+          params: {
+            periodo_fecha: periodoFecha,
+            fecha_desde: fechaDesde || undefined,
+            fecha_hasta: fechaHasta || undefined,
+            estado: estadoAsistencia,
+          },
+        },
+      );
+      const url = URL.createObjectURL(data);
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1] || 'resumen_asistencia.pdf';
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'No se pudo generar el reporte de asistencia.');
+    } finally {
+      setExportandoAsistencia(false);
+    }
+  };
+
   const registrosFiltrados = useMemo(() => {
     if (!datos) return [];
     const ahora = new Date();
@@ -150,7 +181,6 @@ export default function FichaAlumnoDocente() {
     .map(({ hora_inicio, hora_fin }) => hora_inicio && hora_fin ? `${hora_inicio}–${hora_fin}` : null)
     .filter(Boolean));
   const mostrarHorarioAsistencia = horariosAsistencia.size > 1;
-  const acuerdosDelAlumno = datos?.registros.filter((registro) => registro.tipo === 'ACUERDO') || [];
 
   const calificaciones = datos?.registros.filter((r) => r.tipo === 'CALIFICACION' && r.calificacion != null) || [];
   const promedio = calificaciones.length
@@ -237,17 +267,6 @@ export default function FichaAlumnoDocente() {
 
   return (
     <AdminLayout>
-      <style>{`@media print {
-        @page { margin: 14mm; }
-        body * { visibility: hidden !important; }
-        .ficha-asistencia-print, .ficha-asistencia-print * { visibility: visible !important; }
-        .ficha-asistencia-print { display: block !important; position: absolute; inset: 0; width: 100%; padding: 0; color: #111827 !important; background: #fff !important; font: 10pt/1.45 Arial, sans-serif; }
-        .ficha-asistencia-print h1, .ficha-asistencia-print h2 { color: #111827 !important; }
-        .ficha-asistencia-print table { width: 100%; border-collapse: collapse; }
-        .ficha-asistencia-print th, .ficha-asistencia-print td { padding: 7px; border: 1px solid #d1d5db; text-align: left; vertical-align: top; }
-        .ficha-asistencia-print th { background: #f3f4f6 !important; }
-        .ficha-asistencia-print .print-muted { color: #4b5563 !important; }
-      }`}</style>
       <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -400,7 +419,7 @@ export default function FichaAlumnoDocente() {
                       <div className="flex flex-wrap items-center gap-2">
                         <button type="button" onClick={() => setEstadoAsistencia('FALTA')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${estadoAsistencia === 'FALTA' ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-white/10 text-slate-300'}`}>Ver faltas</button>
                         <button type="button" onClick={() => setEstadoAsistencia('TODOS')} className={`rounded-lg border px-3 py-2 text-xs font-semibold ${estadoAsistencia === 'TODOS' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-slate-300'}`}>Todas</button>
-                        <button type="button" onClick={() => window.print()} disabled={!asistenciasFiltradas.length} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Imprimir resumen individual</button>
+                        <button type="button" onClick={descargarResumenAsistencia} disabled={!asistenciasFiltradas.length || exportandoAsistencia} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">{exportandoAsistencia ? 'Generando PDF…' : 'Descargar reporte PDF'}</button>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
@@ -482,27 +501,6 @@ export default function FichaAlumnoDocente() {
           </>
         )}
       </div>
-
-      {datos && pestana === 'ASISTENCIA' && (
-        <section className="ficha-asistencia-print hidden" aria-hidden="true">
-          <header className="mb-5 border-b border-gray-300 pb-3">
-            <p className="print-muted text-xs uppercase tracking-wide">SIGA · Resumen individual de asistencia</p>
-            <h1 className="mt-1 text-2xl font-bold">{datos.alumno.nombre}</h1>
-            <p className="print-muted">Matrícula {datos.alumno.matricula} · {datos.carga.actividad_nombre} · Grupo {datos.carga.grupo}</p>
-            <p className="print-muted">Generado el {new Intl.DateTimeFormat('es-MX', { dateStyle: 'long' }).format(new Date())}</p>
-          </header>
-          <div className="mb-4 flex flex-wrap gap-x-5 gap-y-1">
-            <span><b>{asistenciasFiltradas.length}</b> sesiones en el reporte</span><span><b>{resumenAsistenciaFiltrada.PRESENTE || 0}</b> presentes</span><span><b>{resumenAsistenciaFiltrada.FALTA || 0}</b> faltas</span><span><b>{resumenAsistenciaFiltrada.RETARDO || 0}</b> retardos</span><span><b>{resumenAsistenciaFiltrada.JUSTIFICADA || 0}</b> justificadas</span>
-          </div>
-          <p className="print-muted mb-3 text-xs">Filtros aplicados: {periodoFecha === '30_DIAS' ? 'últimos 30 días' : 'todo el periodo'}{fechaDesde ? ` · desde ${fechaTexto(`${fechaDesde}T12:00:00`, false)}` : ''}{fechaHasta ? ` · hasta ${fechaTexto(`${fechaHasta}T12:00:00`, false)}` : ''}{estadoAsistencia !== 'TODOS' ? ` · estado ${estadoAsistencia.toLocaleLowerCase('es-MX')}` : ''}</p>
-          <table>
-            <thead><tr><th>Fecha</th>{mostrarHorarioAsistencia && <th>Horario</th>}<th>Estado</th><th>Tema y trabajo de clase</th></tr></thead>
-            <tbody>{asistenciasFiltradas.map((asistencia) => <tr key={asistencia.clase_id || asistencia.fecha}><td>{fechaTexto(`${asistencia.fecha}T12:00:00`, false)}</td>{mostrarHorarioAsistencia && <td>{asistencia.hora_inicio && asistencia.hora_fin ? `${asistencia.hora_inicio}–${asistencia.hora_fin}` : '—'}</td>}<td>{asistencia.estado}</td><td><b>Tema:</b> {asistencia.tema_impartido || 'Sin tema registrado'}{asistencia.actividades_realizadas && <><br/><b>Actividad:</b> {asistencia.actividades_realizadas}</>}{asistencia.tarea_asignada && <><br/><b>Trabajo:</b> {asistencia.tarea_asignada}{asistencia.tarea_asignada_estado ? ` · ${asistencia.tarea_asignada_estado.toLocaleLowerCase('es-MX')}` : ''}</>}{asistencia.tema_pendiente && <><br/><b>Para retomar:</b> {asistencia.tema_pendiente}{asistencia.tema_pendiente_estado ? ` · ${asistencia.tema_pendiente_estado.toLocaleLowerCase('es-MX')}` : ''}</>}{asistencia.observacion && <><br/><b>Nota:</b> {asistencia.observacion}</>}{asistencia.incidencias && <><br/><b>Incidencia:</b> {asistencia.incidencias}</>}</td></tr>)}</tbody>
-          </table>
-          {!!acuerdosDelAlumno.length && <section className="mt-5"><h2 className="mb-2 text-lg font-bold">Acuerdos de seguimiento</h2><table><thead><tr><th>Acuerdo</th><th>Estado</th><th>Revisión</th><th>Resultado</th></tr></thead><tbody>{acuerdosDelAlumno.map((acuerdo) => <tr key={acuerdo.id}><td><b>{acuerdo.titulo}</b>{acuerdo.detalle && <><br/>{acuerdo.detalle}</>}</td><td>{acuerdo.estado}</td><td>{acuerdo.fecha_revision ? fechaTexto(`${acuerdo.fecha_revision}T12:00:00`, false) : '—'}</td><td>{acuerdo.resultado_atencion || '—'}</td></tr>)}</tbody></table></section>}
-          <p className="print-muted mt-4 text-xs">Este resumen contiene únicamente registros de este alumno en la materia y grupo indicados.</p>
-        </section>
-      )}
 
       {modalAtencion && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm" onMouseDown={() => !guardandoAtencion && setModalAtencion(null)}>
