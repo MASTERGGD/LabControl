@@ -1,20 +1,5 @@
 {
-  "version": "1.0.3",
-  "fecha": "2026-10-19",
-  "resumen": "Los reportes de laboratorio ahora separan categoría, descripción y datos de sesión para facilitar la lectura.",
-  "destacados": [
-    "La categoría aparece como un dato propio y el texto del problema se muestra limpio, sin corchetes ni datos repetidos.",
-    "El reportante y la sesión se consultan en sus campos correspondientes.",
-    "Los reportes de sesión usan iconos y etiquetas de texto con un estilo más uniforme."
-  ],
-  "secciones": [
-    {
-      "area": "Reportes de laboratorio",
-      "cambios": [
-        "Los reportes nuevos guardan la categoría en una línea legible y la interfaz la presenta separada de la descripción.",
-        "Se eliminaron del texto visible el nombre del reportante y la sesión cuando ya aparecen como metadatos.",
-        "Se reemplazaron emojis decorativos del flujo de reportes por iconos SVG y texto claro."
-      ]
-    }
-  ]
+  "version": "1.0.4",
+  "fecha": "2026-10-22",
+  "resumen": "El seguimiento ahora distingue la asistencia registrada del alumno de las sesiones pendientes de captura por docente y materia."
 }

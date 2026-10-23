@@ -33,8 +33,9 @@ test('no avisa si la versión coincide; detecta una publicación al volver a la 
   expect(fetch).toHaveBeenCalledWith('/asset-manifest.json', expect.objectContaining({ cache: 'no-store' }));
   fetch.mockResolvedValue(manifest('/static/js/main.def456.js'));
   await act(async () => window.dispatchEvent(new Event('focus')));
-  expect(host.textContent).toContain('Nueva versión disponible');
-  expect(host.querySelector('button').textContent).toBe('Actualizar aplicación');
+  expect(host.textContent).toContain('Actualización disponible');
+  expect(host.textContent).not.toContain('Ver todas las novedades');
+  expect(host.querySelector('button').textContent).toBe('Recargar SIGA');
 });
 
 test('tolera fallo de red y detecta la nueva versión al recuperar conexión', async () => {
@@ -43,7 +44,7 @@ test('tolera fallo de red y detecta la nueva versión al recuperar conexión', a
   expect(host.textContent).toBe('');
   fetch.mockResolvedValue(manifest('/static/js/main.def456.js'));
   await act(async () => window.dispatchEvent(new Event('online')));
-  expect(host.textContent).toContain('Nueva versión disponible');
+  expect(host.textContent).toContain('Actualización disponible');
 });
 
 test('detecta cambios de diseño aunque el JavaScript sea el mismo', async () => {
@@ -56,7 +57,7 @@ test('detecta cambios de diseño aunque el JavaScript sea el mismo', async () =>
       'main.js': '/static/js/main.abc123.js', 'main.css': '/static/css/main.bbb222.css',
     } }) });
     await render();
-    expect(host.textContent).toContain('Nueva versión disponible');
+    expect(host.textContent).toContain('Actualización disponible');
   } finally { css.remove(); }
 });
 
