@@ -219,7 +219,7 @@ export default function SeguimientoGrupos() {
           <>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {[
-                ['Clases impartidas', datos.total_clases, 'Solo capturas concluidas con lista'],
+                ['Sesiones con lista', datos.total_clases, 'Capturas concluidas consideradas en asistencia'],
                 ['Alumnos', datos.total_alumnos, 'Inscritos actualmente'],
                 ['Asistencia registrada', asistenciaGrupo.texto, detalleMuestra],
                 ['Alumnos en alerta', datos.alumnos_en_alerta, datos.alumnos_en_alerta ? 'Requieren atención' : 'Sin alertas activas'],
@@ -286,7 +286,7 @@ export default function SeguimientoGrupos() {
                     <td className={`font-semibold ${formatAsistencia(a.porcentaje_asistencia, datos.total_clases).clase}`}>
                       {formatAsistencia(a.porcentaje_asistencia, datos.total_clases).corto}
                       <span className="block text-[10px] font-normal text-slate-500">
-                        {datos.total_clases ? `${datos.total_clases} ${datos.total_clases === 1 ? 'clase' : 'clases'}${formatAsistencia(a.porcentaje_asistencia, datos.total_clases).estado === 'MUESTRA_INSUFICIENTE' ? ' · muestra inicial' : ''}` : 'Sin clases impartidas'}
+                        {datos.total_clases ? `${datos.total_clases} ${datos.total_clases === 1 ? 'sesión con lista' : 'sesiones con lista'}${formatAsistencia(a.porcentaje_asistencia, datos.total_clases).estado === 'MUESTRA_INSUFICIENTE' ? ' · muestra inicial' : ''}` : 'Sin sesiones impartidas'}
                       </span>
                     </td>
                     <td className="max-w-sm py-3 pr-4">
