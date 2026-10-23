@@ -2807,7 +2807,7 @@ def exportar_resumen_asistencia_alumno(
     carga_ids = [item.id for item in _cargas_equivalentes(db, carga)]
     clases = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id.in_(carga_ids),
-    ).order_by(ClaseDocente.fecha.desc()).all()
+    ).order_by(ClaseDocente.fecha.desc(), ClaseDocente.id.desc()).all()
     hoy = _ahora_mx().date()
     limite_30_dias = hoy - datetime.timedelta(days=30)
     sesiones = []
@@ -2858,7 +2858,7 @@ def exportar_resumen_asistencia_alumno(
         canvas.line(1.45 * cm, alto - 1.5 * cm, ancho - 1.45 * cm, alto - 1.5 * cm)
         canvas.setFillColor(gris)
         canvas.setFont("Helvetica", 7.5)
-        canvas.drawString(1.45 * cm, 0.78 * cm, "Resumen informativo para seguimiento académico")
+        canvas.drawString(1.45 * cm, 0.78 * cm, "Documento informativo · Seguimiento académico · UTECAN")
         canvas.drawRightString(ancho - 1.45 * cm, 0.78 * cm, f"Página {doc.page}")
         canvas.restoreState()
 
@@ -2888,6 +2888,18 @@ def exportar_resumen_asistencia_alumno(
         leading=11, textColor=azul,
     ))
     estilos.add(ParagraphStyle(
+        name="ReporteDato", parent=estilos["Normal"], fontName="Helvetica-Bold",
+        fontSize=9.3, leading=12, textColor=azul,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteEtiqueta", parent=estilos["Normal"], fontName="Helvetica-Bold",
+        fontSize=6.8, leading=8, textColor=gris,
+    ))
+    estilos.add(ParagraphStyle(
+        name="ReporteHorario", parent=estilos["Normal"], fontSize=7.6,
+        leading=10, textColor=azul, splitLongWords=0,
+    ))
+    estilos.add(ParagraphStyle(
         name="ReporteTablaCabeza", parent=estilos["Normal"], fontName="Helvetica-Bold",
         fontSize=8, leading=10, textColor=colors.white,
     ))
@@ -2915,11 +2927,32 @@ def exportar_resumen_asistencia_alumno(
             fontName="Helvetica-Bold", textColor=color_texto,
         ))
 
+    def corregir_acentos_es(valor):
+        texto = str(valor or "")
+        correcciones = {
+            "presentacion": "presentación", "visualizacion": "visualización",
+            "matematicas": "matemáticas", "programacion": "programación",
+            "integracion": "integración", "evaluacion": "evaluación",
+            "investigacion": "investigación", "aplicacion": "aplicación",
+            "practica": "práctica", "analisis": "análisis",
+            "introduccion": "introducción", "sesion": "sesión",
+        }
+        for sin_tilde, con_tilde in correcciones.items():
+            patron = re.compile(rf"\b{sin_tilde}\b", re.IGNORECASE)
+            texto = patron.sub(lambda m: con_tilde.upper() if m.group(0).isupper()
+                               else con_tilde.capitalize() if m.group(0)[0].isupper()
+                               else con_tilde, texto)
+        return texto
+
     def parrafo(valor, estilo="ReporteTabla"):
-        texto = escape(str(valor or "")).replace("\n", "<br/>")
+        texto = escape(corregir_acentos_es(valor)).replace("\n", "<br/>")
         return Paragraph(texto or "—", estilos[estilo])
 
-    nombre_alumno = f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip()
+    nombre_alumno = f"{alumno.apellido_paterno} {alumno.apellido_materno or ''} {alumno.nombres}".strip().title()
+    nombre_docente = (current_user.nombre or "—").strip().title()
+    nombre_materia = (carga.actividad_nombre or "—").strip()
+    if re.match(r"(?i)^aprendizaje profundo\b", nombre_materia):
+        nombre_materia = re.sub(r"(?i)\s+deep learning\s*$", "", nombre_materia).strip()
     periodo = carga.periodo.clave if carga.periodo else "—"
     grupo = (
         f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}"
@@ -2939,12 +2972,12 @@ def exportar_resumen_asistencia_alumno(
         [parrafo("Documento informativo para acompañamiento académico del alumno.", "ReporteSubtitulo")],
     ]
     ficha = Table([
-        [parrafo("ALUMNO", "ReporteNota"), parrafo("MATRÍCULA", "ReporteNota")],
-        [Paragraph(f"<b>{escape(nombre_alumno)}</b>", estilos["ReporteTabla"]), Paragraph(f"<b>{escape(alumno.matricula or '—')}</b>", estilos["ReporteTabla"])],
-        [parrafo("MATERIA", "ReporteNota"), parrafo("GRUPO · PERIODO", "ReporteNota")],
-        [parrafo(carga.actividad_nombre or "—"), parrafo(f"{grupo} · {periodo}")],
-        [parrafo("DOCENTE", "ReporteNota"), parrafo("FECHA DE EMISIÓN", "ReporteNota")],
-        [parrafo(escape(current_user.nombre or "—")), parrafo(fecha_emision)],
+        [parrafo("ALUMNO", "ReporteEtiqueta"), parrafo("MATRÍCULA", "ReporteEtiqueta")],
+        [parrafo(nombre_alumno, "ReporteDato"), parrafo(alumno.matricula or "—", "ReporteDato")],
+        [parrafo("MATERIA", "ReporteEtiqueta"), parrafo("GRUPO · PERIODO", "ReporteEtiqueta")],
+        [parrafo(nombre_materia, "ReporteDato"), parrafo(f"{grupo} · {periodo}", "ReporteDato")],
+        [parrafo("DOCENTE", "ReporteEtiqueta"), parrafo("FECHA DE EMISIÓN", "ReporteEtiqueta")],
+        [parrafo(nombre_docente, "ReporteDato"), parrafo(fecha_emision, "ReporteDato")],
     ], colWidths=[10.1 * cm, 7.2 * cm])
     ficha.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F8FA")),
@@ -2979,20 +3012,20 @@ def exportar_resumen_asistencia_alumno(
         if (carga_item := clase.carga).hora_inicio and carga_item.hora_fin
     }
     mostrar_horario = len(horarios) > 1
-    anchos = ([2.2, 2.0, 2.5, 10.6] if mostrar_horario else [2.5, 2.5, 12.3])
+    anchos = ([2.5, 3.1, 2.2, 9.5] if mostrar_horario else [2.4, 2.4, 12.5])
     encabezados = ["FECHA"] + (["HORARIO"] if mostrar_horario else []) + ["ESTADO", "TEMA Y ACTIVIDAD"]
     filas = [[parrafo(texto, "ReporteTablaCabeza") for texto in encabezados]]
     for clase, asistencia in sesiones:
-        contenido = [f"<b>Tema:</b> {escape(clase.tema_impartido or 'Sin tema registrado')}"]
+        contenido = [f"<b>Tema:</b> {escape(corregir_acentos_es(clase.tema_impartido or 'Sin tema registrado'))}"]
         if clase.actividades_realizadas:
-            contenido.append(f"<b>Actividad:</b> {escape(clase.actividades_realizadas).replace(chr(10), '<br/>')}")
+            contenido.append(f"<b>Actividad:</b> {escape(corregir_acentos_es(clase.actividades_realizadas)).replace(chr(10), '<br/>')}")
         if clase.tarea_asignada:
-            contenido.append(f"<b>Trabajo asignado:</b> {escape(clase.tarea_asignada).replace(chr(10), '<br/>')}")
+            contenido.append(f"<b>Trabajo asignado:</b> {escape(corregir_acentos_es(clase.tarea_asignada)).replace(chr(10), '<br/>')}")
         if clase.tema_pendiente:
-            contenido.append(f"<b>Para retomar:</b> {escape(clase.tema_pendiente).replace(chr(10), '<br/>')}")
+            contenido.append(f"<b>Para retomar:</b> {escape(corregir_acentos_es(clase.tema_pendiente)).replace(chr(10), '<br/>')}")
         fila = [parrafo(clase.fecha.strftime("%d/%m/%Y"))]
         if mostrar_horario:
-            fila.append(parrafo(f"{clase.carga.hora_inicio or '—'}–{clase.carga.hora_fin or '—'}"))
+            fila.append(parrafo(f"{clase.carga.hora_inicio or '—'} – {clase.carga.hora_fin or '—'}", "ReporteHorario"))
         texto_estado = tonos_estado[asistencia.estado][0]
         fila.extend([
             Paragraph(escape(texto_estado), estilos[f"ReporteEstado{asistencia.estado}"]),
@@ -3001,7 +3034,7 @@ def exportar_resumen_asistencia_alumno(
         filas.append(fila)
     tabla_sesiones = Table(filas, colWidths=[medida * cm for medida in anchos], repeatRows=1, hAlign="LEFT")
     estilo_tabla_sesiones = [
-        ("BACKGROUND", (0, 0), (-1, 0), azul),
+        ("BACKGROUND", (0, 0), (-1, 0), verde),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F7F9FB")]),
         ("GRID", (0, 0), (-1, -1), 0.45, borde),
@@ -3021,7 +3054,6 @@ def exportar_resumen_asistencia_alumno(
         Spacer(1, 0.2 * cm), kpis, Spacer(1, 0.4 * cm),
         parrafo("Detalle de sesiones", "Heading2"), Spacer(1, 0.12 * cm), tabla_sesiones,
         Spacer(1, 0.3 * cm),
-        parrafo("La asistencia se registra por sesión impartida. Los temas sin información aparecen como “Sin tema registrado”. Este resumen no incluye notas internas ni incidencias de otras personas.", "ReporteNota"),
     ]
     doc.build(contenido_pdf, onFirstPage=encabezado_pie, onLaterPages=encabezado_pie)
     salida.seek(0)
