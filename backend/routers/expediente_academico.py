@@ -1928,10 +1928,13 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
     ], colWidths=[2.8 * cm, 10.6 * cm, 5.2 * cm])
     encabezado.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (2, 0), (2, 0), "RIGHT"), ("LINEBELOW", (0, 0), (-1, -1), 1, verde), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
     contenido.extend([encabezado, Spacer(1, 0.28 * cm), Paragraph("Expediente del alumno", estilos["titulo"])])
+    def celda_identidad(valor):
+        return Paragraph(escape(str(valor or "—")), estilos["normal"])
+
     identidad = [
-        ["Alumno", alumno["nombre"], "Matrícula", alumno["matricula"]],
-        ["Carrera", alumno.get("carrera") or "—", "Grado y grupo", f"{alumno.get('cuatrimestre') or '—'}° {alumno.get('grupo') or '—'}"],
-        ["Periodo", alumno.get("periodo") or "—", "Tutor", data.get("tutoria", {}).get("tutor_nombre") or "Sin tutor asignado"],
+        ["Alumno", celda_identidad(alumno["nombre"]), "Matrícula", celda_identidad(alumno["matricula"])],
+        ["Carrera", celda_identidad(alumno.get("carrera")), "Grado y grupo", celda_identidad(f"{alumno.get('cuatrimestre') or '—'}° {alumno.get('grupo') or '—'}")],
+        ["Periodo", celda_identidad(alumno.get("periodo")), "Tutor", celda_identidad(data.get("tutoria", {}).get("tutor_nombre") or "Sin tutor asignado")],
     ]
     tabla_identidad = Table(identidad, colWidths=[2.2 * cm, 7.0 * cm, 2.5 * cm, 6.9 * cm])
     tabla_identidad.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.35, borde), ("BACKGROUND", (0, 0), (0, -1), claro), ("BACKGROUND", (2, 0), (2, -1), claro), ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"), ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("PADDING", (0, 0), (-1, -1), 5)]))
