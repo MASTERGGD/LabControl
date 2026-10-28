@@ -1,5 +1,5 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "fecha": "2026-10-28",
-  "resumen": "Los reportes recibidos por el tutor se leen mejor: textos en mayúsculas se presentan en formato oración, el contenido se limita a un ancho cómodo y las descripciones largas pueden expandirse."
+  "resumen": "El expediente tutorial ahora filtra reportes por tema, muestra alertas activas por categoría y reúne el historial de cambios dentro de cada reporte, sin mezclar casos distintos."
 }

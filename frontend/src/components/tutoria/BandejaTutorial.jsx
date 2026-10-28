@@ -3,14 +3,28 @@ import { agruparCasos, filtrarCasos, coincideFiltro, antiguedad, eventosCaso, no
 
 const filtros = [['TODOS', 'Todos'], ['PENDIENTES', 'Pendientes'], ['PRIORITARIOS', 'Prioritarios'], ['SIN_SEGUIMIENTO', 'Sin seguimiento'], ['REPETIDOS', 'Reportes repetidos'], ['SIN_TUTOR', 'Sin tutor'], ['EN_SEGUIMIENTO', 'En seguimiento'], ['RESUELTOS', 'Resueltos'], ['CIERRE_ADMIN', 'Cierre administrativo']];
 const categorias = { ACADEMICO: 'Académico', ASISTENCIA: 'Asistencia', CONDUCTA: 'Conducta', PERSONAL: 'Situación personal', OTRO: 'Otro' };
+const filtrosCategoria = [['TODAS', 'Todos'], ['ACADEMICO', 'Académico'], ['ASISTENCIA_CONDUCTA', 'Asistencia / conducta'], ['PERSONAL', 'Situación personal'], ['OTRO', 'Otros']];
+const coincideCategoria = (reporte, filtro) => filtro === 'TODAS'
+  || (filtro === 'ASISTENCIA_CONDUCTA' ? ['ASISTENCIA', 'CONDUCTA'].includes(reporte.categoria)
+    : filtro === 'OTRO' ? !['ACADEMICO', 'ASISTENCIA', 'CONDUCTA', 'PERSONAL'].includes(reporte.categoria)
+      : reporte.categoria === filtro);
+const colorCategoria = (categoria, tonos) => ({
+  ACADEMICO: tonos.azul,
+  ASISTENCIA: tonos.rojo,
+  CONDUCTA: tonos.rojo,
+  PERSONAL: tonos.naranja,
+  OTRO: tonos.gris,
+}[categoria] || tonos.gris);
 
 export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte, cargando, error, onReintentar }) {
   const [filtro, setFiltro] = useState('PENDIENTES');
   const [busqueda, setBusqueda] = useState('');
   const [orden, setOrden] = useState('PRIORIDAD');
   const [abierto, setAbierto] = useState(null);
+  const [categoriaFiltro, setCategoriaFiltro] = useState('TODAS');
+  const [descripcionAbierta, setDescripcionAbierta] = useState(() => new Set());
   const casos = useMemo(() => agruparCasos(reportes), [reportes]);
-  const visibles = useMemo(() => filtrarCasos(casos, filtro, busqueda, orden), [casos, filtro, busqueda, orden]);
+  const visibles = useMemo(() => filtrarCasos(casos, filtro, busqueda, orden).filter(caso => caso.reportes.some(reporte => coincideCategoria(reporte, categoriaFiltro))), [casos, filtro, busqueda, orden, categoriaFiltro]);
   const superficie = isDay ? 'border-slate-200 bg-white text-slate-900' : 'border-slate-700 bg-slate-900 text-slate-100';
   const secundario = isDay ? 'text-slate-600' : 'text-slate-400';
   const tonos = {
@@ -40,6 +54,18 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
         </button>;
       })}
     </div>
+    <div className={`rounded-xl border p-4 ${superficie}`}>
+      <p className={`mb-3 text-sm font-semibold ${secundario}`}>Filtrar por tema</p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar expedientes por categoría">
+        {filtrosCategoria.map(([key, label]) => {
+          const total = reportes.filter(reporte => coincideCategoria(reporte, key) && !['ATENDIDO', 'CERRADO', 'CERRADO_ADMINISTRATIVO'].includes(reporte.estado)).length;
+          return <button type="button" key={key} aria-pressed={categoriaFiltro === key} onClick={() => setCategoriaFiltro(key)} className={`rounded-full border px-3 py-2 text-sm font-medium transition-colors ${categoriaFiltro === key ? 'border-emerald-700 bg-emerald-700 text-white' : `${superficie} hover:border-emerald-500`}`}>
+            {label} <span className="ml-1 opacity-75">{total}</span>
+          </button>;
+        })}
+      </div>
+      <p className={`mt-2 text-xs ${secundario}`}>Los conteos por tema incluyen reportes activos. Cada reporte conserva su historial aunque comparta categoría con otros.</p>
+    </div>
     <div className={`space-y-4 rounded-xl border p-4 ${superficie}`}>
       <div className="flex flex-col gap-3 lg:flex-row">
         <label className="flex-1"><span className="sr-only">Buscar alumno, matrícula, materia, docente o tutor</span><input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-full" placeholder="Buscar alumno, matrícula, materia, docente o tutor…" /></label>
@@ -57,24 +83,43 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
       const expandido = abierto === caso.key;
       const tutores = [...new Set(caso.reportes.map(r => r.tutor_destinatario || 'Sin asignar'))];
       const resumen = caso.activos.length ? caso.activos : caso.reportes;
+      const reportesVisibles = caso.reportes.filter(reporte => coincideCategoria(reporte, categoriaFiltro));
+      const activosPorCategoria = [
+        ['ASISTENCIA_CONDUCTA', 'Asistencia / conducta', 'rojo'],
+        ['ACADEMICO', 'Académico', 'azul'],
+        ['PERSONAL', 'Situación personal', 'naranja'],
+      ].map(([key, label, tono]) => ({ key, label, tono, total: caso.activos.filter(reporte => coincideCategoria(reporte, key)).length })).filter(item => item.total);
       return <article key={caso.key} className={`overflow-hidden rounded-xl border border-l-4 ${superficie} ${borde}`}>
         <div className="p-4 sm:p-5">
           <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
             <div className="min-w-0 flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${tonos[tono]}`}>{label}</span>{caso.repetidos && <span className="text-xs font-medium text-[#C58637]">{caso.activos.length} reportes activos del alumno</span>}{caso.grupal && <span className={`text-xs ${secundario}`}>Reporte grupal</span>}</div>
               <h3 className="text-base font-semibold">{caso.grupal ? caso.nombre : nombreAlumno(caso.nombre)}</h3><p className={`mt-0.5 text-xs ${secundario}`}>{caso.matricula || caso.reportes[0].grupo || 'Sin matrícula'} · {caso.activos.length} activos · {caso.reportes.length} en el expediente</p>
+              {activosPorCategoria.length > 0 && <div className="mt-2 flex flex-wrap gap-2" aria-label="Alertas activas por categoría">{activosPorCategoria.map(item => <span key={item.key} className={`rounded-full px-2.5 py-1 text-xs font-medium ${tonos[item.tono]}`}>{item.total} {item.label}</span>)}</div>}
               <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2">{resumen.slice(0, 3).map(r => <span key={r.id} title={r.titulo} className={`inline-flex max-w-full flex-wrap items-center gap-x-1.5 rounded-md px-2.5 py-1.5 text-xs ${tonos.gris}`}><span>{categorias[r.categoria] || r.categoria}</span><span aria-hidden="true">·</span><span className="whitespace-nowrap">{antiguedad(r.creado_en)}</span></span>)}{resumen.length > 3 && <span className={`self-center text-xs ${secundario}`}>+{resumen.length - 3} más</span>}</div>
               <p className={`mt-2 line-clamp-1 text-sm ${secundario}`}>{resumen[0]?.titulo}</p>
             </div>
             <div className="space-y-2 lg:w-64"><p className={`text-xs ${secundario}`}>Tutor: {tutores.join(' · ')}</p><p className={`text-xs font-medium ${secundario}`}>{caso.sinSeguimiento ? 'Hay reportes sin acción tutorial registrada' : caso.activos.length ? 'Consulta el estado de cada reporte' : 'Sin reportes activos'}</p><button type="button" aria-expanded={expandido} aria-controls={`expediente-${caso.key}`} onClick={() => setAbierto(expandido ? null : caso.key)} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">{expandido ? 'Cerrar expediente' : 'Abrir expediente tutorial'} <span aria-hidden="true">{expandido ? '↑' : '→'}</span></button></div>
           </div>
         </div>
-        {expandido && <div id={`expediente-${caso.key}`} className={`grid gap-6 border-t p-4 sm:p-5 xl:grid-cols-[1.4fr_1fr] ${isDay ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-950/30'}`}>
-          <section><h4 className="mb-3 text-sm font-semibold">Reportes del expediente</h4><div className="space-y-3">{caso.reportes.map(r => <div key={r.id} className={`rounded-lg border p-3 ${superficie}`}><div className="flex flex-wrap justify-between gap-2"><h5 className="text-sm font-semibold">{r.titulo}</h5><span className={`rounded px-2 py-1 text-xs ${['ATENDIDO', 'CERRADO'].includes(r.estado) ? tonos.verde : ['EN_SEGUIMIENTO', 'CANALIZADO', 'REUNION_SOLICITADA'].includes(r.estado) ? tonos.azul : tonos.gris}`}>{estados[r.estado]?.label || r.estado}</span></div><p className={`mt-2 text-xs ${secundario}`}>{r.materia || 'Sin materia'} · {r.reportado_por || 'Sin docente'} · {antiguedad(r.creado_en)}</p><p className={`mt-1 text-xs ${secundario}`}>Tutor: {r.tutor_destinatario || 'Sin asignar'} · {r.prioridad_confirmada ? `Prioridad ${r.prioridad.toLowerCase()}` : 'Prioridad sin confirmar'}</p>{r.detalle && <p className={`mt-2 whitespace-pre-wrap text-sm ${secundario}`}>{r.detalle}</p>}{r.resultado && <p className={`mt-2 rounded p-2 text-sm ${tonos.verde}`}>Resultado: {r.resultado}</p>}<button type="button" onClick={() => onVerReporte(r)} className="mt-3 text-sm font-semibold text-emerald-600">Ver detalle y acciones →</button></div>)}</div></section>
-          <section><h4 className="text-sm font-semibold">Línea de tiempo</h4><p className={`mb-4 mt-1 text-xs ${secundario}`}>Eventos con fecha registrada. El estado actual aparece en cada reporte.</p><ol className={`space-y-4 border-l pl-4 ${isDay ? 'border-slate-300' : 'border-slate-600'}`}>{eventosCaso(caso).map(evento => <li key={evento.key}><time className={`text-xs ${secundario}`}>{evento.date.toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short' })}</time><p className="text-sm font-medium">{evento.label}</p><p className={`text-xs ${secundario}`}>{evento.reporte.titulo}</p></li>)}</ol></section>
+        {expandido && <div id={`expediente-${caso.key}`} className={`border-t p-4 sm:p-5 ${isDay ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-950/30'}`}>
+          <section><h4 className="mb-3 text-sm font-semibold">Reportes del expediente</h4><div className="max-w-5xl space-y-3">{reportesVisibles.map(r => {
+            const eventosReporte = eventosCaso(caso).filter(evento => evento.reporte.id === r.id);
+            const descripcionExpandida = descripcionAbierta.has(r.id);
+            const estadoTono = ['ATENDIDO', 'CERRADO', 'CERRADO_ADMINISTRATIVO'].includes(r.estado) ? tonos.verde : ['EN_SEGUIMIENTO', 'CANALIZADO', 'REUNION_SOLICITADA'].includes(r.estado) ? tonos.azul : tonos.gris;
+            return <div key={r.id} className={`rounded-xl border p-4 shadow-sm ${superficie}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${colorCategoria(r.categoria, tonos)}`}>{categorias[r.categoria] || r.categoria || 'Otro'}</span><h5 className="mt-2 text-base font-semibold leading-snug">{r.titulo}</h5></div><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${estadoTono}`}>{estados[r.estado]?.label || r.estado}</span></div>
+              <p className={`mt-2 text-xs ${secundario}`}>{r.materia || 'Sin materia'} · {r.reportado_por || 'Sin docente'} · {antiguedad(r.creado_en)}</p>
+              <p className={`mt-1 text-xs ${secundario}`}>Tutor: {r.tutor_destinatario || 'Sin asignar'} · {r.prioridad_confirmada ? `Prioridad ${r.prioridad.toLowerCase()}` : 'Prioridad sin confirmar'}</p>
+              {r.detalle && <><p className={`mt-3 max-w-[80ch] whitespace-pre-wrap text-sm leading-6 ${descripcionExpandida ? '' : 'line-clamp-3'} ${secundario}`}>{r.detalle}</p>{r.detalle.length > 180 && <button type="button" aria-expanded={descripcionExpandida} onClick={() => setDescripcionAbierta(actual => { const siguiente = new Set(actual); descripcionExpandida ? siguiente.delete(r.id) : siguiente.add(r.id); return siguiente; })} className="mt-1 text-xs font-semibold text-emerald-600">{descripcionExpandida ? 'Leer menos' : 'Leer más'}</button>}</>}
+              {r.resultado && <p className={`mt-3 max-w-[80ch] rounded-lg p-3 text-sm leading-6 ${tonos.verde}`}><b>Resultado de atención:</b> {r.resultado}</p>}
+              {eventosReporte.length > 0 && <details className={`mt-3 border-t pt-3 ${isDay ? 'border-slate-200' : 'border-slate-700'}`}><summary className={`cursor-pointer text-xs font-semibold ${secundario}`}>Ver historial de cambios ({eventosReporte.length})</summary><ol className={`mt-3 space-y-3 border-l pl-4 ${isDay ? 'border-slate-300' : 'border-slate-600'}`}>{eventosReporte.map(evento => <li key={evento.key}><time className={`text-xs ${secundario}`}>{evento.date.toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short' })}</time><p className="text-sm font-medium">{evento.label}</p></li>)}</ol></details>}
+              <button type="button" onClick={() => onVerReporte(r)} className="mt-3 text-sm font-semibold text-emerald-600">Ver detalle y acciones →</button>
+            </div>;
+          })}</div>{!reportesVisibles.length && <p className={`rounded-lg border p-4 text-sm ${secundario} ${superficie}`}>No hay reportes de esta categoría en el expediente.</p>}</section>
         </div>}
       </article>;
     })}</div>
-    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFiltro('TODOS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
+    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFiltro('TODOS'); setCategoriaFiltro('TODAS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
   </section>;
 }
