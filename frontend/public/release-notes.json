@@ -1,5 +1,5 @@
 {
-  "version": "1.0.4",
-  "fecha": "2026-10-22",
-  "resumen": "El seguimiento ahora distingue la asistencia registrada del alumno de las sesiones pendientes de captura por docente y materia."
+  "version": "1.0.5",
+  "fecha": "2026-10-28",
+  "resumen": "Tutoría ahora puede solicitar acciones concretas al docente y registrar su respuesta; canalizar un caso ya no lo marca como resuelto."
 }

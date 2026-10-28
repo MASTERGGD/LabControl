@@ -227,6 +227,23 @@ class ReporteTutor(Base):
     reasignado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
 
+class AccionReporteTutor(Base):
+    """Solicitud de seguimiento del Responsable de Tutoría al docente reportante."""
+    __tablename__ = "acciones_reportes_tutor"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reporte_id = Column(Integer, ForeignKey("reportes_tutor.id"), nullable=False, index=True)
+    solicitada_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    asignada_a_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    instruccion = Column(Text, nullable=False)
+    fecha_limite = Column(Date, nullable=True)
+    estado = Column(String(20), nullable=False, default="PENDIENTE", index=True)
+    respuesta = Column(Text, nullable=True)
+    creado_en = Column(DateTime, nullable=False, default=_now)
+    atendido_en = Column(DateTime, nullable=True)
+    cancelado_en = Column(DateTime, nullable=True)
+
+
 class Canalizacion(Base):
     __tablename__ = "canalizaciones"
 

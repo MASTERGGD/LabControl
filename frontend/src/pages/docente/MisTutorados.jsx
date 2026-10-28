@@ -29,7 +29,7 @@ const ESTADO_CAN = {
 const ESTADO_REPORTE = {
   SIN_TUTOR: "Sin tutor", ENVIADO: "Enviado", RECIBIDO: "Visto por el tutor",
   REUNION_SOLICITADA: "Reunión solicitada",
-  EN_SEGUIMIENTO: "En seguimiento", CANALIZADO: "Canalizado", ATENDIDO: "Atendido",
+  EN_SEGUIMIENTO: "En seguimiento", CANALIZADO: "Canalizado a Tutoría", ATENDIDO: "Atendido",
   CERRADO: "Cerrado", CERRADO_ADMINISTRATIVO: "Cierre administrativo",
 };
 
@@ -1029,14 +1029,14 @@ export default function MisTutorados() {
                 </div>
                 {reportesExpandidos.has(r.id) && <>
                 <div className="mt-4 grid grid-cols-4 gap-1 text-center text-[10px]">
-                  {[["Enviado", true], ["Visto", Boolean(r.recibido_en)], ["Seguimiento", ["REUNION_SOLICITADA", "EN_SEGUIMIENTO", "CANALIZADO", "ATENDIDO", "CERRADO"].includes(r.estado)], ["Resuelto", ["CANALIZADO", "ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"].includes(r.estado)]].map(([etiqueta, completo]) => <div key={etiqueta}><div className={"mb-1 h-1 rounded-full " + (completo ? "bg-emerald-500" : "bg-slate-700")} /><span className={completo ? "text-emerald-400" : "text-slate-600"}>{etiqueta}</span></div>)}
+                  {[["Enviado", true], ["Visto", Boolean(r.recibido_en)], ["Seguimiento", ["REUNION_SOLICITADA", "EN_SEGUIMIENTO", "CANALIZADO", "ATENDIDO", "CERRADO"].includes(r.estado)], ["Resuelto", ["ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"].includes(r.estado)]].map(([etiqueta, completo]) => <div key={etiqueta}><div className={"mb-1 h-1 rounded-full " + (completo ? "bg-emerald-500" : "bg-slate-700")} /><span className={completo ? "text-emerald-400" : "text-slate-600"}>{etiqueta}</span></div>)}
                 </div>
                 {!["ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANALIZADO"].includes(r.estado) && (
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-white/10 pt-3">
                     {r.estado === "ENVIADO" && <button onClick={() => cambiarEstadoReporte(r, "RECIBIDO")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold">Confirmar recepción</button>}
                     {["ENVIADO", "RECIBIDO", "REUNION_SOLICITADA"].includes(r.estado) && <button onClick={() => cambiarEstadoReporte(r, "EN_SEGUIMIENTO")} className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold">Iniciar seguimiento</button>}
                     <button onClick={() => { setAtenderReporte(r); setResultadoReporte(""); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold">Resolver y cerrar</button>
-                    {!r.es_reporte_grupal && <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Generar F-DC-08</button>}
+                    {!r.es_reporte_grupal && <button onClick={() => { setCanalizarReporte(r); setFormCanalizarReporte(p => ({ ...p, motivo: r.detalle || r.titulo })); }} className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold">Canalizar a Tutoría (F-DC-08)</button>}
                   </div>
                 )}
                 </>}

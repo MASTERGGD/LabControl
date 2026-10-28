@@ -10,7 +10,7 @@ from typing import Optional, List
 from database import get_db
 from models.tutoria import (
     GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico, HistorialTutorGrupo,
-    SesionTutoria, RegistroSesionAlumno, Canalizacion,
+    SesionTutoria, RegistroSesionAlumno, Canalizacion, AccionReporteTutor,
     ReporteTutor,
     InformeBimestral, DetalleInformeBimestral,
     DocumentoControladoTutoria, ProgramacionSesionTutoria,
@@ -156,6 +156,13 @@ class ReporteTutorCanalizar(BaseModel):
     tipo_personal: bool = False
     modalidad: str = "INDIVIDUAL"
     motivo: Optional[str] = Field(default=None, max_length=2000)
+
+class AccionReporteTutorCreate(BaseModel):
+    instruccion: str = Field(..., min_length=5, max_length=2000)
+    fecha_limite: Optional[str] = None
+
+class AccionReporteTutorResponder(BaseModel):
+    respuesta: str = Field(..., min_length=5, max_length=2000)
 
 class InformeTextosUpdate(BaseModel):
     principal_problematica: Optional[str] = None
@@ -2548,6 +2555,15 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         db.query(CargaDocente).filter(CargaDocente.id == reporte.carga_docente_id).first()
         if reporte.carga_docente_id else None
     )
+    acciones_docente = db.query(AccionReporteTutor).filter(
+        AccionReporteTutor.reporte_id == reporte.id
+    ).order_by(AccionReporteTutor.creado_en.asc(), AccionReporteTutor.id.asc()).all()
+    usuarios_accion = {
+        usuario.id: usuario.nombre
+        for usuario in db.query(Usuario).filter(Usuario.id.in_(
+            {a.solicitada_por_id for a in acciones_docente} | {a.asignada_a_id for a in acciones_docente}
+        )).all()
+    } if acciones_docente else {}
     return {
         "id": reporte.id,
         "alumno_id": reporte.alumno_id,
@@ -2576,6 +2592,19 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "estado": reporte.estado,
         "resultado": reporte.resultado,
         "canalizacion_id": reporte.canalizacion_id,
+        "acciones_docente": [{
+            "id": a.id,
+            "solicitada_por": usuarios_accion.get(a.solicitada_por_id),
+            "asignada_a": usuarios_accion.get(a.asignada_a_id),
+            "instruccion": a.instruccion,
+            "fecha_limite": a.fecha_limite.isoformat() if a.fecha_limite else None,
+            "estado": a.estado,
+            "respuesta": a.respuesta,
+            "creado_en": a.creado_en.isoformat() if a.creado_en else None,
+            "atendido_en": a.atendido_en.isoformat() if a.atendido_en else None,
+            "cancelado_en": a.cancelado_en.isoformat() if a.cancelado_en else None,
+        } for a in acciones_docente],
+        "acciones_docente_pendientes": sum(1 for a in acciones_docente if a.estado == "PENDIENTE"),
         "creado_en": reporte.creado_en.isoformat() if reporte.creado_en else None,
         "recibido_en": reporte.recibido_en.isoformat() if reporte.recibido_en else None,
         "actualizado_en": reporte.actualizado_en.isoformat() if reporte.actualizado_en else None,
@@ -2638,6 +2667,13 @@ def actualizar_reporte_tutor(
     if estado == "CERRADO_ADMINISTRATIVO" and current_user.rol not in {RolUsuario.SUPER_ADMIN, RolUsuario.TUTORIA_ADMIN}:
         raise HTTPException(403, "Solo el Responsable de Tutoría puede realizar un cierre administrativo")
 
+    acciones_pendientes = db.query(AccionReporteTutor).filter(
+        AccionReporteTutor.reporte_id == reporte.id,
+        AccionReporteTutor.estado == "PENDIENTE",
+    ).all()
+    if acciones_pendientes and estado in {"ATENDIDO", "CERRADO"}:
+        raise HTTPException(409, "Hay acciones pendientes del docente. Espera su respuesta o registra un cierre administrativo justificado.")
+
     ahora = _now()
     reporte.estado = estado
     reporte.resultado = (data.resultado or "").strip() or reporte.resultado
@@ -2645,6 +2681,16 @@ def actualizar_reporte_tutor(
         reporte.recibido_en = ahora
     if estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO"}:
         reporte.cerrado_en = ahora
+        if estado == "CERRADO_ADMINISTRATIVO":
+            for accion in acciones_pendientes:
+                accion.estado = "CANCELADA"
+                accion.cancelado_en = ahora
+                _notificar_usuario(
+                    db, accion.asignada_a_id, "tutoria_accion_cancelada",
+                    "Acción de Tutoría cancelada",
+                    f"La acción solicitada para el reporte “{reporte.titulo}” se canceló por cierre administrativo.",
+                    "/docente/reportes-tutoria",
+                )
         if estado != "CERRADO_ADMINISTRATIVO" and reporte.seguimiento_docente_id:
             seguimiento = db.query(SeguimientoAlumnoDocente).filter(
                 SeguimientoAlumnoDocente.id == reporte.seguimiento_docente_id
@@ -2660,6 +2706,91 @@ def actualizar_reporte_tutor(
         f"El reporte “{reporte.titulo}” cambió a {estado.replace('_', ' ').lower()}.",
         f"/docente/seguimiento/{reporte.carga_docente_id}/alumnos/{reporte.alumno_id}",
         enviar_email=False,
+    )
+    db.commit()
+    return _ser_reporte_tutor(reporte, db)
+
+
+@router.post("/reportes-tutor/{reporte_id}/acciones", status_code=status.HTTP_201_CREATED,
+             summary="Solicitar al docente reportante una acción de seguimiento")
+def solicitar_accion_reporte_tutor(
+    reporte_id: int,
+    data: AccionReporteTutorCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(_resp_roles),
+):
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == reporte_id).first()
+    if not reporte:
+        raise HTTPException(404, "Reporte no encontrado")
+    if reporte.estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANCELADO"}:
+        raise HTTPException(409, "El reporte ya está cerrado y no admite nuevas acciones")
+    pendiente = db.query(AccionReporteTutor).filter(
+        AccionReporteTutor.reporte_id == reporte.id,
+        AccionReporteTutor.estado == "PENDIENTE",
+    ).first()
+    if pendiente:
+        raise HTTPException(409, "Ya existe una acción pendiente para este reporte")
+    fecha_limite = None
+    if data.fecha_limite:
+        try:
+            fecha_limite = datetime.date.fromisoformat(data.fecha_limite)
+        except ValueError as exc:
+            raise HTTPException(422, "La fecha límite debe usar formato AAAA-MM-DD") from exc
+        if fecha_limite < today_mx():
+            raise HTTPException(422, "La fecha límite no puede estar en el pasado")
+
+    accion = AccionReporteTutor(
+        reporte_id=reporte.id,
+        solicitada_por_id=current_user.id,
+        asignada_a_id=reporte.reportado_por_id,
+        instruccion=data.instruccion.strip(),
+        fecha_limite=fecha_limite,
+        estado="PENDIENTE",
+    )
+    db.add(accion)
+    _notificar_usuario(
+        db, reporte.reportado_por_id, "tutoria_accion_docente",
+        "Tutoría solicita seguimiento",
+        f"Tutoría solicitó una acción para el reporte “{reporte.titulo}”. Revisa la instrucción y registra el resultado.",
+        f"/docente/reportes-tutoria?reporte={reporte.id}",
+    )
+    db.commit()
+    return _ser_reporte_tutor(reporte, db)
+
+
+@router.post("/reportes-tutor/acciones/{accion_id}/respuesta",
+             summary="Registrar respuesta del docente a una acción de Tutoría")
+def responder_accion_reporte_tutor(
+    accion_id: int,
+    data: AccionReporteTutorResponder,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    if current_user.rol != RolUsuario.DOCENTE:
+        raise HTTPException(403, "Solo el docente asignado puede responder esta acción")
+    accion = db.query(AccionReporteTutor).filter(AccionReporteTutor.id == accion_id).first()
+    if not accion:
+        raise HTTPException(404, "Acción de seguimiento no encontrada")
+    if accion.asignada_a_id != current_user.id:
+        raise HTTPException(403, "Esta acción no está asignada a tu cuenta")
+    if accion.estado != "PENDIENTE":
+        raise HTTPException(409, "La acción ya fue atendida o cancelada")
+    reporte = db.query(ReporteTutor).filter(ReporteTutor.id == accion.reporte_id).first()
+    if not reporte or reporte.estado in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANCELADO"}:
+        raise HTTPException(409, "El reporte ya está cerrado y no admite respuestas")
+
+    ahora = _now()
+    accion.respuesta = data.respuesta.strip()
+    accion.estado = "ATENDIDA"
+    accion.atendido_en = ahora
+    if reporte.estado in {"ENVIADO", "RECIBIDO", "REUNION_SOLICITADA"}:
+        reporte.estado = "EN_SEGUIMIENTO"
+    responsable_id = accion.solicitada_por_id
+    _notificar_usuario(
+        db, responsable_id, "tutoria_accion_docente_atendida",
+        "El docente respondió a la acción solicitada",
+        f"El docente respondió una acción del reporte “{reporte.titulo}”. Revisa el resultado en la bandeja de reportes.",
+        "/admin/tutoria?tab=reportes-tutor",
     )
     db.commit()
     return _ser_reporte_tutor(reporte, db)

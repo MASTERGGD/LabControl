@@ -36,7 +36,7 @@ const fechaTexto = valor => fecha(valor)?.toLocaleString('es-MX', {
 }) || 'Sin fecha';
 
 export default function DetalleReporteTutorial({ reporte: r, estado, prioridad, isDay, grupos,
-  asignacion, onAsignacion, onAsignar, onRecordar, onCerrarReporte, onClose }) {
+  asignacion, onAsignacion, onAsignar, onRecordar, onSolicitarAccion, onCerrarReporte, onClose }) {
   const [reasignar, setReasignar] = useState(!r.tutor_destinatario);
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
@@ -48,7 +48,7 @@ export default function DetalleReporteTutorial({ reporte: r, estado, prioridad, 
       asignacionRef.current?.querySelector('select')?.focus({ preventScroll: true });
     }
   }, [reasignar]);
-  const cerrado = ['CERRADO', 'CERRADO_ADMINISTRATIVO', 'ATENDIDO', 'CANALIZADO'].includes(r.estado);
+  const cerrado = ['CERRADO', 'CERRADO_ADMINISTRATIVO', 'ATENDIDO', 'CANCELADO'].includes(r.estado);
   const reciente = fecha(r.ultimo_recordatorio_en) && Date.now() - fecha(r.ultimo_recordatorio_en).getTime() < 48 * 3600000;
   const ejecutar = async accion => {
     setOcupado(true);
@@ -89,6 +89,15 @@ export default function DetalleReporteTutorial({ reporte: r, estado, prioridad, 
             <h3 id="detalle-resultado" className="font-semibold">{r.resultado ? 'Resultado registrado' : 'Resultado de la atención'}</h3>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{r.resultado || 'Este reporte aún no tiene un resultado registrado.'}</p>
           </section>
+          {(r.acciones_docente || []).length > 0 && <section aria-labelledby="detalle-acciones-docente">
+            <h3 id="detalle-acciones-docente" className="font-semibold">Acciones solicitadas al docente</h3>
+            <div className="mt-3 space-y-3">{r.acciones_docente.map(accion => <article key={accion.id} className="tutorial-assignment rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold">{accion.estado === 'ATENDIDA' ? 'Atendida' : accion.estado === 'CANCELADA' ? 'Cancelada' : 'Pendiente'}</p><time className="tutorial-muted text-xs">{fechaTexto(accion.creado_en)}</time></div>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{accion.instruccion}</p>
+              {accion.fecha_limite && <p className="tutorial-muted mt-2 text-xs">Fecha límite: {new Date(`${accion.fecha_limite}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'medium' })}</p>}
+              {accion.respuesta && <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.07] p-3"><p className="text-xs font-semibold text-emerald-600">Respuesta del docente</p><p className="mt-1 whitespace-pre-wrap text-sm">{accion.respuesta}</p></div>}
+            </article>)}</div>
+          </section>}
         </div>
         <aside className="tutorial-context min-w-0 space-y-6" aria-label="Datos y trazabilidad del reporte">
           <section>
@@ -132,6 +141,7 @@ export default function DetalleReporteTutorial({ reporte: r, estado, prioridad, 
             {r.tutor_destinatario && <button type="button" disabled={ocupado} onClick={() => {
               setReasignar(true); accionesRef.current.open = false;
             }}>Reasignar tutor</button>}
+            {onSolicitarAccion && !r.acciones_docente?.some(accion => accion.estado === 'PENDIENTE') && <button type="button" disabled={ocupado} onClick={() => { accionesRef.current.open = false; onSolicitarAccion(); }}>Solicitar acción al docente</button>}
             <button type="button" disabled={ocupado} onClick={onCerrarReporte}>Cierre administrativo</button>
           </div>
         </details>

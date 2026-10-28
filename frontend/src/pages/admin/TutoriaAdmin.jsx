@@ -57,7 +57,7 @@ const ESTADO_REPORTE = {
   RECIBIDO: { label: "Visto por el tutor", cls: "bg-cyan-500/15 text-cyan-400" },
   REUNION_SOLICITADA: { label: "Reunión solicitada", cls: "bg-indigo-500/15 text-indigo-400" },
   EN_SEGUIMIENTO: { label: "En seguimiento", cls: "bg-amber-500/15 text-amber-400" },
-  CANALIZADO: { label: "Canalizado", cls: "bg-purple-500/15 text-purple-400" },
+  CANALIZADO: { label: "Canalizado a Tutoría", cls: "bg-purple-500/15 text-purple-400" },
   ATENDIDO: { label: "Atendido", cls: "bg-emerald-500/15 text-emerald-400" },
   CERRADO: { label: "Cerrado", cls: "bg-slate-500/15 text-slate-400" },
   CERRADO_ADMINISTRATIVO: { label: "Cierre administrativo", cls: "bg-slate-500/15 text-slate-500" },
@@ -1335,6 +1335,9 @@ export default function TutoriaAdmin() {
   const [errorReportes, setErrorReportes] = useState(false);
   const [resultadoCierreReporte, setResultadoCierreReporte] = useState("");
   const [errorCierreReporte, setErrorCierreReporte] = useState('');
+  const [instruccionAccionReporte, setInstruccionAccionReporte] = useState('');
+  const [fechaLimiteAccionReporte, setFechaLimiteAccionReporte] = useState('');
+  const [errorAccionReporte, setErrorAccionReporte] = useState('');
   const [informes, setInformes] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [modal, setModal] = useState(null); // null | "grupo" | "importar" | {type:"atender", can}
@@ -1512,6 +1515,28 @@ export default function TutoriaAdmin() {
     } catch (err) {
       showToast(err.response?.data?.detail || "No se pudo cerrar el reporte", "error");
       setErrorCierreReporte(err.response?.data?.detail || 'No se pudo cerrar el reporte');
+    }
+  };
+
+  const solicitarAccionDocente = async (e) => {
+    e.preventDefault();
+    setErrorAccionReporte('');
+    const instruccion = instruccionAccionReporte.trim();
+    if (instruccion.length < 5) return;
+    try {
+      const { data } = await api.post(`/tutoria/reportes-tutor/${modal.reporte.id}/acciones`, {
+        instruccion,
+        fecha_limite: fechaLimiteAccionReporte || null,
+      });
+      showToast('Acción enviada al docente reportante', 'success');
+      setInstruccionAccionReporte('');
+      setFechaLimiteAccionReporte('');
+      setModal({ type: 'detalle-reporte', reporte: data });
+      cargarReportesTutor();
+    } catch (err) {
+      const detalle = err.response?.data?.detail || 'No se pudo solicitar la acción al docente';
+      setErrorAccionReporte(detalle);
+      showToast(detalle, 'error');
     }
   };
 
@@ -2873,8 +2898,23 @@ export default function TutoriaAdmin() {
           asignacion={asignandoReporte[modal.reporte.id]}
           onAsignacion={value => setAsignandoReporte(prev => ({ ...prev, [modal.reporte.id]: value }))}
           onAsignar={() => asignarReporte(modal.reporte)} onRecordar={() => recordarTutor(modal.reporte)}
+          onSolicitarAccion={() => { setInstruccionAccionReporte(''); setFechaLimiteAccionReporte(''); setErrorAccionReporte(''); setModal({ type: 'accion-docente', reporte: modal.reporte }); }}
           onCerrarReporte={() => { setResultadoCierreReporte(""); setErrorCierreReporte(''); setModal({ type: "cerrar-reporte", reporte: modal.reporte }); }}
           onClose={() => setModal(null)} />
+      )}
+      {modal?.type === "accion-docente" && (
+        <ModalTutorial tituloId="accion-docente-titulo" isDay={isDay} compacto onClose={() => setModal({ type: "detalle-reporte", reporte: modal.reporte })}>
+          <form onSubmit={solicitarAccionDocente} className="min-h-0 overflow-y-auto">
+            <header className="tutorial-detail-header"><div><h2 id="accion-docente-titulo" data-dialog-heading tabIndex={-1} className="font-semibold">Solicitar seguimiento al docente</h2><p className="tutorial-muted mt-1 text-xs">{modal.reporte.reportado_por || 'Docente reportante'} · {modal.reporte.alumno_nombre} · {modal.reporte.titulo}</p></div></header>
+            <div className="space-y-3 p-5">
+              <p className="tutorial-muted text-sm">Indica una actividad concreta que el docente pueda realizar y reportar. Se enviará una notificación y la respuesta quedará en el historial del caso.</p>
+              <label className="block text-sm">Acción solicitada *<textarea required minLength={5} maxLength={2000} rows={4} spellCheck="true" value={instruccionAccionReporte} onChange={e => setInstruccionAccionReporte(e.target.value)} className="tutorial-select mt-1 w-full rounded-lg border p-3" placeholder="Ej. Conversar con el alumno sobre las inasistencias y registrar los acuerdos alcanzados." /></label>
+              <label className="block text-sm">Fecha límite (opcional)<input type="date" min={new Date().toISOString().slice(0, 10)} value={fechaLimiteAccionReporte} onChange={e => setFechaLimiteAccionReporte(e.target.value)} className="tutorial-select mt-1 w-full rounded-lg border p-3" /></label>
+            </div>
+            {errorAccionReporte && <p role="alert" className="mx-5 mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm">{errorAccionReporte}</p>}
+            <footer className="tutorial-detail-footer"><button type="button" onClick={() => setModal({ type: "detalle-reporte", reporte: modal.reporte })} className="tutorial-secondary">Cancelar</button><button disabled={instruccionAccionReporte.trim().length < 5} className="tutorial-primary">Enviar solicitud al docente</button></footer>
+          </form>
+        </ModalTutorial>
       )}
       {modal?.type === "cerrar-reporte" && (
         <ModalTutorial tituloId="cerrar-reporte-titulo" isDay={isDay} compacto onClose={() => setModal({ type: "detalle-reporte", reporte: modal.reporte })}>

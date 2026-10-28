@@ -57,6 +57,7 @@ import ComunicadosAdmin from './pages/admin/ComunicadosAdmin';
 import MisComunicados from './pages/comunicados/MisComunicados';
 import TutoriaAdmin from './pages/admin/TutoriaAdmin';
 import MisTutorados from './pages/docente/MisTutorados';
+import AccionesTutoriaDocente from './pages/docente/AccionesTutoriaDocente';
 import ConsultorioMedico from './pages/medico/ConsultorioMedico';
 import AlumnoEstudioSocioeconomico from './pages/alumno/AlumnoEstudioSocioeconomico';
 import SEGrupos from './pages/servicios_escolares/SEGrupos';
@@ -420,6 +421,11 @@ function AppRoutes() {
       <Route path="/docente/historial-clases" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <ConsultaDocente tipo="historial"><HistorialClasesDocente /></ConsultaDocente>
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/reportes-tutoria" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <AccionesTutoriaDocente />
         </RutaProtegida>
       }/>
       <Route path="/docente/laboratorio" element={
