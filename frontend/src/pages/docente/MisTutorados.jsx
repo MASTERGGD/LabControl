@@ -12,6 +12,24 @@ import { formatCarrera, formatNombre } from "../../utils/presentacion";
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const toTitleCase = formatNombre;
 
+function formatoTextoReporte(valor) {
+  const texto = String(valor || "").trim();
+  if (!/[A-ZÁÉÍÓÚÜÑ]/u.test(texto) || /[a-záéíóúüñ]/u.test(texto)) return texto;
+  const codigos = new Map();
+  let indice = 0;
+  const protegido = texto.replace(/\b(?:UTC\d+[A-Z]?|F-DC-\d+|UTECAN|SIGA|PIT)\b/gi, token => {
+    const clave = `zzcodigoprotegido${indice++}zz`;
+    codigos.set(clave, token);
+    return clave;
+  });
+  let legible = protegido.toLocaleLowerCase("es-MX")
+    .replace(/(^|[.!?]\s+)([a-záéíóúüñ])/gu, (_, separador, letra) => separador + letra.toLocaleUpperCase("es-MX"));
+  for (const [clave, codigo] of codigos) legible = legible.replaceAll(clave, codigo);
+  return legible;
+}
+
+const necesitaExpandirTexto = valor => String(valor || "").length > 180 || String(valor || "").split(/\r?\n/).length > 3;
+
 const ESTADO_SEG = {
   SIN_SEGUIMIENTO: { label: "Sin seguimiento", cls: "bg-transparent text-slate-500 border-slate-600/60" },
   EN_OBSERVACION:  { label: "En observación",  cls: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
@@ -59,12 +77,12 @@ function ResultadoAtencion({ texto }) {
   const isDay = themeKey === 'day';
   const secciones = seccionesResultado(texto);
   return (
-    <section className={`mt-5 max-w-5xl rounded-xl border p-4 sm:p-5 ${isDay ? 'border-emerald-200 bg-emerald-50/80' : 'border-emerald-500/20 bg-emerald-500/[0.07]'}`} aria-label="Resultado de la atención">
+    <section className={`mt-5 max-w-[80ch] rounded-xl border p-4 sm:p-5 ${isDay ? 'border-emerald-200 bg-emerald-50/80' : 'border-emerald-500/20 bg-emerald-500/[0.07]'}`} aria-label="Resultado de la atención">
       <div className="space-y-5">
         {secciones.map((seccion, indice) => (
           <div key={`${seccion.titulo}-${indice}`} className={indice ? `border-t pt-4 ${isDay ? 'border-emerald-200' : 'border-emerald-500/15'}` : ''}>
             <h4 className={`text-sm font-semibold ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>{seccion.titulo}</h4>
-            <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-7 ${isDay ? 'text-slate-700' : 'text-slate-200'}`}>{seccion.texto}</p>
+            <p className={`mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed ${isDay ? 'text-slate-700' : 'text-slate-200'}`}>{formatoTextoReporte(seccion.texto)}</p>
           </div>
         ))}
       </div>
@@ -966,7 +984,7 @@ export default function MisTutorados() {
         {tab === "reportes" && (
           <div className="space-y-3">
             {reportesTutor.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
+              <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/60 bg-slate-800/40 px-4 py-3">
                 <p className="text-sm text-slate-300">
                   <span className="font-semibold text-white">{reportesTutor.length}</span>{' '}
                   {reportesTutor.length === 1 ? 'reporte recibido' : 'reportes recibidos'}
@@ -989,7 +1007,7 @@ export default function MisTutorados() {
               <p className="py-8 text-center text-sm text-slate-500">No tienes reportes de docentes pendientes o históricos.</p>
             )}
             {reportesTutor.map(r => (
-              <article key={r.id} className={`rounded-xl border p-4 ${r.prioridad === "ALTA" ? "border-red-500/30 bg-red-500/[0.07]" : "border-slate-700/60 bg-slate-800/60"}`}>
+              <article key={r.id} className={`mx-auto w-full max-w-6xl rounded-xl border p-4 shadow-sm transition-colors ${r.prioridad === "ALTA" ? "border-red-500/30 bg-red-500/[0.07]" : "border-slate-700/60 bg-slate-800/60 hover:border-slate-500/70"}`}>
                 <button
                   type="button"
                   aria-expanded={reportesExpandidos.has(r.id)}
@@ -1000,18 +1018,19 @@ export default function MisTutorados() {
                     else siguientes.add(r.id);
                     return siguientes;
                   })}
-                  className="flex w-full flex-wrap items-start justify-between gap-3 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 focus-visible:outline-offset-4"
+                  className="flex w-full flex-wrap items-start justify-between gap-4 rounded-lg text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 focus-visible:outline-offset-4"
                 >
-                  <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 space-y-1.5">
                     <span className="flex flex-wrap gap-2 text-[11px] font-semibold">
                       <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-blue-300">{r.categoria}</span>
                       <span className={`rounded-full px-2 py-0.5 ${r.prioridad_confirmada && r.prioridad === "ALTA" ? "bg-red-500/20 text-red-300" : "bg-white/5 text-slate-400"}`}>{r.prioridad_confirmada ? `Prioridad ${toTitleCase(r.prioridad)}` : "Prioridad no confirmada"}</span>
                       {r.confidencial && <span className="rounded-full bg-purple-500/15 px-2 py-0.5 text-purple-300">Confidencial</span>}
                     </span>
-                    <span className="mt-2 block font-semibold text-white">{r.titulo}</span>
-                    <span className="mt-0.5 block text-sm text-slate-300">{r.es_reporte_grupal ? `${r.alumno_nombre} · Grupo ${r.grupo || 'sin identificar'}` : `${r.alumno_nombre} · ${r.matricula}`}</span>
-                    <span className="block text-xs text-slate-500">{r.materia || "Materia no especificada"} · Reportó: {r.reportado_por}</span>
-                    {!reportesExpandidos.has(r.id) && r.detalle && <span className="mt-2 block max-w-5xl line-clamp-2 text-sm leading-6 text-slate-400">{r.detalle}</span>}
+                    <span className="mt-2 block text-base font-semibold leading-snug text-white">{formatoTextoReporte(r.titulo)}</span>
+                    <span className="block text-sm font-medium text-slate-200">{formatoTextoReporte(r.alumno_nombre)}{r.es_reporte_grupal ? ` · Grupo ${r.grupo || 'sin identificar'}` : ` · ${r.matricula}`}</span>
+                    <span className="block text-xs text-slate-400">{formatoTextoReporte(r.materia || "Materia no especificada")} · Reportó: {formatoTextoReporte(r.reportado_por)}</span>
+                    {!reportesExpandidos.has(r.id) && r.detalle && <span className="block max-w-[80ch] text-sm leading-relaxed text-slate-300"><span className="line-clamp-3 whitespace-pre-wrap">{formatoTextoReporte(r.detalle)}</span>{necesitaExpandirTexto(r.detalle) && <span className="mt-1 inline-block text-xs font-semibold text-emerald-300">Leer más</span>}</span>}
+                    {reportesExpandidos.has(r.id) && r.detalle && necesitaExpandirTexto(r.detalle) && <span className="block max-w-[80ch] text-xs font-semibold text-emerald-300">Leer menos</span>}
                   </span>
                   <span className="flex shrink-0 items-center gap-3 self-start sm:pl-3">
                     <span className="text-right">
@@ -1023,7 +1042,7 @@ export default function MisTutorados() {
                 </button>
                 <div id={`detalle-reporte-tutoria-${r.id}`} hidden={!reportesExpandidos.has(r.id)} className="mt-4 border-t border-white/10 pt-4">
                   {reportesExpandidos.has(r.id) && <>
-                    {r.detalle && <p className="max-w-5xl whitespace-pre-wrap break-words text-sm leading-7 text-slate-400">{r.detalle}</p>}
+                    {r.detalle && <p className="max-w-[80ch] whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">{formatoTextoReporte(r.detalle)}</p>}
                     {r.resultado && <ResultadoAtencion texto={r.resultado} />}
                   </>}
                 </div>

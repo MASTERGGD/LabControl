@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "fecha": "2026-10-28",
-  "resumen": "Las canalizaciones muestran contexto en sus notificaciones y conservan un historial de atención, institución externa, plan y próxima revisión. Los casos con seguimiento pendiente permanecen abiertos."
+  "resumen": "Los reportes recibidos por el tutor se leen mejor: textos en mayúsculas se presentan en formato oración, el contenido se limita a un ancho cómodo y las descripciones largas pueden expandirse."
 }
