@@ -41,9 +41,9 @@ const ESTADO_SEG = {
 };
 
 const ESTADO_CAN = {
-  PENDIENTE:      { label: "Pendiente",      cls: "bg-red-500/20 text-red-300" },
-  EN_SEGUIMIENTO: { label: "En seguimiento", cls: "bg-amber-500/20 text-amber-300" },
-  ATENDIDA:       { label: "Atendida",       cls: "bg-emerald-500/20 text-emerald-300" },
+  PENDIENTE:      { label: "Pendiente de atención", cls: "bg-red-500/20 text-red-300" },
+  EN_SEGUIMIENTO: { label: "Seguimiento abierto", cls: "bg-amber-500/20 text-amber-300" },
+  ATENDIDA:       { label: "Atendida · sin pendientes", cls: "bg-emerald-500/20 text-emerald-300" },
 };
 
 const ESTADO_INF = {
@@ -711,17 +711,23 @@ function ModalImportar({ onClose }) {
 // â”€â”€â”€ Modal Atender CanalizaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ModalAtenderCan({ can, onClose, onAtendida }) {
   const { toast: showToast } = useToast();
-  const [form, setForm] = useState({ area_atencion: "", tipo_servicio: "", fecha_atencion: "", descripcion_atencion: "" });
+  const [form, setForm] = useState({ area_atencion: "", tipo_servicio: "", fecha_atencion: todayISOInMexico(), descripcion_atencion: "", tipo_destino: "INTERNO", institucion_destino: "", requiere_seguimiento: false, plan_seguimiento: "", proxima_revision: "" });
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    if (!form.area_atencion || !form.tipo_servicio || !form.fecha_atencion || !form.descripcion_atencion) {
-      showToast("Completa todos los campos", "error"); return;
+    if (!form.area_atencion.trim() || !form.tipo_servicio.trim() || !form.fecha_atencion || form.descripcion_atencion.trim().length < 5) {
+      showToast("Completa el área, servicio, fecha y resumen de atención", "error"); return;
     }
+    if (form.tipo_destino === "EXTERNO" && !form.institucion_destino.trim()) return showToast("Indica la institución externa", "error");
+    if ((form.requiere_seguimiento || form.tipo_destino === "EXTERNO") && (!form.proxima_revision || form.plan_seguimiento.trim().length < 5)) return showToast("Indica el plan y fecha de la próxima revisión", "error");
     setLoading(true);
     try {
-      await api.put(`/tutoria/canalizaciones/${can.id}/atender`, form);
-      showToast("Canalización marcada como atendida", "success");
+      await api.put(`/tutoria/canalizaciones/${can.id}/atender`, {
+        ...form,
+        proxima_revision: form.requiere_seguimiento || form.tipo_destino === "EXTERNO" ? form.proxima_revision : null,
+        plan_seguimiento: form.requiere_seguimiento || form.tipo_destino === "EXTERNO" ? form.plan_seguimiento : null,
+      });
+      showToast(form.requiere_seguimiento || form.tipo_destino === "EXTERNO" ? "Avance registrado; el seguimiento sigue abierto" : "Atención registrada y sin pendientes", "success");
       onAtendida();
     } catch { showToast("Error al guardar", "error"); }
     finally { setLoading(false); }
@@ -730,7 +736,7 @@ function ModalAtenderCan({ can, onClose, onAtendida }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6">
-        <h3 className="text-lg font-bold text-white mb-1">Atender canalización</h3>
+        <h3 className="text-lg font-bold text-white mb-1">{can.historial_seguimiento?.length ? "Registrar avance de seguimiento" : "Registrar atención"}</h3>
         <p className="text-sm text-slate-400 mb-4">
           Alumno: <span className="text-white font-medium">{can.alumno_nombre}</span> · {can.alumno_matricula}
         </p>
@@ -739,7 +745,7 @@ function ModalAtenderCan({ can, onClose, onAtendida }) {
           {[["area_atencion", "Área que atendió *", "Psicología, Trabajo Social..."],
             ["tipo_servicio", "Tipo de servicio *", "Orientación individual"],
             ["fecha_atencion", "Fecha de atención *", ""],
-            ["descripcion_atencion", "Descripción de la atención *", "Resumen..."],
+            ["descripcion_atencion", "Resumen de atención (visible al tutor) *", "Describe la acción realizada y el resultado que el tutor necesita conocer."],
           ].map(([k, lbl, ph]) => (
             <div key={k}>
               <label className="text-xs text-slate-400 mb-1 block">{lbl}</label>
@@ -753,12 +759,32 @@ function ModalAtenderCan({ can, onClose, onAtendida }) {
               )}
             </div>
           ))}
+          <label className="block text-xs text-slate-300">Tipo de atención
+            <select value={form.tipo_destino} onChange={e => setForm(f => ({ ...f, tipo_destino: e.target.value, requiere_seguimiento: e.target.value === "EXTERNO" || f.requiere_seguimiento }))} className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white">
+              <option value="INTERNO">Atención interna</option><option value="EXTERNO">Canalización a institución externa</option>
+            </select>
+          </label>
+          {form.tipo_destino === "EXTERNO" && <label className="block text-xs text-slate-300">Institución externa *
+            <input required value={form.institucion_destino} onChange={e => setForm(f => ({ ...f, institucion_destino: e.target.value }))} maxLength={180} className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white" placeholder="Nombre de la institución" />
+          </label>}
+          <label className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+            <input type="checkbox" checked={form.requiere_seguimiento} onChange={e => setForm(f => ({ ...f, requiere_seguimiento: e.target.checked }))} />
+            El caso requiere otra revisión; mantén abierta la canalización.
+          </label>
+          {(form.requiere_seguimiento || form.tipo_destino === "EXTERNO") && <>
+            <label className="block text-xs text-slate-300">Plan para la próxima revisión *
+              <textarea required minLength={5} maxLength={2000} rows={2} value={form.plan_seguimiento} onChange={e => setForm(f => ({ ...f, plan_seguimiento: e.target.value }))} className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white" placeholder="Qué se verificará o qué avance se espera conocer" />
+            </label>
+            <label className="block text-xs text-slate-300">Fecha de revisión *
+              <input required type="date" min={todayISOInMexico()} value={form.proxima_revision} onChange={e => setForm(f => ({ ...f, proxima_revision: e.target.value }))} className="mt-1 w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white" />
+            </label>
+          </>}
         </div>
         <div className="flex gap-3 mt-5">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-slate-600 text-slate-300 text-sm">Cancelar</button>
           <button onClick={submit} disabled={loading}
             className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50">
-            {loading ? "Guardando..." : "Marcar atendida"}
+            {loading ? "Guardando..." : form.requiere_seguimiento || form.tipo_destino === "EXTERNO" ? "Guardar y mantener seguimiento" : "Registrar atención"}
           </button>
         </div>
       </div>
@@ -1325,7 +1351,7 @@ export default function TutoriaAdmin() {
   const hoverEncabezado = isDay ? "hover:text-slate-950" : "hover:text-white";
   const { toast: showToast } = useToast();
   const navigate = useNavigate();
-  const [tab, setTab] = useState(searchParams.get("tab") === "reportes-tutor" ? "reportes-tutor" : "dashboard");
+  const [tab, setTab] = useState(["reportes-tutor", "canalizaciones"].includes(searchParams.get("tab")) ? searchParams.get("tab") : "dashboard");
   const [dash, setDash] = useState(null);
   const [grupos, setGrupos] = useState([]);
   const [canalizaciones, setCanalizaciones] = useState([]);
@@ -1341,7 +1367,8 @@ export default function TutoriaAdmin() {
   const [informes, setInformes] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [modal, setModal] = useState(null); // null | "grupo" | "importar" | {type:"atender", can}
-  const [filtroEstadoCan, setFiltroEstadoCan] = useState("PENDIENTE");
+  const canalizacionAbiertaDesdeAviso = useRef(false);
+  const [filtroEstadoCan, setFiltroEstadoCan] = useState(searchParams.get("id") ? "TODAS" : "PENDIENTE");
   const [filtroCarrera, setFiltroCarrera] = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [filtroTutor, setFiltroTutor] = useState("");
@@ -1432,6 +1459,16 @@ export default function TutoriaAdmin() {
       showToast("Error al cargar canalizaciones", "error");
     }
   }, [filtroEstadoCan, showToast]);
+
+  useEffect(() => {
+    const id = Number(searchParams.get("id"));
+    if (tab !== "canalizaciones" || !id || canalizacionAbiertaDesdeAviso.current) return;
+    const canalizacion = canalizaciones.find(item => item.id === id);
+    if (canalizacion) {
+      setModal({ type: "atender", can: canalizacion });
+      canalizacionAbiertaDesdeAviso.current = true;
+    }
+  }, [tab, canalizaciones, searchParams]);
 
   const cargarReportesTutor = useCallback(async () => {
     setCargandoReportes(true);
@@ -1789,14 +1826,6 @@ export default function TutoriaAdmin() {
     }
     return items;
   }, [dash, gruposSinAlumnos.length]);
-
-  const marcarSeguimiento = async (id) => {
-    try {
-      await api.put(`/tutoria/canalizaciones/${id}/en-seguimiento`);
-      showToast("Marcada en seguimiento", "success");
-      cargarCanalizaciones();
-    } catch { showToast("Error", "error"); }
-  };
 
   const recibirInforme = async (id) => {
     try {
@@ -2266,7 +2295,7 @@ export default function TutoriaAdmin() {
               <button key={e} onClick={() => setFiltroEstadoCan(e)}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
                   filtroEstadoCan === e ? "bg-blue-600 border-blue-500 text-white" : "border-slate-600 text-slate-400 hover:text-white"
-                }`}>{e}</button>
+                }`}>{e === "TODAS" ? "Todas" : ESTADO_CAN[e]?.label}</button>
             ))}
           </div>
 
@@ -2288,31 +2317,31 @@ export default function TutoriaAdmin() {
                     <p className="text-sm text-slate-400 mt-0.5">Tutor: {c.tutor_nombre}</p>
                     <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.motivo}</p>
                     {c.descripcion_atencion && (
-                      <p className="text-xs text-emerald-400 mt-1">✓ {c.descripcion_atencion}</p>
+                      <p className="text-xs text-emerald-300 mt-1">Último avance: {c.descripcion_atencion}</p>
                     )}
+                    {(c.institucion_destino || c.proxima_revision || c.plan_seguimiento) && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-slate-300">
+                      {c.institucion_destino && <p>Destino: <span className="font-medium text-white">{c.institucion_destino}</span></p>}
+                      {c.plan_seguimiento && <p className="mt-1">Siguiente paso: {c.plan_seguimiento}</p>}
+                      {c.proxima_revision && <p className="mt-1 font-semibold text-amber-300">Revisar el {formatDateInMexico(c.proxima_revision)}</p>}
+                    </div>}
+                    {c.historial_seguimiento?.length > 0 && <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer text-blue-300">Historial de avances ({c.historial_seguimiento.length})</summary>
+                      <div className="mt-2 space-y-2 border-l border-slate-600 pl-3">{c.historial_seguimiento.map(item => <div key={item.id}>
+                        <p className="font-medium text-slate-200">{formatDateInMexico(item.fecha_registro)} · {item.tipo_servicio} · {item.registrado_por || "Responsable de Tutoría"}</p>
+                        <p className="text-slate-400">{item.resumen}</p>
+                        {item.institucion_destino && <p className="text-slate-400">Institución: {item.institucion_destino}</p>}
+                        {item.proxima_revision && <p className="text-amber-300">Próxima revisión: {formatDateInMexico(item.proxima_revision)}{item.plan_seguimiento ? ` · ${item.plan_seguimiento}` : ""}</p>}
+                      </div>)}</div>
+                    </details>}
                   </div>
                   <div className="flex gap-2 flex-col items-end">
                     <span className="text-xs text-slate-500">
                       {c.fecha_solicitud ? formatDateInMexico(c.fecha_solicitud) : ""}
                     </span>
-                    {c.estado === "PENDIENTE" && (
-                      <>
-                        <button onClick={() => marcarSeguimiento(c.id)}
-                          className="px-3 py-1 rounded-lg bg-amber-600/80 hover:bg-amber-600 text-xs text-white">
-                          En seguimiento
-                        </button>
-                        <button onClick={() => setModal({ type: "atender", can: c })}
-                          className="px-3 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-xs text-white">
-                          Atender
-                        </button>
-                      </>
-                    )}
-                    {c.estado === "EN_SEGUIMIENTO" && (
-                      <button onClick={() => setModal({ type: "atender", can: c })}
-                        className="px-3 py-1 rounded-lg bg-emerald-600/80 hover:bg-emerald-600 text-xs text-white">
-                        Registrar atención
-                      </button>
-                    )}
+                    <button onClick={() => setModal({ type: "atender", can: c })}
+                      className={`px-3 py-1 rounded-lg text-xs text-white ${c.estado === "ATENDIDA" ? "bg-slate-600 hover:bg-slate-500" : "bg-emerald-600/80 hover:bg-emerald-600"}`}>
+                      {c.estado === "PENDIENTE" ? "Registrar atención" : c.estado === "ATENDIDA" ? "Reabrir seguimiento" : "Registrar avance"}
+                    </button>
                   </div>
                 </div>
               </div>

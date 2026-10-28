@@ -22,9 +22,9 @@ const ESTADO_SEG = {
 };
 
 const ESTADO_CAN = {
-  PENDIENTE:      { label: "Pendiente",      cls: "text-red-400" },
-  EN_SEGUIMIENTO: { label: "En seguimiento", cls: "text-amber-400" },
-  ATENDIDA:       { label: "Atendida",       cls: "text-emerald-400" },
+  PENDIENTE:      { label: "Pendiente de atención",      cls: "text-red-400" },
+  EN_SEGUIMIENTO: { label: "Seguimiento abierto", cls: "text-amber-400" },
+  ATENDIDA:       { label: "Atendida · sin pendientes",       cls: "text-emerald-400" },
 };
 const ESTADO_REPORTE = {
   SIN_TUTOR: "Sin tutor", ENVIADO: "Enviado", RECIBIDO: "Visto por el tutor",
@@ -1066,13 +1066,28 @@ export default function MisTutorados() {
                     </div>
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2">{c.motivo}</p>
                     {c.descripcion_atencion && (
-                      <p className="text-xs text-emerald-400 mt-1">✓ Atendida: {c.descripcion_atencion}</p>
+                      <p className="text-xs text-emerald-300 mt-1">Último avance: {c.descripcion_atencion}</p>
                     )}
+                    {(c.institucion_destino || c.plan_seguimiento || c.proxima_revision) && <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-xs text-slate-300">
+                      {c.institucion_destino && <p>Institución: <span className="font-medium text-white">{c.institucion_destino}</span></p>}
+                      {c.plan_seguimiento && <p className="mt-1">Siguiente paso: {c.plan_seguimiento}</p>}
+                      {c.proxima_revision && <p className="mt-1 font-semibold text-amber-300">Próxima revisión: {formatDateInMexico(c.proxima_revision)}</p>}
+                    </div>}
+                    {c.historial_seguimiento?.length > 0 && <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer text-blue-300">Historial de avances ({c.historial_seguimiento.length})</summary>
+                      <div className="mt-2 space-y-2 border-l border-slate-600 pl-3">{c.historial_seguimiento.map(item => <div key={item.id}>
+                        <p className="font-medium text-slate-200">{formatDateInMexico(item.fecha_registro)} · {item.tipo_servicio} · {item.registrado_por || "Responsable de Tutoría"}</p>
+                        <p className="text-slate-400">{item.resumen}</p>
+                        {item.institucion_destino && <p className="text-slate-400">Institución: {item.institucion_destino}</p>}
+                        {item.proxima_revision && <p className="text-amber-300">Próxima revisión: {formatDateInMexico(item.proxima_revision)}{item.plan_seguimiento ? ` · ${item.plan_seguimiento}` : ""}</p>}
+                      </div>)}</div>
+                    </details>}
                   </div>
                   <div className="text-right">
                     <p className={`text-xs font-medium ${ESTADO_CAN[c.estado]?.cls}`}>
                       {ESTADO_CAN[c.estado]?.label}
                     </p>
+                    {c.estado === "EN_SEGUIMIENTO" && c.proxima_revision && <p className="mt-1 text-xs text-amber-300">Revisión {formatDateInMexico(c.proxima_revision)}</p>}
 
                     <p className="text-xs text-slate-500 mt-1">
                       {c.fecha_solicitud ? formatDateInMexico(c.fecha_solicitud) : ""}

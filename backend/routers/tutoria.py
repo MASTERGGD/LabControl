@@ -10,7 +10,7 @@ from typing import Optional, List
 from database import get_db
 from models.tutoria import (
     GrupoTutorado, AsignacionTutoria, PerfilSocioeconómico, HistorialTutorGrupo,
-    SesionTutoria, RegistroSesionAlumno, Canalizacion, AccionReporteTutor,
+    SesionTutoria, RegistroSesionAlumno, Canalizacion, SeguimientoCanalizacion, AccionReporteTutor,
     ReporteTutor,
     InformeBimestral, DetalleInformeBimestral,
     DocumentoControladoTutoria, ProgramacionSesionTutoria,
@@ -142,6 +142,10 @@ class CanalizacionAtender(BaseModel):
     tipo_servicio:        str  = Field(..., min_length=2)
     fecha_atencion:       str  = Field(..., description="YYYY-MM-DD")
     descripcion_atencion: str  = Field(..., min_length=5)
+    tipo_destino: str = Field(default="INTERNO", pattern="^(INTERNO|EXTERNO)$")
+    institucion_destino: Optional[str] = Field(default=None, max_length=180)
+    plan_seguimiento: Optional[str] = Field(default=None, max_length=2000)
+    proxima_revision: Optional[str] = None
 
 class ReporteTutorEstadoUpdate(BaseModel):
     estado: str
@@ -343,6 +347,12 @@ def _ser_canalizacion(c: Canalizacion, db: Session) -> dict:
     if c.tipo_psicologico: tipos.append("Psicológico")
     if c.tipo_pedagogico:  tipos.append("Pedagógico")
     if c.tipo_personal:    tipos.append("Personal")
+    historial = db.query(SeguimientoCanalizacion).filter(
+        SeguimientoCanalizacion.canalizacion_id == c.id
+    ).order_by(SeguimientoCanalizacion.fecha_registro.desc(), SeguimientoCanalizacion.id.desc()).all()
+    usuarios = {u.id: u.nombre for u in db.query(Usuario).filter(
+        Usuario.id.in_({item.registrado_por_id for item in historial})
+    ).all()} if historial else {}
     return {
         "id":                  c.id,
         "tutor_id":            c.tutor_id,
@@ -359,6 +369,22 @@ def _ser_canalizacion(c: Canalizacion, db: Session) -> dict:
         "tipo_servicio":       c.tipo_servicio,
         "fecha_atencion":      c.fecha_atencion.isoformat() if c.fecha_atencion else None,
         "descripcion_atencion": c.descripcion_atencion,
+        "tipo_destino": c.tipo_destino,
+        "institucion_destino": c.institucion_destino,
+        "plan_seguimiento": c.plan_seguimiento,
+        "proxima_revision": c.proxima_revision.isoformat() if c.proxima_revision else None,
+        "historial_seguimiento": [{
+            "id": item.id,
+            "fecha_registro": item.fecha_registro.isoformat(),
+            "area_atencion": item.area_atencion,
+            "tipo_servicio": item.tipo_servicio,
+            "resumen": item.resumen,
+            "tipo_destino": item.tipo_destino,
+            "institucion_destino": item.institucion_destino,
+            "plan_seguimiento": item.plan_seguimiento,
+            "proxima_revision": item.proxima_revision.isoformat() if item.proxima_revision else None,
+            "registrado_por": usuarios.get(item.registrado_por_id),
+        } for item in historial],
         "atendido_en":         c.atendido_en.isoformat() if c.atendido_en else None,
         "documento": {
             "codigo": c.documento_codigo or "F-DC-08",
@@ -2917,10 +2943,11 @@ def canalizar_reporte_tutor(
     reporte.canalizacion_id = canalizacion.id
     reporte.estado = "CANALIZADO"
     reporte.recibido_en = reporte.recibido_en or _now()
+    contexto_canalizacion = _ser_canalizacion(canalizacion, db)
     _notificar_responsables(
-        db, "tutoria_canalizacion", "Nueva canalización de tutoría",
-        f"El reporte “{reporte.titulo}” fue convertido en canalización F-DC-08.",
-        "/admin/tutoria",
+        db, "tutoria_canalizacion", f"Canalización: {contexto_canalizacion['alumno_nombre']}",
+        f"Reporte: {reporte.titulo} · Canalizó {current_user.nombre}. Motivo: {canalizacion.motivo[:220]}",
+        f"/admin/tutoria?tab=canalizaciones&id={canalizacion.id}",
     )
     crear_notificacion(
         db, reporte.reportado_por_id, "tutoria_reporte_estado",
@@ -2993,9 +3020,9 @@ def crear_canalizacion(
                              ("Personal",    data.tipo_personal)] if v]
     _notificar_responsables(
         db, "tutoria_canalizacion",
-        "🔔 Nueva canalización de tutoría",
-        f"{current_user.nombre} solicitó canalización {'/'.join(tipos)} para {nombre_alumno}.",
-        url="/admin/tutoria",
+        f"Canalización: {nombre_alumno}",
+        f"{current_user.nombre} · {'/'.join(tipos)} · {data.modalidad}. Motivo: {data.motivo[:220]}",
+        url=f"/admin/tutoria?tab=canalizaciones&id={c.id}",
     )
     db.commit()
 
@@ -3028,24 +3055,57 @@ def atender_canalizacion(
     except ValueError:
         raise HTTPException(422, "Formato de fecha inválido. Use YYYY-MM-DD")
 
-    c.area_atencion        = data.area_atencion
-    c.tipo_servicio        = data.tipo_servicio
+    proxima_revision = None
+    if data.proxima_revision:
+        try:
+            proxima_revision = datetime.date.fromisoformat(data.proxima_revision)
+        except ValueError as exc:
+            raise HTTPException(422, "La próxima revisión debe usar formato YYYY-MM-DD") from exc
+        if proxima_revision < today_mx():
+            raise HTTPException(422, "La próxima revisión no puede quedar en el pasado")
+    institucion = (data.institucion_destino or "").strip()
+    plan = (data.plan_seguimiento or "").strip()
+    if data.tipo_destino == "EXTERNO" and not institucion:
+        raise HTTPException(422, "Indica la institución externa de destino")
+    if proxima_revision and len(plan) < 5:
+        raise HTTPException(422, "Describe el plan para la próxima revisión")
+    if data.tipo_destino == "EXTERNO" and not proxima_revision:
+        raise HTTPException(422, "Una canalización externa debe tener fecha de revisión")
+
+    c.area_atencion        = data.area_atencion.strip()
+    c.tipo_servicio        = data.tipo_servicio.strip()
     c.fecha_atencion       = fecha_at
-    c.descripcion_atencion = data.descripcion_atencion
+    c.descripcion_atencion = data.descripcion_atencion.strip()
+    c.tipo_destino = data.tipo_destino
+    c.institucion_destino = institucion or None
+    c.plan_seguimiento = plan or None
+    c.proxima_revision = proxima_revision
     c.atendido_por         = current_user.id
     c.atendido_en          = _now()
-    c.estado               = "ATENDIDA"
-    db.commit()
+    c.estado               = "EN_SEGUIMIENTO" if proxima_revision else "ATENDIDA"
+    db.add(SeguimientoCanalizacion(
+        canalizacion_id=c.id,
+        registrado_por_id=current_user.id,
+        fecha_registro=fecha_at,
+        area_atencion=c.area_atencion,
+        tipo_servicio=c.tipo_servicio,
+        resumen=c.descripcion_atencion,
+        tipo_destino=data.tipo_destino,
+        institucion_destino=institucion or None,
+        plan_seguimiento=plan or None,
+        proxima_revision=proxima_revision,
+    ))
+    db.flush()
 
     # Notificar al tutor que la canalización fue atendida
     alumno = db.query(CatalogoAlumno).filter(CatalogoAlumno.id == c.alumno_id).first()
     nombre_alumno = f"{alumno.apellido_paterno} {alumno.nombres}".strip() if alumno else "alumno"
     _notificar_usuario(
         db, c.tutor_id, "tutoria_canalizacion",
-        "✅ Canalización atendida",
-        f"La canalización de {nombre_alumno} fue atendida por {current_user.nombre}. "
-        f"Área: {data.area_atencion}.",
-        url="/docente/mis-tutorados",
+        "Seguimiento actualizado: " + nombre_alumno,
+        f"{data.area_atencion} · {data.descripcion_atencion[:220]}" +
+        (f" Próxima revisión: {proxima_revision.strftime('%d/%m/%Y')}." if proxima_revision else " Caso atendido, sin revisión pendiente."),
+        url="/docente/mis-tutorados?tab=canalizaciones",
     )
     db.commit()
     return _ser_canalizacion(c, db)
@@ -3066,11 +3126,16 @@ def en_seguimiento(
     # Notificar al tutor
     alumno = db.query(CatalogoAlumno).filter(CatalogoAlumno.id == c.alumno_id).first()
     nombre_alumno = f"{alumno.apellido_paterno} {alumno.nombres}".strip() if alumno else "alumno"
+    tipos_canalizacion = [label for label, enabled in (
+        ("Psicológico", c.tipo_psicologico),
+        ("Pedagógico", c.tipo_pedagogico),
+        ("Personal", c.tipo_personal),
+    ) if enabled]
     _notificar_usuario(
         db, c.tutor_id, "tutoria_canalizacion",
-        "🔄 Canalización en seguimiento",
-        f"La canalización de {nombre_alumno} está siendo atendida por {current_user.nombre}.",
-        url="/docente/mis-tutorados",
+        f"Canalización en seguimiento: {nombre_alumno}",
+        f"{current_user.nombre} inició el seguimiento de {', '.join(tipos_canalizacion) or 'la solicitud'}. Motivo: {c.motivo[:220]}",
+        url="/docente/mis-tutorados?tab=canalizaciones",
     )
     db.commit()
     return {"estado": c.estado}

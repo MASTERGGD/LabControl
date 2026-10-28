@@ -273,11 +273,32 @@ class Canalizacion(Base):
     tipo_servicio     = Column(String(100))
     fecha_atencion    = Column(Date)
     descripcion_atencion = Column(Text)
+    tipo_destino      = Column(String(20), nullable=True)  # INTERNO | EXTERNO
+    institucion_destino = Column(String(180), nullable=True)
+    plan_seguimiento  = Column(Text, nullable=True)
+    proxima_revision  = Column(Date, nullable=True)
     atendido_por      = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     atendido_en       = Column(DateTime)
     documento_codigo  = Column(String(20), default="F-DC-08")
     documento_version = Column(String(10), default="08")
     documento_efectivo = Column(Date, nullable=True)
+
+
+class SeguimientoCanalizacion(Base):
+    __tablename__ = "seguimientos_canalizacion"
+
+    id = Column(Integer, primary_key=True, index=True)
+    canalizacion_id = Column(Integer, ForeignKey("canalizaciones.id", ondelete="CASCADE"), nullable=False, index=True)
+    registrado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
+    fecha_registro = Column(Date, nullable=False)
+    area_atencion = Column(String(100), nullable=False)
+    tipo_servicio = Column(String(100), nullable=False)
+    resumen = Column(Text, nullable=False)
+    tipo_destino = Column(String(20), nullable=False, default="INTERNO")
+    institucion_destino = Column(String(180), nullable=True)
+    plan_seguimiento = Column(Text, nullable=True)
+    proxima_revision = Column(Date, nullable=True)
+    creado_en = Column(DateTime, nullable=False, default=_now)
 
 
 # ─── 7. Informe Bimestral ─────────────────────────────────────────────────────
