@@ -583,7 +583,7 @@ const ESTADO_ALUMNO = {
 
 const ICONO_ESTADO_ALUMNO = { RIESGO: '▲', ATENCION: '●', REGULAR: '✓', BASE_INSUFICIENT: '◌', SIN_DATOS: '○' };
 
-function PanoramaDivision({ data, loading, error, onAbrirAlumno, onAbrirGrupo }) {
+function PanoramaDivision({ data, loading, error, onAbrirAlumno, onAbrirGrupo, onAbrirReporte }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [estado, setEstado] = useState('PRIORITARIOS');
@@ -629,7 +629,7 @@ function PanoramaDivision({ data, loading, error, onAbrirAlumno, onAbrirGrupo })
             <td className="px-4 py-3"><p className="max-w-[300px] truncate" title={alumno.carrera}>{alumno.carrera}</p><p className="text-xs text-slate-500">{alumno.cuatrimestre}° {alumno.grupo} · {alumno.periodo}</p>{alumno.grupos?.length > 1 && <p className="text-[10px] text-slate-400">También inscrito en {alumno.grupos.length - 1} grupo(s)</p>}</td>
             <td className={`px-3 py-3 text-center font-semibold ${['BASE_INSUFICIENT', 'SIN_DATOS'].includes(alumno.estado) ? 'text-slate-500' : alumno.asistencia != null && alumno.asistencia < 80 ? 'text-red-400' : 'text-emerald-500'}`}>{alumno.asistencia != null ? `${alumno.asistencia}%` : '—'}</td><td className="px-3 py-3 text-center text-red-400">{alumno.faltas}</td><td className="px-3 py-3 text-center">{alumno.faltas_consecutivas || '—'}</td><td className="px-3 py-3 text-center">{alumno.acuerdos_pendientes + alumno.reportes_abiertos}</td>
             <td className="px-4 py-3"><details className="group relative w-fit"><summary className="list-none rounded-full [&::-webkit-details-marker]:hidden"><Badge className={ESTADO_ALUMNO[alumno.estado]}>{ICONO_ESTADO_ALUMNO[alumno.estado]} {alumno.estado === 'BASE_INSUFICIENT' ? 'BASE INSUFICIENTE' : labelEstado(alumno.estado)} ⓘ</Badge></summary><div className={`absolute left-0 top-full z-20 mt-2 w-72 rounded-lg border p-3 text-xs shadow-xl ${isDay ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-600 bg-slate-900 text-slate-200'}`}>{(alumno.razones_estado?.length ? alumno.razones_estado : ['Sin motivos adicionales']).map((razon, index) => <p key={index} className="mb-1 last:mb-0">{razon}</p>)}<p className="mt-2 text-slate-500">{alumno.acuerdos_pendientes} acuerdos pendientes · {alumno.reportes_abiertos} reportes abiertos</p></div></details></td>
-            <td className="px-4 py-3 text-right"><button type="button" onClick={() => onAbrirGrupo(alumno.grupo_id, alumno.estado)} className="rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/10">Ver grupo</button></td>
+            <td className="px-4 py-3"><div className="flex justify-end gap-2"><button type="button" onClick={() => onAbrirReporte(alumno.id)} className="whitespace-nowrap rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-500">Preparar reporte</button><button type="button" onClick={() => onAbrirGrupo(alumno.grupo_id, alumno.estado)} className="whitespace-nowrap rounded-lg border border-blue-500/30 px-3 py-2 text-xs font-semibold text-blue-500 hover:bg-blue-500/10">Ver grupo</button></div></td>
           </tr>)}</tbody>
         </table>{!filas.length && <p className="p-8 text-center text-sm text-slate-500">No hay alumnos que coincidan con este filtro en los grupos accesibles.</p>}</div>
         <div className={`border-t px-5 py-3 text-xs text-slate-500 ${isDay ? 'border-slate-200' : 'border-white/10'}`}>{filas.length} registro(s) visibles · Se usa el mismo semáforo del expediente individual. “Base insuficiente” indica que hacen falta capturas para evaluar.</div>
@@ -835,8 +835,9 @@ export default function ExpedienteAcademico() {
   const [tab, setTab] = useState(() => TABS.some(([id]) => id === searchParams.get('tab')) ? searchParams.get('tab') : 'resumen');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const prepararReportePendiente = useRef(null);
   const [modalPdf, setModalPdf] = useState(false);
-  const [opcionesPdf, setOpcionesPdf] = useState({ acuerdos: false, tutoria: false, asistencia: false, trayectoria: false, observaciones: false, omitirVacias: true });
+  const [opcionesPdf, setOpcionesPdf] = useState({ acuerdos: false, tutoria: false, asistencia: true, trayectoria: false, observaciones: false, omitirVacias: true });
   const [generandoPdf, setGenerandoPdf] = useState(false);
 
   const buscar = useCallback(async (texto = '') => {
@@ -890,12 +891,23 @@ export default function ExpedienteAcademico() {
     api.get(`/expediente-academico/alumnos/${alumnoId}`, {
       params: periodo?.id ? { periodo_id: periodo.id } : undefined,
     })
-      .then(({ data: expediente }) => setData(expediente))
-      .catch(err => setError(err.response?.data?.detail || 'No se pudo cargar el expediente.'))
+      .then(({ data: expediente }) => {
+        setData(expediente);
+        if (prepararReportePendiente.current === alumnoId) {
+          prepararReportePendiente.current = null;
+          setOpcionesPdf({ acuerdos: false, tutoria: false, asistencia: true, trayectoria: false, observaciones: false, omitirVacias: true });
+          setModalPdf(true);
+        }
+      })
+      .catch(err => {
+        if (prepararReportePendiente.current === alumnoId) prepararReportePendiente.current = null;
+        setError(err.response?.data?.detail || 'No se pudo cargar el expediente.');
+      })
       .finally(() => setLoading(false));
   }, [alumnoId, periodo?.id]);
 
-  const seleccionar = id => {
+  const seleccionar = (id, prepararReporte = false) => {
+    prepararReportePendiente.current = prepararReporte ? id : null;
     setAlumnoId(id); setTab('resumen');
     const params = new URLSearchParams(searchParams);
     params.set('alumno', String(id));
@@ -1016,7 +1028,7 @@ export default function ExpedienteAcademico() {
                 <button type="button" role="tab" aria-selected={vistaSelector === 'GRUPOS'} onClick={() => setVistaSelector('GRUPOS')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${vistaSelector === 'GRUPOS' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Explorar grupos</button>
               </div>
               {vistaSelector === 'RIESGO' ? (
-                <PanoramaDivision data={resumenRiesgos} loading={cargandoRiesgos} error={errorRiesgos} onAbrirAlumno={seleccionar} onAbrirGrupo={seleccionarGrupo} />
+                <PanoramaDivision data={resumenRiesgos} loading={cargandoRiesgos} error={errorRiesgos} onAbrirAlumno={seleccionar} onAbrirReporte={id => seleccionar(id, true)} onAbrirGrupo={seleccionarGrupo} />
               ) : <>
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Kpi label="Grupos activos" value={grupos.length} hint={`${resumenGrupos.carreras} carrera(s)`} tone="text-blue-400" />
@@ -1129,7 +1141,7 @@ export default function ExpedienteAcademico() {
         {modalPdf && data && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
             <Panel className="w-full max-w-lg p-6 shadow-2xl">
-              <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">Generar expediente PDF</h2><p className="mt-1 text-sm text-slate-500">El resumen, la actualización de asistencia y el panorama por materia siempre se incluyen.</p></div><button onClick={() => setModalPdf(false)} className="text-2xl text-slate-500">×</button></div>
+              <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-bold">Preparar reporte académico individual</h2><p className="mt-1 text-sm text-slate-500">Incluye el resumen del periodo, las materias y la asistencia detallada. La fecha de actualización y las advertencias de captura ayudan a interpretar los datos.</p></div><button onClick={() => setModalPdf(false)} className="text-2xl text-slate-500">×</button></div>
               <div className="mt-5 space-y-3">
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked readOnly disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Resumen y panorama por materia</b><span className="text-xs text-slate-500">Obligatorio para conservar el contexto del documento.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.acuerdos} onChange={e => setOpcionesPdf(actual => ({ ...actual, acuerdos: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Acuerdos de seguimiento</b><span className="text-xs text-slate-500">Incluye compromisos, estado y fecha de revisión.</span></span></label>
@@ -1139,9 +1151,9 @@ export default function ExpedienteAcademico() {
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.observaciones} onChange={e => setOpcionesPdf(actual => ({ ...actual, observaciones: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Espacio para revisión y firmas</b><span className="text-xs text-slate-500">Agrega observaciones, revisó, enterado por tutor y fecha.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3 opacity-60"><input type="checkbox" disabled className="mt-0.5 h-4 w-4"/><span><b className="block text-sm">Línea de tiempo</b><span className="text-xs text-slate-500">Disponible para consulta interactiva; la exportación completa se incorporará posteriormente.</span></span></label>
                 <label className="flex items-start gap-3 rounded-xl border border-slate-500/20 p-3"><input type="checkbox" checked={opcionesPdf.omitirVacias} onChange={e => setOpcionesPdf(actual => ({ ...actual, omitirVacias: e.target.checked }))} className="mt-0.5 h-4 w-4 accent-blue-600"/><span><b className="block text-sm">Omitir secciones vacías</b><span className="text-xs text-slate-500">Evita páginas que solamente indiquen que no existen registros.</span></span></label>
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-600"><b>La leyenda de no oficialidad es obligatoria.</b> El documento contiene información académica personal y debe compartirse únicamente por medios institucionales.</div>
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-600"><b>La leyenda de no oficialidad es obligatoria.</b> El reporte se descarga como PDF y queda registrado en la bitácora. Contiene información académica personal; compártelo solo con las personas autorizadas y por medios institucionales.</div>
               </div>
-              <div className="mt-6 flex justify-end gap-2"><button onClick={() => setModalPdf(false)} className="rounded-xl border border-slate-500/20 px-4 py-2.5 text-sm font-semibold text-slate-500">Cancelar</button><button disabled={generandoPdf} onClick={descargarPdf} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{generandoPdf ? 'Generando…' : 'Generar expediente (PDF)'}</button></div>
+              <div className="mt-6 flex justify-end gap-2"><button onClick={() => setModalPdf(false)} className="rounded-xl border border-slate-500/20 px-4 py-2.5 text-sm font-semibold text-slate-500">Cancelar</button><button disabled={generandoPdf} onClick={descargarPdf} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{generandoPdf ? 'Generando…' : 'Generar reporte (PDF)'}</button></div>
             </Panel>
           </div>
         )}

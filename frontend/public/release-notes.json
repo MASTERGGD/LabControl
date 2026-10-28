@@ -1,5 +1,5 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "fecha": "2026-10-28",
-  "resumen": "El expediente tutorial ahora filtra reportes por tema, muestra alertas activas por categoría y reúne el historial de cambios dentro de cada reporte, sin mezclar casos distintos."
+  "resumen": "Desde el panorama de riesgo académico se puede preparar un reporte individual en PDF con el resumen del periodo y asistencia detallada, con avisos de cobertura y captura."
 }
