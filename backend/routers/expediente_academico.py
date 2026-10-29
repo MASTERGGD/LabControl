@@ -1896,7 +1896,7 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
     ambar_claro = colors.HexColor("#FFF7ED")
     estilos = {
         "titulo": ParagraphStyle("TituloExp", parent=estilos_base["Title"], fontName="Helvetica-Bold", fontSize=16, leading=19, textColor=colors.HexColor("#0F172A"), alignment=TA_LEFT, spaceAfter=4),
-        "subtitulo": ParagraphStyle("SubtituloExp", parent=estilos_base["Normal"], fontSize=8.5, leading=11, textColor=gris),
+        "subtitulo": ParagraphStyle("SubtituloExp", parent=estilos_base["Normal"], fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=gris, spaceBefore=5, spaceAfter=3),
         "seccion": ParagraphStyle("SeccionExp", parent=estilos_base["Heading2"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=verde, spaceBefore=8, spaceAfter=5),
         "normal": ParagraphStyle("NormalExp", parent=estilos_base["Normal"], fontSize=8.2, leading=11, textColor=colors.HexColor("#1E293B")),
         "pequeno": ParagraphStyle("PequenoExp", parent=estilos_base["Normal"], fontSize=7, leading=9, textColor=gris),
@@ -2008,12 +2008,124 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
 
     if opciones.get("tutoria"):
         tutoria = data.get("tutoria", {})
-        tiene_tutoria = bool(tutoria.get("sesiones") or tutoria.get("reportes") or tutoria.get("canalizaciones"))
+        sesiones = tutoria.get("sesiones") or []
+        reportes = tutoria.get("reportes") or []
+        canalizaciones = tutoria.get("canalizaciones") or []
+        tiene_tutoria = bool(sesiones or reportes or canalizaciones)
         if tiene_tutoria or not opciones.get("omitir_vacias", True):
-            contenido.append(Paragraph("Seguimiento tutorial", estilos["seccion"]))
-            contenido.append(Paragraph(f"<b>Tutor:</b> {escape(tutoria.get('tutor_nombre') or 'Sin tutor asignado')} · <b>Sesiones:</b> {len(tutoria.get('sesiones') or [])} · <b>Reportes:</b> {len(tutoria.get('reportes') or [])} · <b>Canalizaciones:</b> {len(tutoria.get('canalizaciones') or [])}", estilos["normal"]))
-            for sesion in (tutoria.get("sesiones") or [])[:30]:
-                contenido.append(Paragraph(f"{escape(sesion['fecha'])} · {escape(sesion.get('tipo') or 'Sesión')} · {'Asistió' if sesion.get('asistio') else 'No asistió'} · {escape(sesion.get('tema') or sesion.get('comentarios') or 'Sin notas')}", estilos["pequeno"]))
+            meses = (
+                "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+            )
+
+            def fecha_tutoria_pdf(valor):
+                try:
+                    fecha = datetime.date.fromisoformat(str(valor)[:10])
+                    return f"{fecha.day:02d} {meses[fecha.month - 1]} {fecha.year}"
+                except (TypeError, ValueError):
+                    return str(valor or "Sin fecha")
+
+            bloque_tutoria = [
+                Paragraph("Seguimiento tutorial", estilos["seccion"]),
+                Paragraph(f"<b>Tutor:</b> {escape(tutoria.get('tutor_nombre') or 'Sin tutor asignado')}", estilos["normal"]),
+            ]
+            resumen_tutoria = Table([[
+                Paragraph(f"<b>{len(sesiones)}</b><br/><font size='7'>Sesiones tutoriales</font>", estilos["centro"]),
+                Paragraph(f"<b>{len(reportes)}</b><br/><font size='7'>Reportes registrados</font>", estilos["centro"]),
+                Paragraph(f"<b>{len(canalizaciones)}</b><br/><font size='7'>Canalizaciones</font>", estilos["centro"]),
+            ]], colWidths=[6.2 * cm, 6.2 * cm, 6.2 * cm])
+            resumen_tutoria.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#ECFDF5")),
+                ("GRID", (0, 0), (-1, -1), 0.35, borde),
+                ("TEXTCOLOR", (0, 0), (-1, -1), verde),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("PADDING", (0, 0), (-1, -1), 6),
+            ]))
+            bloque_tutoria.extend([
+                Spacer(1, 0.12 * cm), resumen_tutoria,
+                Paragraph("Los conteos corresponden a registros distintos. El detalle se presenta por tipo de actividad.", estilos["pequeno"]),
+            ])
+
+            def agregar_tabla_tutoria(titulo, encabezados, filas, anchos):
+                tabla = Table([encabezados, *filas], repeatRows=1, colWidths=anchos, hAlign="LEFT")
+                tabla.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), verde),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 7),
+                    ("GRID", (0, 0), (-1, -1), 0.3, borde),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, claro]),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ALIGN", (0, 1), (0, -1), "LEFT"),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                ]))
+                bloque_tutoria.append(KeepTogether([Paragraph(titulo, estilos["subtitulo"]), tabla]))
+
+            if sesiones:
+                filas_sesiones = []
+                for sesion in sesiones[:30]:
+                    detalles = []
+                    if sesion.get("tema"):
+                        detalles.append(f"<b>Tema:</b> {escape(sesion['tema'])}")
+                    if sesion.get("comentarios") and sesion["comentarios"] != sesion.get("tema"):
+                        detalles.append(f"<b>Notas:</b> {escape(sesion['comentarios'])}")
+                    filas_sesiones.append([
+                        Paragraph(escape(fecha_tutoria_pdf(sesion.get("fecha"))), estilos["pequeno"]),
+                        Paragraph(escape(str(sesion.get("tipo") or "Sesión").replace("_", " ").title()), estilos["pequeno"]),
+                        Paragraph("Asistió" if sesion.get("asistio") else "No asistió", estilos["pequeno"]),
+                        Paragraph("<br/>".join(detalles) or "Sin notas registradas", estilos["pequeno"]),
+                    ])
+                tabla_sesiones = Table(
+                    [["Fecha", "Modalidad", "Asistencia", "Actividad y notas capturadas"], *filas_sesiones],
+                    repeatRows=1, colWidths=[3.3 * cm, 2.8 * cm, 2.5 * cm, 10.0 * cm], hAlign="LEFT",
+                )
+                tabla_sesiones.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), verde),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, 0), 7),
+                    ("GRID", (0, 0), (-1, -1), 0.3, borde),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, claro]),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                ]))
+                bloque_tutoria.append(KeepTogether([
+                    Paragraph("Sesiones tutoriales", estilos["subtitulo"]), tabla_sesiones,
+                ]))
+                if len(sesiones) > 30:
+                    bloque_tutoria.append(Paragraph("Se muestran las 30 sesiones más recientes.", estilos["pequeno"]))
+            elif not opciones.get("omitir_vacias", True):
+                bloque_tutoria.append(Paragraph("No hay sesiones tutoriales registradas.", estilos["pequeno"]))
+
+            if reportes:
+                filas_reportes = [[
+                    Paragraph(escape(fecha_tutoria_pdf(reporte.get("creado_en"))), estilos["pequeno"]),
+                    Paragraph(escape(reporte.get("titulo") or "Sin título"), estilos["pequeno"]),
+                    Paragraph(escape(str(reporte.get("categoria") or "General").replace("_", " ").title()), estilos["pequeno"]),
+                    Paragraph(escape(str(reporte.get("estado") or "Sin estado").replace("_", " ").capitalize()), estilos["pequeno"]),
+                ] for reporte in reportes]
+                agregar_tabla_tutoria(
+                    "Reportes vinculados", ["Fecha", "Tema del reporte", "Categoría", "Estado"],
+                    filas_reportes, [3.1 * cm, 8.0 * cm, 3.7 * cm, 3.8 * cm],
+                )
+            elif not opciones.get("omitir_vacias", True):
+                bloque_tutoria.append(Paragraph("No hay reportes vinculados.", estilos["pequeno"]))
+
+            if canalizaciones:
+                filas_canalizaciones = [[
+                    Paragraph(escape(fecha_tutoria_pdf(canalizacion.get("fecha_solicitud"))), estilos["pequeno"]),
+                    Paragraph(escape(canalizacion.get("area_atencion") or "Sin área asignada"), estilos["pequeno"]),
+                    Paragraph(escape(canalizacion.get("motivo") or "Sin motivo registrado"), estilos["pequeno"]),
+                    Paragraph(escape(str(canalizacion.get("estado") or "Sin estado").replace("_", " ").capitalize()), estilos["pequeno"]),
+                ] for canalizacion in canalizaciones]
+                agregar_tabla_tutoria(
+                    "Canalizaciones vinculadas", ["Fecha", "Área de atención", "Motivo", "Estado"],
+                    filas_canalizaciones, [3.1 * cm, 4.0 * cm, 7.5 * cm, 4.0 * cm],
+                )
+            elif not opciones.get("omitir_vacias", True):
+                bloque_tutoria.append(Paragraph("No hay canalizaciones registradas.", estilos["pequeno"]))
+
+            contenido.extend(bloque_tutoria)
 
     if opciones.get("trayectoria"):
         trayectoria = data.get("trayectoria_academica") or []
