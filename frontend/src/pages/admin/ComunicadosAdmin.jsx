@@ -214,6 +214,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     const dests = comunicado.destinatarios || [];
     let dest_tipo = 'TODOS', dest_roles = [], dest_usuarios = [], dest_departamentos = [];
     const tiposTodos   = dests.find(d => d.tipo === 'TODOS');
+    const tiposPersonal = dests.find(d => d.tipo === 'PERSONAL');
     const tiposRoles   = dests.filter(d => d.tipo === 'ROL').map(d => d.ref);
     const tiposDeptos  = dests.filter(d => d.tipo === 'DEPARTAMENTO').map(d => d.ref);
     const tiposUsuario = dests.filter(d => d.tipo === 'USUARIO').map(d => ({
@@ -223,6 +224,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
       rol: '',
     }));
     if (tiposTodos) dest_tipo = 'TODOS';
+    else if (tiposPersonal) dest_tipo = 'PERSONAL';
     else if (tiposRoles.length) { dest_tipo = 'ROL'; dest_roles = tiposRoles; }
     else if (tiposDeptos.length) { dest_tipo = 'DEPARTAMENTO'; dest_departamentos = tiposDeptos; }
     else if (tiposUsuario.length) { dest_tipo = 'USUARIO'; dest_usuarios = tiposUsuario; }
@@ -267,6 +269,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const buildDestinatarios = () => {
     if (esTutorAdmin && form.dest_tipo === 'ROL') return [{ tipo: 'ROL', ref: 'DOCENTE' }];
     if (form.dest_tipo === 'TODOS') return [{ tipo: 'TODOS', ref: null }];
+    if (form.dest_tipo === 'PERSONAL') return [{ tipo: 'PERSONAL', ref: null }];
     if (form.dest_tipo === 'ROL')
       return form.dest_roles.map(r => ({ tipo: 'ROL', ref: r }));
     if (form.dest_tipo === 'USUARIO')
@@ -279,7 +282,8 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const destinatariosCalculados = useMemo(() => {
     if (!form.dest_tipo) return [];
     if (form.dest_tipo === 'TODOS') return usuarios;
-    if (form.dest_tipo === 'ROL') return usuarios.filter(u => form.dest_roles.includes(u.rol));
+    if (form.dest_tipo === 'PERSONAL') return usuarios.filter(u => u.activo !== false && u.rol !== 'ALUMNO');
+    if (form.dest_tipo === 'ROL') return usuarios.filter(u => (u.roles_disponibles || [u.rol]).some(rol => form.dest_roles.includes(rol)));
     if (form.dest_tipo === 'DEPARTAMENTO') return usuarios.filter(u => form.dest_departamentos.includes(String(u.departamento_id)));
     if (form.dest_tipo === 'USUARIO') return form.dest_usuarios;
     return [];
@@ -387,12 +391,15 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
     setAdjuntosNuevos(prev => [...prev, ...permitidos].slice(0, 5));
   };
 
-  const usuariosFiltrados = usuarios
+  const usuariosEspecificos = esTutorAdmin
+    ? usuarios.filter(u => u.rol !== 'ALUMNO' && (u.roles_disponibles || [u.rol]).includes('DOCENTE'))
+    : usuarios;
+  const usuariosFiltrados = usuariosEspecificos
     .filter(u => !form.dest_usuarios.some(sel => sel.id === u.id))
     .filter(u => {
       const q = busquedaUsuario.trim().toLowerCase();
       if (!q) return true;
-      return [u.nombre, u.email, u.rol, u.numero_empleado, u.departamento_nombre]
+      return [u.nombre, u.email, u.rol, ...(u.roles_disponibles || []), u.numero_empleado, u.departamento_nombre]
         .filter(Boolean)
         .some(v => String(v).toLowerCase().includes(q));
     })
@@ -400,7 +407,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
 
   const esAdministrativo = usuarioActual?.rol === 'ADMINISTRATIVO';
   const rolesDisponibles = esTutorAdmin ? ROLES_OPTS.filter(r => r.v === 'DOCENTE') : ROLES_OPTS;
-  const tiposDestinatario = esTutorAdmin ? ['ROL','USUARIO'] : ['TODOS','ROL','DEPARTAMENTO','USUARIO'];
+  const tiposDestinatario = esTutorAdmin ? ['PERSONAL','ROL','USUARIO'] : ['TODOS','PERSONAL','ROL','DEPARTAMENTO','USUARIO'];
   const departamentoAsignado = departamentos.find(dep => dep.id === Number(usuarioActual?.departamento_id));
   const departamentoEmisorSeleccionado = esAdministrativo
     ? departamentoAsignado
@@ -412,7 +419,9 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
   const emisorValido = esTutorAdmin || (esAdministrativo && Boolean(usuarioActual?.departamento_id)) || Boolean(form.departamento_emisor_id);
   const descripcionAudiencia = form.dest_tipo === 'TODOS'
     ? 'Todos los usuarios activos'
-    : form.dest_tipo === 'ROL'
+    : form.dest_tipo === 'PERSONAL'
+      ? 'Todo el personal activo (sin alumnos)'
+      : form.dest_tipo === 'ROL'
       ? `Por rol · ${rolesDisponibles.filter(r => form.dest_roles.includes(r.v)).map(r => r.l).join(', ') || 'Sin roles seleccionados'}`
       : form.dest_tipo === 'DEPARTAMENTO'
         ? `Por departamento · ${departamentos.filter(d => form.dest_departamentos.includes(String(d.id))).map(d => d.nombre).join(', ') || 'Sin departamentos seleccionados'}`
@@ -652,11 +661,13 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                     form.dest_tipo === t ? 'bg-blue-600' : 'bg-white/5 text-slate-400 hover:text-white'
                   }`}
                   style={form.dest_tipo === t ? { color: '#ffffff' } : undefined}>
-                  {esTutorAdmin && t === 'ROL'
-                    ? 'Todos los docentes'
-                    : esTutorAdmin && t === 'USUARIO'
-                      ? 'Docentes específicos'
-                      : t === 'TODOS' ? `Todos los usuarios (${usuarios.length.toLocaleString('es-MX')})` : t === 'ROL' ? `Por rol${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : t === 'DEPARTAMENTO' ? `Por departamento${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : `Usuarios específicos${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}`}
+                  {t === 'PERSONAL'
+                    ? `Todo el personal activo${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}`
+                    : esTutorAdmin && t === 'ROL'
+                      ? 'Todos los docentes'
+                      : esTutorAdmin && t === 'USUARIO'
+                        ? 'Docentes específicos'
+                        : t === 'TODOS' ? `Todos los usuarios (${usuarios.length.toLocaleString('es-MX')})` : t === 'ROL' ? `Por rol${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : t === 'DEPARTAMENTO' ? `Por departamento${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}` : `Usuarios específicos${form.dest_tipo === t ? ` (${totalDestinatarios.toLocaleString('es-MX')})` : ''}`}
                 </button>
               ))}
             </div>
@@ -674,11 +685,12 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 ))}
                 {esTutorAdmin && (
                   <p className="basis-full text-xs text-cyan-300/80">
-                    El Responsable de Tutoría solo puede emitir avisos al personal docente.
+                    Tutoría puede enviar a todo el personal activo; la selección individual está limitada a docentes.
                   </p>
                 )}
               </div>
             )}
+            {form.dest_tipo === 'PERSONAL' && <p className="text-xs text-slate-400">Incluye docentes y personal administrativo activo. Excluye alumnos y cuentas inactivas.</p>}
             {form.dest_tipo === 'DEPARTAMENTO' && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {departamentos.length === 0 ? (
@@ -715,7 +727,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                               color: isDay ? '#1d4ed8' : '#93c5fd',
                             }}
                           >
-                            {u.rol}
+                            {(u.roles_disponibles || [u.rol]).join(' · ')}
                           </span>
                         )}
                         <button type="button" onClick={() => quitarUsuario(u.id)}
@@ -774,7 +786,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                                 border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
                               }}
                             >
-                              {u.rol}
+                              {(u.roles_disponibles || [u.rol]).join(' · ')}
                             </span>
                           </div>
                         </button>
@@ -784,7 +796,7 @@ function ModalComunicado({ comunicado, onClose, onSaved }) {
                 </div>
               </div>
             )}
-            {!!form.dest_tipo && <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">{totalDestinatarios === 1 && form.dest_tipo === 'USUARIO' ? <b className="text-emerald-300">Se enviará a {form.dest_usuarios[0]?.nombre}</b> : <><b className="text-2xl text-emerald-400">{totalDestinatarios.toLocaleString('es-MX')}</b><span className="ml-1 text-sm text-slate-300">{etiquetaConteo} recibirán este comunicado</span></>}<p className="mt-1 text-xs text-slate-400">Conteo de usuarios activos, sin duplicados.</p></div>}
+            {!!form.dest_tipo && <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4">{totalDestinatarios === 1 && form.dest_tipo === 'USUARIO' ? <b className="text-emerald-300">Se enviará a {form.dest_usuarios[0]?.nombre}</b> : <><b className="text-2xl text-emerald-400">{totalDestinatarios.toLocaleString('es-MX')}</b><span className="ml-1 text-sm text-slate-300">{etiquetaConteo} recibirán este comunicado</span></>}<p className="mt-1 text-xs text-slate-400">{form.dest_tipo === 'PERSONAL' ? 'Personal activo, sin alumnos ni cuentas inactivas.' : 'Conteo de usuarios activos, sin duplicados.'}</p></div>}
           </div>
 
           {!comunicado && paso === 4 && <div className="space-y-4">

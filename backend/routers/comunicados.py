@@ -54,6 +54,7 @@ from services.user_permissions import (
     departamentos_con_permiso,
     puede_emitir_comunicados,
 )
+from services.user_roles import roles_disponibles
 
 router = APIRouter(prefix="/comunicados", tags=["Comunicados"])
 
@@ -205,7 +206,12 @@ def _comunicado_aplica_a(comunicado: Comunicado, usuario: Usuario) -> bool:
     for dest in comunicado.destinatarios:
         if dest.tipo_destinatario == TipoDestinatario.TODOS:
             return True
-        if dest.tipo_destinatario == TipoDestinatario.ROL and dest.destinatario_ref == usuario.rol.value:
+        if dest.tipo_destinatario == TipoDestinatario.PERSONAL and usuario.rol != RolUsuario.ALUMNO:
+            return True
+        if (
+            dest.tipo_destinatario == TipoDestinatario.ROL
+            and dest.destinatario_ref in {rol.value for rol in roles_disponibles(usuario)}
+        ):
             return True
         if dest.tipo_destinatario == TipoDestinatario.USUARIO and dest.destinatario_ref == str(usuario.id):
             return True
@@ -668,6 +674,8 @@ def _validar_destinatarios_tutoria(db: Session, destinatarios: List["Destinatari
     if not destinatarios:
         return
     for dest in destinatarios:
+        if dest.tipo == TipoDestinatario.PERSONAL and not dest.ref:
+            continue
         if dest.tipo == TipoDestinatario.ROL:
             if dest.ref != RolUsuario.DOCENTE.value:
                 raise HTTPException(403, "El Responsable de Tutoría solo puede enviar comunicados a docentes")
@@ -678,16 +686,20 @@ def _validar_destinatarios_tutoria(db: Session, destinatarios: List["Destinatari
             except ValueError:
                 raise HTTPException(422, "Destinatario de usuario inválido")
             usuario = db.query(Usuario).filter(Usuario.id == usuario_id, Usuario.activo == True).first()
-            if not usuario or usuario.rol != RolUsuario.DOCENTE:
+            if (
+                not usuario
+                or usuario.rol == RolUsuario.ALUMNO
+                or RolUsuario.DOCENTE not in roles_disponibles(usuario)
+            ):
                 raise HTTPException(403, "El Responsable de Tutoría solo puede seleccionar docentes como destinatarios")
             continue
-        raise HTTPException(403, "El Responsable de Tutoría solo puede enviar a todos los docentes o a docentes específicos")
+        raise HTTPException(403, "El Responsable de Tutoría solo puede enviar al personal activo, a todos los docentes o a docentes específicos")
 
 
 # ─── Schemas Pydantic ──────────────────────────────────────────────────────────
 
 class DestinatarioIn(BaseModel):
-    tipo: str          # TODOS | ROL | USUARIO | DEPARTAMENTO
+    tipo: str          # TODOS | PERSONAL | ROL | USUARIO | DEPARTAMENTO
     ref:  Optional[str] = None
 
 
@@ -818,7 +830,7 @@ def listar_destinatarios_comunicado(
     _asegurar_puede_gestionar_comunicados(db, usuario, usuario.departamento_id)
     query = db.query(Usuario).filter(Usuario.activo == True)
     if usuario.rol == RolUsuario.TUTORIA_ADMIN:
-        query = query.filter(Usuario.rol == RolUsuario.DOCENTE)
+        query = query.filter(Usuario.rol != RolUsuario.ALUMNO)
 
     resultado = []
     for destinatario in query.order_by(Usuario.nombre).all():
@@ -833,6 +845,7 @@ def listar_destinatarios_comunicado(
             "email": destinatario.email,
             "numero_empleado": destinatario.numero_empleado,
             "rol": destinatario.rol.value,
+            "roles_disponibles": [rol.value for rol in roles_disponibles(destinatario)],
             "departamento_id": destinatario.departamento_id,
             "departamento_nombre": departamento.nombre if departamento else None,
         })

@@ -59,6 +59,7 @@ class EstadoComunicado(str, enum.Enum):
 
 class TipoDestinatario(str, enum.Enum):
     TODOS        = "TODOS"
+    PERSONAL     = "PERSONAL"
     ROL          = "ROL"
     USUARIO      = "USUARIO"
     DEPARTAMENTO = "DEPARTAMENTO"
@@ -112,7 +113,8 @@ class ComunicadoDestinatario(Base):
 
     id               = Column(Integer, primary_key=True, index=True)
     comunicado_id    = Column(Integer, ForeignKey("comunicados.id", ondelete="CASCADE"), nullable=False, index=True)
-    # TODOS → destinatario_ref = None
+    # TODOS → todos los usuarios activos
+    # PERSONAL → personal activo (excluye cuentas de alumnos)
     # ROL   → destinatario_ref = nombre del rol (ej. "DOCENTE")
     # USUARIO → destinatario_ref = str(usuario_id)
     # DEPARTAMENTO → destinatario_ref = str(departamento_id)
