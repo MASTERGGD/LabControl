@@ -58,13 +58,13 @@ export default function AccionesTutoriaDocente() {
     <main className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">Tutoría · Colaboración docente</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">Acciones solicitadas por Tutoría</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Aquí aparecen las acciones concretas que el Responsable de Tutoría te asignó a partir de tus reportes. Registra qué hiciste para que quede en el historial del caso.</p>
+        <h1 className="mt-1 text-2xl font-bold text-white">Solicitudes de seguimiento</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Aquí aparecen las actividades que el Responsable de Tutoría te solicita como docente reportante. Registra qué hiciste para que quede en el historial del caso. Tus alumnos asignados como tutor están en Mis Tutorados.</p>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{accionesPendientes.length}</p><p className="text-sm text-slate-400">Acciones pendientes</p></div>
-        <div className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{reportes.length}</p><p className="text-sm text-slate-400">Reportes con indicaciones de Tutoría</p></div>
+        <div className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{accionesPendientes.length}</p><p className="text-sm text-slate-400">Solicitudes pendientes</p></div>
+        <div className="glass rounded-xl p-4"><p className="text-2xl font-bold text-white">{reportes.length}</p><p className="text-sm text-slate-400">Reportes con solicitudes</p></div>
       </div>
 
       {error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}<button type="button" onClick={cargar} className="ml-2 font-semibold underline">Reintentar</button></div>}
@@ -89,7 +89,7 @@ export default function AccionesTutoriaDocente() {
               const [label, cls] = estadoAccion[accion.estado] || estadoAccion.PENDIENTE;
               return <section key={accion.id} className="rounded-xl border border-white/10 bg-white/[0.025] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-white">Indicación de Tutoría</h3>
+                  <h3 className="text-sm font-semibold text-white">Solicitud del Responsable de Tutoría</h3>
                   <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${cls}`}>{label}</span>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{accion.instruccion}</p>

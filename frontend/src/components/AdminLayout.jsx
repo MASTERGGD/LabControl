@@ -393,7 +393,7 @@ const NAV_ITEMS = [
   // Grupo: Tutoría (docente)
   { divider: true, label: 'Tutoría', roles: ['DOCENTE'] },
   {
-    label: 'Acciones de Tutoría', path: '/docente/reportes-tutoria', roles: ['DOCENTE'], inGroup: true,
+    label: 'Solicitudes de seguimiento', path: '/docente/reportes-tutoria', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a2 2 0 01.707.293l5.414 5.414A2 2 0 0119 9.414V19a2 2 0 01-2 2z"/></svg>,
   },
   {
@@ -610,7 +610,7 @@ const BREADCRUMB_MAP = {
   '/admin/reportes':          [{ label: 'Reportes' }],
   '/admin/tutoria':           [{ label: 'Panel de Tutoría' }],
   '/docente/mis-tutorados':   [{ label: 'Mis Tutorados' }],
-  '/docente/reportes-tutoria': [{ label: 'Acciones de Tutoría' }],
+  '/docente/reportes-tutoria': [{ label: 'Solicitudes de seguimiento' }],
   '/medico/consultorio':      [{ label: 'Consultorio Médico' }],
 };
 
