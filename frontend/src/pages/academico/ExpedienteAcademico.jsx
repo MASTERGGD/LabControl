@@ -153,10 +153,14 @@ function MateriasTable({ materias, compact = false }) {
               <td className={`px-4 py-3 font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{m.materia}</td>
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
               <td className="px-4 py-3 text-center">
-                <span>{m.clases_registradas}</span>
-                {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600">{m.clases_abiertas} abiertas · provisionales</span>}
+                <span className="block font-semibold">{m.clases_registradas} cerradas</span>
+                {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600" title="Las sesiones abiertas o en corrección son provisionales y no se incluyen en el porcentaje hasta que se cierre la lista.">{m.clases_abiertas} provisional{m.clases_abiertas === 1 ? '' : 'es'} · fuera del %</span>}
               </td>
-              <td className="px-4 py-3 text-center">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</td>
+              <td className="px-4 py-3 text-center" title="El porcentaje considera las asistencias registradas en clases cerradas. Las sesiones provisionales no se incluyen.">
+                <span className="block font-semibold">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</span>
+                {m.clases_registradas > 0 && <span className="mt-1 block text-[10px] text-slate-500">{Math.max(0, m.clases_registradas - (m.sin_registro || 0))} de {m.clases_registradas} cerradas con lista</span>}
+                {m.sin_registro > 0 && <span className="block text-[10px] font-semibold text-amber-600">{m.sin_registro} sin captura</span>}
+              </td>
               <td className="px-4 py-3 text-center"><FaltasDetalle materia={m} /></td>
               <td className="px-4 py-3 text-center">{m.faltas_consecutivas ?? '—'}</td>
               <td className="px-4 py-3"><Badge className={`${ESTADO_MATERIA[m.estado]} whitespace-nowrap`}>{ICONO_ESTADO_MATERIA[m.estado]} {m.estado === 'BASE_INSUFICIENT' ? 'SIN BASE' : labelEstado(m.estado)}</Badge></td>

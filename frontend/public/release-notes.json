@@ -1,5 +1,5 @@
 {
-  "version": "1.1.4",
+  "version": "1.1.5",
   "fecha": "2026-10-28",
-  "resumen": "El formato manual de observaciones ahora incluye líneas alineadas al ancho del reporte y espacio para comentarios largos."
+  "resumen": "El expediente distingue clases cerradas, sesiones provisionales y listas de asistencia aún sin captura."
 }
