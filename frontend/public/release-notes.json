@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "fecha": "2026-10-28",
-  "resumen": "El reporte académico individual ajusta nombres largos de carrera y grupo dentro de sus celdas para mantener el formato legible."
+  "resumen": "El reporte académico individual ajusta nombres largos de carrera y grupo y su ventana de preparación cabe en la pantalla."
 }
