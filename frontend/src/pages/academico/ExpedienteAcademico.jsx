@@ -154,7 +154,7 @@ function MateriasTable({ materias, compact = false }) {
               <td className="px-4 py-3 text-slate-500">{m.docente || '—'}</td>
               <td className="px-4 py-3 text-center">
                 <span className="block font-semibold">{m.clases_registradas} cerradas</span>
-                {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600" title="Las sesiones abiertas o en corrección son provisionales y no se incluyen en el porcentaje hasta que se cierre la lista.">{m.clases_abiertas} provisional{m.clases_abiertas === 1 ? '' : 'es'} · fuera del %</span>}
+                {m.clases_abiertas > 0 && <span className="mt-1 block text-[10px] text-amber-600" title="Corresponden a sesiones registradas cuya lista de asistencia sigue abierta o en corrección. No se incluyen en el porcentaje hasta que se cierre.">{m.clases_abiertas} lista{m.clases_abiertas === 1 ? '' : 's'} de asistencia sin cerrar</span>}
               </td>
               <td className="px-4 py-3 text-center" title="El porcentaje considera las asistencias registradas en clases cerradas. Las sesiones provisionales no se incluyen.">
                 <span className="block font-semibold">{m.estado !== 'BASE_INSUFICIENT' && m.porcentaje_asistencia != null ? `${m.porcentaje_asistencia}%` : '—'}</span>
