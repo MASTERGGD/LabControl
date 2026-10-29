@@ -2145,10 +2145,53 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
             ]))
 
     if opciones.get("observaciones"):
-        bloque_observaciones = [Paragraph("Observaciones de la revisión", estilos["seccion"]), Spacer(1, 0.25 * cm)]
-        for _ in range(3):
-            bloque_observaciones.append(Paragraph("________________________________________________________________________________________________", estilos["normal"]))
-        bloque_observaciones.extend([Spacer(1, 0.35 * cm), Paragraph("Revisó: ____________________________________     Enterado (tutor): ____________________________________", estilos["normal"]), Spacer(1, 0.2 * cm), Paragraph("Fecha: ____________________", estilos["normal"]), Paragraph("Las firmas registran conocimiento del seguimiento y no convierten este documento en constancia oficial.", estilos["pequeno"])])
+        bloque_observaciones = [
+            Paragraph("Observaciones de la revisión", estilos["seccion"]),
+            Paragraph("Anote comentarios, acuerdos o información complementaria de la revisión.", estilos["pequeno"]),
+            Spacer(1, 0.12 * cm),
+        ]
+        lineas = Table(
+            [[""] for _ in range(5)],
+            colWidths=[doc.width], rowHeights=[0.72 * cm] * 5, hAlign="LEFT",
+        )
+        lineas.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 0.55, gris),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        bloque_observaciones.extend([lineas, Spacer(1, 0.35 * cm)])
+
+        ancho_firma = doc.width / 2
+        firmas = Table(
+            [[Paragraph("Revisó", estilos["pequeno"]), Paragraph("Enterado (tutor)", estilos["pequeno"])], ["", ""]],
+            colWidths=[ancho_firma, ancho_firma], rowHeights=[0.4 * cm, 0.65 * cm], hAlign="LEFT",
+        )
+        firmas.setStyle(TableStyle([
+            ("LINEBELOW", (0, 1), (-1, 1), 0.55, gris),
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        fecha_revision = Table(
+            [[Paragraph("Fecha:", estilos["normal"]), ""]],
+            colWidths=[1.4 * cm, doc.width - 1.4 * cm], rowHeights=[0.65 * cm], hAlign="LEFT",
+        )
+        fecha_revision.setStyle(TableStyle([
+            ("LINEBELOW", (1, 0), (1, 0), 0.55, gris),
+            ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        bloque_observaciones.extend([
+            firmas, Spacer(1, 0.15 * cm), fecha_revision,
+            Paragraph("Las firmas registran conocimiento del seguimiento y no convierten este documento en constancia oficial.", estilos["pequeno"]),
+        ])
         contenido.append(KeepTogether(bloque_observaciones))
 
     doc.build(
