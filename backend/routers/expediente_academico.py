@@ -21,7 +21,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
-    Image as RLImage, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    Image as RLImage, KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
 from database import get_db
@@ -2013,6 +2013,7 @@ def _crear_pdf_expediente(data: dict, generado_por: str, folio: str, opciones: d
         canalizaciones = tutoria.get("canalizaciones") or []
         tiene_tutoria = bool(sesiones or reportes or canalizaciones)
         if tiene_tutoria or not opciones.get("omitir_vacias", True):
+            contenido.append(PageBreak())
             meses = (
                 "enero", "febrero", "marzo", "abril", "mayo", "junio",
                 "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
