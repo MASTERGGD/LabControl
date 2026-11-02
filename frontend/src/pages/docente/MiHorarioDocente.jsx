@@ -981,7 +981,7 @@ export default function MiHorarioDocente() {
                     {puedeIniciarPrincipal ? textoAccionClase(actividadPrincipal) : textoVentanaInicio(actividadPrincipal)}
                   </button>
                 )}
-                {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (
+                {actividadPrincipal.tipo_actividad === 'TUTORIA' && actividadPrincipal.grupo_tutorado_id && (!esNoLectiva(actividadPrincipal) || actividadPrincipal.sesion_tutoria_id) && (
                   <button onClick={() => navigate(accionTutoria(actividadPrincipal).path)} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white">{accionTutoria(actividadPrincipal).texto}</button>
                 )}
                 {esNoLectiva(actividadPrincipal) && (
@@ -1174,7 +1174,7 @@ export default function MiHorarioDocente() {
                                   : 'Ventana de inicio finalizada'}
                             </button>
                           )}
-                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && <button onClick={() => navigate(accionTutoria(item).path)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">{accionTutoria(item).texto}</button>}
+                          {item.tipo_actividad === 'TUTORIA' && item.grupo_tutorado_id && (!esNoLectiva(item) || item.sesion_tutoria_id) && <button onClick={() => navigate(accionTutoria(item).path)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">{accionTutoria(item).texto}</button>}
                           {esNoLectiva(item) && (
                             <button onClick={() => navigate('/calendario-academico')} className="rounded-lg border border-slate-500/30 px-3 py-2 text-xs font-semibold text-slate-300">
                               Ver calendario

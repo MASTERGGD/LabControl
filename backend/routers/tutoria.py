@@ -17,7 +17,7 @@ from models.tutoria import (
     HistorialEstadoTutoria, CierreTutoria,
 )
 from models.notificacion import Notificacion
-from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno
+from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.docencia import CargaDocente, ClaseDocente, SeguimientoAlumnoDocente
 from models.usuario import Usuario, RolUsuario
 from dependencies import get_current_user, require_roles
@@ -26,6 +26,7 @@ from pathlib import Path
 from routers.notificaciones import crear_notificacion
 from services.tutoria_sync import sincronizar_grupos_tutoria
 from services.timezone import today_mx
+from services.calendario_academico import estado_fecha_academica
 from services.tutoria_sesiones import autorizar_tutor, bloqueo_edicion, opciones_horario, resolver_horario, datos_sesion, guardar_historial
 from sqlalchemy.exc import IntegrityError
 from models.auditoria import AuditLog
@@ -74,6 +75,24 @@ def _notificar_usuario(db: Session, usuario_id: int, tipo: str, titulo: str, men
 
 def _norm(v) -> str:
     return str(v).strip() if v is not None else ""
+
+
+def _validar_fecha_lectiva_tutoria(db, grupo, fecha, carga_id=None):
+    """Evita registrar una tutoría nueva en una fecha suspendida oficialmente."""
+    periodo_id = None
+    if carga_id:
+        carga = db.query(CargaDocente).filter(CargaDocente.id == carga_id).first()
+        periodo_id = carga.periodo_id if carga else None
+    if not periodo_id and grupo.grupo_academico_id:
+        grupo_academico = db.get(GrupoAcademico, grupo.grupo_academico_id)
+        periodo_id = grupo_academico.periodo_id if grupo_academico else None
+    if not periodo_id:
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == grupo.periodo).first()
+        periodo_id = periodo.id if periodo else None
+    estado = estado_fecha_academica(db, periodo_id, fecha)
+    if not estado["requiere_asistencia"]:
+        motivo = estado.get("motivo") or "suspensión de labores"
+        raise HTTPException(409, f"No se puede registrar una tutoría en esta fecha: {motivo}.")
 
 _resp_roles = require_roles(
     RolUsuario.SUPER_ADMIN,
@@ -2340,6 +2359,8 @@ def _guardar_sesion(data, db, current_user, sesion=None):
             raise HTTPException(422, "Solo una sesión grupal puede cumplir la programación grupal")
 
     carga_id, fecha_original = resolver_horario(db, g, data, fecha, hora_inicio, sesion)
+    if not editando or fecha != sesion.fecha:
+        _validar_fecha_lectiva_tutoria(db, g, fecha, carga_id)
     valores = dict(
         grupo_tutorado_id=data.grupo_tutorado_id,
         carga_docente_id=carga_id, fecha_programada=fecha_original,
