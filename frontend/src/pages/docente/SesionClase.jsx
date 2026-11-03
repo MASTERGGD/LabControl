@@ -1424,6 +1424,8 @@ const GRAD_DOC = {
 };
 
 function GridSemanal({ slots, onSlotClick }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   const horas = [...new Set(slots.map(s => s.hora_inicio))].sort();
   const dias  = [...new Set(slots.map(s => s.dia_semana))].sort();
   const idx   = {};
