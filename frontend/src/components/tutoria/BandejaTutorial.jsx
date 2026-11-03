@@ -15,6 +15,34 @@ const colorCategoria = (categoria, tonos) => ({
   PERSONAL: tonos.naranja,
   OTRO: tonos.gris,
 }[categoria] || tonos.gris);
+const presentacionEstado = (estado, isDay) => {
+  const paleta = isDay ? {
+    pendiente: { badge: 'border-amber-300 bg-amber-100 text-amber-900', borde: 'border-l-amber-500', fondo: 'bg-amber-50/70' },
+    seguimiento: { badge: 'border-blue-300 bg-blue-100 text-blue-900', borde: 'border-l-blue-500', fondo: 'bg-blue-50/70' },
+    concluido: { badge: 'border-emerald-300 bg-emerald-100 text-emerald-900', borde: 'border-l-emerald-600', fondo: 'bg-emerald-50/70' },
+    neutro: { badge: 'border-slate-300 bg-slate-100 text-slate-700', borde: 'border-l-slate-400', fondo: 'bg-slate-50' },
+  } : {
+    pendiente: { badge: 'border-amber-400/40 bg-amber-500/20 text-amber-200', borde: 'border-l-amber-400', fondo: 'bg-amber-950/25' },
+    seguimiento: { badge: 'border-blue-400/40 bg-blue-500/20 text-blue-200', borde: 'border-l-blue-400', fondo: 'bg-blue-950/25' },
+    concluido: { badge: 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200', borde: 'border-l-emerald-400', fondo: 'bg-emerald-950/25' },
+    neutro: { badge: 'border-slate-500/50 bg-slate-700 text-slate-200', borde: 'border-l-slate-500', fondo: 'bg-slate-800/60' },
+  };
+  const estados = {
+    SIN_TUTOR: ['Pendiente · asignar tutor', 'pendiente'],
+    ENVIADO: ['Pendiente de atención', 'pendiente'],
+    RECIBIDO: ['Leído · pendiente de atención', 'pendiente'],
+    REUNION_SOLICITADA: ['En seguimiento · reunión solicitada', 'seguimiento'],
+    EN_SEGUIMIENTO: ['En seguimiento', 'seguimiento'],
+    CANALIZADO: ['En seguimiento · canalizado', 'seguimiento'],
+    ATENDIDO: ['Atendido', 'concluido'],
+    CERRADO: ['Cerrado', 'concluido'],
+    CERRADO_ADMINISTRATIVO: ['Cierre administrativo', 'neutro'],
+    CANCELADO: ['Cancelado', 'neutro'],
+    BORRADOR: ['Borrador', 'neutro'],
+  };
+  const [label, tono] = estados[estado] || [estado || 'Estado no disponible', 'neutro'];
+  return { label, ...paleta[tono] };
+};
 
 export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte, cargando, error, onReintentar }) {
   const [filtro, setFiltro] = useState('PENDIENTES');
@@ -106,9 +134,9 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
           <section><h4 className="mb-3 text-sm font-semibold">Reportes del expediente</h4><div className="space-y-3">{reportesVisibles.map(r => {
             const eventosReporte = eventosCaso(caso).filter(evento => evento.reporte.id === r.id);
             const descripcionExpandida = descripcionAbierta.has(r.id);
-            const estadoTono = ['ATENDIDO', 'CERRADO', 'CERRADO_ADMINISTRATIVO'].includes(r.estado) ? tonos.verde : ['EN_SEGUIMIENTO', 'CANALIZADO', 'REUNION_SOLICITADA'].includes(r.estado) ? tonos.azul : tonos.gris;
-            return <div key={r.id} className={`rounded-xl border p-4 shadow-sm ${superficie}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${colorCategoria(r.categoria, tonos)}`}>{categorias[r.categoria] || r.categoria || 'Otro'}</span><h5 className="mt-2 text-base font-semibold leading-snug">{r.titulo}</h5></div><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${estadoTono}`}>{estados[r.estado]?.label || r.estado}</span></div>
+            const estadoVista = presentacionEstado(r.estado, isDay);
+            return <div key={r.id} className={`rounded-xl border border-l-4 p-4 shadow-sm ${isDay ? 'border-slate-200 text-slate-900' : 'border-slate-700 text-slate-100'} ${estadoVista.borde} ${estadoVista.fondo}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${colorCategoria(r.categoria, tonos)}`}>{categorias[r.categoria] || r.categoria || 'Otro'}</span><h5 className="mt-2 text-base font-semibold leading-snug">{r.titulo}</h5></div><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${estadoVista.badge}`}><span aria-hidden="true">{['ATENDIDO', 'CERRADO'].includes(r.estado) ? '✓' : ['EN_SEGUIMIENTO', 'CANALIZADO', 'REUNION_SOLICITADA'].includes(r.estado) ? '↻' : ['CERRADO_ADMINISTRATIVO', 'CANCELADO'].includes(r.estado) ? '—' : '!'}</span>{estadoVista.label}</span></div>
               <p className={`mt-2 text-xs ${secundario}`}>{r.materia || 'Sin materia'} · {r.reportado_por || 'Sin docente'} · {antiguedad(r.creado_en)}</p>
               <p className={`mt-1 text-xs ${secundario}`}>Tutor: {r.tutor_destinatario || 'Sin asignar'} · {r.prioridad_confirmada ? `Prioridad ${r.prioridad.toLowerCase()}` : 'Prioridad sin confirmar'}</p>
               {r.detalle && <><p className={`mt-3 max-w-[80ch] whitespace-pre-wrap text-sm leading-6 ${descripcionExpandida ? '' : 'line-clamp-3'} ${secundario}`}>{r.detalle}</p>{r.detalle.length > 180 && <button type="button" aria-expanded={descripcionExpandida} onClick={() => setDescripcionAbierta(actual => { const siguiente = new Set(actual); descripcionExpandida ? siguiente.delete(r.id) : siguiente.add(r.id); return siguiente; })} className="mt-1 text-xs font-semibold text-emerald-600">{descripcionExpandida ? 'Leer menos' : 'Leer más'}</button>}</>}
