@@ -780,8 +780,18 @@ def disponibilidad(
     for h in horarios:
         reservacion = db.query(Reservacion).filter(
             Reservacion.horario_id == h.id,
+            Reservacion.fecha_actividad == None,
             Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
+
+        # Las reservaciones con fecha específica no ocupan el bloque semanal;
+        # solo aplican a una fecha y se informan aparte para que la cuadrícula
+        # no las presente como recurrentes.
+        reservas_puntuales = db.query(Reservacion).filter(
+            Reservacion.horario_id == h.id,
+            Reservacion.fecha_actividad.isnot(None),
+            Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
+        ).order_by(Reservacion.fecha_actividad).all()
 
         mi_solicitud  = None
         solicitudes_n = 0
@@ -840,6 +850,16 @@ def disponibilidad(
             "solicitudes_n":  solicitudes_n,
             "mi_solicitud":   mi_solicitud,
             "reservacion":    None,
+            "reservaciones_puntuales": [
+                {
+                    "id": r.id,
+                    "fecha_actividad": r.fecha_actividad.isoformat(),
+                    "materia": r.materia,
+                    "grupo": r.grupo,
+                    "estado": r.estado,
+                }
+                for r in reservas_puntuales
+            ],
             "bloqueo":        None,
             "ocupacion_actual": ocupacion_actual if en_uso_ahora else None,
         }
