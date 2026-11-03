@@ -7,6 +7,7 @@ import AutocompleteInput, { formatApiError } from '../../components/Autocomplete
 import SelectDark from '../../components/SelectDark';
 import TimeGrid from '../../components/TimeGrid';
 import { useTheme } from '../../context/ThemeContext';
+import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -620,10 +621,11 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
 
 // ─── Modal: Ver mi reservación ────────────────────────────────────────────────
 
-function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin }) {
+function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin, requiereMotivoCancelacion = esAdmin }) {
   const [cancelando, setCancelando] = useState(false);
   const [cediendo,   setCediendo]   = useState(false);
   const [confirmar,  setConfirmar]  = useState(false);
+  const [motivoCancelacion, setMotivoCancelacion] = useState('');
   const [error,      setError]      = useState('');
   const [estadoCumplimiento, setEstadoCumplimiento] = useState('');
   const [motivoCumplimiento, setMotivoCumplimiento] = useState('');
@@ -636,7 +638,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
   const handleCancelar = async () => {
     setCancelando(true); setError('');
     try {
-      await api.delete(`/horarios/reservaciones/${r.id}`);
+      await api.delete(`/horarios/reservaciones/${r.id}`, { data: { motivo: motivoCancelacion.trim() || undefined } });
       onCancelada();
       onClose();
     } catch (err) {
@@ -808,9 +810,11 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
                   ? '¿Rechazar la solicitud y liberar el horario? El solicitante no obtendrá el espacio.'
                   : '¿Confirmar liberación del horario?'}
               </p>
+              <textarea rows={2} maxLength={300} value={motivoCancelacion} onChange={e => setMotivoCancelacion(e.target.value)}
+                className="input-dark w-full text-sm" placeholder={requiereMotivoCancelacion ? 'Motivo obligatorio (mínimo 5 caracteres)' : 'Motivo (opcional)'} />
               <div className="flex gap-2">
                 <button onClick={() => setConfirmar(false)} className="btn-ghost flex-1 py-2 text-sm">No, mantener</button>
-                <button onClick={handleCancelar} disabled={cancelando}
+                <button onClick={handleCancelar} disabled={cancelando || (requiereMotivoCancelacion && motivoCancelacion.trim().length < 5)}
                   className="flex-1 py-2 text-sm font-semibold rounded-xl text-white disabled:opacity-50 transition-all"
                   style={{ background:'linear-gradient(135deg,#ef4444,#dc2626)' }}>
                   {cancelando ? 'Liberando…' : 'Sí, liberar'}
@@ -1456,6 +1460,8 @@ export default function Reservaciones() {
   const isDay = themeKey === 'day';
   const { usuario } = useAuth();
   const esAdmin     = ['SUPER_ADMIN', 'LAB_ADMIN'].includes(usuario?.rol);
+  const esResponsableLab = usuario?.rol === 'RESPONSABLE_LAB';
+  const esPersonalLaboratorio = esAdmin || esResponsableLab;
   const esDocente   = usuario?.rol === 'DOCENTE';
 
   const [laboratorios, setLaboratorios]   = useState([]);
@@ -1473,11 +1479,14 @@ export default function Reservaciones() {
   // Cargar labs
   useEffect(() => {
     api.get('/laboratorios').then(res => {
-      setLaboratorios(res.data);
-      if (res.data.length > 0) {
-        const defaultLab = usuario?.rol === 'LAB_ADMIN'
-          ? res.data.find(l => l.id === usuario.laboratorio_id) || res.data[0]
-          : res.data[0];
+      const labsVisibles = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol)
+        ? res.data.filter(l => String(l.id) === String(usuario.laboratorio_id))
+        : res.data;
+      setLaboratorios(labsVisibles);
+      if (labsVisibles.length > 0) {
+        const defaultLab = ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol)
+          ? labsVisibles.find(l => String(l.id) === String(usuario.laboratorio_id))
+          : labsVisibles[0];
         setLabId(defaultLab?.id || '');
       }
     }).catch(() => {});
@@ -1512,10 +1521,11 @@ export default function Reservaciones() {
 
   const handleSlotClick = (slot) => {
     const tipo = slot.estado_vista;
-    if (tipo === 'LIBRE')       setModalSlot({ tipo: 'reservar',   slot });
+    if (tipo === 'LIBRE' && slot.reservaciones_puntuales?.length) setModalSlot({ tipo: 'puntuales', slot });
+    else if (tipo === 'LIBRE' && esDocente) setModalSlot({ tipo: 'reservar', slot });
     else if (tipo === 'MIO')    setModalSlot({ tipo: 'mi_reserva', slot });
     else if (tipo === 'OCUPADO' || tipo === 'EN_DISPUTA') {
-      if (esAdmin) setModalSlot({ tipo: 'mi_reserva', slot });
+      if (esPersonalLaboratorio) setModalSlot({ tipo: 'mi_reserva', slot });
       else if (esDocente) setModalSlot({ tipo: 'solicitar', slot });
     }
     else if (tipo === 'YO_SOLICITE') setModalSlot({ tipo: 'yo_solicite', slot });
@@ -1745,6 +1755,15 @@ export default function Reservaciones() {
           onCancelada={recargar}
           onGuardado={recargar}
           esAdmin={esAdmin}
+          requiereMotivoCancelacion={esPersonalLaboratorio}
+        />
+      )}
+      {modalSlot?.tipo === 'puntuales' && (
+        <ReservacionesPuntualesModal
+          slot={modalSlot.slot}
+          esPersonalLaboratorio={esPersonalLaboratorio}
+          onClose={cerrarModal}
+          onActualizada={recargar}
         />
       )}
       {modalSlot?.tipo === 'solicitar' && (

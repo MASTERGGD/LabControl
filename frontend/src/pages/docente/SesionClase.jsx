@@ -10,6 +10,7 @@ import AdminLayout from '../../components/AdminLayout';
 import { useTheme } from '../../context/ThemeContext';
 import { dateToLocalISO, weekdayIndexInMexico } from '../../utils/timezone';
 import { getApiErrorMessage } from '../../utils/apiError';
+import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -779,6 +780,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
   const grupo = slot._grupo; // info de períodos consecutivos si aplica
   const [cancelando, setCancelando]   = useState(false);
   const [confirmar, setConfirmar]     = useState(false);
+  const [motivoCancelacion, setMotivoCancelacion] = useState('');
   const [iniciando, setIniciando]     = useState(false);
   // Duración máxima = tiempo exacto del slot reservado (no se puede pasar de eso)
   const slotDurMin  = toMin(slot.hora_fin) - toMin(slot.hora_inicio);
@@ -794,7 +796,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
   const handleCancelar = async () => {
     setCancelando(true);
     try {
-      await api.delete(`/horarios/reservaciones/${r.id}`);
+      await api.delete(`/horarios/reservaciones/${r.id}`, { data: { motivo: motivoCancelacion.trim() || undefined } });
       onCancelada(); onClose();
     } catch (err) {
       alert(getApiErrorMessage(err, 'Error al cancelar'));
@@ -962,6 +964,8 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
             ) : (
               <div className="space-y-2">
                 <p className="text-xs text-slate-400 text-center">¿Deseas cancelar esta reservación?</p>
+                <textarea rows={2} maxLength={300} value={motivoCancelacion} onChange={e => setMotivoCancelacion(e.target.value)}
+                  className="input-dark w-full text-sm" placeholder="Motivo (opcional para quien solicitó la reservación)" />
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmar(false)}
                     className="flex-1 bg-gray-700 text-gray-300 py-2 rounded-lg text-sm">No</button>
@@ -2295,7 +2299,8 @@ export default function SesionClase() {
   const handleSlotClick = (slot) => {
     const tipo = slot.estado_vista;
     if (tipo === 'BLOQUEADO')        return; // no se puede interactuar
-    if (tipo === 'LIBRE')            setModalSlot({ tipo: 'reservar',      slot });
+    if (tipo === 'LIBRE' && slot.reservaciones_puntuales?.length) setModalSlot({ tipo: 'puntuales', slot });
+    else if (tipo === 'LIBRE')       setModalSlot({ tipo: 'reservar',      slot });
     else if (tipo === 'MIO')         setModalSlot({ tipo: 'mi_reserva',    slot });
     else if (tipo === 'OCUPADO')     setModalSlot({ tipo: 'solicitar',     slot });
     else if (tipo === 'EN_DISPUTA')  setModalSlot({ tipo: 'en_disputa',    slot });
@@ -2495,6 +2500,9 @@ export default function SesionClase() {
       {modalSlot?.tipo === 'mi_reserva' && (
         <ModalMiReservacion slot={modalSlot.slot} sesionActiva={sesionActiva}
           onClose={cerrar} onCancelada={recargar} onSesionIniciada={recargar} />
+      )}
+      {modalSlot?.tipo === 'puntuales' && (
+        <ReservacionesPuntualesModal slot={modalSlot.slot} onClose={cerrar} onActualizada={recargar} />
       )}
       {modalSlot?.tipo === 'solicitar' && (
         <ModalSolicitar slot={modalSlot.slot} cuatrimestre={cuatrimestre}

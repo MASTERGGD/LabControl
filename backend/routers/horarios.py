@@ -97,6 +97,9 @@ class ReservacionUpdate(BaseModel):
 class AutorizarDiaNoLectivoBody(BaseModel):
     motivo: str = Field(..., min_length=5, max_length=300)
 
+class CancelarReservacionBody(BaseModel):
+    motivo: Optional[str] = Field(None, max_length=300)
+
 class RequerimientoResolverSchema(BaseModel):
     estado:     str            # CONFIRMADO | RECHAZADO | DOCENTE_PROVEE
     nota_admin: Optional[str]  = None
@@ -196,7 +199,8 @@ def _serializar_horario(h: HorarioDisponible, db: Session, fecha_actividad: Opti
         "bloqueado":  bloqueo_activo is not None,
         "reservacion": reservacion_data,
         "reservaciones_puntuales": [{"id": r.id, "fecha_actividad": r.fecha_actividad.isoformat(),
-            "materia": r.materia, "grupo": r.grupo, "estado": r.estado} for r in reservas_puntuales],
+            "materia": r.materia, "grupo": r.grupo, "estado": r.estado,
+            "docente_id": r.docente_id} for r in reservas_puntuales],
         "bloqueo":     bloqueo_data,
     }
 
@@ -746,6 +750,10 @@ def disponibilidad(
     Cuadrícula semanal con estado personalizado por usuario:
     LIBRE | MIO | OCUPADO | EN_DISPUTA | YO_SOLICITE
     """
+    if (current_user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}
+            and current_user.laboratorio_id != laboratorio_id):
+        raise HTTPException(status_code=403, detail="Solo puedes consultar el laboratorio que tienes asignado")
+
     horarios = db.query(HorarioDisponible).filter(
         HorarioDisponible.laboratorio_id == laboratorio_id,
         HorarioDisponible.cuatrimestre == cuatrimestre,
@@ -858,6 +866,13 @@ def disponibilidad(
                     "materia": r.materia,
                     "grupo": r.grupo,
                     "estado": r.estado,
+                    "docente_id": r.docente_id,
+                    "puede_cancelar": (
+                        r.docente_id == current_user.id
+                        or current_user.rol == RolUsuario.SUPER_ADMIN
+                        or (current_user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}
+                            and current_user.laboratorio_id == r.laboratorio_id)
+                    ),
                 }
                 for r in reservas_puntuales
             ],
@@ -1212,14 +1227,35 @@ def editar_reservacion(
 @router.delete("/reservaciones/{reservacion_id}", summary="Cancelar reservación")
 def cancelar_reservacion(
     reservacion_id: int,
+    data: CancelarReservacionBody | None = None,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
     r = db.query(Reservacion).filter(Reservacion.id == reservacion_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
-    if current_user.rol == RolUsuario.DOCENTE and r.docente_id != current_user.id:
-        raise HTTPException(status_code=403, detail="No puedes cancelar una reservación que no es tuya")
+    es_solicitante = r.docente_id == current_user.id
+    es_admin = current_user.rol == RolUsuario.SUPER_ADMIN
+    es_responsable_del_lab = (
+        current_user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}
+        and current_user.laboratorio_id == r.laboratorio_id
+    )
+    if not (es_solicitante or es_admin or es_responsable_del_lab):
+        raise HTTPException(status_code=403, detail="Solo el solicitante, el responsable de este laboratorio o un administrador pueden cancelar la reservación")
+
+    if r.estado not in {"PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"}:
+        raise HTTPException(status_code=409, detail="La reservación ya no está activa")
+
+    motivo = (data.motivo or "").strip() if data else ""
+    if (es_admin or es_responsable_del_lab) and len(motivo) < 5:
+        raise HTTPException(status_code=422, detail="Indica un motivo de al menos 5 caracteres para dejarlo en la bitácora")
+
+    sesion_abierta = db.query(SesionClase).filter(
+        SesionClase.reservacion_id == r.id,
+        SesionClase.estado == "ABIERTA",
+    ).first()
+    if sesion_abierta:
+        raise HTTPException(status_code=409, detail="La sesión ya inició. Ciérrala para conservar su asistencia y reporte antes de gestionar la reservación.")
 
     practica = db.query(PracticaLaboratorio).filter(PracticaLaboratorio.reservacion_id == r.id).first()
     if practica and practica.estado not in {"SOLICITADA", "CANCELADA"}:
@@ -1233,7 +1269,26 @@ def cancelar_reservacion(
     db.query(SolicitudConflicto).filter(
         SolicitudConflicto.reservacion_id == r.id,
         SolicitudConflicto.estado == "PENDIENTE"
-    ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada por el docente original"})
+    ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada; solicitudes pendientes cerradas"})
+    docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
+    registrar(
+        db,
+        accion=Accion.CANCELAR_RESERVACION,
+        recurso=Recurso.RESERVACION,
+        usuario=current_user,
+        recurso_id=r.id,
+        detalle={
+            "evento": "CANCELAR_RESERVACION",
+            "laboratorio_id": r.laboratorio_id,
+            "solicitante_id": r.docente_id,
+            "solicitante": docente.nombre if docente else None,
+            "materia": r.materia,
+            "grupo": r.grupo,
+            "fecha_actividad": r.fecha_actividad.isoformat() if r.fecha_actividad else None,
+            "actor_rol": current_user.rol.value if hasattr(current_user.rol, "value") else str(current_user.rol),
+            "motivo": motivo or "Cancelada por el solicitante",
+        },
+    )
     db.commit()
     return {"mensaje": "Reservación cancelada"}
 
