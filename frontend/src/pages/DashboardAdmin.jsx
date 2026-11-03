@@ -175,6 +175,83 @@ function KpiRow({ stats, sesiones, navigate }) {
   );
 }
 
+function KpiOperacion({ label, valor, detalle, icono, onClick }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  return (
+    <button type="button" onClick={onClick}
+      className="rounded-2xl border p-4 text-left transition hover:-translate-y-0.5"
+      style={{ background: isDay ? '#fff' : '#182233', borderColor: isDay ? '#dce5eb' : '#334155', color: isDay ? '#0f172a' : '#f8fafc' }}>
+      <span className="text-xl" aria-hidden="true">{icono}</span>
+      <p className="mt-3 text-2xl font-bold">{valor}</p>
+      <p className="mt-1 text-sm font-semibold">{label}</p>
+      <p className={`mt-1 text-xs ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{detalle}</p>
+    </button>
+  );
+}
+
+function DashboardLaboratorioNoComputo({ categoria, stats, navigate }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const nombreCategoria = categoria
+    ? categoria.toLowerCase().replace(/(?:^|_)\S/g, letra => letra.toUpperCase()).replaceAll('_', ' ')
+    : 'Laboratorio';
+  const accesos = [
+    { icono: '🧪', titulo: 'Prácticas docentes', detalle: 'Sesiones, materiales y reportes', ruta: '/admin/practicas-laboratorio' },
+    { icono: '📅', titulo: 'Horarios', detalle: 'Disponibilidad del laboratorio', ruta: '/admin/horarios' },
+    { icono: '📌', titulo: 'Reservaciones', detalle: 'Solicitudes y agenda', ruta: '/admin/reservaciones' },
+    { icono: '🧰', titulo: 'Activos y materiales', detalle: 'Inventario asignado al laboratorio', ruta: '/admin/inventario' },
+    { icono: '🔄', titulo: 'Préstamos', detalle: 'Entregas y devoluciones', ruta: '/admin/prestamos' },
+    { icono: '⚠️', titulo: 'Incidentes y mantenimiento', detalle: 'Reportes y seguimiento', ruta: '/admin/mantenimiento' },
+  ];
+
+  return (
+    <>
+      <section className="rounded-2xl border p-5" style={{ background: isDay ? '#f0fdf9' : 'rgba(6,78,59,0.18)', borderColor: isDay ? '#a7f3d0' : 'rgba(16,185,129,0.25)' }}>
+        <p className={`text-xs font-bold uppercase tracking-wider ${isDay ? 'text-emerald-800' : 'text-emerald-300'}`}>Panel operativo · {nombreCategoria}</p>
+        <h2 className={`mt-2 text-lg font-semibold ${isDay ? 'text-slate-900' : 'text-slate-100'}`}>Gestión del laboratorio asignado</h2>
+        <p className={`mt-1 max-w-3xl text-sm ${isDay ? 'text-slate-600' : 'text-slate-300'}`}>
+          Consulta las reservaciones, prepara prácticas, controla activos y atiende incidencias de este laboratorio.
+        </p>
+      </section>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiOperacion label="Activos registrados" valor={stats?.activos_inventario ?? 0} detalle="Equipo y materiales en inventario" icono="🧰" onClick={() => navigate('/admin/inventario')} />
+        <KpiOperacion label="Préstamos activos" valor={stats?.prestamos?.activos ?? 0} detalle={stats?.prestamos?.vencidos ? `${stats.prestamos.vencidos} vencidos` : 'Al corriente'} icono="🔄" onClick={() => navigate('/admin/prestamos')} />
+        <KpiOperacion label="Incidentes abiertos" valor={stats?.incidentes_abiertos ?? 0} detalle="Requieren seguimiento" icono="⚠️" onClick={() => navigate('/admin/mantenimiento')} />
+        <KpiOperacion label="Próximas reservaciones" valor={stats?.proximas_reservaciones?.length ?? 0} detalle="Siguientes fechas programadas" icono="📌" onClick={() => navigate('/admin/reservaciones')} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <div>
+          {stats?.proximas_reservaciones?.length > 0
+            ? <WidgetProximas reservaciones={stats.proximas_reservaciones} navigate={navigate} />
+            : <div className={`rounded-2xl border p-5 ${isDay ? 'border-slate-200 bg-white' : 'border-slate-700 bg-slate-900/50'}`}>
+                <h3 className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>Próximas reservaciones</h3>
+                <p className={`mt-2 text-sm ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>No hay reservaciones próximas para mostrar.</p>
+              </div>}
+        </div>
+        <section className={`rounded-2xl border p-5 ${isDay ? 'border-slate-200 bg-white' : 'border-slate-700 bg-slate-900/50'}`}>
+          <h3 className={`font-semibold ${isDay ? 'text-slate-900' : 'text-white'}`}>Accesos de operación</h3>
+          <p className={`mt-1 text-sm ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>Herramientas para preparar y dar seguimiento a las actividades.</p>
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {accesos.map(acceso => (
+              <button key={acceso.ruta} type="button" onClick={() => navigate(acceso.ruta)}
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${isDay ? 'border-slate-200 hover:border-emerald-400 hover:bg-emerald-50' : 'border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800'}`}>
+                <span aria-hidden="true">{acceso.icono}</span>
+                <span className="min-w-0">
+                  <span className={`block text-sm font-semibold ${isDay ? 'text-slate-800' : 'text-slate-100'}`}>{acceso.titulo}</span>
+                  <span className={`mt-0.5 block text-xs ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>{acceso.detalle}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
 function TarjetaSesion({ sesion, onIr }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -570,21 +647,23 @@ function WidgetEquipos({ pcs, navigate }) {
 
 // ─── Próximas reservaciones ───────────────────────────────────────────────────
 function WidgetProximas({ reservaciones, navigate }) {
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
   if (!reservaciones?.length) return null;
   const hoy = todayISOInMexico();
   return (
     <div style={{
-      background:'rgba(30,41,59,0.55)',
+      background: isDay ? '#fff' : 'rgba(30,41,59,0.55)',
       backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-      border:'1px solid rgba(255,255,255,0.07)',
+      border: isDay ? '1px solid #dce5eb' : '1px solid rgba(255,255,255,0.07)',
       borderRadius:'1.25rem', overflow:'hidden',
     }}>
-      <div style={{ padding:'0.875rem 1.25rem', borderBottom:'1px solid rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div style={{ padding:'0.875rem 1.25rem', borderBottom: isDay ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <span>📅</span>
-          <p className="text-sm font-semibold text-white" style={{margin:0}}>Próximas reservaciones</p>
+          <p className="text-sm font-semibold" style={{margin:0, color: isDay ? '#0f172a' : '#fff'}}>Próximas reservaciones</p>
         </div>
-        <button onClick={() => navigate('/admin/reservaciones')} className="text-xs transition-colors" style={{background:'none',border:'none',cursor:'pointer',color:'#10b981',fontWeight:600}}>Ver todas →</button>
+        <button onClick={() => navigate('/admin/reservaciones')} className="text-xs transition-colors" style={{background:'none',border:'none',cursor:'pointer',color: isDay ? '#047857' : '#10b981',fontWeight:600}}>Ver todas →</button>
       </div>
       <div>
         {reservaciones.map(r => {
@@ -594,22 +673,22 @@ function WidgetProximas({ reservaciones, navigate }) {
           return (
             <div key={r.id} style={{
               padding:'0.75rem 1.25rem', display:'flex', alignItems:'center', gap:12,
-              background: esHoy ? 'rgba(59,130,246,0.06)' : 'transparent',
-              borderBottom:'1px solid rgba(255,255,255,0.03)',
+              background: esHoy ? (isDay ? '#eff6ff' : 'rgba(59,130,246,0.06)') : 'transparent',
+              borderBottom: isDay ? '1px solid #f1f5f9' : '1px solid rgba(255,255,255,0.03)',
             }}>
               <div style={{
                 width:40, height:40, borderRadius:10, flexShrink:0,
-                background: esHoy ? '#1d4ed8' : 'rgba(255,255,255,0.06)',
+                background: esHoy ? '#1d4ed8' : (isDay ? '#f1f5f9' : 'rgba(255,255,255,0.06)'),
                 display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
               }}>
-                <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{fmtF.split(' ')[0]}</span>
+                <span style={{ fontSize:11, fontWeight:700, color: esHoy || !isDay ? '#fff' : '#334155' }}>{fmtF.split(' ')[0]}</span>
                 {!esHoy && <span style={{ fontSize:10, color:'#64748b' }}>{fmtF.split(' ')[1]}</span>}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-white truncate" style={{margin:0}}>{r.materia}</p>
-                <p className="text-xs truncate" style={{margin:0, color:'#94a3b8'}}>{toTitleCase(r.docente)} · {r.hora_ini}–{r.hora_fin}</p>
+                <p className="text-sm font-medium truncate" style={{margin:0, color: isDay ? '#0f172a' : '#fff'}}>{r.materia}</p>
+                <p className="text-xs truncate" style={{margin:0, color: isDay ? '#64748b' : '#94a3b8'}}>{toTitleCase(r.docente)} · {r.hora_ini}–{r.hora_fin}</p>
               </div>
-              {r.grupo && <span style={{ fontSize:11, background:'rgba(255,255,255,0.06)', color:'#94a3b8', padding:'2px 8px', borderRadius:20, flexShrink:0 }}>{r.grupo}</span>}
+              {r.grupo && <span style={{ fontSize:11, background: isDay ? '#f1f5f9' : 'rgba(255,255,255,0.06)', color: isDay ? '#475569' : '#94a3b8', padding:'2px 8px', borderRadius:20, flexShrink:0 }}>{r.grupo}</span>}
             </div>
           );
         })}
@@ -773,8 +852,11 @@ export default function DashboardAdmin() {
   const [stats, setStats]       = useState(null);
   const [sesiones, setSesiones] = useState([]);
   const [labId, setLabId]       = useState('');
+  const [categoriaLaboratorio, setCategoriaLaboratorio] = useState('');
   const [cargando, setCargando] = useState(true);
   const timerRef = useRef(null);
+  const idLaboratorioContexto = usuario?.laboratorio_id || labId;
+  const esPanelComputo = !idLaboratorioContexto || categoriaLaboratorio === 'COMPUTO';
 
   const cargarStats = useCallback(async (lid) => {
     try {
@@ -793,12 +875,28 @@ export default function DashboardAdmin() {
   }, []);
 
   useEffect(() => {
+    if (!idLaboratorioContexto) {
+      setCategoriaLaboratorio('');
+      return undefined;
+    }
+    let vigente = true;
+    api.get(`/laboratorios/${idLaboratorioContexto}`)
+      .then(({ data }) => { if (vigente) setCategoriaLaboratorio((data?.categoria || '').toUpperCase()); })
+      .catch(() => { if (vigente) setCategoriaLaboratorio(''); });
+    return () => { vigente = false; };
+  }, [idLaboratorioContexto]);
+
+  useEffect(() => {
     cargarStats(labId);
-    cargarSesiones();
+    if (esPanelComputo) cargarSesiones();
+    else { setSesiones([]); setCargando(false); }
     clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => { cargarStats(labId); cargarSesiones(); }, 30000);
+    timerRef.current = setInterval(() => {
+      cargarStats(labId);
+      if (esPanelComputo) cargarSesiones();
+    }, 30000);
     return () => clearInterval(timerRef.current);
-  }, [labId, cargarStats, cargarSesiones]);
+  }, [labId, cargarStats, cargarSesiones, esPanelComputo]);
 
   const irASesion = (s) => {
     if (usuario?.rol === 'DOCENTE') navigate(`/docente/sesion/${s.id}`);
@@ -826,7 +924,7 @@ export default function DashboardAdmin() {
             <h1 className="text-xl md:text-2xl font-bold break-words" style={{margin:0, color: 'var(--main-text)'}}>{saludo} Bienvenido, {usuario?.nombre?.replace(/\b(Mtro|Mtra|Dr|Dra|Ing|Lic)\.\s*/gi, '$1. ')}</h1>
             <p className="text-sm text-slate-400" style={{margin:'4px 0 0'}}>{fechaStr}</p>
           </div>
-          {stats?.labs?.length > 1 && (
+          {usuario?.rol === 'SUPER_ADMIN' && stats?.labs?.length > 1 && (
             <div className="lab-filter">
               <p className="block text-sm font-medium mb-1" style={{color: 'var(--main-text)'}}>Laboratorio</p>
               <SelectDark value={labId} onChange={v => setLabId(Number(v))} className="w-full"
@@ -835,6 +933,7 @@ export default function DashboardAdmin() {
           )}
         </div>
 
+        {esPanelComputo ? <>
         {/* KPIs principales — fila de 6 tarjetas compactas */}
         <KpiRow stats={stats} sesiones={sesiones} navigate={navigate} />
 
@@ -883,6 +982,7 @@ export default function DashboardAdmin() {
             ))}
           </div>
         </div>
+        </> : <DashboardLaboratorioNoComputo categoria={categoriaLaboratorio} stats={stats} navigate={navigate} />}
 
         <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-slate-700" style={{margin:0}}>SIGA UTECAN v1.0 — Universidad Tecnológica de Candelaria</p>

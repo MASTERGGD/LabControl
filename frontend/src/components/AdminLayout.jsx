@@ -569,6 +569,13 @@ function getRolBadgeClass(rol, isDay) {
   return ROL_BADGE[rol] || 'bg-slate-700 text-slate-300';
 }
 
+function getRolLabel(rol) {
+  if (rol === 'LAB_ADMIN') return 'Administrador de laboratorio';
+  if (rol === 'RESPONSABLE_LAB') return 'Responsable de inventario';
+  if (rol === 'DOCENTE') return 'Docente';
+  return (rol || '').replaceAll('_', ' ');
+}
+
 
 // Breadcrumb
 const BREADCRUMB_MAP = {
@@ -1270,7 +1277,7 @@ export default function AdminLayout({ children }) {
               <label className="hidden xl:flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
                 <span className="hidden text-[10px] font-bold uppercase tracking-wide text-slate-500 xl:block">Modo</span>
                 <select value={usuario.rol} disabled={cambiandoFuncion} onChange={e => handleCambiarFuncion(e.target.value)} className="bg-transparent text-xs font-semibold outline-none" style={{color:'var(--main-text)'}} aria-label="Función activa">
-                  {usuario.roles_disponibles.map(rol => <option key={rol} value={rol}>{rol === 'DOCENTE' ? 'Docente' : rol === 'LAB_ADMIN' ? 'Responsable de laboratorio' : rol.replaceAll('_', ' ')}</option>)}
+                  {usuario.roles_disponibles.map(rol => <option key={rol} value={rol}>{getRolLabel(rol)}</option>)}
                 </select>
               </label>
             )}
@@ -1280,7 +1287,7 @@ export default function AdminLayout({ children }) {
               <span className="text-sm font-medium" style={{color:'var(--user-name-color)'}}>{usuario?.nombre}</span>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${getRolBadgeClass(usuario?.rol, isDay)}`}
                 style={getRolBadgeStyle(usuario?.rol, isDay) || {}}>
-                {usuario?.rol}
+                {getRolLabel(usuario?.rol)}
               </span>
             </div>
 

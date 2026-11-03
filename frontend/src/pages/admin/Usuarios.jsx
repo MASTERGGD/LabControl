@@ -20,8 +20,8 @@ const ROL_COLOR = {
 
 const ROL_LABEL = {
   SUPER_ADMIN:         'Super Admin',
-  LAB_ADMIN:           'Admin Lab',
-  RESPONSABLE_LAB:     'Responsable Lab',
+  LAB_ADMIN:           'Administrador de laboratorio',
+  RESPONSABLE_LAB:     'Responsable de inventario',
   ADMINISTRATIVO:      'Administrativo',
   TUTORIA_ADMIN:       'Tutoría',
   SERVICIOS_ESCOLARES: 'Escolares (obsoleto)',
@@ -139,7 +139,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                     laboratorio_id: ['LAB_ADMIN', 'RESPONSABLE_LAB'].includes(v) || form.roles_adicionales.includes('LAB_ADMIN') ? form.laboratorio_id : '',
                     departamento_id: v === 'ADMINISTRATIVO' ? form.departamento_id : '',
                   })}
-                  options={ROLES.map(r => ({ value: r, label: r }))}
+                  options={ROLES.map(r => ({ value: r, label: ROL_LABEL[r] || r.replaceAll('_', ' ') }))}
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   Servicios Escolares se habilita con ADMINISTRATIVO + departamento + permiso.
@@ -179,7 +179,7 @@ function ModalUsuario({ usuario, labs, departamentos = [], onClose, onSave }) {
                 {form.rol !== 'LAB_ADMIN' && (
                   <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 p-3 text-sm text-slate-300">
                     <input type="checkbox" checked={form.roles_adicionales.includes('LAB_ADMIN')} onChange={e => setForm(actual => ({ ...actual, roles_adicionales: e.target.checked ? [...actual.roles_adicionales, 'LAB_ADMIN'] : actual.roles_adicionales.filter(rol => rol !== 'LAB_ADMIN') }))} className="h-4 w-4 accent-violet-600" />
-                    También es responsable de laboratorio
+                    También puede administrar la operación del laboratorio
                   </label>
                 )}
               </div>
@@ -422,7 +422,7 @@ function ModalExcel({ onClose, onSave }) {
                   </table>
                 </div>
                 <p className="text-slate-500 text-xs">
-                  Roles validos: SUPER_ADMIN, LAB_ADMIN, RESPONSABLE_LAB, ADMINISTRATIVO, TUTORIA_ADMIN, DOCENTE. Servicios Escolares se activa con ADMINISTRATIVO + departamento + permiso.
+                  Administrador de laboratorio gestiona la operación del espacio. Responsable de inventario gestiona activos y préstamos. Servicios Escolares se habilita con Administrativo + departamento + permiso.
                 </p>
               </div>
 
