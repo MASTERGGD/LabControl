@@ -790,6 +790,7 @@ def disponibilidad(
         reservas_puntuales = db.query(Reservacion).filter(
             Reservacion.horario_id == h.id,
             Reservacion.fecha_actividad.isnot(None),
+            Reservacion.fecha_actividad >= ahora_mx.date(),
             Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
         ).order_by(Reservacion.fecha_actividad).all()
 

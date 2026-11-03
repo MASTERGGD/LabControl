@@ -20,6 +20,14 @@ const formatearFechaReserva = fecha => {
   const [anio, mes, dia] = fecha.split('-').map(Number);
   return new Date(anio, mes - 1, dia).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
 };
+const detalleReservasPuntuales = reservas => (reservas || [])
+  .map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia || 'sesión reservada'}`)
+  .join('; ');
+const resumenFechasPuntuales = reservas => {
+  const fechas = [...new Set((reservas || []).map(r => formatearFechaReserva(r.fecha_actividad)))];
+  if (!fechas.length) return '';
+  return fechas.length > 2 ? `${fechas.slice(0, 2).join(', ')} (+${fechas.length - 2})` : fechas.join(', ');
+};
 const DIAS_ESPACIOS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const HORAS_ESPACIOS = ['07', '08', '09', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21'];
 const TIPO_ESPACIO_DESC = {
@@ -361,6 +369,13 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
   }, [slot, slots]);
 
   const opcionSeleccionada = opcionesDuracion[Math.min(periodosSeleccionados - 1, opcionesDuracion.length - 1)];
+  const reservasPuntualesBloque = useMemo(() => {
+    const vistas = opcionSeleccionada.slots.flatMap(periodo => periodo.reservaciones_puntuales || []);
+    return [...new Map(vistas.map(r => [r.id, r])).values()];
+  }, [opcionSeleccionada]);
+  const fechaPuntualEnConflicto = (esInstitucional || soloUnaFecha) && Boolean(form.fecha_actividad)
+    && reservasPuntualesBloque.some(r => r.fecha_actividad === form.fecha_actividad);
+  const faltaElegirFechaUnica = reservasPuntualesBloque.length > 0 && !soloUnaFecha && !esInstitucional;
 
   const seleccionarMateria = (m) => {
     setMateriaQuery(m.label || m.nombre || '');
@@ -414,6 +429,7 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
     if (!esInstitucional && !form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
     if (esInstitucional && !form.fecha_actividad) { setError('Selecciona la fecha específica de la actividad.'); return; }
     if (!esInstitucional && soloUnaFecha && !form.fecha_actividad) { setError('Selecciona la fecha de la sesión.'); return; }
+    if (fechaPuntualEnConflicto) { setError('Ya hay una sesión reservada en esa fecha. Elige otra fecha para continuar.'); return; }
     setSaving(true); setError('');
     const reqItems = esPracticas
       ? [
@@ -499,10 +515,17 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
               <option value="CLASE">Clase ordinaria</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
             </select>
           </div>
-          {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span></label>}
+          {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span>{reservasPuntualesBloque.length > 0 && <span className="mt-1 block text-xs" style={{ color: isDay ? '#92400e' : '#fde68a' }}>Este bloque ya tiene sesión(es) el {resumenFechasPuntuales(reservasPuntualesBloque)}; elige otra fecha.</span>}{fechaPuntualEnConflicto && <span className="mt-1 block text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>La fecha seleccionada ya está apartada.</span>}</label>}
           {!esInstitucional && <div className="rounded-xl border p-3" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
             <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setForm(f => ({ ...f, fecha_actividad: '' })); }} className="mt-1"/><span><b>Reservar para una sola fecha</b><span className="mt-0.5 block text-xs opacity-75">El horario se aparta únicamente en la fecha indicada; no se repite cada semana durante el cuatrimestre.</span></span></label>
-            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la sesión *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
+            {reservasPuntualesBloque.length > 0 && <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ background: isDay ? '#fffbeb' : 'rgba(120,53,15,.22)', borderColor: isDay ? '#fcd34d' : 'rgba(245,158,11,.4)', color: isDay ? '#92400e' : '#fde68a' }}>
+              {soloUnaFecha
+                ? <>Este bloque ya tiene sesión(es) el <b>{resumenFechasPuntuales(reservasPuntualesBloque)}</b>. Puedes reservar otra fecha; la fecha elegida debe ser distinta.</>
+                : <>Este bloque está apartado el <b>{resumenFechasPuntuales(reservasPuntualesBloque)}</b> para {reservasPuntualesBloque[0]?.materia || 'otra sesión'}. Para evitar traslapes, la nueva solicitud debe ser para una sola fecha. Marca la casilla y elige otra fecha.</>}
+              <span className="mt-1 block opacity-80">{detalleReservasPuntuales(reservasPuntualesBloque)}</span>
+            </div>}
+            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la sesión *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
+            {fechaPuntualEnConflicto && <p className="mt-2 text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>Esa fecha ya está apartada. Selecciona otra fecha.</p>}
           </div>}
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Hora de fin y duración</label>
@@ -737,9 +760,9 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
                 color: isDay ? '#334155' : '#e5e7eb',
                 border: `1px solid ${isDay ? '#e2e8f0' : 'transparent'}`,
               }}>Cancelar</button>
-            <button type="submit" disabled={saving}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-70 text-white rounded-lg py-2 text-sm font-semibold">
-              {saving ? 'Reservando…' : '✓ Reservar'}
+            <button type="submit" disabled={saving || faltaElegirFechaUnica || fechaPuntualEnConflicto}
+              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg py-2 text-sm font-semibold">
+              {saving ? 'Reservando…' : faltaElegirFechaUnica ? 'Elige una fecha única' : fechaPuntualEnConflicto ? 'Fecha ya reservada' : '✓ Reservar'}
             </button>
           </div>
         </form>
@@ -1498,8 +1521,8 @@ function GridSemanal({ slots, onSlotClick }) {
             </>
           ) : slot.estado_vista === 'LIBRE' ? (
             <>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>+ Disponible</span>
-              {!!slot.reservaciones_puntuales?.length && <span style={{ display: 'block', fontSize: '9px', marginTop: '3px', color: materiaColor, fontWeight: 700 }} title={`Sesión única: ${slot.reservaciones_puntuales.map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia}`).join('; ')}`}>🗓 Sesión única · {formatearFechaReserva(slot.reservaciones_puntuales[0].fecha_actividad)}{slot.reservaciones_puntuales.length > 1 ? ` (+${slot.reservaciones_puntuales.length - 1})` : ''}</span>}
+              <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>{slot.reservaciones_puntuales?.length ? '+ Disponible en otras fechas' : '+ Disponible'}</span>
+              {!!slot.reservaciones_puntuales?.length && <span style={{ display: 'block', fontSize: '9px', marginTop: '3px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}</span>}
             </>
           ) : slot.estado_vista === 'BLOQUEADO' ? (
             <>
@@ -1743,7 +1766,7 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                   )}
                   {slot.estado_vista === 'LIBRE' && (
                     <span style={{ fontSize: '11px', ...badge.reserve, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
-                      + Reservar
+                      {slot.reservaciones_puntuales?.length ? '+ Otra fecha' : '+ Reservar'}
                     </span>
                   )}
                   {slot.estado_vista === 'OCUPADO' && (
@@ -1796,8 +1819,8 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
               {slot.reservacion && <p style={{ margin: '4px 0 0', fontSize: '11px', color: c.meta, fontWeight: 700 }}>
                 ↻ Recurrente · cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
               </p>}
-              {!!slot.reservaciones_puntuales?.length && <p style={{ margin: '4px 0 0', fontSize: '11px', color: c.meta, fontWeight: 700 }} title={`Sesión única: ${slot.reservaciones_puntuales.map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia}`).join('; ')}`}>
-                🗓 Sesión única · {formatearFechaReserva(slot.reservaciones_puntuales[0].fecha_actividad)}{slot.reservaciones_puntuales.length > 1 ? ` (+${slot.reservaciones_puntuales.length - 1})` : ''}
+              {!!slot.reservaciones_puntuales?.length && <p style={{ margin: '4px 0 0', fontSize: '11px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>
+                🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}
               </p>}
 
               {/* Grupo ya se muestra como badge junto al nombre de materia */}
