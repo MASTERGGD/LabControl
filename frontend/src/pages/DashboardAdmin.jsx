@@ -237,7 +237,7 @@ function DashboardLaboratorioNoComputo({ categoria, stats, navigate }) {
           <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {accesos.map(acceso => (
               <button key={acceso.ruta} type="button" onClick={() => navigate(acceso.ruta)}
-                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${isDay ? 'border-slate-200 hover:border-emerald-400 hover:bg-emerald-50' : 'border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800'}`}>
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${isDay ? 'border-slate-200 hover:border-emerald-400 hover:bg-[#ecfdf5]' : 'border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800'}`}>
                 <span aria-hidden="true">{acceso.icono}</span>
                 <span className="min-w-0">
                   <span className={`block text-sm font-semibold ${isDay ? 'text-slate-800' : 'text-slate-100'}`}>{acceso.titulo}</span>
