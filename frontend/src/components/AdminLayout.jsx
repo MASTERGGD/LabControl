@@ -1119,7 +1119,10 @@ export default function AdminLayout({ children }) {
     );
     const visible = porRol || porPermiso || porConsultorio;
     return visible && (!item.requiereResponsableEspacios || puedeGestionarEspacios);
-  });
+  }).map(item => item.path === '/lab' ? {
+    ...item,
+    label: usuario?.rol === 'SUPER_ADMIN' ? 'Administración de laboratorios' : 'Panel de mi laboratorio',
+  } : item);
 
   return (
     <div className="siga-layout h-screen overflow-hidden flex" style={{background:'var(--layout-bg)'}}>
