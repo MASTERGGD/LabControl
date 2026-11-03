@@ -159,6 +159,8 @@ def _serializar_horario(h: HorarioDisponible, db: Session, fecha_actividad: Opti
             "id":             reservacion_activa.id,
             "materia":        reservacion_activa.materia,
             "grupo":          reservacion_activa.grupo,
+            "fecha_actividad": reservacion_activa.fecha_actividad.isoformat() if reservacion_activa.fecha_actividad else None,
+            "tipo_actividad":  reservacion_activa.tipo_actividad or "CLASE",
             "docente_id":     reservacion_activa.docente_id,
             "docente_nombre": docente.nombre if docente else "—",
             "estado":         reservacion_activa.estado,

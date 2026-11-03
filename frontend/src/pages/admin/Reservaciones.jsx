@@ -12,6 +12,11 @@ import { useTheme } from '../../context/ThemeContext';
 
 const DIAS_LABEL = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const DIAS_CORTO = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+const formatearFechaReserva = fecha => {
+  if (!fecha) return '';
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+  return new Date(anio, mes - 1, dia).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
+};
 
 const ESTADOS_CUMPLIMIENTO = [
   { value: 'IMPARTIDA', label: 'Impartida' },
@@ -411,7 +416,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!materiaInfo) { setError('Selecciona una materia del catálogo académico.'); return; }
-    if (soloUnaFecha && !fechaActividad) { setError('Selecciona la fecha de la práctica.'); return; }
+    if (soloUnaFecha && !fechaActividad) { setError('Selecciona la fecha de la sesión.'); return; }
     setSaving(true); setError('');
     const reqItems = esPracticas
       ? [
@@ -462,8 +467,8 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
         </div>
         <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
           <div className="rounded-xl border border-slate-700 p-3">
-            <label className="flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setFechaActividad(''); }} className="mt-1"/><span><b>Reservar para una sola práctica</b><span className="mt-0.5 block text-xs text-slate-500">En esa fecha, sin reservar todas las semanas del cuatrimestre.</span></span></label>
-            {soloUnaFecha && <label className="mt-3 block text-sm text-slate-300">Fecha de la práctica *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaActividad} onChange={e => setFechaActividad(e.target.value)} className="input-dark mt-1 w-full"/></label>}
+            <label className="flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setFechaActividad(''); }} className="mt-1"/><span><b>Reservar para una sola fecha</b><span className="mt-0.5 block text-xs text-slate-500">El horario se aparta solo para la fecha indicada; no se repite cada semana del cuatrimestre.</span></span></label>
+            {soloUnaFecha && <label className="mt-3 block text-sm text-slate-300">Fecha de la sesión *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaActividad} onChange={e => setFechaActividad(e.target.value)} className="input-dark mt-1 w-full"/></label>}
           </div>
           {/* Materia */}
           <div>
@@ -696,6 +701,7 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
             <p><span className="text-slate-400">Tipo:</span> <span className="font-semibold text-white ml-2">{(r.tipo_actividad || 'CLASE').replaceAll('_', ' ')}</span></p>
             <p><span className="text-slate-400">Docente:</span> <span className="font-semibold text-white ml-2">{r.docente_nombre || '—'}</span></p>
             <p><span className="text-slate-400">Laboratorio:</span> <span className="text-slate-200 ml-2">{r.laboratorio_nombre || '—'}</span></p>
+            <p><span className="text-slate-400">Frecuencia:</span> <span className="font-medium text-slate-200 ml-2">{r.fecha_actividad ? `Sesión única · ${formatearFechaReserva(r.fecha_actividad)}` : `Recurrente · cada ${DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}`}</span></p>
             {r.fecha_actividad && <p><span className="text-slate-400">Fecha:</span> <span className="text-slate-200 ml-2">{r.fecha_actividad}</span></p>}
             <p><span className="text-slate-400">Materia:</span> <span className="font-semibold text-white ml-2">{r.materia}</span></p>
             {(r.carrera || r.cuatrimestre_materia) && (
@@ -1187,6 +1193,10 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
               )}
             </div>
 
+            {slot.reservacion && <span className={`mt-0.5 w-fit rounded px-1.5 py-0.5 text-[9px] font-bold ${isDay ? 'bg-blue-100 text-blue-800' : 'bg-blue-950 text-blue-200'}`}>
+              ↻ Recurrente · cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
+            </span>}
+
             {/* Docente en formato título */}
             {slot.estado_vista !== 'MIO' && nombreDoc && (
               <p className={`text-[10px] truncate leading-tight ${isDay ? 'text-slate-500' : ''}`}
@@ -1204,7 +1214,7 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
                 {slot.solicitudes_n}↑
               </span>
             )}
-            {!!slot.reservaciones_puntuales?.length && <span className="absolute bottom-1 left-1 rounded bg-teal-700 px-1.5 py-0.5 text-[9px] font-bold text-white" title="Reservas de una sola fecha">📅 {slot.reservaciones_puntuales.length} puntual{slot.reservaciones_puntuales.length === 1 ? '' : 'es'}</span>}
+            {!!slot.reservaciones_puntuales?.length && <span className={`absolute bottom-1 left-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${isDay ? 'bg-teal-100 text-teal-900' : 'bg-teal-800 text-white'}`} title={`Sesión única: ${slot.reservaciones_puntuales.map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia}`).join('; ')}`}>🗓 Única · {formatearFechaReserva(slot.reservaciones_puntuales[0].fecha_actividad)}{slot.reservaciones_puntuales.length > 1 ? ` (+${slot.reservaciones_puntuales.length - 1})` : ''}</span>}
             {slot.reservacion?.requerimiento && (
               <span className="absolute bottom-1 right-1 rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white" title="Esta reservación tiene requerimientos de clase">📋 Req.</span>
             )}
@@ -1396,6 +1406,12 @@ function GridMobileAdmin({ slots, onSlotClick, isDay = false }) {
                     {slot.solicitudes_n} solicitud(es) esperando revision.
                   </p>
                 )}
+                {slot.reservacion && <p className="mt-3 text-xs font-semibold" style={{ color: isDay ? '#1D4ED8' : '#BFDBFE' }}>
+                  ↻ Recurrente · cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
+                </p>}
+                {!!slot.reservaciones_puntuales?.length && <p className="mt-3 text-xs font-semibold" style={{ color: isDay ? '#0F766E' : '#99F6E4' }} title={`Sesión única: ${slot.reservaciones_puntuales.map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia}`).join('; ')}`}>
+                  🗓 Sesión única · {formatearFechaReserva(slot.reservaciones_puntuales[0].fecha_actividad)}{slot.reservaciones_puntuales.length > 1 ? ` (+${slot.reservaciones_puntuales.length - 1})` : ''}
+                </p>}
                 {slot.reservacion?.requerimiento && (
                   <p className="mt-3 text-xs font-semibold text-violet-500">📋 Esta reservación tiene requerimientos de clase.</p>
                 )}
@@ -1427,6 +1443,8 @@ function Leyenda({ esDocente }) {
           <span className="text-xs text-slate-300">{item.label}</span>
         </div>
       ))}
+      <span className="rounded-full bg-blue-950 px-2 py-1 text-[11px] font-semibold text-blue-200">↻ Recurrente = semanal</span>
+      <span className="rounded-full bg-teal-900 px-2 py-1 text-[11px] font-semibold text-teal-100">🗓 Sesión única = fecha indicada</span>
     </div>
   );
 }
