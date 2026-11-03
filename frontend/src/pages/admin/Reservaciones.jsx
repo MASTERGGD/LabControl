@@ -679,16 +679,16 @@ function ModalMiReservacion({ slot, onClose, onCancelada, onGuardado, esAdmin })
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
-        <div className="flex shrink-0 items-center justify-between px-5 py-4" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+      <div className="glass flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
+        <div className="flex shrink-0 items-center justify-between px-5 py-4 sm:px-7" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h2 className="font-semibold text-white">{esAdmin ? 'Detalle de la reservación' : 'Mi reservación'}</h2>
             <p className="text-sm text-slate-400">{DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none transition-colors">×</button>
         </div>
-        <div className="space-y-3 overflow-y-auto p-5">
+        <div className="space-y-4 overflow-y-auto p-4 sm:space-y-5 sm:p-7">
           <div className="glass-sm rounded-xl p-4 space-y-2 text-sm" style={{ border:'1px solid rgba(59,130,246,0.2)' }}>
             <p><span className="text-slate-400">Tipo:</span> <span className="font-semibold text-white ml-2">{(r.tipo_actividad || 'CLASE').replaceAll('_', ' ')}</span></p>
             <p><span className="text-slate-400">Docente:</span> <span className="font-semibold text-white ml-2">{r.docente_nombre || '—'}</span></p>
