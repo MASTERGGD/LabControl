@@ -938,6 +938,7 @@ def listar_reservaciones(
 @router.post("/reservaciones", status_code=status.HTTP_201_CREATED, summary="Crear reservación")
 def crear_reservacion(
     data: ReservacionCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
@@ -1106,6 +1107,7 @@ def crear_reservacion(
                 f"{docente.nombre if docente else 'Docente'} solicitó para su clase "
                 f"'{data.materia}': {desc_req}."
                 + (' El docente tiene el instalador.' if req_tiene_instalador else ''),
+                background_tasks=background_tasks,
             )
         # Notificar también al SUPER_ADMIN
         super_admins = db.query(Usuario).filter(
@@ -1116,6 +1118,7 @@ def crear_reservacion(
                 "requerimiento",
                 f"📋 Requerimiento de clase — {lab.nombre if lab else ''}",
                 f"{docente.nombre if docente else 'Docente'} solicitó: {desc_req}{urgencia_txt}",
+                background_tasks=background_tasks,
             )
 
     db.commit()
