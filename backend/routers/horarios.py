@@ -1270,6 +1270,8 @@ def cancelar_reservacion(
         SolicitudConflicto.reservacion_id == r.id,
         SolicitudConflicto.estado == "PENDIENTE"
     ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada; solicitudes pendientes cerradas"})
+    # Persistir la cancelación antes de la bitácora, que es de mejor esfuerzo.
+    db.commit()
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
     registrar(
         db,
@@ -1289,7 +1291,6 @@ def cancelar_reservacion(
             "motivo": motivo or "Cancelada por el solicitante",
         },
     )
-    db.commit()
     return {"mensaje": "Reservación cancelada"}
 
 
