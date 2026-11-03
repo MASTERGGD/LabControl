@@ -48,6 +48,7 @@ from ws.mapa import manager
 from services.tutoria_sesiones import sesion_de_bloque
 from services.tutoria_sync import grupo_tutoria_para_academico
 from services.calendario_academico import estado_fecha_academica
+from services.requerimientos import cancelar_requerimientos_pendientes
 
 
 router = APIRouter(prefix="/docencia", tags=["Módulo docente"])
@@ -506,13 +507,14 @@ def _estado_laboratorio(db: Session, data: CargaInput, current_user: Usuario, ca
     return respuesta
 
 
-def _cancelar_reservas_carga(db: Session, carga_id: int):
+def _cancelar_reservas_carga(db: Session, carga_id: int, usuario_id: int | None = None):
     reservas = db.query(Reservacion).filter(
         Reservacion.carga_docente_id == carga_id,
         Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA"]),
     ).all()
     for reserva in reservas:
         reserva.estado = "CANCELADA"
+        cancelar_requerimientos_pendientes(db, reserva.id, usuario_id)
 
 
 def _traslapa(inicio_a, fin_a, inicio_b, fin_b):
@@ -1144,7 +1146,7 @@ def actualizar_carga(
         for campo in ("laboratorio_id", "dia_semana", "hora_inicio", "hora_fin", "periodo_id")
     )
     if cambia_laboratorio:
-        _cancelar_reservas_carga(db, carga.id)
+        _cancelar_reservas_carga(db, carga.id, current_user.id)
     if tiene_historial:
         # Una carga ya utilizada es parte del acta histórica de sus clases. Crear
         # una nueva versión evita que un cambio de día u hora convierta una clase
@@ -1205,7 +1207,7 @@ def eliminar_carga(
     if not carga:
         raise HTTPException(404, "Actividad no encontrada")
     _validar_carga_actual(db, carga)
-    _cancelar_reservas_carga(db, carga.id)
+    _cancelar_reservas_carga(db, carga.id, current_user.id)
     carga.activo = False
     db.commit()
     return {"mensaje": "Actividad retirada del horario"}

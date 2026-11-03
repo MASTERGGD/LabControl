@@ -48,6 +48,7 @@ const REQ_ESTADO_STYLE = {
   RECHAZADO:      { bg:'rgba(239,68,68,0.10)',   border:'rgba(239,68,68,0.30)',   text:'#fca5a5', label:'❌ Rechazado' },
   DOCENTE_PROVEE: { bg:'rgba(99,102,241,0.12)',  border:'rgba(99,102,241,0.35)',  text:'#c4b5fd', label:'💾 Docente provee' },
   RESUELTO_PARCIAL:{ bg:'rgba(14,165,233,0.10)', border:'rgba(14,165,233,0.30)', text:'#38bdf8', label:'✓ Atendido por recurso' },
+  CANCELADO_RESERVACION:{ bg:'rgba(100,116,139,0.12)', border:'rgba(100,116,139,0.35)', text:'#94a3b8', label:'Cancelado: reservación cancelada' },
 };
 const REQ_ESTADO_CLASS = {
   PENDIENTE: 'text-amber-700 dark:text-amber-300',
@@ -55,6 +56,7 @@ const REQ_ESTADO_CLASS = {
   RECHAZADO: 'text-red-700 dark:text-red-300',
   DOCENTE_PROVEE: 'text-indigo-700 dark:text-indigo-300',
   RESUELTO_PARCIAL: 'text-sky-700 dark:text-sky-300',
+  CANCELADO_RESERVACION: 'text-slate-600 dark:text-slate-400',
 };
 
 const REQ_ESTADO_TEXT_DAY = {
@@ -63,6 +65,7 @@ const REQ_ESTADO_TEXT_DAY = {
   RECHAZADO: '#991b1b',
   DOCENTE_PROVEE: '#3730a3',
   RESUELTO_PARCIAL: '#075985',
+  CANCELADO_RESERVACION: '#475569',
 };
 
 function RequerimientoPanel({ req, esAdmin = false, onActualizado }) {

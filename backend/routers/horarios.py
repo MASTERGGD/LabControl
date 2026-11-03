@@ -16,6 +16,11 @@ from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
 from services.calendario_academico import estado_fecha_academica
 from services.timezone import as_mx, now_mx
+from services.requerimientos import (
+    ESTADO_REQUERIMIENTO_CANCELADO,
+    MOTIVO_CANCELACION_RESERVACION,
+    cancelar_requerimientos_pendientes,
+)
 from rls import assert_lab_write, lab_filter
 import datetime
 
@@ -199,6 +204,7 @@ ESTADO_REQ_LABEL = {
     "RECHAZADO":      "No se puede atender",
     "DOCENTE_PROVEE": "El docente provee el instalador",
     "RESUELTO_PARCIAL": "Atendido con resultados diferentes",
+    "CANCELADO_RESERVACION": "Cancelado: reservación cancelada",
 }
 
 def _serializar_requerimiento(req: RequerimientoClase) -> dict:
@@ -217,14 +223,29 @@ def _serializar_requerimiento(req: RequerimientoClase) -> dict:
         str(item.get("item")): item for item in items_detalle
         if isinstance(item, dict) and item.get("item")
     }
+    reservacion_cancelada = bool(req.reservacion and req.reservacion.estado == "CANCELADA")
     items_detalle = [
         {
             "item": item,
-            "estado": estados_por_item.get(item, {}).get("estado", "PENDIENTE"),
-            "nota_admin": estados_por_item.get(item, {}).get("nota_admin"),
+            "estado": (
+                ESTADO_REQUERIMIENTO_CANCELADO
+                if reservacion_cancelada and estados_por_item.get(item, {}).get("estado", "PENDIENTE") == "PENDIENTE"
+                else estados_por_item.get(item, {}).get("estado", "PENDIENTE")
+            ),
+            "nota_admin": (
+                MOTIVO_CANCELACION_RESERVACION
+                if reservacion_cancelada and estados_por_item.get(item, {}).get("estado", "PENDIENTE") == "PENDIENTE"
+                else estados_por_item.get(item, {}).get("nota_admin")
+            ),
         }
         for item in items
     ]
+    estado_req = req.estado
+    if reservacion_cancelada and (
+        estado_req in {"PENDIENTE", "RESUELTO_PARCIAL"}
+        or any(item["estado"] == ESTADO_REQUERIMIENTO_CANCELADO for item in items_detalle)
+    ):
+        estado_req = ESTADO_REQUERIMIENTO_CANCELADO
     return {
         "id":               req.id,
         "items":            items,
@@ -233,9 +254,9 @@ def _serializar_requerimiento(req: RequerimientoClase) -> dict:
         "tiene_instalador": req.tiene_instalador,
         "urgente":          req.urgente,
         "dias_anticipacion": req.dias_anticipacion,
-        "estado":           req.estado,
-        "estado_label":     ESTADO_REQ_LABEL.get(req.estado, req.estado),
-        "nota_admin":       req.nota_admin,
+        "estado":           estado_req,
+        "estado_label":     ESTADO_REQ_LABEL.get(estado_req, estado_req),
+        "nota_admin":       MOTIVO_CANCELACION_RESERVACION if estado_req == ESTADO_REQUERIMIENTO_CANCELADO else req.nota_admin,
         "creado_en":        req.creado_en.isoformat() if req.creado_en else None,
         "resuelto_en":      req.resuelto_en.isoformat() if req.resuelto_en else None,
     }
@@ -1184,6 +1205,7 @@ def cancelar_reservacion(
         practica.estado = "CANCELADA"
 
     r.estado = "CANCELADA"
+    cancelar_requerimientos_pendientes(db, r.id, current_user.id)
     # Si había solicitudes de conflicto, rechazarlas automáticamente
     db.query(SolicitudConflicto).filter(
         SolicitudConflicto.reservacion_id == r.id,
@@ -1665,6 +1687,7 @@ def bloquear_slot(
         ).first()
         if r:
             r.estado = "CANCELADA"
+            cancelar_requerimientos_pendientes(db, r.id, current_user.id)
             cancelada = r.id
 
     db.commit()
@@ -1701,7 +1724,7 @@ def listar_requerimientos_pendientes(
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
     estado = estado.strip().upper()
-    if estado not in {"PENDIENTE", "CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE", "RESUELTO_PARCIAL", "TODOS"}:
+    if estado not in {"PENDIENTE", "CONFIRMADO", "RECHAZADO", "DOCENTE_PROVEE", "RESUELTO_PARCIAL", "CANCELADO_RESERVACION", "TODOS"}:
         raise HTTPException(status_code=422, detail="Estado de requerimiento inválido")
     q = db.query(RequerimientoClase).join(Reservacion)
     if estado != "TODOS":
@@ -1786,6 +1809,8 @@ def resolver_items_requerimiento_lote(
     por_id = {req.id: req for req in requerimientos}
     if len(por_id) != len(ids):
         raise HTTPException(status_code=404, detail="Uno o más requerimientos no existen")
+    if any(not req.reservacion or req.reservacion.estado == "CANCELADA" for req in por_id.values()):
+        raise HTTPException(status_code=409, detail="Una reservación fue cancelada; sus recursos pendientes ya no se pueden atender.")
 
     indices_por_req: dict[int, set[int]] = {}
     for item in data.items:
@@ -1843,6 +1868,8 @@ def resolver_requerimiento(
     req = db.query(RequerimientoClase).filter(RequerimientoClase.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Requerimiento no encontrado")
+    if not req.reservacion or req.reservacion.estado == "CANCELADA":
+        raise HTTPException(status_code=409, detail="La reservación fue cancelada; este requerimiento ya no se puede atender.")
 
     req.estado          = data.estado
     req.nota_admin      = data.nota_admin
@@ -1896,6 +1923,8 @@ def resolver_item_requerimiento(
     req = db.query(RequerimientoClase).filter(RequerimientoClase.id == req_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Requerimiento no encontrado")
+    if not req.reservacion or req.reservacion.estado == "CANCELADA":
+        raise HTTPException(status_code=409, detail="La reservación fue cancelada; este recurso ya no se puede atender.")
     detalle = _serializar_requerimiento(req)["items_detalle"]
     if item_index < 0 or item_index >= len(detalle):
         raise HTTPException(status_code=404, detail="Recurso solicitado no encontrado")
