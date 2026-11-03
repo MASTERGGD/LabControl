@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import AsistenciaHorarioChart from './AsistenciaHorarioChart';
 
-const TABS = ['Vista general', 'Por carrera', 'Por grupo'];
+const TABS = ['Vista general', 'Por carrera', 'Por grupo', 'Por alumno'];
 const COLUMNAS = [['carrera', 'Carrera'], ['asistentes', 'Alumnos del día'], ['a_tiempo', 'A tiempo'], ['retardos', 'Retardos'], ['faltaron', 'Faltas al corte'], ['justificados', 'Justificados'], ['listas_confirmadas', 'Listas confirmadas'], ['listas_pendientes', 'Pendientes']];
 
 function EstadoGrupo({ grupo: g }) {
@@ -19,11 +19,13 @@ export default function AsistenciaHoyResumen({ datos }) {
   const [tab, setTab] = useState(0);
   const [mostrarSinActividad, setMostrarSinActividad] = useState(false);
   const [soloPendientes, setSoloPendientes] = useState(false);
+  const [busquedaAlumno, setBusquedaAlumno] = useState('');
   const [orden, setOrden] = useState({ campo: 'asistentes', asc: false });
   const r = datos.resumen;
   const gruposPendientes = datos.grupos.filter(g => g.listas_pendientes > 0).length;
   const sinActividad = datos.grupos.filter(g => g.estado === 'SIN_ACTIVIDAD').length;
   const grupos = datos.grupos.filter(g => (mostrarSinActividad || g.estado !== 'SIN_ACTIVIDAD') && (!soloPendientes || g.listas_pendientes > 0));
+  const detalleAlumno = (datos.detalle || []).filter(d => `${d.alumno} ${d.matricula} ${d.grupo} ${d.carrera} ${d.clase}`.toLocaleLowerCase('es').includes(busquedaAlumno.trim().toLocaleLowerCase('es')));
   const carreras = [...datos.carreras].sort((a, b) => {
     const comparacion = orden.campo === 'carrera' ? a.carrera.localeCompare(b.carrera, 'es') : a[orden.campo] - b[orden.campo];
     return (orden.asc ? 1 : -1) * comparacion;
@@ -94,6 +96,20 @@ export default function AsistenciaHoyResumen({ datos }) {
               <td className="px-3 py-3"><details><summary className="cursor-pointer text-xs font-semibold" aria-label={`Ver desglose de ${g.nombre}, ${g.carrera}`}>Ver detalle</summary><dl className="mt-2 min-w-[150px] space-y-1 text-xs">{[['A tiempo', 'a_tiempo'], ['Retardos', 'retardos'], ['Faltas al corte', 'faltaron'], ['Justificados', 'justificados'], ['Con registro', 'alumnos_con_registro']].map(([label, campo]) => <div key={campo} className="flex justify-between gap-3"><dt>{label}</dt><dd>{g.listas_confirmadas ? g[campo] : '—'}</dd></div>)}</dl></details></td>
             </tr>)}</tbody>
           </table>{!grupos.length && <p className="p-5 text-sm text-slate-400">No hay grupos que coincidan con estos filtros.</p>}</div>
+        </>}
+        {tab === 3 && <>
+          <label className="mb-3 block max-w-xl text-sm font-medium text-slate-300">Buscar alumno por nombre o matrícula
+            <input type="search" value={busquedaAlumno} onChange={e => setBusquedaAlumno(e.target.value)} placeholder="Ej. Ana López o 2024001" className="input-dark mt-1 w-full" autoComplete="off" />
+          </label>
+          <div className="attendance-table overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[760px] text-left text-sm">
+            <caption className="p-3 text-left text-xs text-slate-400">Alumnos en listas confirmadas hoy. Si asistió a varias clases, cada clase aparece como registro.</caption>
+            <thead className="text-slate-400"><tr>{['Alumno', 'Matrícula', 'Carrera / grupo', 'Clase', 'Hora', 'Estado'].map(t => <th key={t} className="px-3 py-3">{t}</th>)}</tr></thead>
+            <tbody className="divide-y divide-white/10 text-slate-200">{detalleAlumno.map((d, i) => <tr key={`${d.clase_id}-${d.alumno_id}-${i}`}>
+              <td className="px-3 py-3 font-semibold">{d.alumno}</td><td className="px-3 py-3">{d.matricula}</td>
+              <td className="px-3 py-3">{d.carrera}<span className="block text-xs text-slate-400">{d.grupo}</span></td>
+              <td className="px-3 py-3">{d.clase}</td><td className="px-3 py-3 tabular-nums">{d.hora_inicio}</td><td className="px-3 py-3">{{ PRESENTE: 'A tiempo', RETARDO: 'Retardo', FALTA: 'Falta', JUSTIFICADA: 'Justificada' }[d.estado] || d.estado}</td>
+            </tr>)}</tbody>
+          </table>{!detalleAlumno.length && <p className="p-5 text-sm text-slate-400">{datos.detalle?.length ? 'No hay alumnos que coincidan con la búsqueda.' : 'Aún no hay asistencias confirmadas para mostrar.'}</p>}</div>
         </>}
       </section>
     </div>

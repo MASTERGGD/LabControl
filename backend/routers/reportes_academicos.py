@@ -21,7 +21,7 @@ from reportlab.lib.units import cm
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from database import get_db
 from dependencies import get_current_user
@@ -563,6 +563,148 @@ def exportar_asistencia_diaria(periodo_id: int, fecha: Optional[datetime.date] =
     salida.seek(0)
     return StreamingResponse(salida, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                              headers={'Content-Disposition': f'attachment; filename="asistencia-{data["fecha"]}.xlsx"'})
+
+
+def _reporte_asistencia_rango(db: Session, periodo_id: int, desde: datetime.date,
+                              hasta: datetime.date, carrera: Optional[str] = None) -> dict:
+    if hasta < desde:
+        raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
+    if (hasta - desde).days > 30:
+        raise HTTPException(422, "El rango máximo del reporte es de 31 días")
+    if hasta > today_mx():
+        raise HTTPException(422, "La fecha final no puede ser posterior a hoy")
+    periodo = db.get(PeriodoEscolar, periodo_id)
+    if not periodo:
+        raise HTTPException(404, "Periodo escolar no encontrado")
+    grupos_query = db.query(GrupoAcademico).filter(
+        GrupoAcademico.periodo_id == periodo_id, GrupoAcademico.activo == True,
+    )
+    if carrera:
+        grupos_query = grupos_query.filter(GrupoAcademico.carrera == carrera)
+    grupos = grupos_query.all()
+    if carrera and not grupos:
+        raise HTTPException(422, "La carrera no pertenece al periodo seleccionado")
+    grupo_ids = [g.id for g in grupos]
+    cargas = db.query(CargaDocente).filter(
+        CargaDocente.periodo_id == periodo_id,
+        CargaDocente.grupo_academico_id.in_(grupo_ids or [-1]),
+        CargaDocente.tipo_actividad == "CLASE",
+    ).all()
+    carga_ids = [c.id for c in cargas]
+    clases = db.query(ClaseDocente).options(
+        selectinload(ClaseDocente.asistencias),
+    ).filter(
+        ClaseDocente.carga_docente_id.in_(carga_ids or [-1]),
+        ClaseDocente.fecha >= desde, ClaseDocente.fecha <= hasta,
+    ).all()
+    clase_por_carga_fecha = {(c.carga_docente_id, c.fecha): c for c in clases}
+    por_carga = {c.id: c for c in cargas}
+    por_grupo = {g.id: g for g in grupos}
+    dias = []
+    fecha = desde
+    while fecha <= hasta:
+        calendario = estado_fecha_academica(db, periodo_id, fecha)
+        clases_esperadas = set()
+        for carga in cargas:
+            clase = clase_por_carga_fecha.get((carga.id, fecha))
+            if clase and (clase.cancelada_en or clase.motivo_no_impartida or clase.estado == 'NO_IMPARTIDA'):
+                continue
+            prevista = (carga.activo and carga.estado == 'ACTIVO'
+                        and carga.dia_semana == fecha.weekday())
+            if prevista and calendario['requiere_asistencia'] and calendario['permite_iniciar_clase']:
+                clases_esperadas.add(carga.id)
+            if clase and not (clase.cancelada_en or clase.motivo_no_impartida or clase.estado == 'NO_IMPARTIDA'):
+                clases_esperadas.add(carga.id)
+
+        alumnos = set()
+        confirmadas = set()
+        for clase in clases:
+            if clase.fecha != fecha or clase.estado != 'CERRADA' or not clase.asistencias:
+                continue
+            carga = por_carga.get(clase.carga_docente_id)
+            if not carga or clase.cancelada_en or clase.motivo_no_impartida or clase.estado == 'NO_IMPARTIDA':
+                continue
+            confirmadas.add(carga.id)
+            alumnos.update(a.alumno_id for a in clase.asistencias if a.estado in {'PRESENTE', 'RETARDO'})
+
+        if not calendario['requiere_asistencia'] or not calendario['permite_iniciar_clase']:
+            estado, etiqueta = 'DIA_NO_LECTIVO', calendario.get('motivo') or 'Día no lectivo'
+            total = None
+        elif not clases_esperadas:
+            estado, etiqueta, total = 'SIN_CLASE', 'Sin clase programada', None
+        elif not confirmadas:
+            estado, etiqueta, total = 'SIN_CAPTURA', 'Sin lista confirmada', None
+        elif confirmadas != clases_esperadas:
+            estado, etiqueta, total = 'PARCIAL', 'Datos parciales', len(alumnos)
+        else:
+            estado, etiqueta, total = 'CONFIRMADO', 'Completo', len(alumnos)
+        dias.append({
+            'fecha': fecha.isoformat(), 'dia_semana': fecha.strftime('%A'),
+            'asistentes': total, 'asistentes_confirmados': len(alumnos),
+            'clases_programadas': len(clases_esperadas), 'listas_confirmadas': len(confirmadas),
+            'estado': estado, 'etiqueta': etiqueta,
+        })
+        fecha += datetime.timedelta(days=1)
+    comparables = [d for d in dias if d['estado'] in {'CONFIRMADO', 'PARCIAL'}]
+    maximo = max((d['asistentes'] for d in comparables), default=None)
+    dias_maximo = [d['fecha'] for d in comparables if d['asistentes'] == maximo] if maximo is not None else []
+    valores = [d['asistentes'] for d in comparables]
+    return {
+        'periodo': {'id': periodo.id, 'clave': periodo.clave}, 'carrera': carrera,
+        'desde': desde.isoformat(), 'hasta': hasta.isoformat(), 'dias': dias,
+        'resumen': {
+            'dias_con_datos': len(comparables), 'dias_completos': sum(d['estado'] == 'CONFIRMADO' for d in dias),
+            'dias_parciales': sum(d['estado'] == 'PARCIAL' for d in dias),
+            'maximo_asistentes': maximo,
+            'promedio_asistentes': round(sum(valores) / len(valores), 1) if valores else None,
+            'fechas_maximo': dias_maximo,
+        },
+        'criterio': 'Cuenta alumnos únicos con PRESENTE o RETARDO en listas cerradas. Si varias clases confirmadas comparten el día, cada alumno se cuenta una sola vez. Los días parciales se identifican y no se presentan como completos; días sin clase, no lectivos y sin listas confirmadas no se cuentan como cero.',
+    }
+
+
+@router.get("/asistencia-rango")
+def consultar_asistencia_rango(periodo_id: int, desde: datetime.date, hasta: datetime.date,
+                               carrera: Optional[str] = None, db: Session = Depends(get_db),
+                               current_user: Usuario = Depends(get_current_user)):
+    _autorizar(db, current_user)
+    return _reporte_asistencia_rango(db, periodo_id, desde, hasta, carrera)
+
+
+@router.get("/asistencia-rango/excel")
+def exportar_asistencia_rango(periodo_id: int, desde: datetime.date, hasta: datetime.date,
+                              carrera: Optional[str] = None, db: Session = Depends(get_db),
+                              current_user: Usuario = Depends(get_current_user)):
+    _autorizar(db, current_user)
+    data = _reporte_asistencia_rango(db, periodo_id, desde, hasta, carrera)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Resumen'
+    resumen = data['resumen']
+    ws.append(['Reporte de asistencia por periodo']); ws.append(['Periodo', data['periodo']['clave']])
+    ws.append(['Carrera', data['carrera'] or 'Todas las carreras']); ws.append(['Desde', data['desde']]); ws.append(['Hasta', data['hasta']])
+    ws.append(['Días con datos', resumen['dias_con_datos']]); ws.append(['Días completos', resumen['dias_completos']])
+    ws.append(['Días parciales', resumen['dias_parciales']]); ws.append(['Máximo de alumnos únicos', resumen['maximo_asistentes']])
+    ws.append(['Promedio de alumnos únicos por día con datos', resumen['promedio_asistentes']])
+    ws.append(['Fechas con el máximo', ', '.join(resumen['fechas_maximo']) or 'Sin datos']); ws.append(['Criterio', data['criterio']])
+    detalle = wb.create_sheet('Asistencia por día')
+    detalle.append(['Fecha', 'Día', 'Alumnos únicos', 'Clases programadas', 'Listas confirmadas', 'Estado'])
+    for d in data['dias']:
+        detalle.append([d['fecha'], d['dia_semana'], d['asistentes'], d['clases_programadas'], d['listas_confirmadas'], d['etiqueta']])
+    for hoja in (ws, detalle):
+        hoja.freeze_panes = 'A2'; hoja.sheet_view.showGridLines = False
+        hoja.auto_filter.ref = hoja.dimensions
+        for celda in hoja[1]:
+            celda.font = Font(bold=True, color='FFFFFF'); celda.fill = PatternFill('solid', fgColor='166534')
+            celda.alignment = Alignment(wrap_text=True)
+        for columna in hoja.columns:
+            letra = get_column_letter(columna[0].column)
+            hoja.column_dimensions[letra].width = min(60, max(16, max(len(str(c.value or '')) for c in columna) + 2))
+    ws.column_dimensions['B'].width = 38
+    ws.column_dimensions['A'].width = 42
+    salida = io.BytesIO(); wb.save(salida); salida.seek(0)
+    return StreamingResponse(salida, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                             headers={'Content-Disposition': f'attachment; filename="asistencia-{data["desde"]}-a-{data["hasta"]}.xlsx"'})
 
 
 @router.get("")
