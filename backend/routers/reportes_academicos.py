@@ -567,6 +567,7 @@ def exportar_asistencia_diaria(periodo_id: int, fecha: Optional[datetime.date] =
 
 def _reporte_asistencia_rango(db: Session, periodo_id: int, desde: datetime.date,
                               hasta: datetime.date, carrera: Optional[str] = None) -> dict:
+    dias_semana_es = ('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo')
     if hasta < desde:
         raise HTTPException(422, "La fecha final debe ser igual o posterior a la inicial")
     if (hasta - desde).days > 30:
@@ -639,7 +640,7 @@ def _reporte_asistencia_rango(db: Session, periodo_id: int, desde: datetime.date
         else:
             estado, etiqueta, total = 'CONFIRMADO', 'Completo', len(alumnos)
         dias.append({
-            'fecha': fecha.isoformat(), 'dia_semana': fecha.strftime('%A'),
+            'fecha': fecha.isoformat(), 'dia_semana': dias_semana_es[fecha.weekday()],
             'asistentes': total, 'asistentes_confirmados': len(alumnos),
             'clases_programadas': len(clases_esperadas), 'listas_confirmadas': len(confirmadas),
             'estado': estado, 'etiqueta': etiqueta,
