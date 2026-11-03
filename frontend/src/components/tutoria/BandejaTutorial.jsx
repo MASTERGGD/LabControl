@@ -103,7 +103,7 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
           </div>
         </div>
         {expandido && <div id={`expediente-${caso.key}`} className={`border-t p-4 sm:p-5 ${isDay ? 'border-slate-200 bg-slate-50' : 'border-slate-700 bg-slate-950/30'}`}>
-          <section><h4 className="mb-3 text-sm font-semibold">Reportes del expediente</h4><div className="max-w-5xl space-y-3">{reportesVisibles.map(r => {
+          <section><h4 className="mb-3 text-sm font-semibold">Reportes del expediente</h4><div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{reportesVisibles.map(r => {
             const eventosReporte = eventosCaso(caso).filter(evento => evento.reporte.id === r.id);
             const descripcionExpandida = descripcionAbierta.has(r.id);
             const estadoTono = ['ATENDIDO', 'CERRADO', 'CERRADO_ADMINISTRATIVO'].includes(r.estado) ? tonos.verde : ['EN_SEGUIMIENTO', 'CANALIZADO', 'REUNION_SOLICITADA'].includes(r.estado) ? tonos.azul : tonos.gris;
