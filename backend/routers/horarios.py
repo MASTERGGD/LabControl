@@ -10,6 +10,7 @@ from models.laboratorio import Laboratorio
 from models.catalogo import GrupoAcademico, PeriodoEscolar
 from models.calendario_academico import CalendarioAcademico
 from models.sesion import SesionClase
+from models.practica_laboratorio import PracticaLaboratorio
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
 from services.auditoria import registrar, Accion, Recurso
@@ -125,13 +126,26 @@ class ConflictoResolver(BaseModel):
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
-def _serializar_horario(h: HorarioDisponible, db: Session) -> dict:
+def _serializar_horario(h: HorarioDisponible, db: Session, fecha_actividad: Optional[datetime.date] = None) -> dict:
     lab = db.query(Laboratorio).filter(Laboratorio.id == h.laboratorio_id).first()
 
-    reservacion_activa = db.query(Reservacion).filter(
+    q_reservacion = db.query(Reservacion).filter(
         Reservacion.horario_id == h.id,
-        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"])
-    ).first()
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
+    )
+    if fecha_actividad:
+        q_reservacion = q_reservacion.filter(or_(Reservacion.fecha_actividad == None, Reservacion.fecha_actividad == fecha_actividad))
+        reservacion_activa = q_reservacion.filter(Reservacion.fecha_actividad == None).first() or q_reservacion.first()
+    else:
+        # La vista semanal representa reservas recurrentes; las puntuales se muestran aparte.
+        q_reservacion = q_reservacion.filter(Reservacion.fecha_actividad == None)
+        reservacion_activa = q_reservacion.first()
+
+    reservas_puntuales = db.query(Reservacion).filter(
+        Reservacion.horario_id == h.id,
+        Reservacion.fecha_actividad.isnot(None),
+        Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
+    ).order_by(Reservacion.fecha_actividad).all()
 
     reservacion_data = None
     if reservacion_activa:
@@ -174,6 +188,8 @@ def _serializar_horario(h: HorarioDisponible, db: Session) -> dict:
         "reservado":  reservacion_activa is not None,
         "bloqueado":  bloqueo_activo is not None,
         "reservacion": reservacion_data,
+        "reservaciones_puntuales": [{"id": r.id, "fecha_actividad": r.fecha_actividad.isoformat(),
+            "materia": r.materia, "grupo": r.grupo, "estado": r.estado} for r in reservas_puntuales],
         "bloqueo":     bloqueo_data,
     }
 
@@ -391,6 +407,7 @@ def listar_horarios(
     laboratorio_id: Optional[int] = None,
     cuatrimestre: Optional[str]   = None,
     dia_semana: Optional[int]     = None,
+    fecha_actividad: Optional[datetime.date] = None,
     solo_activos: bool = True,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
@@ -412,7 +429,7 @@ def listar_horarios(
         HorarioDisponible.dia_semana,
         HorarioDisponible.hora_inicio
     ).all()
-    return [_serializar_horario(h, db) for h in horarios]
+    return [_serializar_horario(h, db, fecha_actividad=fecha_actividad) for h in horarios]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Crear horario disponible")
@@ -997,10 +1014,16 @@ def crear_reservacion(
 
     if data.fecha_actividad and data.fecha_actividad.weekday() != horario.dia_semana:
         raise HTTPException(422, f"La fecha seleccionada no corresponde a {DIAS.get(horario.dia_semana)}")
+    if data.fecha_actividad and data.fecha_actividad < datetime.date.today():
+        raise HTTPException(422, "No se puede reservar un horario para una fecha pasada")
 
     _verificar_conflicto(db, data.horario_id, data.laboratorio_id, data.cuatrimestre, fecha_actividad=data.fecha_actividad)
 
     regla_fecha = estado_fecha_academica(db, periodo_academico.id, data.fecha_actividad) if data.fecha_actividad else None
+    if data.fecha_actividad and not es_no_academica and regla_fecha and (
+        not regla_fecha["permite_iniciar_clase"] or not regla_fecha["requiere_asistencia"]
+    ):
+        raise HTTPException(422, f"No se permiten clases o prácticas en esta fecha: {regla_fecha['motivo'] or 'día no lectivo'}")
     requiere_autorizacion = bool(
         es_no_academica and regla_fecha
         and (not regla_fecha["permite_iniciar_clase"] or not regla_fecha["requiere_asistencia"])
@@ -1150,6 +1173,12 @@ def cancelar_reservacion(
         raise HTTPException(status_code=404, detail="Reservación no encontrada")
     if current_user.rol == RolUsuario.DOCENTE and r.docente_id != current_user.id:
         raise HTTPException(status_code=403, detail="No puedes cancelar una reservación que no es tuya")
+
+    practica = db.query(PracticaLaboratorio).filter(PracticaLaboratorio.reservacion_id == r.id).first()
+    if practica and practica.estado not in {"SOLICITADA", "CANCELADA"}:
+        raise HTTPException(status_code=409, detail="La práctica ya fue preparada o ejecutada. Coordina la devolución con el responsable antes de cancelar la reservación.")
+    if practica:
+        practica.estado = "CANCELADA"
 
     r.estado = "CANCELADA"
     # Si había solicitudes de conflicto, rechazarlas automáticamente

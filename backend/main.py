@@ -46,6 +46,7 @@ from routers import system as system_router
 from routers import docencia as docencia_router
 from routers import expediente_academico as expediente_academico_router
 from routers import reportes_academicos as reportes_academicos_router
+from routers import practicas_laboratorio as practicas_laboratorio_router
 
 from ws.mapa import websocket_mapa
 
@@ -56,7 +57,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "c2d3e4f5g6h7"
+_ALEMBIC_HEAD = "b3c4d5e6f7a8"
 
 
 def _current_db_version() -> str | None:
@@ -217,6 +218,7 @@ app.include_router(expediente_academico_router.router)
 app.include_router(calendario_academico_router.router)
 app.include_router(cierre_academico_router.router)
 app.include_router(reportes_academicos_router.router)
+app.include_router(practicas_laboratorio_router.router)
 
 app.add_api_websocket_route("/ws/mapa/{lab_id}", websocket_mapa)
 

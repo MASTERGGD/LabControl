@@ -69,6 +69,7 @@ import ExpedienteAcademico from './pages/academico/ExpedienteAcademico';
 import CalendarioAcademico from './pages/academico/CalendarioAcademico';
 import ReporteAcademicoGrupos from './pages/academico/ReporteAcademicoGrupos';
 import AsistenciaHoy from './pages/academico/AsistenciaHoy';
+import PracticasLaboratorio from './pages/laboratorios/PracticasLaboratorio';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
 const PERM_DIVISION_CARRERA_MANAGE = 'division_carrera:manage';
@@ -275,6 +276,11 @@ function AppRoutes() {
           <Reservaciones />
         </RutaProtegida>
       }/>
+      <Route path="/admin/practicas-laboratorio" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB']}>
+          <PracticasLaboratorio />
+        </RutaProtegida>
+      }/>
 
       {/* Admin: Inventario y Préstamos */}
       <Route path="/admin/inventario" element={
@@ -431,6 +437,11 @@ function AppRoutes() {
       <Route path="/docente/laboratorio" element={
         <RutaProtegida rolesPermitidos={['DOCENTE']}>
           <SesionClase />
+        </RutaProtegida>
+      }/>
+      <Route path="/docente/practicas-laboratorio" element={
+        <RutaProtegida rolesPermitidos={['DOCENTE']}>
+          <PracticasLaboratorio />
         </RutaProtegida>
       }/>
       <Route path="/docente/clase/:claseId" element={

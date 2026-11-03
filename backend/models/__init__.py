@@ -40,3 +40,8 @@ from .calendario_academico import (
 from .cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
 from .promocion_academica import ContinuidadPrograma, PromocionAcademicaAlumno
 from .reporte_academico import EmisionReporteAcademico
+from .practica_laboratorio import (
+    InsumoLaboratorio, MovimientoInsumoLaboratorio, PracticaLaboratorio,
+    PlantillaPractica, MaterialPlantillaPractica, MaterialPractica,
+    AsistenciaPractica, IncidentePractica, ResiduoPractica,
+)

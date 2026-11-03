@@ -362,8 +362,18 @@ const CHECKS_REQ = [
   { key: 'extensiones',label: 'Extensiones / contactos',   icon: '🔌' },
 ];
 
-function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
+function esLaboratorioDePracticas(laboratorio) {
+  const categoria = (laboratorio?.categoria || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const nombre = (laboratorio?.nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return ['QUIMICA', 'AGROINDUSTRIA', 'AGROINDUSTRIAL'].includes(categoria)
+    || /QUIM|AGROINDUSTR/.test(nombre);
+}
+
+function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClose, onGuardado }) {
   const { usuario } = useAuth();
+  const { themeKey } = useTheme();
+  const isDay = themeKey === 'day';
+  const esPracticas = esLaboratorioDePracticas(laboratorio);
   const [form, setForm] = useState({
     materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
   });
@@ -371,9 +381,13 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   const [materiaInfo, setMateriaInfo]   = useState(null);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
+  const [materialesPractica, setMaterialesPractica] = useState('');
+  const [seguridadPractica, setSeguridadPractica] = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [soloUnaFecha, setSoloUnaFecha] = useState(false);
+  const [fechaActividad, setFechaActividad] = useState('');
 
   const seleccionarMateria = (m) => {
     setMateriaQuery(m.label || m.nombre || '');
@@ -387,13 +401,27 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
   };
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
-  const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
+  const hayReqs = esPracticas
+    ? materialesPractica.trim() || seguridadPractica.trim()
+    : CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!materiaInfo) { setError('Selecciona una materia del catálogo académico.'); return; }
+    if (soloUnaFecha && !fechaActividad) { setError('Selecciona la fecha de la práctica.'); return; }
     setSaving(true); setError('');
-    const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
+    const reqItems = esPracticas
+      ? [
+          ...(materialesPractica.trim() ? ['Materiales, reactivos o equipo para la práctica'] : []),
+          ...(seguridadPractica.trim() ? ['Seguridad y equipo de protección'] : []),
+        ]
+      : CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
+    const reqDescripcion = esPracticas
+      ? [
+          materialesPractica.trim() && `Materiales/reactivos/equipo: ${materialesPractica.trim()}`,
+          seguridadPractica.trim() && `Seguridad/EPP: ${seguridadPractica.trim()}`,
+        ].filter(Boolean).join('\n')
+      : notaReq.trim();
     try {
       await api.post('/horarios/reservaciones', {
         horario_id:           slot.horario_id,
@@ -404,9 +432,10 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
         cuatrimestre:         form.cuatrimestre,
         cuatrimestre_materia: form.cuatrimestre_materia || undefined,
         grupo:                form.grupo,
+        fecha_actividad:      soloUnaFecha ? fechaActividad : undefined,
         req_items:            reqItems.length ? reqItems : undefined,
-        req_descripcion:      notaReq.trim() || undefined,
-        req_tiene_instalador: checks.software ? tieneInstalador : undefined,
+        req_descripcion:      reqDescripcion || undefined,
+        req_tiene_instalador: !esPracticas && checks.software ? tieneInstalador : undefined,
       });
       onGuardado(); onClose();
     } catch (err) {
@@ -418,7 +447,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass w-full max-w-md rounded-2xl overflow-hidden shadow-glass" style={{ animation:'fadeUp .2s ease' }}>
+      <div className="glass w-full max-w-2xl rounded-2xl overflow-hidden shadow-xl" style={{ animation:'fadeUp .2s ease' }}>
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
           <div>
             <h2 className="font-semibold text-white">Reservar horario</h2>
@@ -428,7 +457,11 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl leading-none transition-colors">×</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
+          <div className="rounded-xl border border-slate-700 p-3">
+            <label className="flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setFechaActividad(''); }} className="mt-1"/><span><b>Reservar para una sola práctica</b><span className="mt-0.5 block text-xs text-slate-500">En esa fecha, sin reservar todas las semanas del cuatrimestre.</span></span></label>
+            {soloUnaFecha && <label className="mt-3 block text-sm text-slate-300">Fecha de la práctica *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaActividad} onChange={e => setFechaActividad(e.target.value)} className="input-dark mt-1 w-full"/></label>}
+          </div>
           {/* Materia */}
           <div>
             <label className="block text-xs text-slate-400 uppercase tracking-wide font-medium mb-1.5">
@@ -490,10 +523,27 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
 
           {/* ── Requerimientos ── */}
           <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.6)', border:'1px solid rgba(255,255,255,0.07)' }}>
-            <p className="text-xs text-slate-400 uppercase tracking-wide font-semibold flex items-center gap-1.5">
-              <span>📋</span> Requerimientos para la clase
-              <span className="text-slate-600 normal-case font-normal">(opcional)</span>
+            <p className={`text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
+              {esPracticas ? 'Requerimientos de la práctica' : 'Requerimientos para la clase'}
+              <span className={`${isDay ? 'text-slate-500' : 'text-slate-600'} normal-case font-normal`}>(opcional)</span>
             </p>
+            {esPracticas ? <>
+              <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
+                Indica lo que debe preparar el responsable del laboratorio. Puedes detallar cantidades, concentraciones y equipo; registra la lista formal de consumo en Prácticas y reportes.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+              <label className={`block text-xs font-medium ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>Materiales, reactivos y equipo
+              <textarea rows={4} value={materialesPractica} onChange={e => setMaterialesPractica(e.target.value)}
+                placeholder="Materiales, reactivos y equipo. Ej.: 4 matraces de 250 ml, 20 ml de reactivo por mesa…"
+                className="input-dark mt-1 w-full text-sm resize-y" />
+              </label>
+              <label className={`block text-xs font-medium ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>Seguridad y equipo de protección
+              <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)}
+                placeholder="Indicaciones de seguridad o EPP: bata, guantes, lentes, manejo especial…"
+                className="input-dark mt-1 w-full text-sm resize-y" />
+              </label>
+              </div>
+            </> : <>
             <div className="grid grid-cols-2 gap-2">
               {CHECKS_REQ.map(c => (
                 <label key={c.key}
@@ -535,11 +585,12 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
                 </div>
               </label>
             )}
+            </>}
 
             {/* Aviso urgencia visual */}
             {hayReqs && (
-              <p className="text-xs text-amber-400/80 flex items-center gap-1.5 px-1">
-                <span>⏰</span> Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.
+              <p className={`text-xs flex items-center gap-1.5 px-3 py-2 rounded-lg ${isDay ? 'bg-amber-50 text-amber-900 border border-amber-200' : 'bg-amber-950/30 text-amber-200 border border-amber-900/40'}`}>
+                {esPracticas ? 'La solicitud se marcará como urgente porque faltan menos de 3 días hábiles.' : <>Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.</>}
               </p>
             )}
           </div>
@@ -549,8 +600,8 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, onClose, onGuardado
             <button type="button" onClick={onClose} className="btn-ghost flex-1 py-2.5 text-sm">Cancelar</button>
             <button type="submit" disabled={saving}
               className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white disabled:opacity-50 transition-all"
-              style={{ background:'linear-gradient(135deg,#10b981,#059669)', boxShadow:'0 0 16px rgba(16,185,129,.25)' }}>
-              {saving ? 'Reservando…' : '✓ Reservar'}
+              style={{ background:'#007A53', boxShadow:'none' }}>
+              {saving ? 'Reservando…' : 'Reservar'}
             </button>
           </div>
         </form>
@@ -1150,6 +1201,7 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
                 {slot.solicitudes_n}↑
               </span>
             )}
+            {!!slot.reservaciones_puntuales?.length && <span className="absolute bottom-1 left-1 rounded bg-teal-700 px-1.5 py-0.5 text-[9px] font-bold text-white" title="Reservas de una sola fecha">📅 {slot.reservaciones_puntuales.length} puntual{slot.reservaciones_puntuales.length === 1 ? '' : 'es'}</span>}
             {slot.reservacion?.requerimiento && (
               <span className="absolute bottom-1 right-1 rounded bg-violet-600 px-1.5 py-0.5 text-[9px] font-bold text-white" title="Esta reservación tiene requerimientos de clase">📋 Req.</span>
             )}
@@ -1660,6 +1712,7 @@ export default function Reservaciones() {
           slot={modalSlot.slot}
           cuatrimestre={cuatrimestre}
           laboratorio_id={labId}
+          laboratorio={laboratorios.find(l => String(l.id) === String(labId))}
           onClose={cerrarModal}
           onGuardado={recargar}
         />

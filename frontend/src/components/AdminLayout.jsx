@@ -342,6 +342,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
   },
   {
+    label: 'Prácticas docentes', path: '/admin/practicas-laboratorio', roles: ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3h6m-5 0v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3m-6 11h8"/></svg>,
+  },
+  {
     label: 'Reportes', path: '/admin/reportes', roles: ['SUPER_ADMIN','LAB_ADMIN'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
   },
@@ -384,6 +388,10 @@ const NAV_ITEMS = [
   {
     label: 'Solicitar laboratorio', path: '/docente/laboratorio', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
+  },
+  {
+    label: 'Prácticas y reportes', path: '/docente/practicas-laboratorio', roles: ['DOCENTE'], inGroup: true,
+    icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3h6m-5 0v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3m-6 11h8"/></svg>,
   },
   {
     label: 'Historial de laboratorio', path: '/docente/historial', roles: ['DOCENTE'], inGroup: true,
@@ -577,6 +585,7 @@ const BREADCRUMB_MAP = {
   '/docente/buscar-docente':  [{ label: 'Consultar horarios' }],
   '/docente/seguimiento':     [{ label: 'Seguimiento de grupos' }],
   '/docente/laboratorio':     [{ label: 'Solicitar laboratorio' }],
+  '/docente/practicas-laboratorio': [{ label: 'Prácticas y reportes' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
   '/docente/historial-clases': [{ label: 'Historial de clases' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],
@@ -584,6 +593,7 @@ const BREADCRUMB_MAP = {
   '/admin/departamentos':     [{ label: 'Departamentos' }],
   '/admin/horarios':          [{ label: 'Horarios' }],
   '/admin/reservaciones':     [{ label: 'Reservaciones' }],
+  '/admin/practicas-laboratorio': [{ label: 'Prácticas de laboratorio' }],
   '/admin/espacios':          [{ label: 'Gestión de Espacios' }],
   '/espacios/apartar':        [{ label: 'Solicitar Sala o Espacio' }],
   '/espacios/bandeja':        [{ label: 'Bandeja de Aprobación' }],
@@ -622,7 +632,7 @@ const SIDEBAR_DOMAINS = [
   },
   {
     key: 'espacios-equipo', label: 'Espacios y equipo',
-    matches: path => ['/lab', '/espacios', '/admin/laboratorios', '/admin/horarios', '/admin/reservaciones', '/admin/reportes', '/admin/espacios', '/admin/inventario', '/admin/prestamos', '/admin/mantenimiento']
+    matches: path => ['/lab', '/espacios', '/admin/laboratorios', '/admin/horarios', '/admin/reservaciones', '/admin/practicas-laboratorio', '/admin/reportes', '/admin/espacios', '/admin/inventario', '/admin/prestamos', '/admin/mantenimiento']
       .some(prefix => path === prefix || path.startsWith(`${prefix}/`)),
   },
   {

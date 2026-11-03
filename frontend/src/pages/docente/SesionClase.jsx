@@ -289,6 +289,13 @@ const CHECKS_REQ = [
   { key: 'extensiones', label: 'Extensiones / contactos' },
 ];
 
+function esLaboratorioDePracticas(laboratorio) {
+  const categoria = (laboratorio?.categoria || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const nombre = (laboratorio?.nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  return ['QUIMICA', 'AGROINDUSTRIA', 'AGROINDUSTRIAL'].includes(categoria)
+    || /QUIM|AGROINDUSTR/.test(nombre);
+}
+
 function minutosEntre(horaInicio, horaFin) {
   const [ih, im] = horaInicio.split(':').map(Number);
   const [fh, fm] = horaFin.split(':').map(Number);
@@ -303,10 +310,11 @@ function duracionLegible(minutos) {
   return `${horas} h ${resto} min`;
 }
 
-function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onGuardado }) {
+function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio, onClose, onGuardado }) {
   const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
+  const esPracticas = esLaboratorioDePracticas(laboratorio);
   const [form, setForm] = useState({
     materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', cuatrimestre,
     tipo_actividad: 'CLASE', fecha_actividad: '',
@@ -319,10 +327,13 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
   const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
+  const [materialesPractica, setMaterialesPractica] = useState('');
+  const [seguridadPractica, setSeguridadPractica] = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [periodosSeleccionados, setPeriodosSeleccionados] = useState(1);
+  const [soloUnaFecha, setSoloUnaFecha] = useState(false);
 
   const opcionesDuracion = useMemo(() => {
     const mismoDia = (slots || [])
@@ -387,7 +398,9 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
   }, [form.carrera, form.cuatrimestre_materia, form.cuatrimestre]);
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
-  const hayReqs = CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
+  const hayReqs = esPracticas
+    ? materialesPractica.trim() || seguridadPractica.trim()
+    : CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -395,8 +408,20 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
     if (!esInstitucional && !materiaInfo) { setError('Selecciona una materia del catálogo académico para registrar su identidad.'); return; }
     if (!esInstitucional && !form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
     if (esInstitucional && !form.fecha_actividad) { setError('Selecciona la fecha específica de la actividad.'); return; }
+    if (!esInstitucional && soloUnaFecha && !form.fecha_actividad) { setError('Selecciona la fecha de la práctica.'); return; }
     setSaving(true); setError('');
-    const reqItems = CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
+    const reqItems = esPracticas
+      ? [
+          ...(materialesPractica.trim() ? ['Materiales, reactivos o equipo para la práctica'] : []),
+          ...(seguridadPractica.trim() ? ['Seguridad y equipo de protección'] : []),
+        ]
+      : CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
+    const reqDescripcion = esPracticas
+      ? [
+          materialesPractica.trim() && `Materiales/reactivos/equipo: ${materialesPractica.trim()}`,
+          seguridadPractica.trim() && `Seguridad/EPP: ${seguridadPractica.trim()}`,
+        ].filter(Boolean).join('\n')
+      : notaReq.trim();
     try {
       const payloadBase = {
         laboratorio_id:       laboratorio_id,
@@ -407,10 +432,10 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
         cuatrimestre_materia: form.cuatrimestre_materia || undefined,
         grupo:                esInstitucional ? 'INSTITUCIONAL' : form.grupo,
         tipo_actividad:       form.tipo_actividad,
-        fecha_actividad:      esInstitucional ? form.fecha_actividad : undefined,
+        fecha_actividad:      (esInstitucional || soloUnaFecha) ? form.fecha_actividad : undefined,
         req_items:            reqItems.length ? reqItems : undefined,
-        req_descripcion:      notaReq.trim() || undefined,
-        req_tiene_instalador: checks.software ? tieneInstalador : undefined,
+        req_descripcion:      reqDescripcion || undefined,
+        req_tiene_instalador: !esPracticas && checks.software ? tieneInstalador : undefined,
       };
       const creadas = [];
       try {
@@ -439,7 +464,7 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div
-        className="w-full max-w-md shadow-2xl rounded-2xl overflow-hidden"
+        className="w-full max-w-2xl shadow-xl rounded-2xl overflow-hidden"
         style={{
           background: isDay ? '#ffffff' : 'rgba(15,23,42,0.94)',
           border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
@@ -462,14 +487,18 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
             style={{ color: isDay ? '#475569' : '#cbd5e1' }}
           >×</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Tipo de actividad *</label>
-            <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
+          <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setSoloUnaFecha(false); setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
               <option value="CLASE">Clase ordinaria</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
             </select>
           </div>
           {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span></label>}
+          {!esInstitucional && <div className="rounded-xl border p-3" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
+            <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setForm(f => ({ ...f, fecha_actividad: '' })); }} className="mt-1"/><span><b>Reservar para una sola práctica</b><span className="mt-0.5 block text-xs opacity-75">El bloque queda reservado solo en la fecha elegida, en vez de repetirse cada semana durante el cuatrimestre.</span></span></label>
+            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la práctica *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.fecha_actividad} onChange={e => setForm({ ...form, fecha_actividad: e.target.value })} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
+          </div>}
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Hora de fin y duración</label>
             <select
@@ -528,21 +557,21 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
                   <span
                     className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{
-                      background: isDay ? '#dbeafe' : 'rgba(30,58,138,0.5)',
-                      color: isDay ? '#1d4ed8' : '#93c5fd',
-                      border: `1px solid ${isDay ? '#93c5fd' : 'rgba(29,78,216,0.5)'}`,
+                      background: isDay ? '#ecfdf5' : 'rgba(6,78,59,0.5)',
+                      color: isDay ? '#166534' : '#a7f3d0',
+                      border: `1px solid ${isDay ? '#a7f3d0' : 'rgba(16,185,129,0.35)'}`,
                     }}
                   >
-                    🎓 {materiaInfo.carrera}
+                    {materiaInfo.carrera}
                   </span>
                 )}
                 {materiaInfo.cuatrimestre_oficial && (
                   <span
                     className="text-xs px-2 py-0.5 rounded-full font-medium"
                     style={{
-                      background: isDay ? '#ede9fe' : 'rgba(88,28,135,0.5)',
-                      color: isDay ? '#6d28d9' : '#c4b5fd',
-                      border: `1px solid ${isDay ? '#c4b5fd' : 'rgba(126,34,206,0.5)'}`,
+                      background: isDay ? '#f1f5f9' : 'rgba(51,65,85,0.7)',
+                      color: isDay ? '#475569' : '#cbd5e1',
+                      border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(148,163,184,0.35)'}`,
                     }}
                   >
                     {materiaInfo.cuatrimestre_oficial}° cuatrimestre
@@ -595,9 +624,26 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
               className="text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5"
               style={{ color: isDay ? '#334155' : '#cbd5e1' }}
             >
-              <span>📋</span> Requerimientos para la clase
+              {esPracticas ? 'Requerimientos de la práctica' : 'Requerimientos para la clase'}
               <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="normal-case font-normal">(opcional)</span>
             </p>
+            {esPracticas ? <>
+              <p className="text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
+                Indica lo que debe preparar el responsable del laboratorio. Puedes detallar cantidades, concentraciones y equipo; registra la lista formal de consumo en Prácticas y reportes.
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo
+              <textarea rows={4} value={materialesPractica} onChange={e => setMaterialesPractica(e.target.value)}
+                placeholder="Materiales, reactivos y equipo. Ej.: 4 matraces de 250 ml, 20 ml de reactivo por mesa…"
+                className="mt-1 w-full input-dark text-sm resize-y px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-700" />
+              </label>
+              <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
+              <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)}
+                placeholder="Indicaciones de seguridad o EPP: bata, guantes, lentes, manejo especial…"
+                className="mt-1 w-full input-dark text-sm resize-y px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-700" />
+              </label>
+              </div>
+            </> : <>
             <div className="grid grid-cols-2 gap-2">
               {CHECKS_REQ.map(c => (
                 <label key={c.key}
@@ -652,14 +698,15 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, onClose, onG
                 </div>
               </label>
             )}
+            </>}
 
             {/* Aviso urgencia */}
             {hayReqs && (
               <div className="flex items-center gap-2 rounded-lg px-3 py-2"
                 style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
-                <span className="text-sm shrink-0">⏰</span>
-                <p className="text-xs leading-snug" style={{ color: '#c2410c' }}>
-                  Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.
+                <span className="text-xs font-semibold shrink-0">Aviso</span>
+                <p className="text-xs leading-snug" style={{ color: isDay ? '#854d0e' : '#fcd34d' }}>
+                  {esPracticas ? 'La solicitud se marcará como urgente porque faltan menos de 3 días hábiles.' : <>Si la clase es en menos de 3 días hábiles, el sistema marcará la solicitud como <strong>urgente</strong>.</>}
                 </p>
               </div>
             )}
@@ -1444,7 +1491,10 @@ function GridSemanal({ slots, onSlotClick }) {
               </p>
             </>
           ) : slot.estado_vista === 'LIBRE' ? (
-            <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>+ Disponible</span>
+            <>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>+ Disponible</span>
+              {!!slot.reservaciones_puntuales?.length && <span style={{ display: 'block', fontSize: '9px', marginTop: '3px', color: materiaColor }} title="Reservado solo en estas fechas">Puntual: {slot.reservaciones_puntuales[0].fecha_actividad}{slot.reservaciones_puntuales.length > 1 ? ` +${slot.reservaciones_puntuales.length - 1}` : ''}</span>}
+            </>
           ) : slot.estado_vista === 'BLOQUEADO' ? (
             <>
               <p style={{ fontSize: '11px', fontWeight: 700, color: txtColor, lineHeight: 1.3 }}>🚫 No disponible</p>
@@ -2395,6 +2445,7 @@ export default function SesionClase() {
       {/* Modales */}
       {modalSlot?.tipo === 'reservar' && (
         <ModalReservar slot={modalSlot.slot} slots={slots} cuatrimestre={cuatrimestre} laboratorio_id={labId}
+          laboratorio={laboratorios.find(l => String(l.id) === String(labId))}
           onClose={cerrar} onGuardado={recargar} />
       )}
       {modalSlot?.tipo === 'mi_reserva' && (
