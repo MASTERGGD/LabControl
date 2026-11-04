@@ -1127,10 +1127,14 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
 
         /* LIBRE — rectángulo sutil + hover azul eléctrico */
         if (slot.estado_vista === 'LIBRE') {
+          const sesionesPuntuales = slot.reservaciones_puntuales || [];
           return (
             <div
               onClick={() => onSlotClick(slot)}
-              className="group h-full flex items-center justify-center cursor-pointer rounded-lg transition-all duration-150"
+              className="group relative h-full flex flex-col items-center justify-center gap-1 cursor-pointer rounded-lg transition-all duration-150"
+              title={sesionesPuntuales.length
+                ? `Disponible en el horario semanal. Sesión(es) única(s): ${sesionesPuntuales.map(r => `${formatearFechaReserva(r.fecha_actividad)} · ${r.materia}`).join('; ')}`
+                : 'Disponible para reservar'}
               style={{
                 background: isDay ? '#F8FAFC' : 'rgba(255,255,255,0.02)',
                 border: `1px solid ${isDay ? '#E2E8F0' : '#1e293b'}`,
@@ -1147,10 +1151,20 @@ function GridSemanal({ slots, onSlotClick, isDay = false }) {
                 e.currentTarget.style.boxShadow    = 'none';
               }}
             >
-              <svg className="w-4 h-4 text-slate-700 group-hover:text-blue-400 transition-colors"
+              <svg className="w-4 h-4 text-slate-700 group-hover:text-blue-400 transition-colors" aria-hidden="true"
                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
               </svg>
+              {sesionesPuntuales.length > 0 && (
+                <>
+                  <span className={`text-[10px] font-semibold ${isDay ? 'text-slate-500' : 'text-slate-400'}`}>
+                    Disponible en otras fechas
+                  </span>
+                  <span className={`absolute bottom-1 left-1 rounded px-1.5 py-0.5 text-[9px] font-bold ${isDay ? 'bg-teal-100 text-teal-900' : 'bg-teal-800 text-white'}`}>
+                    🗓 Única · {formatearFechaReserva(sesionesPuntuales[0].fecha_actividad)}{sesionesPuntuales.length > 1 ? ` (+${sesionesPuntuales.length - 1})` : ''}
+                  </span>
+                </>
+              )}
             </div>
           );
         }
