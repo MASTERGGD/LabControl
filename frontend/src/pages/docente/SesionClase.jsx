@@ -1023,7 +1023,10 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-xs text-slate-400 text-center">¿Deseas cancelar esta reservación?</p>
+                <p className="text-xs text-slate-300 text-center">
+                  ¿Cancelar la sesión completa de {slot.hora_inicio} a {horaFinSesion}?
+                  {grupo && grupo.total > 1 && <span className="mt-1 block text-slate-400">Se liberarán juntos los {grupo.total} períodos consecutivos{r.fecha_actividad ? ' de esta fecha' : ' del horario recurrente'}.</span>}
+                </p>
                 <textarea rows={2} maxLength={300} value={motivoCancelacion} onChange={e => setMotivoCancelacion(e.target.value)}
                   className="input-dark w-full text-sm" placeholder="Motivo (opcional para quien solicitó la reservación)" />
                 <div className="flex gap-2">
@@ -1031,7 +1034,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
                     className="flex-1 bg-gray-700 text-gray-300 py-2 rounded-lg text-sm">No</button>
                   <button onClick={handleCancelar} disabled={cancelando}
                     className="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold">
-                    {cancelando ? 'Cancelando…' : 'Sí, cancelar'}
+                    {cancelando ? 'Cancelando…' : grupo && grupo.total > 1 ? 'Cancelar sesión completa' : 'Sí, cancelar'}
                   </button>
                 </div>
               </div>

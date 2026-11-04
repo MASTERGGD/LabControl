@@ -47,8 +47,14 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
           {reservas.map(reserva => (
             <article key={reserva.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">{fechaLabel(reserva.fecha_actividad)}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-200">
+                Sesión completa · {reserva.hora_inicio_sesion || reserva.hora_inicio}–{reserva.hora_fin_sesion || reserva.hora_fin}
+              </p>
               <p className="mt-1 font-semibold text-white">{reserva.materia}</p>
               <p className="text-sm text-slate-300">Grupo {reserva.grupo}</p>
+              {reserva.bloque_reserva_id && (reserva.hora_inicio_sesion !== reserva.hora_inicio || reserva.hora_fin_sesion !== reserva.hora_fin) && (
+                <p className="mt-1 text-xs text-slate-400">Al cancelar se liberarán todos los bloques consecutivos de esta sesión.</p>
+              )}
               {reserva.puede_cancelar ? (
                 <button type="button" onClick={() => { setSeleccionada(reserva); setMotivo(''); setError(''); }}
                   className="mt-3 rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10">
@@ -59,7 +65,12 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
           ))}
           {seleccionada && (
             <div className="space-y-3 rounded-xl border border-red-400/30 bg-red-500/5 p-4">
-              <p className="text-sm text-slate-200">¿Cancelar <strong>{seleccionada.materia}</strong> del {fechaLabel(seleccionada.fecha_actividad)}?</p>
+              <p className="text-sm text-slate-200">
+                ¿Cancelar la sesión completa de <strong>{seleccionada.materia}</strong> del {fechaLabel(seleccionada.fecha_actividad)}?
+                <span className="mt-1 block text-xs text-slate-400">
+                  Se liberará el horario de {seleccionada.hora_inicio_sesion || seleccionada.hora_inicio} a {seleccionada.hora_fin_sesion || seleccionada.hora_fin} en una sola acción.
+                </span>
+              </p>
               <label className="block text-xs text-slate-400">
                 Motivo {esPersonalLaboratorio ? '(obligatorio)' : '(opcional)'}
                 <textarea rows={2} maxLength={300} value={motivo} onChange={e => setMotivo(e.target.value)}
@@ -70,7 +81,7 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
                 <button type="button" onClick={() => setSeleccionada(null)} className="btn-ghost flex-1 py-2 text-sm">Volver</button>
                 <button type="button" onClick={cancelar} disabled={cancelando || (esPersonalLaboratorio && motivo.trim().length < 5)}
                   className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  {cancelando ? 'Cancelando…' : 'Confirmar cancelación'}
+                  {cancelando ? 'Cancelando…' : 'Cancelar sesión completa'}
                 </button>
               </div>
             </div>

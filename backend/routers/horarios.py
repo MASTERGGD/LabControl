@@ -156,6 +156,26 @@ def _serializar_horario(h: HorarioDisponible, db: Session, fecha_actividad: Opti
         Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
     ).order_by(Reservacion.fecha_actividad).all()
 
+    rangos_bloque = {}
+    ids_bloque = {r.bloque_reserva_id for r in reservas_puntuales if r.bloque_reserva_id}
+    if ids_bloque:
+        filas_bloque = db.query(
+            Reservacion.bloque_reserva_id,
+            Reservacion.fecha_actividad,
+            HorarioDisponible.hora_inicio,
+            HorarioDisponible.hora_fin,
+        ).join(HorarioDisponible, HorarioDisponible.id == Reservacion.horario_id).filter(
+            Reservacion.bloque_reserva_id.in_(ids_bloque),
+            Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
+        ).order_by(HorarioDisponible.hora_inicio).all()
+        por_bloque_fecha = {}
+        for bloque_id, fecha, hora_inicio, hora_fin in filas_bloque:
+            por_bloque_fecha.setdefault((bloque_id, fecha), []).append((hora_inicio, hora_fin))
+        rangos_bloque = {
+            clave: {"inicio": horas[0][0], "fin": horas[-1][1]}
+            for clave, horas in por_bloque_fecha.items()
+        }
+
     reservacion_data = None
     if reservacion_activa:
         docente = db.query(Usuario).filter(Usuario.id == reservacion_activa.docente_id).first()
@@ -869,6 +889,17 @@ def disponibilidad(
                     "grupo": r.grupo,
                     "estado": r.estado,
                     "docente_id": r.docente_id,
+                    "bloque_reserva_id": r.bloque_reserva_id,
+                    "hora_inicio": h.hora_inicio,
+                    "hora_fin": h.hora_fin,
+                    "hora_inicio_sesion": rangos_bloque.get(
+                        (r.bloque_reserva_id, r.fecha_actividad),
+                        {"inicio": h.hora_inicio, "fin": h.hora_fin},
+                    )["inicio"],
+                    "hora_fin_sesion": rangos_bloque.get(
+                        (r.bloque_reserva_id, r.fecha_actividad),
+                        {"inicio": h.hora_inicio, "fin": h.hora_fin},
+                    )["fin"],
                     "puede_cancelar": (
                         r.docente_id == current_user.id
                         or current_user.rol == RolUsuario.SUPER_ADMIN
@@ -1246,55 +1277,71 @@ def cancelar_reservacion(
     if not (es_solicitante or es_admin or es_responsable_del_lab):
         raise HTTPException(status_code=403, detail="Solo el solicitante, el responsable de este laboratorio o un administrador pueden cancelar la reservación")
 
-    if r.estado not in {"PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"}:
+    estados_activos = {"PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"}
+    if r.estado not in estados_activos:
         raise HTTPException(status_code=409, detail="La reservación ya no está activa")
+
+    # Una sesión larga se almacena en varios periodos consecutivos. Cancelar
+    # cualquiera de sus periodos debe cancelar el bloque completo.
+    reservas_objetivo = [r]
+    if r.bloque_reserva_id:
+        reservas_objetivo = db.query(Reservacion).filter(
+            Reservacion.bloque_reserva_id == r.bloque_reserva_id,
+            Reservacion.fecha_actividad == r.fecha_actividad,
+            Reservacion.estado.in_(estados_activos),
+        ).all()
+    if not reservas_objetivo or any(reserva.docente_id != r.docente_id for reserva in reservas_objetivo):
+        raise HTTPException(status_code=409, detail="No se pudo validar la sesión completa para cancelarla")
 
     motivo = (data.motivo or "").strip() if data else ""
     if (es_admin or es_responsable_del_lab) and len(motivo) < 5:
         raise HTTPException(status_code=422, detail="Indica un motivo de al menos 5 caracteres para dejarlo en la bitácora")
 
+    ids_reserva = [reserva.id for reserva in reservas_objetivo]
     sesion_abierta = db.query(SesionClase).filter(
-        SesionClase.reservacion_id == r.id,
+        SesionClase.reservacion_id.in_(ids_reserva),
         SesionClase.estado == "ABIERTA",
     ).first()
     if sesion_abierta:
         raise HTTPException(status_code=409, detail="La sesión ya inició. Ciérrala para conservar su asistencia y reporte antes de gestionar la reservación.")
 
-    practica = db.query(PracticaLaboratorio).filter(PracticaLaboratorio.reservacion_id == r.id).first()
-    if practica and practica.estado not in {"SOLICITADA", "CANCELADA"}:
+    practicas = db.query(PracticaLaboratorio).filter(PracticaLaboratorio.reservacion_id.in_(ids_reserva)).all()
+    if any(practica.estado not in {"SOLICITADA", "CANCELADA"} for practica in practicas):
         raise HTTPException(status_code=409, detail="La práctica ya fue preparada o ejecutada. Coordina la devolución con el responsable antes de cancelar la reservación.")
-    if practica:
+    for practica in practicas:
         practica.estado = "CANCELADA"
 
-    r.estado = "CANCELADA"
-    cancelar_requerimientos_pendientes(db, r.id, current_user.id)
-    # Si había solicitudes de conflicto, rechazarlas automáticamente
-    db.query(SolicitudConflicto).filter(
-        SolicitudConflicto.reservacion_id == r.id,
-        SolicitudConflicto.estado == "PENDIENTE"
-    ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada; solicitudes pendientes cerradas"})
+    for reserva in reservas_objetivo:
+        reserva.estado = "CANCELADA"
+        cancelar_requerimientos_pendientes(db, reserva.id, current_user.id)
+        # Si había solicitudes de conflicto, rechazarlas automáticamente
+        db.query(SolicitudConflicto).filter(
+            SolicitudConflicto.reservacion_id == reserva.id,
+            SolicitudConflicto.estado == "PENDIENTE"
+        ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada; solicitudes pendientes cerradas"})
     # Persistir la cancelación antes de la bitácora, que es de mejor esfuerzo.
     db.commit()
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
-    registrar(
-        db,
-        accion=Accion.CANCELAR_RESERVACION,
-        recurso=Recurso.RESERVACION,
-        usuario=current_user,
-        recurso_id=r.id,
-        detalle={
-            "evento": "CANCELAR_RESERVACION",
-            "laboratorio_id": r.laboratorio_id,
-            "solicitante_id": r.docente_id,
-            "solicitante": docente.nombre if docente else None,
-            "materia": r.materia,
-            "grupo": r.grupo,
-            "fecha_actividad": r.fecha_actividad.isoformat() if r.fecha_actividad else None,
-            "actor_rol": current_user.rol.value if hasattr(current_user.rol, "value") else str(current_user.rol),
-            "motivo": motivo or "Cancelada por el solicitante",
-        },
-    )
-    return {"mensaje": "Reservación cancelada"}
+    for reserva in reservas_objetivo:
+        registrar(
+            db,
+            accion=Accion.CANCELAR_RESERVACION,
+            recurso=Recurso.RESERVACION,
+            usuario=current_user,
+            recurso_id=reserva.id,
+            detalle={
+                "evento": "CANCELAR_RESERVACION",
+                "laboratorio_id": reserva.laboratorio_id,
+                "solicitante_id": reserva.docente_id,
+                "solicitante": docente.nombre if docente else None,
+                "materia": reserva.materia,
+                "grupo": reserva.grupo,
+                "fecha_actividad": reserva.fecha_actividad.isoformat() if reserva.fecha_actividad else None,
+                "actor_rol": current_user.rol.value if hasattr(current_user.rol, "value") else str(current_user.rol),
+                "motivo": motivo or "Cancelada por el solicitante",
+            },
+        )
+    return {"mensaje": "Sesión cancelada", "reservaciones_canceladas": len(reservas_objetivo)}
 
 
 # ─── Solicitudes de Conflicto ──────────────────────────────────────────────────
