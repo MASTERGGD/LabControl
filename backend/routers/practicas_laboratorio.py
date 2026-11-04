@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
+from models.docencia import CargaDocente
 from models.horario import Reservacion
 from models.inventario import Activo, Incidente
 from models.laboratorio import Laboratorio
@@ -169,11 +170,22 @@ def _serialize_insumo(i: InsumoLaboratorio):
 
 def _serialize(p: PracticaLaboratorio):
     r = p.reservacion
+    carga = r.carga_docente
+    grupo_academico = carga.grupo_academico if carga else None
+    clase_docente = next(
+        (clase for clase in carga.clases if clase.fecha == p.fecha_sesion),
+        None,
+    ) if carga else None
     return {
         "id": p.id, "reservacion_id": r.id, "laboratorio_id": r.laboratorio_id,
         "laboratorio_nombre": r.laboratorio.nombre if r.laboratorio else None,
         "docente_id": r.docente_id, "docente_nombre": r.docente.nombre if r.docente else None,
         "materia": r.materia, "grupo": r.grupo, "fecha": p.fecha_sesion.isoformat() if p.fecha_sesion else None,
+        "carga_docente_id": r.carga_docente_id,
+        "grupo_academico_id": grupo_academico.id if grupo_academico else None,
+        "grupo_academico_periodo": grupo_academico.periodo.clave if grupo_academico and grupo_academico.periodo else None,
+        "clase_docente_id": clase_docente.id if clase_docente else None,
+        "clase_docente_estado": clase_docente.estado if clase_docente else None,
         "hora_inicio": r.horario.hora_inicio if r.horario else None,
         "hora_fin": r.horario.hora_fin if r.horario else None,
         "titulo": p.titulo, "objetivo": p.objetivo, "procedimiento": p.procedimiento,
@@ -445,15 +457,40 @@ def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
     calendario = estado_fecha_academica(db, r.periodo_id, p.fecha_sesion)
     if not calendario["permite_iniciar_clase"] or not calendario["requiere_asistencia"]:
         raise HTTPException(409, f"El calendario académico no permite iniciar la práctica: {calendario['motivo'] or 'día no lectivo'}.")
-    periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == r.periodo_id).first() if r.periodo_id else None
-    if not periodo:
-        periodo = db.query(PeriodoEscolar).filter(func.upper(PeriodoEscolar.clave) == (r.cuatrimestre or "").upper()).first()
-    grupos = db.query(GrupoAcademico).filter(GrupoAcademico.activo == True, GrupoAcademico.grupo == r.grupo)
-    if periodo: grupos = grupos.filter(GrupoAcademico.periodo_id == periodo.id)
-    if r.carrera: grupos = grupos.filter(func.lower(GrupoAcademico.carrera) == r.carrera.lower())
-    if r.cuatrimestre_materia and str(r.cuatrimestre_materia).isdigit():
-        grupos = grupos.filter(GrupoAcademico.cuatrimestre == int(r.cuatrimestre_materia))
-    grupo = grupos.first()
+    grupo = None
+    carga = None
+    if r.carga_docente_id:
+        carga = db.query(CargaDocente).filter(CargaDocente.id == r.carga_docente_id).first()
+        if not carga:
+            raise HTTPException(409, "La reservación apunta a una carga docente que ya no existe. Corrige la carga antes de iniciar la práctica.")
+        if carga.grupo_academico_id:
+            grupo = db.query(GrupoAcademico).filter(
+                GrupoAcademico.id == carga.grupo_academico_id,
+                GrupoAcademico.activo == True,
+            ).first()
+            if not grupo:
+                raise HTTPException(409, "La carga docente no tiene un grupo académico activo para cargar la asistencia.")
+            if grupo.grupo.strip().casefold() != (r.grupo or "").strip().casefold():
+                raise HTTPException(409, "El grupo de la reservación no coincide con el grupo de su carga docente.")
+            if r.periodo_id and grupo.periodo_id != r.periodo_id:
+                raise HTTPException(409, "El periodo de la reservación no coincide con el grupo de su carga docente.")
+
+    if not grupo:
+        periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == r.periodo_id).first() if r.periodo_id else None
+        if not periodo:
+            periodo = db.query(PeriodoEscolar).filter(func.upper(PeriodoEscolar.clave) == (r.cuatrimestre or "").upper()).first()
+        grupos = db.query(GrupoAcademico).filter(
+            GrupoAcademico.activo == True,
+            func.lower(GrupoAcademico.grupo) == (r.grupo or "").strip().lower(),
+        )
+        if periodo: grupos = grupos.filter(GrupoAcademico.periodo_id == periodo.id)
+        if r.carrera: grupos = grupos.filter(func.lower(GrupoAcademico.carrera) == r.carrera.strip().lower())
+        if r.cuatrimestre_materia and str(r.cuatrimestre_materia).isdigit():
+            grupos = grupos.filter(GrupoAcademico.cuatrimestre == int(r.cuatrimestre_materia))
+        candidatos = grupos.order_by(GrupoAcademico.id).limit(2).all()
+        if len(candidatos) > 1:
+            raise HTTPException(409, "La reservación coincide con más de un grupo académico. Vincúlala a una carga docente para evitar usar una lista incorrecta.")
+        grupo = candidatos[0] if candidatos else None
     if not grupo: raise HTTPException(400, "No se encontró el grupo académico para cargar la lista de asistencia. Verifica periodo, carrera y grupo.")
     alumnos = (db.query(CatalogoAlumno).join(InscripcionAlumno, InscripcionAlumno.alumno_id == CatalogoAlumno.id)
                .filter(InscripcionAlumno.grupo_academico_id == grupo.id, InscripcionAlumno.estado == "ACTIVO", CatalogoAlumno.activo == True)
