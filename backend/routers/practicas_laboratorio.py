@@ -168,8 +168,14 @@ def _serialize_insumo(i: InsumoLaboratorio):
             "caducado": bool(i.caduca_en and i.caduca_en < datetime.date.today())}
 
 
-def _serialize(p: PracticaLaboratorio):
+def _serialize(p: PracticaLaboratorio, db: Session):
     r = p.reservacion
+    bloque = db.query(Reservacion).filter(
+        Reservacion.bloque_reserva_id == r.bloque_reserva_id
+    ).all() if r.bloque_reserva_id else [r]
+    horarios_bloque = [item.horario for item in bloque if item.horario]
+    hora_inicio = min((item.hora_inicio for item in horarios_bloque), default=None)
+    hora_fin = max((item.hora_fin for item in horarios_bloque), default=None)
     carga = r.carga_docente
     grupo_academico = carga.grupo_academico if carga else None
     clase_docente = next(
@@ -181,13 +187,15 @@ def _serialize(p: PracticaLaboratorio):
         "laboratorio_nombre": r.laboratorio.nombre if r.laboratorio else None,
         "docente_id": r.docente_id, "docente_nombre": r.docente.nombre if r.docente else None,
         "materia": r.materia, "grupo": r.grupo, "fecha": p.fecha_sesion.isoformat() if p.fecha_sesion else None,
+        "bloque_reserva_id": r.bloque_reserva_id,
+        "reservacion_ids": [item.id for item in bloque],
         "carga_docente_id": r.carga_docente_id,
         "grupo_academico_id": grupo_academico.id if grupo_academico else None,
         "grupo_academico_periodo": grupo_academico.periodo.clave if grupo_academico and grupo_academico.periodo else None,
         "clase_docente_id": clase_docente.id if clase_docente else None,
         "clase_docente_estado": clase_docente.estado if clase_docente else None,
-        "hora_inicio": r.horario.hora_inicio if r.horario else None,
-        "hora_fin": r.horario.hora_fin if r.horario else None,
+        "hora_inicio": hora_inicio,
+        "hora_fin": hora_fin,
         "titulo": p.titulo, "objetivo": p.objetivo, "procedimiento": p.procedimiento,
         "notas_seguridad": p.notas_seguridad, "estado": p.estado,
         "plantilla_id": p.plantilla_id,
@@ -291,7 +299,7 @@ def listar_practicas(laboratorio_id: Optional[int] = None, db: Session = Depends
         q = q.filter(Reservacion.laboratorio_id == user.laboratorio_id)
     elif laboratorio_id:
         q = q.filter(Reservacion.laboratorio_id == laboratorio_id)
-    return [_serialize(p) for p in q.order_by(PracticaLaboratorio.fecha_sesion.desc(), PracticaLaboratorio.id.desc()).limit(200).all()]
+    return [_serialize(p, db) for p in q.order_by(PracticaLaboratorio.fecha_sesion.desc(), PracticaLaboratorio.id.desc()).limit(200).all()]
 
 
 def _serialize_plantilla(t: PlantillaPractica):
@@ -409,12 +417,12 @@ def crear_practica(data: PracticaCreate, db: Session = Depends(get_db), user: Us
             f"{user.nombre} solicitó '{p.titulo}' para {r.materia}, grupo {r.grupo}.",
             "/admin/practicas-laboratorio", enviar_email=False)
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, db)
 
 
 @router.get("/{practica_id}")
 def detalle_practica(practica_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
-    return _serialize(_get_practica(db, practica_id, user))
+    return _serialize(_get_practica(db, practica_id, user), db)
 
 
 @router.post("/{practica_id}/preparar")
@@ -441,7 +449,7 @@ def preparar_practica(practica_id: int, data: PrepararBody, db: Session = Depend
         f"El responsable preparó '{p.titulo}'. Puedes iniciar la sesión desde Prácticas y reportes.",
         "/docente/practicas-laboratorio", enviar_email=False)
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, db)
 
 
 @router.post("/{practica_id}/iniciar")
@@ -501,7 +509,7 @@ def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
                                   alumno_nombre=" ".join(x for x in [a.apellido_paterno, a.apellido_materno, a.nombres] if x)))
     p.estado = "EN_CURSO"; p.iniciada_en = datetime.datetime.utcnow()
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, db)
 
 
 @router.put("/{practica_id}/asistencia")
@@ -516,7 +524,7 @@ def guardar_asistencia(practica_id: int, data: AsistenciaBody, db: Session = Dep
         rows[item.alumno_id].estado = item.estado
         rows[item.alumno_id].observacion = item.observacion
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, db)
 
 
 @router.post("/{practica_id}/incidentes", status_code=201)
@@ -604,4 +612,4 @@ def cerrar_practica(practica_id: int, data: CerrarBody, db: Session = Depends(ge
     p.observaciones_docente = data.observaciones_docente
     p.estado = "CERRADA"; p.cerrada_en = datetime.datetime.utcnow()
     db.commit(); db.refresh(p)
-    return _serialize(p)
+    return _serialize(p, db)

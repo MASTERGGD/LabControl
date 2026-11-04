@@ -84,6 +84,8 @@ function fmtDateEspacios(date) {
   return dateToLocalISO(date);
 }
 
+const nuevoMaterialPractica = () => ({ insumo_id: '', descripcion: '', cantidad_solicitada: '', unidad: 'PIEZA' });
+
 function fmtDisplayEspacios(date) {
   return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
 }
@@ -341,7 +343,13 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
   const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
-  const [materialesPractica, setMaterialesPractica] = useState('');
+  const [incluyePractica, setIncluyePractica] = useState(false);
+  const [tituloPractica, setTituloPractica] = useState('');
+  const [objetivoPractica, setObjetivoPractica] = useState('');
+  const [procedimientoPractica, setProcedimientoPractica] = useState('');
+  const [fechaPractica, setFechaPractica] = useState('');
+  const [materialesPractica, setMaterialesPractica] = useState([nuevoMaterialPractica()]);
+  const [insumosPractica, setInsumosPractica] = useState([]);
   const [seguridadPractica, setSeguridadPractica] = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -418,9 +426,21 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
     return () => { vigente = false; };
   }, [form.carrera, form.cuatrimestre_materia, form.cuatrimestre]);
 
+  useEffect(() => {
+    let vigente = true;
+    if (!esPracticas || !laboratorio_id) { setInsumosPractica([]); return undefined; }
+    api.get(`/practicas-laboratorio/insumos?laboratorio_id=${laboratorio_id}`)
+      .then(({ data }) => { if (vigente) setInsumosPractica(data || []); })
+      .catch(() => { if (vigente) setInsumosPractica([]); });
+    return () => { vigente = false; };
+  }, [esPracticas, laboratorio_id]);
+
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
-  const hayReqs = esPracticas
-    ? materialesPractica.trim() || seguridadPractica.trim()
+  const requiereFlujoPractica = esPracticas && !esInstitucional;
+  const materialesPracticaConDatos = materialesPractica.filter(item => item.descripcion.trim() || item.cantidad_solicitada);
+  const resumenMaterialesPractica = materialesPracticaConDatos.map(item => `${item.cantidad_solicitada || ''} ${item.unidad} ${item.descripcion}`.trim()).join('\n');
+  const hayReqs = requiereFlujoPractica
+    ? !incluyePractica && (resumenMaterialesPractica || seguridadPractica.trim())
     : CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const handleSubmit = async (e) => {
@@ -430,21 +450,32 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
     if (!esInstitucional && !form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
     if (esInstitucional && !form.fecha_actividad) { setError('Selecciona la fecha específica de la actividad.'); return; }
     if (!esInstitucional && soloUnaFecha && !form.fecha_actividad) { setError('Selecciona la fecha de la sesión.'); return; }
+    if (requiereFlujoPractica && incluyePractica && !soloUnaFecha && !fechaPractica) { setError('Selecciona la fecha en que se realizará la práctica.'); return; }
+    if (requiereFlujoPractica && incluyePractica && !soloUnaFecha && new Date(`${fechaPractica}T00:00:00`).getDay() !== (slot.dia_semana + 1) % 7) { setError('La fecha de la práctica debe coincidir con el día del horario reservado.'); return; }
+    if (requiereFlujoPractica && incluyePractica && materialesPracticaConDatos.some(item => !item.descripcion.trim() || !Number(item.cantidad_solicitada) || Number(item.cantidad_solicitada) <= 0 || !item.unidad.trim())) { setError('Completa descripción, cantidad y unidad de cada material solicitado.'); return; }
     if (fechaPuntualEnConflicto) { setError('Ya hay una sesión reservada en esa fecha. Elige otra fecha para continuar.'); return; }
     setSaving(true); setError('');
-    const reqItems = esPracticas
+    const reqItems = requiereFlujoPractica && incluyePractica
+      ? []
+      : requiereFlujoPractica
       ? [
-          ...(materialesPractica.trim() ? ['Materiales, reactivos o equipo para la práctica'] : []),
+          ...(resumenMaterialesPractica ? ['Materiales, reactivos o equipo para la práctica'] : []),
           ...(seguridadPractica.trim() ? ['Seguridad y equipo de protección'] : []),
         ]
       : CHECKS_REQ.filter(c => checks[c.key]).map(c => c.label);
-    const reqDescripcion = esPracticas
+    const reqDescripcion = requiereFlujoPractica && incluyePractica
+      ? undefined
+      : requiereFlujoPractica
       ? [
-          materialesPractica.trim() && `Materiales/reactivos/equipo: ${materialesPractica.trim()}`,
+          resumenMaterialesPractica && `Materiales/reactivos/equipo:\n${resumenMaterialesPractica}`,
           seguridadPractica.trim() && `Seguridad/EPP: ${seguridadPractica.trim()}`,
         ].filter(Boolean).join('\n')
       : notaReq.trim();
     try {
+      const bloqueReservaId = window.crypto?.randomUUID?.();
+      if (opcionSeleccionada.slots.length > 1 && !bloqueReservaId) {
+        throw new Error('Este navegador no pudo generar el identificador de la sesión. Actualízalo e inténtalo de nuevo.');
+      }
       const payloadBase = {
         laboratorio_id:       laboratorio_id,
         docente_id:           usuario.id,
@@ -454,10 +485,11 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
         cuatrimestre_materia: form.cuatrimestre_materia || undefined,
         grupo:                esInstitucional ? 'INSTITUCIONAL' : form.grupo,
         tipo_actividad:       form.tipo_actividad,
+        bloque_reserva_id:    bloqueReservaId,
         fecha_actividad:      (esInstitucional || soloUnaFecha) ? form.fecha_actividad : undefined,
         req_items:            reqItems.length ? reqItems : undefined,
         req_descripcion:      reqDescripcion || undefined,
-        req_tiene_instalador: !esPracticas && checks.software ? tieneInstalador : undefined,
+        req_tiene_instalador: !requiereFlujoPractica && checks.software ? tieneInstalador : undefined,
       };
       const creadas = [];
       try {
@@ -472,6 +504,22 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
             req_tiene_instalador: indice === 0 ? payloadBase.req_tiene_instalador : undefined,
           });
           creadas.push(data.id);
+        }
+        if (requiereFlujoPractica && incluyePractica) {
+          await api.post('/practicas-laboratorio', {
+            reservacion_id: creadas[0],
+            fecha_sesion: soloUnaFecha ? form.fecha_actividad : fechaPractica,
+            titulo: tituloPractica.trim() || `${form.materia} · Práctica`,
+            objetivo: objetivoPractica.trim() || null,
+            procedimiento: procedimientoPractica.trim() || null,
+            notas_seguridad: seguridadPractica.trim() || null,
+            materiales: materialesPracticaConDatos.map(item => ({
+              insumo_id: item.insumo_id ? Number(item.insumo_id) : null,
+              descripcion: item.descripcion.trim(),
+              cantidad_solicitada: Number(item.cantidad_solicitada),
+              unidad: item.unidad.trim(),
+            })),
+          });
         }
       } catch (err) {
         await Promise.allSettled(creadas.map(id => api.delete(`/horarios/reservaciones/${id}`)));
@@ -512,10 +560,10 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
         <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Tipo de actividad *</label>
-          <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setSoloUnaFecha(false); setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
+          <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setSoloUnaFecha(false); setIncluyePractica(false); setFechaPractica(''); setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
               <option value="CLASE">Clase regular</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
             </select>
-            {esPracticas && form.tipo_actividad === 'CLASE' && <p className="mt-1 text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>Para impartir una práctica de la materia, selecciona “Clase regular” y describe su preparación en el apartado de abajo.</p>}
+            {requiereFlujoPractica && form.tipo_actividad === 'CLASE' && <p className="mt-1 text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>Si la clase incluye una práctica, márcalo abajo. SIGA enviará la solicitud al responsable y la agregará a tu seguimiento.</p>}
           </div>
           {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span>{reservasPuntualesBloque.length > 0 && <span className="mt-1 block text-xs" style={{ color: isDay ? '#92400e' : '#fde68a' }}>Este bloque ya tiene sesión(es) el {resumenFechasPuntuales(reservasPuntualesBloque)}; elige otra fecha.</span>}{fechaPuntualEnConflicto && <span className="mt-1 block text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>La fecha seleccionada ya está apartada.</span>}</label>}
           {!esInstitucional && <div className="rounded-xl border p-3" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
@@ -650,30 +698,41 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
               border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.07)'}`,
             }}
           >
-            <p
-              className="text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5"
-              style={{ color: isDay ? '#334155' : '#cbd5e1' }}
-            >
-              {esPracticas ? 'Preparación de la práctica en laboratorio' : 'Requerimientos para la clase'}
-              <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="normal-case font-normal">(opcional)</span>
-            </p>
-            {esPracticas ? <>
-              <p className="text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
-                Esta sección indica qué debe preparar el laboratorio; no cambia el tipo de actividad. Detalla materiales, reactivos, equipo y seguridad. La asistencia y el consumo real se registran después en Prácticas y reportes.
-              </p>
-              <div className="grid gap-3 md:grid-cols-2">
-              <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo
-              <textarea rows={4} value={materialesPractica} onChange={e => setMaterialesPractica(e.target.value)}
-                placeholder="Materiales, reactivos y equipo. Ej.: 4 matraces de 250 ml, 20 ml de reactivo por mesa…"
-                className="mt-1 w-full input-dark text-sm resize-y px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-700" />
+            {requiereFlujoPractica ? <>
+              <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
+                <input type="checkbox" checked={incluyePractica} onChange={e => setIncluyePractica(e.target.checked)} className="mt-1" />
+                <span><b>Esta clase incluye una práctica de laboratorio</b><span className="mt-0.5 block text-xs opacity-75">Al enviar la reserva, SIGA creará la solicitud para el responsable y la mostrará en tu seguimiento. No tendrás que volver a capturarla.</span></span>
               </label>
-              <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
-              <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)}
-                placeholder="Indicaciones de seguridad o EPP: bata, guantes, lentes, manejo especial…"
-                className="mt-1 w-full input-dark text-sm resize-y px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-700" />
-              </label>
-              </div>
+              {incluyePractica && <div className="space-y-3">
+                {!soloUnaFecha && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de esta práctica *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaPractica} onChange={e => setFechaPractica(e.target.value)} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe coincidir con el día del horario semanal.</span></label>}
+                <input className="input-dark w-full" placeholder="Nombre de la práctica" value={tituloPractica} onChange={e => setTituloPractica(e.target.value)} />
+                <textarea rows={2} value={objetivoPractica} onChange={e => setObjetivoPractica(e.target.value)} placeholder="Objetivo de la práctica (opcional)" className="input-dark w-full resize-y" />
+                <textarea rows={3} value={procedimientoPractica} onChange={e => setProcedimientoPractica(e.target.value)} placeholder="Procedimiento y consideraciones de seguridad (opcional)" className="input-dark w-full resize-y" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo solicitado</p>
+                    {materialesPractica.map((material, indice) => <div key={indice} className="grid gap-2 rounded-lg border p-2 sm:grid-cols-[1.4fr_1fr_.55fr_.65fr_auto]" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
+                      <select className="input-dark w-full text-xs" value={material.insumo_id} onChange={e => {
+                        const siguiente = [...materialesPractica];
+                        const id = e.target.value;
+                        const insumo = insumosPractica.find(item => String(item.id) === id);
+                        siguiente[indice] = { ...material, insumo_id: id, descripcion: insumo?.nombre || (id ? material.descripcion : ''), unidad: insumo?.unidad || (id ? material.unidad : 'PIEZA') };
+                        setMaterialesPractica(siguiente);
+                      }}><option value="">Equipo o material libre</option>{insumosPractica.map(item => <option key={item.id} value={item.id}>{item.nombre} · disponible {item.cantidad_disponible} {item.unidad}</option>)}</select>
+                      <input className="input-dark w-full text-xs" placeholder="Descripción" value={material.descripcion} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, descripcion: e.target.value, insumo_id: '' }; setMaterialesPractica(siguiente); }} />
+                      <input className="input-dark w-full text-xs" type="number" min="0.001" step="any" placeholder="Cantidad" value={material.cantidad_solicitada} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, cantidad_solicitada: e.target.value }; setMaterialesPractica(siguiente); }} />
+                      <input className="input-dark w-full text-xs" placeholder="Unidad" value={material.unidad} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, unidad: e.target.value }; setMaterialesPractica(siguiente); }} />
+                      <button type="button" className="rounded-lg border px-2 text-xs" onClick={() => setMaterialesPractica(actual => actual.length === 1 ? [nuevoMaterialPractica()] : actual.filter((_, i) => i !== indice))}>Quitar</button>
+                    </div>)}
+                    <button type="button" className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700" onClick={() => setMaterialesPractica(actual => [...actual, nuevoMaterialPractica()])}>+ Agregar material</button>
+                  </div>
+                  <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
+                    <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)} placeholder="Bata, guantes, lentes, manejo especial…" className="mt-1 w-full input-dark text-sm resize-y px-3 py-2" />
+                  </label>
+                </div>
+              </div>}
             </> : <>
+            <p className={`text-xs uppercase tracking-wide font-semibold ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>Requerimientos para la clase <span className="normal-case font-normal">(opcional)</span></p>
             <div className="grid grid-cols-2 gap-2">
               {CHECKS_REQ.map(c => (
                 <label key={c.key}

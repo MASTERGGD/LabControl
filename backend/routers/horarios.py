@@ -68,6 +68,7 @@ class ReservacionCreate(BaseModel):
     horario_id: int
     laboratorio_id: int
     docente_id: int
+    bloque_reserva_id: Optional[str] = Field(None, min_length=36, max_length=36)
     materia: str  = Field(..., min_length=2, max_length=100)
     carrera: Optional[str] = Field(None, max_length=120,
         description="Carrera a la que pertenece la materia")
@@ -373,6 +374,7 @@ def _serializar_reservacion(r: Reservacion, db: Session) -> dict:
     ).first() if r.periodo_id else None
     return {
         "id": r.id,
+        "bloque_reserva_id": r.bloque_reserva_id,
         "horario_id": r.horario_id,
         "dia_semana": horario.dia_semana if horario else None,
         "dia_nombre": DIAS.get(horario.dia_semana, "") if horario else "",
@@ -1098,6 +1100,7 @@ def crear_reservacion(
         horario_id=data.horario_id,
         laboratorio_id=data.laboratorio_id,
         docente_id=data.docente_id,
+        bloque_reserva_id=data.bloque_reserva_id,
         periodo_id=periodo_academico.id,
         materia=data.materia,
         carrera=data.carrera or ("INSTITUCIONAL" if es_no_academica else None),

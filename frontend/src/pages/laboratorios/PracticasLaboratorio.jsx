@@ -70,13 +70,35 @@ function PracticasLaboratorio() {
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { if (usuario?.laboratorio_id && !laboratorioId) setLaboratorioId(String(usuario.laboratorio_id)); }, [usuario, laboratorioId]);
 
+  const bloquesReservacion = useMemo(() => {
+    const bloques = new Map();
+    for (const reservacion of reservaciones) {
+      const key = reservacion.bloque_reserva_id || `reservacion-${reservacion.id}`;
+      const actual = bloques.get(key) || { key, reservas: [] };
+      actual.reservas.push(reservacion);
+      bloques.set(key, actual);
+    }
+    return [...bloques.values()].map(bloque => {
+      const reservasOrdenadas = [...bloque.reservas].sort((a, b) => String(a.hora_inicio).localeCompare(String(b.hora_inicio)));
+      return {
+        ...bloque,
+        reservas: reservasOrdenadas,
+        principal: reservasOrdenadas[0],
+        hora_inicio: reservasOrdenadas[0]?.hora_inicio,
+        hora_fin: reservasOrdenadas[reservasOrdenadas.length - 1]?.hora_fin,
+      };
+    });
+  }, [reservaciones]);
   const reservacionesDisponibles = useMemo(() => {
     const usadas = new Set(practicas.map(p => p.reservacion_id));
     const labsAcademicos = new Set(laboratorios.map(l => Number(l.id)));
-    return reservaciones.filter(r => !usadas.has(r.id) &&
-      (labsAcademicos.has(Number(r.laboratorio_id))) &&
-      (esDocente || !laboratorioId || Number(r.laboratorio_id) === Number(laboratorioId)));
-  }, [reservaciones, practicas, esDocente, laboratorioId, laboratorios]);
+    return bloquesReservacion.filter(bloque => {
+      const r = bloque.principal;
+      return !bloque.reservas.some(item => usadas.has(item.id)) &&
+        labsAcademicos.has(Number(r.laboratorio_id)) &&
+        (esDocente || !laboratorioId || Number(r.laboratorio_id) === Number(laboratorioId));
+    });
+  }, [bloquesReservacion, practicas, esDocente, laboratorioId, laboratorios]);
   const reservacionSeleccionada = reservaciones.find(r => Number(r.id) === Number(seleccion));
   const insumosSolicitud = insumos.filter(i => !reservacionSeleccionada || Number(i.laboratorio_id) === Number(reservacionSeleccionada.laboratorio_id));
   const hoyLocal = fechaLocal(new Date());
@@ -180,7 +202,7 @@ function PracticasLaboratorio() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-600">SIGA · Laboratorios docentes</p>
           <h1 className="mt-1 text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Prácticas de laboratorio</h1>
-          <p className="mt-2 max-w-3xl text-sm" style={{ color: 'var(--text-secondary)' }}>Solicitud vinculada a una reservación, preparación del responsable, asistencia del grupo y reporte docente de la práctica.</p>
+          <p className="mt-2 max-w-3xl text-sm" style={{ color: 'var(--text-secondary)' }}>Las solicitudes se generan al reservar una clase con práctica. Aquí consulta la preparación del laboratorio y completa asistencia, incidencias y reporte.</p>
         </div>
         {puedePreparar && <select className={`${field} max-w-sm`} value={laboratorioId} onChange={e => setLaboratorioId(e.target.value)}>
           <option value="">Selecciona laboratorio</option>{laboratorios.map(l => <option key={l.id} value={l.id}>{l.nombre} · {l.categoria}</option>)}
@@ -190,10 +212,15 @@ function PracticasLaboratorio() {
       {error && <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{String(error)}</div>}
       {esDocente && proximaPractica && proximaPractica.fecha <= mananaLocal && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div><p className="text-xs font-bold uppercase tracking-wider">Próxima práctica</p><p className="mt-1 text-lg font-bold">{proximaPractica.titulo} · {proximaPractica.fecha === hoyLocal ? 'Hoy' : 'Mañana'}</p><p className="text-sm">{proximaPractica.laboratorio_nombre} · {proximaPractica.hora_inicio}–{proximaPractica.hora_fin} · {proximaPractica.estado}</p></div>{proximaPractica.estado === 'PREPARADA' && proximaPractica.fecha === hoyLocal && <button className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(proximaPractica)}>Iniciar práctica</button>}</div>}
 
-      {esDocente && <form onSubmit={crear} className={`${card} space-y-4`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
-        <div><h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Solicitar una práctica</h2><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Reserva primero el laboratorio. Después selecciona esa sesión para pedir materiales, reactivos o equipo.</p></div>
+      {esDocente && <div className={`${card} space-y-3`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
+        <div><h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Seguimiento de prácticas</h2><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Al reservar, SIGA crea aquí la solicitud y la envía al responsable. No vuelvas a capturarla.</p></div>
+        {practicas.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm" style={{ color: 'var(--text-secondary)', borderColor: 'var(--surface-border)' }}>Aún no tienes prácticas solicitadas. Para iniciar una, abre <b>Solicitar laboratorio</b>, marca que la clase incluye una práctica y completa sus datos en el mismo formulario.</p>}
+        <details className="rounded-xl border p-3" style={{ borderColor: 'var(--surface-border)' }}>
+          <summary className="cursor-pointer text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Registrar seguimiento de una reservación anterior</summary>
+          <form onSubmit={crear} className="mt-4 space-y-4">
+        <div><h3 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Reservación anterior sin solicitud formal</h3><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Usa esta opción solo para reservas creadas antes de la integración.</p></div>
         <select className={field} required value={seleccion} onChange={e => { const r = reservaciones.find(x => String(x.id) === e.target.value); setSeleccion(e.target.value); setForm(current => ({ ...current, fecha_sesion: r?.fecha_actividad || '' })); }}><option value="">Reservación de Química o Agroindustria</option>
-          {reservacionesDisponibles.map(r => <option key={r.id} value={r.id}>{r.laboratorio_nombre} · {r.materia} · grupo {r.grupo} · {r.fecha_actividad || r.dia_nombre || 'sesión programada'} · {r.hora_inicio}</option>)}
+          {reservacionesDisponibles.map(bloque => <option key={bloque.key} value={bloque.principal.id}>{bloque.principal.laboratorio_nombre} · {bloque.principal.materia} · grupo {bloque.principal.grupo} · {bloque.principal.fecha_actividad || bloque.principal.dia_nombre || 'sesión programada'} · {bloque.hora_inicio}–{bloque.hora_fin}</option>)}
         </select>
         <label className="block text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Fecha de esta práctica<input className={`${field} mt-1 max-w-xs`} type="date" required={!reservacionSeleccionada?.fecha_actividad} min={hoyLocal} value={form.fecha_sesion} onChange={e => setForm({ ...form, fecha_sesion: e.target.value })} disabled={Boolean(reservacionSeleccionada?.fecha_actividad)}/></label>
         <select className={field} value={form.plantilla_id} onChange={e => aplicarGuia(e.target.value)}><option value="">Crear solicitud desde cero</option>{guias.map(g => <option key={g.id} value={g.id}>{g.titulo}{g.materia ? ` · ${g.materia}` : ''}</option>)}</select>
@@ -211,8 +238,10 @@ function PracticasLaboratorio() {
           </div>)}
           <button type="button" className={`${btn} border border-emerald-300 text-emerald-700`} onClick={() => setForm({ ...form, materiales: [...form.materiales, blankMaterial()] })}>+ Agregar material</button>
         </div>
-        <button className={`${btn} bg-emerald-700 text-white`} disabled={cargando}>Enviar solicitud al responsable</button>
-      </form>}
+        <button className={`${btn} bg-emerald-700 text-white`} disabled={cargando}>Crear seguimiento anterior</button>
+          </form>
+        </details>
+      </div>}
 
       {puedePreparar && laboratorioId && <section className={`${card} space-y-4`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
         {resumen && <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{[

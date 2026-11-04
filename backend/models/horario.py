@@ -32,6 +32,7 @@ class Reservacion(Base):
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     docente_suplente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     carga_docente_id = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=True, index=True)
+    bloque_reserva_id = Column(String(36), nullable=True, index=True)
     periodo_id = Column(Integer, ForeignKey("periodos_escolares.id"), nullable=True, index=True)
     materia             = Column(String, nullable=False)
     carrera             = Column(String, nullable=True)   # carrera académica de la materia
