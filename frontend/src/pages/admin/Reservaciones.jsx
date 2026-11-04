@@ -533,12 +533,12 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
           {/* ── Requerimientos ── */}
           <div className="rounded-xl p-4 space-y-3" style={{ background:'rgba(30,41,59,0.6)', border:'1px solid rgba(255,255,255,0.07)' }}>
             <p className={`text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5 ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>
-              {esPracticas ? 'Requerimientos de la práctica' : 'Requerimientos para la clase'}
+              {esPracticas ? 'Preparación de la práctica en laboratorio' : 'Requerimientos para la clase'}
               <span className={`${isDay ? 'text-slate-500' : 'text-slate-600'} normal-case font-normal`}>(opcional)</span>
             </p>
             {esPracticas ? <>
               <p className={`text-xs ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
-                Indica lo que debe preparar el responsable del laboratorio. Puedes detallar cantidades, concentraciones y equipo; registra la lista formal de consumo en Prácticas y reportes.
+                Indica qué debe preparar el laboratorio: materiales, reactivos, equipo y seguridad. La asistencia y el consumo real se registran después en Prácticas y reportes.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
               <label className={`block text-xs font-medium ${isDay ? 'text-slate-700' : 'text-slate-300'}`}>Materiales, reactivos y equipo

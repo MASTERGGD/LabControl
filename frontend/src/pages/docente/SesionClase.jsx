@@ -513,12 +513,13 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Tipo de actividad *</label>
           <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setSoloUnaFecha(false); setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
-              <option value="CLASE">Clase ordinaria</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
+              <option value="CLASE">Clase regular</option><option value="CAPACITACION">Capacitación</option><option value="CERTIFICACION">Certificación</option><option value="MANTENIMIENTO">Mantenimiento</option><option value="ACTIVIDAD_INSTITUCIONAL">Actividad institucional</option>
             </select>
+            {esPracticas && form.tipo_actividad === 'CLASE' && <p className="mt-1 text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>Para impartir una práctica de la materia, selecciona “Clase regular” y describe su preparación en el apartado de abajo.</p>}
           </div>
           {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span>{reservasPuntualesBloque.length > 0 && <span className="mt-1 block text-xs" style={{ color: isDay ? '#92400e' : '#fde68a' }}>Este bloque ya tiene sesión(es) el {resumenFechasPuntuales(reservasPuntualesBloque)}; elige otra fecha.</span>}{fechaPuntualEnConflicto && <span className="mt-1 block text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>La fecha seleccionada ya está apartada.</span>}</label>}
           {!esInstitucional && <div className="rounded-xl border p-3" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
-            <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setForm(f => ({ ...f, fecha_actividad: '' })); }} className="mt-1"/><span><b>Reservar para una sola fecha</b><span className="mt-0.5 block text-xs opacity-75">El horario se aparta únicamente en la fecha indicada; no se repite cada semana durante el cuatrimestre.</span></span></label>
+            <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setForm(f => ({ ...f, fecha_actividad: '' })); }} className="mt-1"/><span><b>Reservar solo en una fecha</b><span className="mt-0.5 block text-xs opacity-75">Márcalo para una sesión puntual. Déjalo desmarcado si la clase se repetirá cada semana del cuatrimestre.</span></span></label>
             {reservasPuntualesBloque.length > 0 && <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ background: isDay ? '#fffbeb' : 'rgba(120,53,15,.22)', borderColor: isDay ? '#fcd34d' : 'rgba(245,158,11,.4)', color: isDay ? '#92400e' : '#fde68a' }}>
               {soloUnaFecha
                 ? <>Este bloque ya tiene sesión(es) el <b>{resumenFechasPuntuales(reservasPuntualesBloque)}</b>. Puedes reservar otra fecha; la fecha elegida debe ser distinta.</>
@@ -653,12 +654,12 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
               className="text-xs uppercase tracking-wide font-semibold flex items-center gap-1.5"
               style={{ color: isDay ? '#334155' : '#cbd5e1' }}
             >
-              {esPracticas ? 'Requerimientos de la práctica' : 'Requerimientos para la clase'}
+              {esPracticas ? 'Preparación de la práctica en laboratorio' : 'Requerimientos para la clase'}
               <span style={{ color: isDay ? '#64748b' : '#94a3b8' }} className="normal-case font-normal">(opcional)</span>
             </p>
             {esPracticas ? <>
               <p className="text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
-                Indica lo que debe preparar el responsable del laboratorio. Puedes detallar cantidades, concentraciones y equipo; registra la lista formal de consumo en Prácticas y reportes.
+                Esta sección indica qué debe preparar el laboratorio; no cambia el tipo de actividad. Detalla materiales, reactivos, equipo y seguridad. La asistencia y el consumo real se registran después en Prácticas y reportes.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo
