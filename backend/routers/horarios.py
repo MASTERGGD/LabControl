@@ -156,26 +156,6 @@ def _serializar_horario(h: HorarioDisponible, db: Session, fecha_actividad: Opti
         Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
     ).order_by(Reservacion.fecha_actividad).all()
 
-    rangos_bloque = {}
-    ids_bloque = {r.bloque_reserva_id for r in reservas_puntuales if r.bloque_reserva_id}
-    if ids_bloque:
-        filas_bloque = db.query(
-            Reservacion.bloque_reserva_id,
-            Reservacion.fecha_actividad,
-            HorarioDisponible.hora_inicio,
-            HorarioDisponible.hora_fin,
-        ).join(HorarioDisponible, HorarioDisponible.id == Reservacion.horario_id).filter(
-            Reservacion.bloque_reserva_id.in_(ids_bloque),
-            Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
-        ).order_by(HorarioDisponible.hora_inicio).all()
-        por_bloque_fecha = {}
-        for bloque_id, fecha, hora_inicio, hora_fin in filas_bloque:
-            por_bloque_fecha.setdefault((bloque_id, fecha), []).append((hora_inicio, hora_fin))
-        rangos_bloque = {
-            clave: {"inicio": horas[0][0], "fin": horas[-1][1]}
-            for clave, horas in por_bloque_fecha.items()
-        }
-
     reservacion_data = None
     if reservacion_activa:
         docente = db.query(Usuario).filter(Usuario.id == reservacion_activa.docente_id).first()
@@ -823,6 +803,26 @@ def disponibilidad(
             Reservacion.fecha_actividad >= ahora_mx.date(),
             Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
         ).order_by(Reservacion.fecha_actividad).all()
+
+        ids_bloque = {r.bloque_reserva_id for r in reservas_puntuales if r.bloque_reserva_id}
+        rangos_bloque = {}
+        if ids_bloque:
+            filas_bloque = db.query(
+                Reservacion.bloque_reserva_id,
+                Reservacion.fecha_actividad,
+                HorarioDisponible.hora_inicio,
+                HorarioDisponible.hora_fin,
+            ).join(HorarioDisponible, HorarioDisponible.id == Reservacion.horario_id).filter(
+                Reservacion.bloque_reserva_id.in_(ids_bloque),
+                Reservacion.estado.in_(["PROGRAMADA", "PENDIENTE_AUTORIZACION", "EN_DISPUTA", "EN_CURSO"]),
+            ).order_by(HorarioDisponible.hora_inicio).all()
+            por_bloque_fecha = {}
+            for bloque_id, fecha, hora_inicio, hora_fin in filas_bloque:
+                por_bloque_fecha.setdefault((bloque_id, fecha), []).append((hora_inicio, hora_fin))
+            rangos_bloque = {
+                clave: {"inicio": horas[0][0], "fin": horas[-1][1]}
+                for clave, horas in por_bloque_fecha.items()
+            }
 
         mi_solicitud  = None
         solicitudes_n = 0
