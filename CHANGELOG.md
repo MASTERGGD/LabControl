@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [En preparación] — Flujo de clase y laboratorio — 2026-11-05
+## [0c3ff7c] — Flujo de clase y laboratorio — 2026-11-05
 
 ### Problema y decisión
 Desde el horario se podía cerrar la asistencia y después iniciar el laboratorio desde Reservaciones. Se coordinan ambos registros conservando sus responsabilidades y la asistencia existente.
@@ -17,7 +17,9 @@ Desde el horario se podía cerrar la asistencia y después iniciar el laboratori
 - Se incorporan esta bitácora, una guía de continuidad y una instrucción de lectura para futuras sesiones de trabajo.
 
 ### Validación y publicación
-Validación final: 7 pruebas nuevas de integración backend aprobadas, 25 suites y 93 pruebas frontend aprobadas, compilación frontend aprobada. La comprobación ampliada de sesiones y docencia tuvo 29 aprobadas y cuatro fallos ya presentes en los registros de la versión original (periodos, historial y fecha de una capacitación); no se presentan como corregidos. No requiere migración de esquema ni modificación de registros históricos. Código preparado y validado; publicación pendiente de confirmación de los despliegues.
+Validación final: 7 pruebas nuevas de integración backend aprobadas, 25 suites y 93 pruebas frontend aprobadas, compilación frontend aprobada. La comprobación ampliada de sesiones y docencia tuvo 29 aprobadas y cuatro fallos ya presentes en los registros de la versión original (periodos, historial y fecha de una capacitación); no se presentan como corregidos. No requiere migración de esquema ni modificación de registros históricos.
+
+Publicado el 5 de noviembre de 2026 y verificado a las 20:17 UTC. Railway confirmó SUCCESS para backend (`977ee23e-9ba9-4a71-a52e-f2ed5a0a3293`) y frontend (`05f4dc8b-9547-4a7e-aa4c-59a008301d13`), ambos del commit `0c3ff7c`. Acceso web y API con HTTP 200, salud healthy y seis archivos preservados con SHA-256 coincidente. No se alteraron asistencias reales para comprobar producción: el flujo funcional se validó con datos de prueba aislados.
 
 Alcance: el recorrido integrado de una reservación académica pertenece al docente titular de la carga; no se añadió delegación de captura de asistencia a suplentes. Las sesiones independientes conservan su cierre de laboratorio. La inspección de equipos y las observaciones de entrega se mantienen; la operación institucional de registro sin equipos utiliza la modalidad `SOLO_AULA` configurada en el horario.
 
