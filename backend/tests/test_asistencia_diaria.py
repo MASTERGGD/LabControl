@@ -70,6 +70,27 @@ def test_corte_deduplica_y_distingue_cobertura(db, jornada):
     assert sum(c['asistentes'] for c in data['carreras']) == 4  # total institucional deduplicado = 3
 
 
+def test_detalle_pendientes_distingue_estados_y_horario_reposicion(db, jornada):
+    periodo, grupos, alumnos, sesion = jornada
+    carga = sesion(grupos[1], [(alumnos[0], 'PRESENTE')], estado='ABIERTA',
+                   es_reposicion=True, hora_inicio_reposicion='09:30', hora_fin_reposicion='10:15')
+    carga.actividad_nombre = 'Contabilidad'
+    db.commit()
+    data = asistencia_diaria(db, periodo.id)
+    por_id = {g['id']: g for g in data['grupos']}
+    for grupo in data['grupos']:
+        assert len(grupo['listas_pendientes_detalle']) == grupo['listas_pendientes']
+    assert por_id[grupos[0].id]['listas_pendientes_detalle'][0]['estado'] == 'EN_CAPTURA'
+    detalle = por_id[grupos[1].id]['listas_pendientes_detalle']
+    assert [p['estado'] for p in detalle] == ['SIN_INICIAR', 'EN_CAPTURA']
+    assert detalle[1]['materia'] == 'Contabilidad'
+    assert detalle[1]['docente'] == carga.docente.nombre
+    assert (detalle[1]['hora_inicio'], detalle[1]['hora_fin']) == ('09:30', '10:15')
+    assert por_id[grupos[5].id]['listas_pendientes_detalle'][0]['estado'] == 'EN_CORRECCION'
+    assert por_id[grupos[2].id]['listas_pendientes_detalle'] == []
+    assert por_id[grupos[3].id]['listas_pendientes_detalle'] == []
+
+
 def test_filtro_carrera_y_calendario(db, jornada, monkeypatch):
     periodo, _, _, _ = jornada
     data = asistencia_diaria(db, periodo.id, carrera='Software')

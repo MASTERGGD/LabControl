@@ -71,7 +71,7 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
         raise HTTPException(422, "La carrera no pertenece al periodo seleccionado")
     grupos = [g for g in grupos if not carrera or g.carrera == carrera]
     ids = [g.id for g in grupos]
-    cargas = db.query(CargaDocente).filter(
+    cargas = db.query(CargaDocente).options(selectinload(CargaDocente.docente)).filter(
         CargaDocente.periodo_id == periodo_id,
         CargaDocente.grupo_academico_id.in_(ids),
         CargaDocente.tipo_actividad == "CLASE",
@@ -152,7 +152,27 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
     filas = []
     for grupo in grupos:
         gid = grupo.id
-        pendientes = len(esperadas[gid] - confirmadas[gid])
+        cargas_pendientes = esperadas[gid] - confirmadas[gid]
+        pendientes = len(cargas_pendientes)
+        detalle_pendientes = []
+        for carga_id in cargas_pendientes:
+            carga = por_carga[carga_id]
+            clase = por_id.get(carga_id)
+            estado_lista = (
+                'EN_CORRECCION' if clase and clase.estado == 'CORRECCION'
+                else 'EN_CAPTURA' if clase and clase.estado == 'ABIERTA'
+                else 'SIN_REGISTROS' if clase and clase.estado == 'CERRADA'
+                else 'SIN_INICIAR'
+            )
+            detalle_pendientes.append({
+                'carga_id': carga.id,
+                'materia': carga.actividad_nombre,
+                'docente': carga.docente.nombre if carga.docente else 'Sin docente asignado',
+                'hora_inicio': (clase.hora_inicio_reposicion if clase and clase.es_reposicion else None) or carga.hora_inicio,
+                'hora_fin': (clase.hora_fin_reposicion if clase and clase.es_reposicion else None) or carga.hora_fin,
+                'estado': estado_lista,
+            })
+        detalle_pendientes.sort(key=lambda item: (item['hora_inicio'], item['materia'], item['carga_id']))
         estado = ('CON_LISTA' if confirmadas[gid] else 'SIN_LISTA' if esperadas[gid]
                   else 'POR_INICIAR' if futuras[gid] else 'SIN_ACTIVIDAD')
         filas.append({
@@ -162,6 +182,7 @@ def asistencia_diaria(db, periodo_id, fecha=None, carrera=None):
             **desglose([gid]),
             'listas_confirmadas': len(confirmadas[gid]), 'listas_pendientes': pendientes,
             'listas_en_captura': en_captura[gid], 'estado': estado,
+            'listas_pendientes_detalle': detalle_pendientes,
         })
 
     def resumen(grupos_resumen):

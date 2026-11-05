@@ -11,7 +11,8 @@ test('pestañas, ordenación y filtros conservan pendientes y distinguen falta d
     { ...grupo, carrera: 'IA' }, { ...grupo, carrera: 'Software', asistentes: 20 },
   ], grupos: [
     { ...grupo, id: 1, nombre: 'Grupo A', estado: 'CON_LISTA', listas_pendientes: 1 },
-    { ...grupo, id: 2, nombre: 'Grupo B', estado: 'SIN_LISTA', listas_confirmadas: 0, listas_pendientes: 1, listas_en_captura: 1 },
+    { ...grupo, id: 2, nombre: 'Grupo B', estado: 'SIN_LISTA', listas_confirmadas: 0, listas_pendientes: 1, listas_en_captura: 1,
+      listas_pendientes_detalle: [{ carga_id: 7, materia: 'Contabilidad', docente: 'Docente de prueba', hora_inicio: '09:00', hora_fin: '10:00', estado: 'EN_CORRECCION' }] },
     { ...grupo, id: 3, nombre: 'Grupo C', estado: 'SIN_ACTIVIDAD', listas_confirmadas: 0 },
   ] };
   const click = text => act(() => [...host.querySelectorAll('button')].find(b => b.textContent === text).click());
@@ -34,6 +35,10 @@ test('pestañas, ordenación y filtros conservan pendientes y distinguen falta d
     expect(host.querySelectorAll('tbody tr')).toHaveLength(2);
     expect(host.textContent).toContain('Con pendientes');
     expect(host.textContent).toContain('En captura / corrección: 1');
+    expect(host.textContent).toContain('Contabilidad');
+    expect(host.textContent).toContain('Docente de prueba');
+    expect(host.textContent).toContain('09:00–10:00');
+    expect(host.textContent).toContain('En corrección');
     expect(host.querySelectorAll('tbody tr')[1].children[1].textContent).toBe('—');
     const filtros = host.querySelectorAll('input');
     act(() => filtros[1].click());

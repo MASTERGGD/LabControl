@@ -14,6 +14,28 @@ function EstadoGrupo({ grupo: g }) {
   </div>;
 }
 
+const ESTADOS_LISTA = {
+  SIN_INICIAR: 'Sin iniciar', EN_CAPTURA: 'En captura',
+  EN_CORRECCION: 'En corrección', SIN_REGISTROS: 'Cerrada sin registros',
+};
+
+function ListasPendientes({ grupo }) {
+  if (!grupo.listas_pendientes) return null;
+  return <details className="mt-3" open>
+    <summary className="cursor-pointer text-xs font-semibold">Listas pendientes ({grupo.listas_pendientes})</summary>
+    <ul className="mt-2 space-y-2 text-xs">
+      {(grupo.listas_pendientes_detalle || []).map(lista => <li key={lista.carga_id} className="dashboard-subtle rounded-lg border p-3">
+        <p className="theme-title font-semibold">{lista.materia}</p>
+        <p className="theme-text mt-1">{lista.docente}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="theme-text tabular-nums">{lista.hora_inicio}–{lista.hora_fin}</span>
+          <span className="attendance-badge is-pending">{ESTADOS_LISTA[lista.estado] || lista.estado}</span>
+        </div>
+      </li>)}
+    </ul>
+  </details>;
+}
+
 export default function AsistenciaHoyResumen({ datos }) {
   const guiaRef = useRef(null);
   const [tab, setTab] = useState(0);
@@ -37,7 +59,7 @@ export default function AsistenciaHoyResumen({ datos }) {
         ['Alumnos del día', r.asistentes, 'Alumnos únicos con asistencia'],
         ['A tiempo', r.a_tiempo, 'Sin retardos registrados'],
         ['Con retardo', r.retardos, 'Al menos un retardo registrado'],
-        ['Listas pendientes', r.listas_pendientes, 'Clases iniciadas sin confirmación'],
+        ['Listas pendientes', r.listas_pendientes, 'Clases esperadas al corte sin lista confirmada'],
       ].map(([nombre, cantidad, nota], i) => <div key={nombre} className={`attendance-kpi ${i === 0 ? 'is-primary' : ''}`}>
         <p className="text-sm text-slate-300">{nombre}</p><p className="my-1 text-3xl font-bold tabular-nums text-white">{cantidad}</p><p className="text-xs text-slate-400">{nota}</p>
       </div>)}
@@ -90,7 +112,7 @@ export default function AsistenciaHoyResumen({ datos }) {
           <div className="attendance-table overflow-x-auto rounded-xl border border-white/10"><table className="w-full min-w-[850px] text-left text-sm">
             <caption className="sr-only">Detalle por grupo</caption><thead className="text-slate-400"><tr>{['Grupo / carrera', 'Alumnos del día', 'Confirmadas', 'Pendientes', 'Estado', 'Desglose'].map(t => <th key={t} scope="col" className="px-3 py-3">{t}</th>)}</tr></thead>
             <tbody className="divide-y divide-white/10 text-slate-200">{grupos.map(g => <tr key={g.id}>
-              <td className="px-3 py-3"><b>{g.nombre}{g.turno ? ` · ${g.turno}` : ''}</b><span className="block max-w-xs text-xs text-slate-400">{g.carrera}</span></td>
+              <td className="px-3 py-3"><b>{g.nombre}{g.turno ? ` · ${g.turno}` : ''}</b><span className="block max-w-xs text-xs text-slate-400">{g.carrera}</span><ListasPendientes grupo={g} /></td>
               <td className="px-3 py-3 font-semibold tabular-nums">{g.listas_confirmadas ? g.asistentes : '—'}</td><td className="px-3 py-3 tabular-nums">{g.listas_confirmadas}</td><td className="px-3 py-3 tabular-nums">{g.listas_pendientes}</td>
               <td className="px-3 py-3"><EstadoGrupo grupo={g} /></td>
               <td className="px-3 py-3"><details><summary className="cursor-pointer text-xs font-semibold" aria-label={`Ver desglose de ${g.nombre}, ${g.carrera}`}>Ver detalle</summary><dl className="mt-2 min-w-[150px] space-y-1 text-xs">{[['A tiempo', 'a_tiempo'], ['Retardos', 'retardos'], ['Faltas al corte', 'faltaron'], ['Justificados', 'justificados'], ['Con registro', 'alumnos_con_registro']].map(([label, campo]) => <div key={campo} className="flex justify-between gap-3"><dt>{label}</dt><dd>{g.listas_confirmadas ? g[campo] : '—'}</dd></div>)}</dl></details></td>
