@@ -260,9 +260,12 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
           ) : (
             <button
               onClick={() => onActivar(lab)}
-              className="px-3 py-2 rounded-xl transition-all duration-200 text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-200 text-xs font-semibold"
+              className="lab-activate-action inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl transition-colors duration-200 border text-xs font-semibold"
               title="Activar laboratorio"
             >
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" d="M12 3v9m-5.7-6.3a8 8 0 1 0 11.4 0" />
+              </svg>
               Activar
             </button>
           )

@@ -308,6 +308,24 @@ body.theme-day .siga-flip7-panel button[class*="bg-green-"] { color: #fff !impor
 body.theme-day .siga-flip7-panel button[class*="bg-emerald-"] *,
 body.theme-day .siga-flip7-panel button[class*="bg-green-"] * { color: #fff !important; }
 
+/* Acción secundaria: aislada de las reglas de texto blanco para botones sólidos. */
+.siga-flip7-panel .lab-activate-action {
+  background: #064e3b !important;
+  color: #a7f3d0 !important;
+  border-color: #34d399 !important;
+}
+.siga-flip7-panel .lab-activate-action:hover { background: #065f46 !important; }
+body.theme-day .siga-flip7-panel .lab-activate-action {
+  background: #ecfdf5 !important;
+  color: #065f46 !important;
+  border-color: #047857 !important;
+}
+body.theme-day .siga-flip7-panel .lab-activate-action:hover { background: #d1fae5 !important; }
+.siga-flip7-panel .lab-activate-action:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
 /* Acentos calibrados para fondos oscuros: vivos sin halo excesivo. */
 body:not(.theme-day) main .text-emerald-300,
 body:not(.theme-day) main .text-emerald-400 {
