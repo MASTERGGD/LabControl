@@ -1,3 +1,4 @@
+from services.upload_limits import read_upload
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, or_
@@ -4535,7 +4536,7 @@ async def importar_activos(
     if estado_admin_default not in ESTADOS_ADMIN_ACTIVO:
         raise HTTPException(status_code=422, detail=f"Estado administrativo invalido. Use: {ESTADOS_ADMIN_ACTIVO}")
 
-    contents = await file.read()
+    contents = await read_upload(file)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
     except Exception:

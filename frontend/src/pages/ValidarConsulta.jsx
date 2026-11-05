@@ -2,19 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPublicJson } from '../utils/publicApiBase';
 
-function formatearFecha(iso) {
-  if (!iso) return 'Fecha no disponible';
-  try {
-    return new Intl.DateTimeFormat('es-MX', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'America/Mexico_City',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
-
 export default function ValidarConsulta() {
   const { token } = useParams();
   const [data, setData] = useState(null);
@@ -62,18 +49,6 @@ export default function ValidarConsulta() {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Folio</dt>
                   <dd className="font-mono font-bold text-slate-950 mt-1">#{data.folio}</dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fecha de emision</dt>
-                  <dd className="font-semibold text-slate-900 mt-1">{formatearFecha(data.fecha_consulta)}</dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paciente</dt>
-                  <dd className="font-semibold text-slate-900 mt-1">{data.paciente}</dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Medico</dt>
-                  <dd className="font-semibold text-slate-900 mt-1">{data.medico}</dd>
                 </div>
               </dl>
 

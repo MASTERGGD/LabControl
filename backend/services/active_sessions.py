@@ -1,109 +1,70 @@
-from __future__ import annotations
-
+"""Database-backed token validity, independent of presence."""
 import datetime
-import threading
-from dataclasses import dataclass
-
-SESSION_TTL_SECONDS = 150
-
-
-@dataclass
-class ActiveSession:
-    session_id: str
-    usuario_id: int
-    user_agent: str
-    path: str | None
-    created_at: datetime.datetime
-    last_seen: datetime.datetime
+import hashlib
+import hmac
+import secrets
+from models.auth_session import AuthSession
 
 
-_lock = threading.Lock()
-_sessions: dict[str, ActiveSession] = {}
-_revoked_sessions: set[tuple[int, str]] = set()
+def _now():
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
-def _now() -> datetime.datetime:
-    return datetime.datetime.now(datetime.timezone.utc)
+def _credential_hash(password_hash):
+    return hashlib.sha256(password_hash.encode('utf-8')).hexdigest()
 
 
-def _prune(now: datetime.datetime | None = None) -> None:
-    now = now or _now()
-    expired = [
-        sid for sid, session in _sessions.items()
-        if (now - session.last_seen).total_seconds() > SESSION_TTL_SECONDS
-    ]
-    for sid in expired:
-        _sessions.pop(sid, None)
-
-
-def register_session(usuario_id: int, session_id: str, user_agent: str = "", path: str | None = None) -> list[dict]:
+def create_session(db, user, expires_at, user_agent=''):
     now = _now()
-    with _lock:
-        _prune(now)
-        if (usuario_id, session_id) in _revoked_sessions:
-            return list_user_sessions(usuario_id, current_session_id=session_id, prune=False)
-        existing = _sessions.get(session_id)
-        _sessions[session_id] = ActiveSession(
-            session_id=session_id,
-            usuario_id=usuario_id,
-            user_agent=(user_agent or "")[:240],
-            path=path[:180] if path else None,
-            created_at=existing.created_at if existing else now,
-            last_seen=now,
-        )
-        return list_user_sessions(usuario_id, current_session_id=session_id, prune=False)
+    session = AuthSession(id=secrets.token_urlsafe(32), usuario_id=user.id,
+        credential_hash=_credential_hash(user.password_hash), created_at=now,
+        last_seen=now, expires_at=expires_at.replace(tzinfo=None), user_agent=user_agent[:240])
+    db.add(session)
+    db.commit()
+    return session.id
 
 
-def end_session(session_id: str) -> None:
-    with _lock:
-        _sessions.pop(session_id, None)
+def is_session_revoked(db, user, session_id):
+    if not session_id or not isinstance(session_id, str):
+        return True
+    session = db.get(AuthSession, session_id)
+    return (session is None or session.usuario_id != user.id
+        or session.revoked_at is not None or session.expires_at <= _now()
+        or not hmac.compare_digest(session.credential_hash, _credential_hash(user.password_hash)))
 
 
-def end_other_sessions(usuario_id: int, current_session_id: str) -> None:
-    """Cierra las demás sesiones del usuario y conserva la sesión actual."""
-    with _lock:
-        other_ids = [
-            sid for sid, session in _sessions.items()
-            if session.usuario_id == usuario_id and sid != current_session_id
-        ]
-        for sid in other_ids:
-            _sessions.pop(sid, None)
-            _revoked_sessions.add((usuario_id, sid))
+def register_session(db, usuario_id, session_id, user_agent='', path=None):
+    session = db.get(AuthSession, session_id)
+    if session and session.usuario_id == usuario_id and session.revoked_at is None:
+        session.last_seen = _now()
+        session.user_agent = (user_agent or '')[:240]
+        session.path = path[:180] if path else None
+        db.commit()
+    return list_user_sessions(db, usuario_id, session_id)
 
 
-def is_session_revoked(usuario_id: int, session_id: str | None) -> bool:
-    if not session_id:
-        return False
-    with _lock:
-        return (usuario_id, session_id) in _revoked_sessions
+def end_session(db, usuario_id, session_id):
+    db.query(AuthSession).filter(AuthSession.id == session_id, AuthSession.usuario_id == usuario_id).update(
+        {AuthSession.revoked_at: _now()}, synchronize_session=False)
+    db.commit()
 
 
-def allow_session(usuario_id: int, session_id: str | None) -> None:
-    """Un inicio de sesión correcto vuelve a autorizar ese navegador."""
-    if not session_id:
-        return
-    with _lock:
-        _revoked_sessions.discard((usuario_id, session_id))
+def revoke_user_sessions(db, usuario_id, except_session_id=None):
+    query = db.query(AuthSession).filter(AuthSession.usuario_id == usuario_id, AuthSession.revoked_at.is_(None))
+    if except_session_id:
+        query = query.filter(AuthSession.id != except_session_id)
+    query.update({AuthSession.revoked_at: _now()}, synchronize_session=False)
+    # Caller commits atomically with the password update.
 
 
-def list_user_sessions(usuario_id: int, current_session_id: str | None = None, prune: bool = True) -> list[dict]:
-    now = _now()
-    if prune:
-        with _lock:
-            _prune(now)
-            sessions = [s for s in _sessions.values() if s.usuario_id == usuario_id]
-    else:
-        sessions = [s for s in _sessions.values() if s.usuario_id == usuario_id]
+def end_other_sessions(db, usuario_id, current_session_id):
+    revoke_user_sessions(db, usuario_id, current_session_id)
+    db.commit()
 
-    sessions.sort(key=lambda s: s.last_seen, reverse=True)
-    return [
-        {
-            "session_id": s.session_id,
-            "current": bool(current_session_id and s.session_id == current_session_id),
-            "user_agent": s.user_agent,
-            "path": s.path,
-            "created_at": s.created_at.isoformat(),
-            "last_seen": s.last_seen.isoformat(),
-        }
-        for s in sessions
-    ]
+
+def list_user_sessions(db, usuario_id, current_session_id=None):
+    sessions = db.query(AuthSession).filter(AuthSession.usuario_id == usuario_id,
+        AuthSession.revoked_at.is_(None), AuthSession.expires_at > _now()).order_by(AuthSession.last_seen.desc()).all()
+    return [{'session_id': s.id, 'current': s.id == current_session_id,
+        'user_agent': s.user_agent, 'path': s.path, 'created_at': s.created_at.isoformat(),
+        'last_seen': s.last_seen.isoformat()} for s in sessions]

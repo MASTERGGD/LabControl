@@ -14,7 +14,7 @@ test('abre todos los reportes del alumno y conserva la acción sobre el reporte 
     const abrir = [...container.querySelectorAll('button')].find(b => b.textContent.includes('Abrir expediente'));
     act(() => abrir.click());
     expect(abrir.getAttribute('aria-expanded')).toBe('true');
-    expect(container.textContent).toContain('Línea de tiempo');
+    expect(container.textContent).toContain('Reporte 1');
     const acciones = [...container.querySelectorAll('button')].filter(b => b.textContent.includes('Ver detalle y acciones'));
     expect(acciones).toHaveLength(2);
     act(() => acciones[1].click());

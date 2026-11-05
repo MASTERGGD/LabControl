@@ -1,3 +1,5 @@
+from services.upload_limits import read_upload
+from services.active_sessions import revoke_user_sessions
 from fastapi import APIRouter, Depends, HTTPException, Request, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -364,6 +366,7 @@ def reset_password(
         raise HTTPException(status_code=403, detail="No se puede resetear la contraseña del Super Administrador")
 
     nueva = _generar_password()
+    revoke_user_sessions(db, u.id)
     u.password_hash = hashear_password(nueva)
     u.debe_cambiar_password = True  # contraseña temporal: forzar cambio al entrar
     db.commit()
@@ -402,6 +405,7 @@ def cambiar_mi_password(
         raise HTTPException(status_code=422, detail=policy_error)
 
     u = db.query(Usuario).filter(Usuario.id == current_user.id).first()
+    revoke_user_sessions(db, u.id)
     u.password_hash = hashear_password(data.password_nuevo)
     u.debe_cambiar_password = False  # ya cumplió el cambio obligatorio
     db.commit()
@@ -437,7 +441,7 @@ async def bulk_excel(
     if not archivo.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="El archivo debe ser .xlsx o .xls")
 
-    contenido = await archivo.read()
+    contenido = await read_upload(archivo)
     try:
         df = pd.read_excel(io.BytesIO(contenido))
     except Exception as e:
@@ -580,7 +584,7 @@ async def importar_docentes(
     if not archivo.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "El archivo debe ser .xlsx o .xls")
 
-    contenido = await archivo.read()
+    contenido = await read_upload(archivo)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(contenido), data_only=True)
     except Exception:

@@ -1,3 +1,4 @@
+from services.upload_limits import read_upload
 """
 Router del Módulo de Tutoría
 Procedimiento P-DC-02 v08 · ISO 9001:2015
@@ -1970,7 +1971,7 @@ async def importar_socioeconomico(
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
 
-    contents = await file.read()
+    contents = await read_upload(file)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
     except Exception:

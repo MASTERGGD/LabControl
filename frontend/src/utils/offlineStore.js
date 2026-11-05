@@ -1,3 +1,4 @@
+import { sealOfflineData, openOfflineData, offlineDataOwner } from './offlineCrypto';
 import { getOfflineDeviceId } from './offlineDevice';
 
 const DB_NAME = 'siga-docente-offline';
@@ -36,7 +37,9 @@ const notify = () => window.dispatchEvent(new CustomEvent(OFFLINE_EVENT));
 const uuid = () => crypto?.randomUUID?.() || `offline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 export async function saveOfflineSnapshot(key, data) {
-  await transact(SNAPSHOTS, 'readwrite', store => store.put({ key, data, savedAt: new Date().toISOString() }));
+  const record = { key, data, savedAt: new Date().toISOString() };
+  const encrypted = await sealOfflineData(record, `snapshot:${key}`);
+  await transact(SNAPSHOTS, 'readwrite', store => store.put({ key, ...encrypted }));
   notify();
 }
 
@@ -44,7 +47,7 @@ export async function getOfflineSnapshot(key) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const request = db.transaction(SNAPSHOTS).objectStore(SNAPSHOTS).get(key);
-    request.onsuccess = () => resolve(request.result || null);
+    request.onsuccess = () => decodeRecord(request.result, SNAPSHOTS).then(resolve, reject);
     request.onerror = () => reject(request.error);
   }).finally(() => db.close());
 }
@@ -53,14 +56,14 @@ export async function listOfflineSnapshots(prefix) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const request = db.transaction(SNAPSHOTS).objectStore(SNAPSHOTS).getAll();
-    request.onsuccess = () => resolve((request.result || []).filter(item => item.key.startsWith(prefix)));
+    request.onsuccess = () => Promise.all((request.result || []).filter(item => item.key.startsWith(prefix)).map(item => decodeRecord(item, SNAPSHOTS))).then(items => resolve(items.filter(Boolean)), reject);
     request.onerror = () => reject(request.error);
   }).finally(() => db.close());
 }
 
 export async function enqueueOfflineOperation(operation) {
   const item = { id: uuid(), createdAt: new Date().toISOString(), order: performance.timeOrigin + performance.now(), status: 'PENDING', attempts: 0, deviceId: getOfflineDeviceId(), ...operation };
-  await transact(QUEUE, 'readwrite', store => store.put(item));
+  await updateOperation(item);
   notify();
   return item;
 }
@@ -69,9 +72,9 @@ export async function listOfflineOperations(ownerId = null) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const request = db.transaction(QUEUE).objectStore(QUEUE).getAll();
-    request.onsuccess = () => resolve((request.result || [])
+    request.onsuccess = () => Promise.all((request.result || []).map(item => decodeRecord(item, QUEUE))).then(items => resolve(items.filter(Boolean)
       .filter(item => ownerId == null || String(item.ownerId) === String(ownerId))
-      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.createdAt.localeCompare(b.createdAt)));
+      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.createdAt.localeCompare(b.createdAt))), reject);
     request.onerror = () => reject(request.error);
   }).finally(() => db.close());
 }
@@ -90,7 +93,9 @@ export function countPendingOfflineClasses(operations = []) {
 }
 
 async function updateOperation(item) {
-  await transact(QUEUE, 'readwrite', store => store.put(item));
+  if (String(item.ownerId) !== offlineDataOwner()) throw new Error('La captura pertenece a otra cuenta.');
+  const encrypted = await sealOfflineData(item, `operation:${item.id}`);
+  await transact(QUEUE, 'readwrite', store => store.put({ id: item.id, ...encrypted }));
 }
 
 async function removeOperation(id) {
@@ -186,4 +191,31 @@ export async function flushOfflineQueue(api, ownerId) {
   notify();
   if (synced) window.dispatchEvent(new CustomEvent('siga:offline-synced', { detail: { synced } }));
   return { synced, conflicts, pending: remaining.filter(item => item.status === 'PENDING').length };
+}
+
+async function decodeRecord(record, storeName) {
+  if (!record || offlineDataOwner() == null) return null;
+  const context = storeName === SNAPSHOTS ? `snapshot:${record.key}` : `operation:${record.id}`;
+  if (record.version === 2) return openOfflineData(record, context);
+  const ownerId = storeName === QUEUE ? String(record.ownerId) : String(record.key).split(':')[1];
+  if (ownerId !== offlineDataOwner()) return null;
+  const encrypted = await sealOfflineData(record, context);
+  const locator = storeName === SNAPSHOTS ? { key: record.key } : { id: record.id };
+  await transact(storeName, 'readwrite', store => store.put({ ...locator, ...encrypted }));
+  return record;
+}
+
+export async function migrateOfflineStorage() {
+  if (typeof indexedDB === 'undefined') return; // Node tests without IndexedDB.
+  const db = await openDb();
+  try {
+    for (const name of [SNAPSHOTS, QUEUE]) {
+      const rows = await new Promise((resolve, reject) => {
+        const req = db.transaction(name).objectStore(name).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+      for (const record of rows) if (record.version !== 2) await decodeRecord(record, name);
+    }
+  } finally { db.close(); }
 }

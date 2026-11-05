@@ -2,7 +2,8 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 from database import get_db
 from models.usuario import Usuario, RolUsuario
@@ -13,10 +14,10 @@ import os
 # ─── Configuración ─────────────────────────────────────────────────────────────
 
 _SECRET_KEY_ENV = os.getenv("SECRET_KEY", "")
-_APP_ENV        = os.getenv("APP_ENV", "development")
+_APP_ENV        = os.getenv("APP_ENV", "development").strip().lower()
 
-if not _SECRET_KEY_ENV:
-    if _APP_ENV == "production":
+if not _SECRET_KEY_ENV.strip():
+    if _APP_ENV in ("production", "prod"):
         raise RuntimeError(
             "SECRET_KEY no configurada. "
             "Define la variable de entorno SECRET_KEY antes de iniciar en produccion."
@@ -29,6 +30,9 @@ if not _SECRET_KEY_ENV:
         "Configura SECRET_KEY en .env para produccion.",
         stacklevel=2,
     )
+
+if _APP_ENV in ("production", "prod") and len(_SECRET_KEY_ENV.encode("utf-8")) < 32:
+    raise RuntimeError("SECRET_KEY debe tener al menos 32 bytes en producción")
 
 SECRET_KEY = _SECRET_KEY_ENV
 ALGORITHM  = "HS256"
@@ -83,9 +87,9 @@ def get_current_user(
     try:
         payload = decodificar_token(token)
         user_id: str = payload.get("sub")
-        if user_id is None:
+        if user_id is None or not str(user_id).isdigit():
             raise credencial_exception
-    except JWTError:
+    except (JWTError, ValueError, TypeError):
         raise credencial_exception
 
     usuario = db.query(Usuario).filter(
@@ -97,7 +101,7 @@ def get_current_user(
         raise credencial_exception
 
     session_id = payload.get("sid")
-    if is_session_revoked(usuario.id, session_id):
+    if is_session_revoked(db, usuario, session_id):
         raise HTTPException(status_code=401, detail="Esta sesión fue cerrada desde otro dispositivo")
     usuario._session_id = session_id
 

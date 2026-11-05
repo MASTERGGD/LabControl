@@ -1,3 +1,4 @@
+from services.upload_limits import read_upload
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -477,7 +478,7 @@ async def importar_alumnos(
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
 
-    contents = await file.read()
+    contents = await read_upload(file)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
     except Exception:
@@ -890,7 +891,7 @@ async def importar_materias(
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
 
-    contents = await file.read()
+    contents = await read_upload(file)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
     except Exception:

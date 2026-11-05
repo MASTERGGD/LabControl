@@ -1,3 +1,4 @@
+from services.session_access import get_authorized_session, require_lab_role, scope_sessions
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -11,7 +12,7 @@ from models.usuario import Usuario, RolUsuario
 from models.catalogo import CatalogoAlumno, PeriodoEscolar
 from models.docencia import ClaseDocente
 from dependencies import get_current_user, require_roles, crear_access_token, decodificar_token
-from jose import JWTError
+from jwt import PyJWTError as JWTError
 from permissions import require_permission
 from ws.mapa import manager, _snapshot_lab
 from routers.notificaciones import crear_notificacion
@@ -169,6 +170,8 @@ async def _crear_asignacion_pc(
     db: Session,
     current_user: Optional[Usuario] = None,
 ):
+    if current_user is not None:
+        get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada o no está abierta")
@@ -261,7 +264,7 @@ def historial_docente(
     current_user: Usuario = Depends(get_current_user)
 ):
     """Devuelve las sesiones CERRADAS del docente autenticado."""
-    q = db.query(SesionClase).filter(SesionClase.estado == "CERRADA")
+    q = scope_sessions(db.query(SesionClase), current_user).filter(SesionClase.estado == "CERRADA")
 
     if current_user.rol == RolUsuario.DOCENTE:
         q = q.filter(SesionClase.docente_id == current_user.id)
@@ -303,7 +306,7 @@ def listar_sesiones(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    q = db.query(SesionClase)
+    q = scope_sessions(db.query(SesionClase), current_user)
     if laboratorio_id:
         q = q.filter(SesionClase.laboratorio_id == laboratorio_id)
     elif current_user.rol == RolUsuario.LAB_ADMIN:
@@ -324,7 +327,7 @@ def sesiones_activas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
-    q = db.query(SesionClase).filter(SesionClase.estado == "ABIERTA")
+    q = scope_sessions(db.query(SesionClase), current_user).filter(SesionClase.estado == "ABIERTA")
     if current_user.rol == RolUsuario.DOCENTE:
         q = q.filter(SesionClase.docente_id == current_user.id)
     elif current_user.rol == RolUsuario.LAB_ADMIN:
@@ -342,6 +345,9 @@ async def abrir_sesion(
     current_user: Usuario = Depends(require_permission("sesiones:write"))
 ):
     # ── Hora actual en México (UTC-6, sin ajuste DST simplificado) ────────────
+    require_lab_role(current_user)
+    if current_user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB} and data.laboratorio_id != current_user.laboratorio_id:
+        raise HTTPException(403, "No tienes acceso a este laboratorio")
     ahora_utc = _utcnow()
     ahora_mx  = now_mx().replace(tzinfo=None)  # hora local Mexico
     dia_mx    = ahora_mx.weekday()              # 0=lun … 6=dom
@@ -677,6 +683,7 @@ def crear_token_autoasignacion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id, SesionClase.estado == "ABIERTA").first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada o no está abierta")
@@ -768,6 +775,7 @@ def obtener_sesion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -784,6 +792,7 @@ def mapa_sesion(
 ):
     """Devuelve el estado actual de todas las PCs del laboratorio de la sesión.
     Usado como fallback cuando WebSocket no está disponible."""
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -804,6 +813,7 @@ async def cerrar_sesion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -872,8 +882,9 @@ async def cerrar_sesion(
 def listar_asignaciones(
     sesion_id: int,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     asigs = db.query(AsignacionPC).filter(AsignacionPC.sesion_id == sesion_id).all()
     result = []
     for a in asigs:
@@ -901,6 +912,7 @@ async def asignar_pc(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     return await _crear_asignacion_pc(
         request=request,
         sesion_id=sesion_id,
@@ -920,6 +932,7 @@ async def liberar_pc(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     asig = db.query(AsignacionPC).filter(
         AsignacionPC.id == asig_id,
         AsignacionPC.sesion_id == sesion_id,
@@ -964,8 +977,9 @@ async def liberar_pc(
 def listar_observaciones(
     sesion_id: int,
     db: Session = Depends(get_db),
-    _: Usuario = Depends(get_current_user)
+    current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     obs = db.query(ObservacionPC).filter(ObservacionPC.sesion_id == sesion_id).all()
     result = []
     for o in obs:
@@ -990,6 +1004,7 @@ def crear_observacion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -1031,6 +1046,7 @@ async def reportar_pc_cierre(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -1117,6 +1133,7 @@ def confirmar_recepcion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    get_authorized_session(db, sesion_id, current_user)
     s = db.query(SesionClase).filter(SesionClase.id == sesion_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -1235,6 +1252,15 @@ def ultimo_usuario_pc(
     pc = db.query(Computadora).filter(Computadora.id == computadora_id).first()
     if not pc:
         raise HTTPException(404, "Computadora no encontrada")
+
+    require_lab_role(current_user)
+    if current_user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB} and current_user.laboratorio_id != pc.laboratorio_id:
+        raise HTTPException(403, "No tienes acceso a este laboratorio")
+    if current_user.rol == RolUsuario.DOCENTE and not db.query(SesionClase).filter(
+        SesionClase.docente_id == current_user.id, SesionClase.laboratorio_id == pc.laboratorio_id,
+        SesionClase.estado == "ABIERTA",
+    ).first():
+        raise HTTPException(403, "Necesitas una sesión propia abierta en este laboratorio")
 
     asig = (
         db.query(AsignacionPC)

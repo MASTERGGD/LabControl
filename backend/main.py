@@ -14,6 +14,7 @@ from alembic import command as alembic_command
 
 # Middleware de seguridad
 from middleware.security import SecurityHeadersMiddleware
+from middleware.body_limit import BodyLimitMiddleware
 from middleware.error_handling import ErrorHandlingMiddleware
 from services.rate_limit import RateLimitMiddleware
 from services.system_health import get_system_health
@@ -57,7 +58,7 @@ from seed import run_seed
 # --- Lifespan (startup / shutdown) -------------------------------------------
 
 # Ultima revision conocida -- actualizar cada vez que se agregue una migracion nueva
-_ALEMBIC_HEAD = "b3c4d5e6f7a8"
+_ALEMBIC_HEAD = "c4d5e6f7a8b9"
 
 
 def _current_db_version() -> str | None:
@@ -154,6 +155,9 @@ app = FastAPI(
     description="Sistema de gestion multi-laboratorio",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None if os.getenv("APP_ENV", "development").lower() in ("production", "prod") else "/docs",
+    redoc_url=None if os.getenv("APP_ENV", "development").lower() in ("production", "prod") else "/redoc",
+    openapi_url=None if os.getenv("APP_ENV", "development").lower() in ("production", "prod") else "/openapi.json",
 )
 
 _APP_ENV      = os.getenv("APP_ENV", "development").lower()
@@ -188,6 +192,7 @@ app.add_middleware(
 
 app.add_middleware(ErrorHandlingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 # --- Routers -----------------------------------------------------------------

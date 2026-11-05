@@ -1,4 +1,5 @@
 from .usuario import Usuario, RolUsuario
+from .auth_session import AuthSession
 from .usuario_permiso import UsuarioPermiso
 from .departamento import Departamento
 from .laboratorio import Laboratorio, Computadora

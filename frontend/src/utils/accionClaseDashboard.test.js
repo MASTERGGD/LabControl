@@ -44,7 +44,7 @@ test('conserva el inicio de laboratorio y su vínculo con la clase', async () =>
   const api = { post: jest.fn().mockResolvedValueOnce({ data: { id: 8 } }).mockResolvedValueOnce({ data: { id: 9 } }) };
   const navigate = jest.fn();
   await abrirClaseDocente(api, navigate, { ...item, id: 12, laboratorio_id: 3, uso_laboratorio: 'PRACTICA', estado_reserva_laboratorio: 'RESERVADO', reservacion_laboratorio_id: 5 });
-  expect(api.post).toHaveBeenLastCalledWith('/sesiones', { laboratorio_id: 3, reservacion_id: 5, fin_estimado_min: 105 });
+  expect(api.post).toHaveBeenLastCalledWith('/sesiones', { laboratorio_id: 3, reservacion_id: 5, fin_estimado_min: 105, clase_docente_id: 8 });
   expect(navigate).toHaveBeenCalledWith('/docente/sesion/9', { state: { claseDocenteId: 8 } });
 });
 test('una clase existente de aula no genera otra clase', async () => {

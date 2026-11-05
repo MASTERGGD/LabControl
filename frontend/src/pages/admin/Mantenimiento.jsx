@@ -1309,7 +1309,7 @@ export function DrawerDetalle({ incidente, laboratorios, onClose, onActualizado 
           <div>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Prioridad</p>
             <div className="flex gap-2">
-              [['ALTA', isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/50 bg-red-500/10 text-red-300'],
+              {[['ALTA', isDay ? 'border-red-500 bg-red-50 text-red-800' : 'border-red-500/50 bg-red-500/10 text-red-300'],
                 ['MEDIA', isDay ? 'border-amber-500 bg-amber-100 text-amber-900' : 'border-amber-500/50 bg-amber-500/10 text-amber-300'],
                 ['BAJA', isDay ? 'border-slate-500 bg-slate-100 text-slate-800' : 'border-slate-500/50 bg-slate-500/10 text-slate-400']].map(([val,cls]) => (
                 <button key={val} type="button"

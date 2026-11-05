@@ -63,6 +63,9 @@ function ModalCambiarPassword({ onClose }) {
         password_actual: form.password_actual,
         password_nuevo:  form.password_nuevo,
       });
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('usuario');
+      window.location.replace('/login?reason=password-changed');
       setOk(true);
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al cambiar contraseña');

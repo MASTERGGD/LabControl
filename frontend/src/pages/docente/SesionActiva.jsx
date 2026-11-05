@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -1034,8 +1035,10 @@ function ModalAutoAsignacionQR({ sesion, onClose }) {
     if (!tokenPath || !originValido) return;
     const fullUrl = `${publicOrigin}${tokenPath}`;
     setUrl(fullUrl);
-    setQr(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=${encodeURIComponent(fullUrl)}`);
+    let active = true;
+    QRCode.toDataURL(fullUrl, { width: 320, margin: 2 }).then(image => { if (active) setQr(image); }).catch(() => { if (active) setError('No se pudo generar el QR.'); });
     localStorage.setItem('autoasignacion_public_origin', publicOrigin);
+    return () => { active = false; };
   }, [tokenPath, publicOrigin, originValido]);
 
   return (
@@ -1833,7 +1836,7 @@ export default function SesionActiva() {
     const token = sessionStorage.getItem('token');
     const wsProto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const wsBase  = process.env.REACT_APP_WS_URL || `${wsProto}://${window.location.hostname}:8000`;
-    const wsUrl = `${wsBase}/ws/mapa/${sesion.laboratorio_id}?token=${token}`;
+    const wsUrl = `${wsBase}/ws/mapa/${sesion.laboratorio_id}`;
 
     // Timer: si en 5 segundos no conecta, activar polling
     wsTimerRef.current = setTimeout(() => {
@@ -1842,7 +1845,7 @@ export default function SesionActiva() {
       }
     }, 5000);
 
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(wsUrl, ['siga-auth', token]);
     wsRef.current = ws;
 
     ws.onopen = () => {

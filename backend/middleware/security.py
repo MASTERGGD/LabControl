@@ -44,20 +44,10 @@ _IS_PROD = _ENV in ("production", "prod")
 #   - base-uri 'self' — previene base tag injection
 #   - form-action 'self' — previene form hijacking
 
-_CSP_DIRECTIVES = "; ".join([
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data: blob: https://api.qrserver.com",
-    "connect-src 'self' https: ws: wss: http://localhost:8000 http://localhost:3000",
-    "worker-src 'self'",
-    "manifest-src 'self'",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "upgrade-insecure-requests" if _IS_PROD else "",
-]).rstrip("; ")
+_CSP_DIRECTIVES = (
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    if _IS_PROD else "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data:; frame-ancestors 'none'"
+)
 
 
 # ── Cabeceras invariables (aplican siempre) ─────────────────────────────────────

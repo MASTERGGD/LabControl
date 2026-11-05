@@ -243,6 +243,7 @@ export default function DashboardDocente() {
   const [preparandoOffline, setPreparandoOffline] = useState(false);
   const [pinOffline, setPinOffline] = useState('');
   const [pinOfflineConfirmacion, setPinOfflineConfirmacion] = useState('');
+  const [pinOfflineAnterior, setPinOfflineAnterior] = useState('');
   const [configurandoPin, setConfigurandoPin] = useState(false);
   const [offlineInfo, setOfflineInfo] = useState(() => getOfflineAccessInfo(usuario?.id));
   const [offlinePinError, setOfflinePinError] = useState('');
@@ -513,12 +514,14 @@ export default function DashboardDocente() {
         if (!confirmada) throw new Error('No se cambió el dispositivo offline.');
         await api.post('/docencia/offline/dispositivo/activar', { ...dispositivo, confirmar_transferencia: true });
       }
-      const info = await configureOfflineAccess(pinOffline, usuario, periodo);
+      const info = await configureOfflineAccess(pinOffline, usuario, periodo, pinOfflineAnterior || pinOffline);
       setOfflineInfo(info);
+      await cargarDatos(true);
       const dispositivoConflicto = capturasPendientesOffline.filter(item => item.status === 'CONFLICT' && /cambió su dispositivo offline autorizado/i.test(item.error || ''));
       await Promise.all(dispositivoConflicto.map(item => retryOfflineOperation(item.id)));
       setPinOffline('');
       setPinOfflineConfirmacion('');
+      setPinOfflineAnterior('');
       setModalPinAbierto(false);
       if (dispositivoConflicto.length) window.dispatchEvent(new Event('siga:offline-sync-request'));
     } catch (error) { setOfflinePinError(error.message || 'No se pudo configurar el acceso offline.'); }
@@ -529,6 +532,7 @@ export default function DashboardDocente() {
     setModalPinAbierto(false);
     setPinOffline('');
     setPinOfflineConfirmacion('');
+    setPinOfflineAnterior('');
     setOfflinePinError('');
   };
   const pinActivo = Boolean(offlineInfo && Date.now() < offlineInfo.expiresAt);
@@ -588,9 +592,10 @@ export default function DashboardDocente() {
           <section role="dialog" aria-modal="true" aria-labelledby="titulo-pin-offline" onMouseDown={event => event.stopPropagation()} className="w-full max-w-md rounded-2xl border border-slate-600 bg-slate-900 p-6 text-slate-200 shadow-2xl">
             <div className="flex items-start justify-between gap-4"><div><h2 id="titulo-pin-offline" className="text-lg font-semibold text-white">{pinActivo ? 'Renovar acceso offline' : 'Configurar acceso offline'}</h2><p className="mt-1 text-sm text-slate-400">Abre tus clases descargadas aunque cierres el navegador.</p></div><button type="button" onClick={cerrarModalPin} aria-label="Cerrar" className="text-xl text-slate-400 hover:text-white">×</button></div>
             <form onSubmit={activarPinOffline} className="mt-5 space-y-4">
+              {offlineInfo && <label className="block text-sm">PIN actual<input type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{6}" maxLength={6} value={pinOfflineAnterior} onChange={event => setPinOfflineAnterior(event.target.value.replace(/\D/g, ''))} className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" /><small className="text-slate-400">Necesario para conservar las capturas al cambiar el PIN después de volver a entrar.</small></label>}
               <label className="block text-sm">PIN de 6 dígitos<input ref={pinInputRef} type="password" inputMode="numeric" autoComplete="off" required pattern="[0-9]{6}" maxLength={6} value={pinOffline} onChange={event => setPinOffline(event.target.value.replace(/\D/g, ''))} className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" /></label>
               <label className="block text-sm">Confirmar PIN<input type="password" inputMode="numeric" autoComplete="off" required pattern="[0-9]{6}" maxLength={6} value={pinOfflineConfirmacion} onChange={event => setPinOfflineConfirmacion(event.target.value.replace(/\D/g, ''))} className="mt-1 block w-full rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white" /></label>
-              <p className="text-xs leading-5 text-slate-400">Vigencia de 7 días desde su creación o renovación. Al volver internet, inicia sesión para sincronizar. Úsalo solo en un dispositivo personal: las listas locales todavía no están cifradas.</p>
+              <p className="text-xs leading-5 text-slate-400">Vigencia de 7 días desde su creación o renovación. Al volver internet, inicia sesión para sincronizar. Úsalo solo en un dispositivo personal: las listas y capturas se guardan cifradas y se bloquean al salir.</p>
               {offlinePinError && <p role="alert" className="text-sm text-red-300">{offlinePinError}</p>}
               <div className="flex justify-end gap-2 pt-1"><button type="button" onClick={cerrarModalPin} className="rounded-lg px-4 py-2 text-sm text-slate-300 hover:bg-white/5">Cancelar</button><button type="submit" disabled={configurandoPin} className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{configurandoPin ? 'Guardando…' : pinActivo ? 'Renovar PIN' : 'Activar PIN'}</button></div>
             </form>

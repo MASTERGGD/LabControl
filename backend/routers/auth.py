@@ -6,10 +6,11 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from database import get_db
 from models.departamento import Departamento
 from models.usuario import Usuario, RolUsuario
+from models.auth_session import AuthSession
 from models.password_reset import PasswordResetToken, utcnow_naive
 from dependencies import get_current_user, crear_access_token, verificar_password, hashear_password
 from services.auditoria import registrar, Accion, Recurso
-from services.active_sessions import allow_session, end_other_sessions, end_session, list_user_sessions, register_session
+from services.active_sessions import create_session, revoke_user_sessions, end_other_sessions, end_session, list_user_sessions, register_session
 from services.rate_limit import clear_login_failures, ensure_login_not_locked, register_login_failure
 from services.user_permissions import permisos_efectivos
 from services.email import enviar_recuperacion_password
@@ -162,17 +163,18 @@ def login(
             detail="Esta cuenta esta desactivada. Contacta al administrador del sistema.",
         )
 
+    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes())
+    session_id = create_session(db, usuario, expires_at, request.headers.get("user-agent", ""))
     token_data = {
         "sub": str(usuario.id),
         "email": usuario.email,
         "rol": usuario.rol.value,
         "rol_activo": usuario.rol.value,
-        "sid": request.headers.get("x-siga-session-id"),
+        "sid": session_id,
         "lab_id": usuario.laboratorio_id,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
+        "exp": expires_at,
     }
     token = crear_access_token(token_data)
-    allow_session(usuario.id, token_data["sid"])
     clear_login_failures(request, form_data.username)
 
     registrar(db, accion=Accion.LOGIN_OK, recurso=Recurso.SISTEMA,
@@ -207,7 +209,7 @@ def cambiar_funcion(
         "rol_activo": data.rol.value,
         "sid": getattr(current_user, "_session_id", None),
         "lab_id": current_user.laboratorio_id,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=_token_expire_minutes()),
+        "exp": db.get(AuthSession, current_user._session_id).expires_at,
     })
     usuario_serializado = _serializar_usuario(current_user, db)
     registrar(
@@ -288,6 +290,7 @@ def reset_password(data: ResetPasswordIn, request: Request, db: Session = Depend
         raise HTTPException(status_code=422, detail="La nueva contraseña debe ser diferente a la anterior.")
 
     now = utcnow_naive()
+    revoke_user_sessions(db, usuario.id)
     usuario.password_hash = hashear_password(data.password)
     usuario.debe_cambiar_password = False
     db.query(PasswordResetToken).filter(
@@ -314,9 +317,11 @@ def session_heartbeat(
     data: SessionHeartbeatIn,
     request: Request,
     current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    session_id = getattr(current_user, "_session_id", None) or data.session_id
+    session_id = current_user._session_id
     sessions = register_session(
+        db=db,
         usuario_id=current_user.id,
         session_id=session_id,
         user_agent=request.headers.get("user-agent", ""),
@@ -329,9 +334,10 @@ def session_heartbeat(
 def session_logout(
     data: SessionHeartbeatIn,
     current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    session_id = getattr(current_user, "_session_id", None) or data.session_id
-    end_session(session_id)
+    session_id = current_user._session_id
+    end_session(db, current_user.id, session_id)
     return {"ok": True}
 
 
@@ -339,10 +345,11 @@ def session_logout(
 def session_logout_others(
     data: SessionHeartbeatIn,
     current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    session_id = getattr(current_user, "_session_id", None) or data.session_id
-    end_other_sessions(current_user.id, session_id)
-    sessions = list_user_sessions(current_user.id, current_session_id=session_id)
+    session_id = current_user._session_id
+    end_other_sessions(db, current_user.id, session_id)
+    sessions = list_user_sessions(db, current_user.id, current_session_id=session_id)
     return {"ok": True, "active_sessions": sessions, "active_count": len(sessions)}
 
 
@@ -350,6 +357,7 @@ def session_logout_others(
 def my_sessions(
     session_id: str | None = None,
     current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    sessions = list_user_sessions(current_user.id, current_session_id=session_id)
+    sessions = list_user_sessions(db, current_user.id, current_session_id=current_user._session_id)
     return {"active_sessions": sessions, "active_count": len(sessions)}

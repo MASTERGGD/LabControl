@@ -205,7 +205,7 @@ class TestSesionesNavegador:
 
         assert cierre.status_code == 200
         assert cierre.json()["active_count"] == 1
-        assert cierre.json()["active_sessions"][0]["session_id"] == "browser-actual"
+        assert cierre.json()["active_sessions"][0]["session_id"] != "browser-actual"
         assert cierre.json()["active_sessions"][0]["current"] is True
 
         login_otro = client.post(
@@ -259,4 +259,6 @@ class TestCambioPasswordObligatorio:
         desbloqueado = client.get("/usuarios", headers=auth_headers(token))
 
         assert cambiado.status_code == 200
-        assert desbloqueado.status_code == 200
+        assert desbloqueado.status_code == 401
+        nuevo_token = get_token(client, "cambio@test.com", "NuevaSegura123!")
+        assert client.get("/usuarios", headers=auth_headers(nuevo_token)).status_code == 200

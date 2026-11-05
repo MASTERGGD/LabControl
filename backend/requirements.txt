@@ -1,18 +1,17 @@
-# Starlette 1.3.0 incluye los parches publicados hasta 2026-06-12,
-# incluidos FileResponse Range DoS y validacion de Host/path.
+# Versiones con correcciones de parsing y límites de formularios.
 fastapi==0.136.3
-starlette==1.3.0
+starlette==1.10.0
 uvicorn[standard]==0.29.0
 sqlalchemy==2.0.30
 alembic==1.13.1
 # PostgreSQL driver (se ignora si se usa SQLite)
 psycopg2-binary==2.9.9
-# python-jose 3.4.0 corrige confusion de algoritmo/DoS en JWT (PYSEC-2024-232/233)
-python-jose[cryptography]==3.4.0
+# JWT con algoritmo explícito; no se aceptan claves asimétricas como secreto HMAC.
+PyJWT[crypto]==2.15.1
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-# python-multipart 0.0.18 corrige DoS al parsear formularios/uploads (CVE-2024-53981)
-python-multipart==0.0.18
+# Parser con límites de cabeceras y correcciones de consumo de recursos.
+python-multipart==0.0.33
 pydantic[email]>=2.12.0,<3
 pydantic-settings>=2.12.0,<3
 openpyxl==3.1.2

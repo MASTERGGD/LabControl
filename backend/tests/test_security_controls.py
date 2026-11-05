@@ -90,9 +90,11 @@ class TestPasswordChangeGuard:
             json={"password_actual": "TemporalPass123", "password_nuevo": "NuevaClave456!"},
         )
         assert resp.status_code == 200
-        # Ahora el flag está limpio: el mismo token ya puede usar endpoints normales.
+        # El token previo queda invalidado; se requiere autenticación nueva.
         resp2 = client.get("/usuarios", headers=auth_headers(token))
-        assert resp2.status_code == 200
+        assert resp2.status_code == 401
+        nuevo = get_token(client, "cambio@test.com", "NuevaClave456!")
+        assert client.get("/usuarios", headers=auth_headers(nuevo)).status_code == 200
 
     def test_usuario_normal_no_se_ve_afectado(self, client, admin_user):
         token = get_token(client, "admin@test.com", "AdminPass123")

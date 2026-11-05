@@ -55,7 +55,7 @@ function EyeIcon({ hidden }) {
  */
 export default function CambiarPasswordObligatorio() {
   const navigate = useNavigate();
-  const { usuario, login } = useAuth();
+  const { usuario, logout } = useAuth();
 
   const [form, setForm] = useState({ password_actual: '', password_nuevo: '', confirmar: '' });
   const [visible, setVisible] = useState({
@@ -89,9 +89,8 @@ export default function CambiarPasswordObligatorio() {
         password_actual: form.password_actual,
         password_nuevo: form.password_nuevo,
       });
-      const token = sessionStorage.getItem('token');
-      login({ ...usuario, debe_cambiar_password: false }, token);
-      navigate(getRedirectPath(usuario), { replace: true });
+      logout();
+      navigate('/login?reason=password-changed', { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al cambiar la contraseña');
     } finally {

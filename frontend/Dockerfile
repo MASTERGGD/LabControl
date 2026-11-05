@@ -11,7 +11,7 @@
 ###############################################################################
 
 # ── Etapa de build ─────────────────────────────────────────────────────────────
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 ARG REACT_APP_API_URL
@@ -33,15 +33,16 @@ RUN npm ci --silent
 # Copiar el resto del código y construir
 COPY . .
 RUN npm run build
+RUN node -e "const fs=require('fs'); const api=new URL(process.env.REACT_APP_API_URL || 'http://localhost:8000'); const ws=new URL(process.env.REACT_APP_WS_URL || api.href.replace(/^http/, 'ws')); if(!['http:','https:'].includes(api.protocol)||!['ws:','wss:'].includes(ws.protocol))throw Error('Invalid API origin'); let conf=fs.readFileSync('nginx.conf','utf8').replace('__SIGA_API_ORIGIN__',api.origin).replace('__SIGA_WS_ORIGIN__',ws.origin); fs.writeFileSync('/app/nginx.resolved.conf',conf);"
 
 # ── Etapa de producción (nginx) ────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS prod
+FROM nginx:stable-alpine AS prod
 
 # Copiar el build de React al directorio de nginx
 COPY --from=build /app/build /usr/share/nginx/html
 
 # Copiar la configuración de nginx con security headers
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/nginx.resolved.conf /etc/nginx/conf.d/default.conf
 
 # Quitar la config default de nginx (no mostrar página de bienvenida)
 RUN rm -f /etc/nginx/conf.d/default.conf.bak
@@ -51,7 +52,7 @@ CMD ["sh", "-c", "sed -i \"s/listen 80;/listen ${PORT:-80};/\" /etc/nginx/conf.d
 
 # ── Etapa de desarrollo (npm start) ───────────────────────────────────────────
 # Se usa en docker-compose.yml normal para hot-reload
-FROM node:20-alpine AS dev
+FROM node:24-alpine AS dev
 WORKDIR /app
 COPY package*.json ./
 COPY tailwind.config.js postcss.config.js ./

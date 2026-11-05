@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import DashboardDocente from './DashboardDocente';
 import api from '../hooks/useApi';
+import { listOfflineOperations, listOfflineSnapshots, countPendingOfflineClasses, getOfflineSnapshot, saveOfflineSnapshot } from '../utils/offlineStore';
 import { abrirClaseDocente } from '../utils/abrirClaseDocente';
 
 const mockNavigate = jest.fn();
@@ -12,7 +13,7 @@ jest.mock('../context/PeriodoContext', () => ({ usePeriodo: () => ({ periodo: { 
 jest.mock('../context/ThemeContext', () => ({ useTheme: () => ({ themeKey: 'night' }) }));
 jest.mock('../hooks/useApi', () => ({ get: jest.fn() }));
 jest.mock('../utils/abrirClaseDocente', () => ({ abrirClaseDocente: jest.fn().mockResolvedValue(undefined) }));
-jest.mock('../utils/offlineStore', () => ({ getOfflineSnapshot: jest.fn().mockResolvedValue(null), saveOfflineSnapshot: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../utils/offlineStore', () => ({ getOfflineSnapshot: jest.fn().mockResolvedValue(null), saveOfflineSnapshot: jest.fn().mockResolvedValue(undefined), listOfflineOperations: jest.fn().mockResolvedValue([]), listOfflineSnapshots: jest.fn().mockResolvedValue([]), countPendingOfflineClasses: jest.fn().mockReturnValue(0), OFFLINE_EVENT: 'siga:offline-change' }));
 
 let host, root;
 const bloque = { id: 12, hora_inicio: '10:15', hora_fin: '12:00', calendario: { requiere_asistencia: true, permite_iniciar_clase: true } };
@@ -21,6 +22,11 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.setSystemTime(new Date('2026-09-03T09:59:59-06:00'));
   jest.clearAllMocks();
+  listOfflineOperations.mockResolvedValue([]);
+  listOfflineSnapshots.mockResolvedValue([]);
+  countPendingOfflineClasses.mockReturnValue(0);
+  getOfflineSnapshot.mockResolvedValue(null);
+  saveOfflineSnapshot.mockResolvedValue(undefined);
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);

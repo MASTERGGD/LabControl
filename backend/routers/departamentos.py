@@ -1,4 +1,5 @@
 from __future__ import annotations
+from services.upload_limits import read_upload
 
 import datetime
 import io
@@ -469,7 +470,7 @@ async def importar_departamentos(
     if not archivo.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="El archivo debe ser .xlsx o .xls")
 
-    contenido = await archivo.read()
+    contenido = await read_upload(archivo)
     try:
         df = pd.read_excel(io.BytesIO(contenido))
     except Exception as exc:

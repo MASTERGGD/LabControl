@@ -59,6 +59,7 @@ def _token_validacion_consulta(consulta_id: int) -> str:
     return crear_access_token({
         "typ": "consulta_validacion",
         "cid": str(consulta_id),
+        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=365),
     })
 
 
@@ -1799,18 +1800,10 @@ def validar_emision_consulta(token: str, db: Session = Depends(get_db)):
     if not c:
         raise HTTPException(404, "Nota medica no encontrada")
 
-    pac = db.get(Paciente, c.paciente_id)
-    medico = db.get(Usuario, c.atendido_por)
-    nombre_paciente = c.paciente_nombre_snapshot or (pac.nombre if pac else None)
-    tipo_paciente = c.paciente_tipo_snapshot or (pac.tipo if pac else None)
-
+    # A validation URL proves an emission, not access to a patient's identity.
     return {
         "valido": True,
         "folio": f"{c.id:05d}",
-        "fecha_consulta": as_mx(c.fecha_consulta).isoformat() if c.fecha_consulta else None,
-        "paciente": _nombre_publico(nombre_paciente),
-        "tipo_paciente": tipo_paciente,
-        "medico": medico.nombre if medico else "Medico Universitario",
         "institucion": "Universidad Tecnologica de Candelaria",
         "sistema": "SIGA UTECAN",
     }

@@ -18,6 +18,7 @@ Endpoints admin (SUPER_ADMIN / LAB_ADMIN):
   GET    /comunicados/{id}/lecturas        — reporte de lecturas
 """
 from __future__ import annotations
+from services.upload_limits import read_upload
 
 import datetime
 import hashlib
@@ -604,6 +605,8 @@ def _leer_manifest(path: Path) -> dict:
         raise HTTPException(404, "Archivo de respaldo no disponible")
     try:
         with zipfile.ZipFile(path, "r") as zf:
+            if zf.getinfo("manifest.json").file_size > 8 * 1024 * 1024:
+                raise HTTPException(413, "El manifiesto supera el tamaño permitido")
             with zf.open("manifest.json") as fh:
                 return json.loads(fh.read().decode("utf-8"))
     except KeyError:
@@ -1412,8 +1415,9 @@ async def importar_respaldo(
     RESPALDOS_DIR.mkdir(parents=True, exist_ok=True)
     nombre_limpio = Path(archivo.filename).name
     temporal = _respaldo_path(f"importando_{_utcnow().strftime('%Y%m%d_%H%M%S')}_{nombre_limpio}")
+    content = await read_upload(archivo)
     with temporal.open("wb") as fh:
-        shutil.copyfileobj(archivo.file, fh)
+        fh.write(content)
 
     manifest = _leer_manifest(temporal)
     digest = _sha256(temporal)

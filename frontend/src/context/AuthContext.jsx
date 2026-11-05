@@ -1,3 +1,4 @@
+import { lockOfflineData } from '../utils/offlineCrypto';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import api from '../hooks/useApi';
 import { getOfflineAccessInfo, unlockOfflineAccess } from '../utils/offlineAccess';
@@ -36,6 +37,7 @@ function getBrowserSessionId() {
 }
 
 function clearStoredSession() {
+  lockOfflineData();
   store.removeItem('token');
   store.removeItem('usuario');
   store.removeItem(SESSION_ID_KEY);
@@ -217,8 +219,8 @@ export function AuthProvider({ children }) {
   };
 
   const loginOffline = async pin => {
-    const { usuario: offlineUser, periodo } = await unlockOfflineAccess(pin);
     clearStoredSession();
+    const { usuario: offlineUser, periodo } = await unlockOfflineAccess(pin);
     store.setItem('usuario', JSON.stringify(offlineUser));
     store.setItem('siga_periodo_id', String(periodo.id));
     store.setItem('siga_periodo_clave', periodo.clave);

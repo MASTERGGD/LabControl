@@ -23,7 +23,7 @@ from models.laboratorio import Computadora
 from models.sesion import AsignacionPC, SesionClase
 from models.usuario import Usuario, RolUsuario
 from dependencies import decodificar_token
-from jose import JWTError
+from jwt import PyJWTError as JWTError
 import json
 import asyncio
 from typing import Dict, List
@@ -38,14 +38,17 @@ class MapaConnectionManager:
     def __init__(self):
         # lab_id → lista de WebSockets activos
         self._canales: Dict[int, List[WebSocket]] = {}
+        self._tokens = {}
 
-    async def conectar(self, websocket: WebSocket, lab_id: int):
-        await websocket.accept()
+    async def conectar(self, websocket: WebSocket, lab_id: int, token: str):
+        await websocket.accept(subprotocol="siga-auth")
         if lab_id not in self._canales:
             self._canales[lab_id] = []
+        self._tokens[websocket] = token
         self._canales[lab_id].append(websocket)
 
     def desconectar(self, websocket: WebSocket, lab_id: int):
+        self._tokens.pop(websocket, None)
         canal = self._canales.get(lab_id, [])
         if websocket in canal:
             canal.remove(websocket)
@@ -56,8 +59,14 @@ class MapaConnectionManager:
         muertos = []
         for ws in canal:
             try:
+                with SessionLocal() as db:
+                    _authorized_websocket_user(self._tokens.get(ws), lab_id, db)
                 await ws.send_text(json.dumps(mensaje, ensure_ascii=False))
             except Exception:
+                try:
+                    await ws.close(code=4003, reason="Sesión finalizada")
+                except Exception:
+                    pass
                 muertos.append(ws)
         for ws in muertos:
             self.desconectar(ws, lab_id)
@@ -163,87 +172,58 @@ def _snapshot_lab(lab_id: int, db: Session) -> list:
 
 # ─── Endpoint WebSocket ───────────────────────────────────────────────────────
 
-async def websocket_mapa(
-    websocket: WebSocket,
-    lab_id: int,
-    token: str = Query(default=None),
-):
-    """
-    ws://.../ws/mapa/{lab_id}?token=<JWT>
-    Requiere token válido. Se desconecta automáticamente si el token es inválido
-    o si el usuario no tiene permiso para ver ese laboratorio.
-    """
-    # 1. Validar presencia de token
-    if not token:
-        await websocket.close(code=4001, reason="Token requerido")
+def _authorized_websocket_user(token, lab_id, db):
+    from fastapi import Request
+    from dependencies import get_current_user
+    from services.session_access import require_lab_role
+    user = get_current_user(Request({"type": "http", "method": "GET", "path": "/sesiones", "headers": []}), token, db)
+    require_lab_role(user)
+    if user.rol in {RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB} and user.laboratorio_id != lab_id:
+        raise ValueError("Laboratorio no autorizado")
+    if user.rol == RolUsuario.DOCENTE:
+        session = db.query(SesionClase).filter(SesionClase.docente_id == user.id,
+            SesionClase.estado == "ABIERTA", SesionClase.laboratorio_id == lab_id).first()
+        if not session:
+            raise ValueError("Sin sesión propia abierta")
+    return user
+
+
+async def websocket_mapa(websocket: WebSocket, lab_id: int):
+    protocols = websocket.scope.get("subprotocols", [])
+    if len(protocols) != 2 or protocols[0] != "siga-auth":
+        await websocket.close(code=4001, reason="Autenticación requerida")
         return
-
-    # 2. Decodificar y verificar firma JWT
-    try:
-        payload = decodificar_token(token)
-    except JWTError:
-        await websocket.close(code=4003, reason="Token inválido")
+    token = protocols[1]
+    expected_origin = __import__('os').getenv('FRONTEND_URL', '').rstrip('/')
+    if expected_origin and websocket.headers.get('origin', '').rstrip('/') != expected_origin:
+        await websocket.close(code=4003, reason="Origen no autorizado")
         return
-
-    # 3. Autorizar acceso al laboratorio especifico.
-    #    SUPER_ADMIN ve cualquier lab.
-    #    LAB_ADMIN solo puede suscribirse al lab que tiene asignado.
-    #    DOCENTE solo puede ver el lab donde tiene una sesion abierta.
-    db_auth = SessionLocal()
+    def authorized():
+        with SessionLocal() as db:
+            _authorized_websocket_user(token, lab_id, db)
     try:
-        usuario_id = payload.get("sub")
-        try:
-            usuario_pk = int(usuario_id)
-        except (TypeError, ValueError):
-            await websocket.close(code=4003, reason="Token invalido")
-            return
-
-        usuario = db_auth.query(Usuario).filter(Usuario.id == usuario_pk).first()
-        if not usuario or not usuario.activo:
-            await websocket.close(code=4003, reason="Usuario no autorizado")
-            return
-        if usuario.rol == RolUsuario.LAB_ADMIN and usuario.laboratorio_id != lab_id:
-            await websocket.close(code=4003, reason="Acceso denegado a este laboratorio")
-            return
-
-        # DOCENTE: solo puede ver el lab de su sesion activa
-        if usuario.rol == RolUsuario.DOCENTE:
-            from models.sesion import SesionClase
-            sesion_activa = db_auth.query(SesionClase).filter(
-                SesionClase.docente_id == usuario.id,
-                SesionClase.estado == "ABIERTA",
-                SesionClase.laboratorio_id == lab_id,
-            ).first()
-            if not sesion_activa:
-                await websocket.close(code=4003, reason="Sin sesion activa en este laboratorio")
-                return
-
+        authorized()
     except Exception:
-        await websocket.close(code=4003, reason="Error de autorizacion")
+        await websocket.close(code=4003, reason="Acceso denegado")
         return
-    finally:
-        db_auth.close()
-
-    # 4. Conectar y mantener el ciclo de mensajes
-    await manager.connect(lab_id, websocket)
+    await manager.conectar(websocket, lab_id, token)
     try:
-        # Enviar snapshot inicial del estado del lab
-        db_snap = SessionLocal()
-        try:
-            snapshot = _snapshot_lab(lab_id, db_snap)
-            await websocket.send_json({"tipo": "snapshot", "pcs": snapshot})
-        finally:
-            db_snap.close()
-
-        # Mantener conexion — escuchar mensajes del cliente (ping/pong o comandos)
+        with SessionLocal() as db:
+            snapshot = _snapshot_lab(lab_id, db)
+        await websocket.send_json({"tipo": "snapshot", "pcs": snapshot})
         while True:
             try:
-                data = await websocket.receive_text()
-                if data == "ping":
-                    await websocket.send_text("pong")
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+            except asyncio.TimeoutError:
+                message = None
+            try:
+                authorized()
             except Exception:
+                await websocket.close(code=4003, reason="Sesión finalizada")
                 break
-    except Exception:
+            if message == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
         pass
     finally:
-        manager.disconnect(lab_id, websocket)
+        manager.desconectar(websocket, lab_id)
