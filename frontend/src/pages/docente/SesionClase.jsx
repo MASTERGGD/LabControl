@@ -855,6 +855,15 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
   const diaReservaLabel = (DIAS_LABEL[diaReserva] || 'otro día').toLocaleLowerCase('es-MX');
   const [duracion, setDuracion]       = useState(durDefault);
   const [error, setError]             = useState('');
+  const [claseHoy, setClaseHoy] = useState(null);
+  const claseFinalizada = claseHoy?.clase_id && ['CERRADA', 'NO_IMPARTIDA', 'CORRECCION'].includes(claseHoy.estado);
+  useEffect(() => {
+    let vigente = true;
+    if (!esOtroDia) api.get(`/sesiones/reservaciones/${r.id}/clase-hoy`)
+      .then(({ data }) => { if (vigente) setClaseHoy(data); })
+      .catch(() => {}); // El inicio vuelve a comprobar el estado en el servidor.
+    return () => { vigente = false; };
+  }, [r.id, esOtroDia]);
 
   const handleCancelar = async () => {
     setCancelando(true);
@@ -867,6 +876,11 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
   };
 
   const handleIniciarSesion = async () => {
+    if (claseFinalizada) {
+      onClose();
+      navigate(`/docente/clase/${claseHoy.clase_id}`, { state: { avisoLaboratorio: 'La clase de hoy ya está registrada. Consulta su asistencia; no se iniciará otra sesión de laboratorio.' } });
+      return;
+    }
     setIniciando(true); setError('');
     if (esOtroDia) {
       setError(`Esta clase está programada para el ${diaReservaLabel}. Podrás iniciarla ese día.`);
@@ -885,6 +899,11 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
       navigate(`/docente/sesion/${data.id}`);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Error al iniciar sesión'));
+      const claseCerrada = err.response?.data?.detail?.clase_id;
+      if (claseCerrada) {
+        onClose();
+        navigate(`/docente/clase/${claseCerrada}`, { state: { avisoLaboratorio: 'La clase de hoy ya está finalizada. Puedes consultar su asistencia; no se inició otra sesión de laboratorio.' } });
+      }
       setIniciando(false);
     }
   };
@@ -1011,6 +1030,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
                 className="w-full bg-green-600 hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all">
                 {iniciando
                   ? <><span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" /> Iniciando…</>
+                  : claseFinalizada ? 'Consultar clase de hoy · ya registrada'
                   : <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg> Iniciar sesión de clase</>}
               </button>
             </div>

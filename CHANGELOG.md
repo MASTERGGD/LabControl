@@ -4,6 +4,33 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [En preparación] — Flujo de clase y laboratorio — 2026-11-05
+
+### Problema y decisión
+Desde el horario se podía cerrar la asistencia y después iniciar el laboratorio desde Reservaciones. Se coordinan ambos registros conservando sus responsabilidades y la asistencia existente.
+
+### Cambios
+- Reservaciones crea o reutiliza la clase académica del día y la vincula explícitamente a la sesión de laboratorio. Bloquea iniciar otra sesión si la clase está cerrada, no impartida o en corrección, incluso si el cliente omite el identificador académico o solicita uso libre.
+- El horario consulta el estado actual de una clase existente. Para uso de equipos, una reservación faltante produce un aviso en lugar de omitir silenciosamente el laboratorio. La modalidad explícita `SOLO_AULA` mantiene su recorrido académico.
+- El cierre docente desde el laboratorio permite revisar equipos y registrar observaciones, y continúa a asistencia y tema. La confirmación académica cierra ambos registros. El cierre directo del laboratorio vinculado se bloquea mientras la asistencia siga abierta.
+- Si la clase ya estaba finalizada, Reservaciones dirige a su registro con una explicación, sin iniciar equipos ni modificar asistencias anteriores.
+- Se incorporan esta bitácora, una guía de continuidad y una instrucción de lectura para futuras sesiones de trabajo.
+
+### Validación y publicación
+Validación final: 7 pruebas nuevas de integración backend aprobadas, 25 suites y 93 pruebas frontend aprobadas, compilación frontend aprobada. La comprobación ampliada de sesiones y docencia tuvo 29 aprobadas y cuatro fallos ya presentes en los registros de la versión original (periodos, historial y fecha de una capacitación); no se presentan como corregidos. No requiere migración de esquema ni modificación de registros históricos. Código preparado y validado; publicación pendiente de confirmación de los despliegues.
+
+Alcance: el recorrido integrado de una reservación académica pertenece al docente titular de la carga; no se añadió delegación de captura de asistencia a suplentes. Las sesiones independientes conservan su cierre de laboratorio. La inspección de equipos y las observaciones de entrega se mantienen; la operación institucional de registro sin equipos utiliza la modalidad `SOLO_AULA` configurada en el horario.
+
+## [554e994] — Asistencia online y copia offline — 2026-11-05
+
+Se corrigió un aviso falso de falta de conexión cuando la lista llegaba del servidor pero fallaba su copia cifrada por estar bloqueada. Un fallo opcional de caché ya no duplica cambios de asistencia confirmados. Validación: 11 pruebas dirigidas y compilación aprobadas; despliegues frontend y backend verificados, API saludable y seis archivos preservados comprobados por SHA-256. Publicado.
+
+## [25cff5a] — Remediación de seguridad y persistencia — 2026-11-05
+
+Sesiones persistentes y revocables, controles de acceso a laboratorios y WebSocket, límites de cargas e importaciones, cifrado offline, QR local, cabeceras CSP/HSTS y actualización de dependencias. Frontend migrado a Vite. Archivos preservados antes de configurar el volumen persistente y verificados después del despliegue.
+
+Validación registrada: 48 pruebas finales de seguridad/autenticación aprobadas y 85 pruebas del frontend aprobadas durante la remediación; 12 fallos generales del backend confirmados también en la versión original. Auditoría npm: cero avisos críticos, altos o moderados y cinco bajos de herramientas de pruebas. Publicado y verificado; las sesiones antiguas requirieron nuevo acceso. Esta entrada resume trabajo ya realizado y no constituye una auditoría exhaustiva.
+
 ## [1.0.0] — Mayo 2026
 
 Primera versión completa del sistema. Todos los módulos core implementados.

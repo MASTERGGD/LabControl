@@ -4,7 +4,7 @@ import ClaseAsistencia from './ClaseAsistencia';
 import api from '../../hooks/useApi';
 import { getOfflineSnapshot, saveOfflineSnapshot, enqueueOfflineOperation } from '../../utils/offlineStore';
 
-jest.mock('react-router-dom', () => ({ useParams: () => ({ claseId: '1' }), useNavigate: () => jest.fn() }));
+jest.mock('react-router-dom', () => ({ useParams: () => ({ claseId: '1' }), useNavigate: () => jest.fn(), useLocation: () => ({ state: null }) }));
 jest.mock('../../components/AdminLayout', () => ({ children }) => <div>{children}</div>);
 jest.mock('../../components/ContextoAlumnoDocente', () => () => null);
 jest.mock('../../context/ThemeContext', () => ({ useTheme: () => ({ themeKey: 'day' }) }));

@@ -59,6 +59,20 @@ class AutoAsignacionCreate(BaseModel):
     computadora_id: int
     matricula: str = Field(..., min_length=2, max_length=20)
 
+@router.get("/reservaciones/{reservacion_id}/clase-hoy")
+def clase_reservada_hoy(reservacion_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    reserva = db.get(Reservacion, reservacion_id)
+    if not reserva:
+        raise HTTPException(404, "Reservación no encontrada")
+    if reserva.docente_id != current_user.id and reserva.docente_suplente_id != current_user.id:
+        raise HTTPException(403, "Esta reservación no te pertenece")
+    clase = db.query(ClaseDocente).filter(
+        ClaseDocente.carga_docente_id == reserva.carga_docente_id,
+        ClaseDocente.fecha == now_mx().date(),
+    ).first() if reserva.carga_docente_id else None
+    return {"clase_id": clase.id if clase else None, "estado": clase.estado if clase else None}
+
+
 class ObservacionCreate(BaseModel):
     computadora_id: Optional[int] = None
     tipo: str       = Field(default="SIN_NOVEDAD", description="SIN_NOVEDAD, FALLA_HARDWARE, FALLA_SOFTWARE, LIMPIEZA, OTRO")
@@ -614,6 +628,25 @@ async def abrir_sesion(
             )
 
     clase_ref = None
+    # Reservaciones y horario comparten la misma clase académica del día.
+    # No se permite eludir su estado omitiendo clase_docente_id en el cliente.
+    if res_ref and res_ref.carga_docente_id and res_ref.carga_docente.tipo_actividad == "CLASE":
+        carga = res_ref.carga_docente
+        if res_ref.laboratorio_id != data.laboratorio_id:
+            raise HTTPException(422, "La reservación no corresponde a este laboratorio")
+        if carga.docente_id != current_user.id:
+            raise HTTPException(403, "Inicia esta actividad desde el horario del docente responsable")
+        from routers.docencia import iniciar_clase
+        clase_actual = iniciar_clase(carga.id, db, current_user)
+        if clase_actual["estado"] != "ABIERTA":
+            raise HTTPException(409, detail={
+                "message": "La clase académica de hoy ya está cerrada o no fue impartida. Consulta su registro; no se abrirá otra sesión de laboratorio.",
+                "clase_id": clase_actual["id"],
+            })
+        if data.clase_docente_id is not None and data.clase_docente_id != clase_actual["id"]:
+            raise HTTPException(422, "La clase indicada no corresponde a la reservación de hoy")
+        clase_ref = db.get(ClaseDocente, clase_actual["id"])
+        tipo_sesion = "CLASE"
     if data.clase_docente_id is not None:
         clase_ref = db.query(ClaseDocente).filter(
             ClaseDocente.id == data.clase_docente_id,
@@ -821,6 +854,14 @@ async def cerrar_sesion(
         raise HTTPException(status_code=400, detail="La sesión no está abierta")
     if current_user.rol == RolUsuario.DOCENTE and s.docente_id != current_user.id:
         raise HTTPException(status_code=403, detail="No puedes cerrar una sesión que no es tuya")
+
+    if current_user.rol == RolUsuario.DOCENTE and s.clase_docente_id:
+        clase = db.get(ClaseDocente, s.clase_docente_id)
+        if clase and clase.estado in {"ABIERTA", "CORRECCION"}:
+            raise HTTPException(409, detail={
+                "message": "Confirma la asistencia y el tema impartido para cerrar la clase y su laboratorio juntos.",
+                "clase_id": clase.id,
+            })
 
     ahora = _utcnow()
     asigs_abiertas, overtime_min = cerrar_sesion_laboratorio(db, s, ahora)

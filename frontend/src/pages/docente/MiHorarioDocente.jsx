@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { abrirClaseDocente } from '../../utils/abrirClaseDocente';
+import { getApiErrorMessage } from '../../utils/apiError';
 import { usePeriodo } from '../../context/PeriodoContext';
 import { useAuth } from '../../context/AuthContext';
 import { getOfflineSnapshot } from '../../utils/offlineStore';
@@ -863,7 +864,7 @@ export default function MiHorarioDocente() {
     try {
       await abrirClaseDocente(api, navigate, item);
     } catch (err) {
-      setMensaje(err.response?.data?.detail || 'No se pudo iniciar la clase.');
+      setMensaje(getApiErrorMessage(err, 'No se pudo iniciar la clase.'));
     }
   };
   const cambiarEstadoSeguimiento = async (seguimiento, estado) => {

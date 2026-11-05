@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import ContextoAlumnoDocente from '../../components/ContextoAlumnoDocente';
 import api from '../../hooks/useApi';
@@ -23,6 +23,7 @@ const recalcularResumen = (alumnos = []) => alumnos.reduce((resumen, alumno) => 
 export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
+  const { state: navegacion } = useLocation();
   const { themeKey } = useTheme();
   const { usuario, offlineAccess } = useAuth();
   const isDay = themeKey === 'day';
@@ -384,6 +385,7 @@ export default function ClaseAsistencia() {
           ))}
         </div>}
 
+        {navegacion?.avisoLaboratorio && <div role="status" className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-sm">{navegacion.avisoLaboratorio}</div>}
         {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
         {cierreConfirmado && (
           <div className={`rounded-2xl border p-4 ${isDay ? 'border-emerald-300 bg-emerald-50 text-emerald-950' : 'border-emerald-500/35 bg-emerald-500/10 text-emerald-100'}`} role="status" aria-live="polite">

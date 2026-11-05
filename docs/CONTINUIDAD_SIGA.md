@@ -1,0 +1,31 @@
+# Cómo retomar SIGA
+
+Este archivo y `CHANGELOG.md` conservan el contexto del proyecto junto al código. No dependen del historial de un chat ni de un equipo concreto. Solo quedan protegidos frente a la pérdida del equipo cuando sus commits se suben al repositorio remoto.
+
+## Estado de referencia: 5 de noviembre de 2026
+
+SIGA tiene un backend FastAPI/SQLAlchemy/Alembic y un frontend React con Vite. Las pruebas del frontend usan Jest. En Railway, ambos servicios se construyen desde la rama `codex/demo-railway`, con raíces `backend` y `frontend` del repositorio `MASTERGGD/LabControl`.
+
+La clase académica (`ClaseDocente`) conserva asistencia, tema y bitácora. La sesión de laboratorio (`SesionClase`) conserva recepción, equipos e incidencias. Una sesión asociada a una reservación de una carga académica debe vincularse con la clase correspondiente del día. El cierre docente académico libera también el laboratorio vinculado. `SOLO_AULA` es la modalidad explícita que permite asistencia sin operación de equipos; no cambiarla automáticamente para eludir una reservación faltante.
+
+El backend tiene almacenamiento persistente en `/siga-persistent`; los directorios de datos, respaldos, registros y adjuntos se configuran mediante variables de entorno. La base PostgreSQL tiene su propio volumen. No redesplegar una instalación con archivos únicamente efímeros antes de preservarlos y verificar sus hashes. No restaurar la base de datos como parte rutinaria de una publicación.
+
+Las sesiones de autenticación persistentes se introdujeron con la migración `c4d5e6f7a8b9`. Los datos offline se cifran y su clave se desbloquea en memoria mediante el PIN. Una copia offline opcional bloqueada no debe convertir un éxito del servidor en un error de red ni duplicar operaciones confirmadas.
+
+## Al volver desde otro equipo
+
+1. Clonar el repositorio y revisar la rama y el último commit remoto. Leer este documento y el changelog antes de cambiar código.
+2. Consultar `git status` y separar cambios existentes de la tarea actual. Obtener credenciales desde los servicios correspondientes; nunca desde archivos de este historial.
+3. Verificar la configuración y los despliegues reales de Railway: un commit en GitHub no demuestra por sí solo qué versión está activa.
+4. Instalar las dependencias del backend desde `backend/requirements.txt` y las del frontend con su lockfile. Ejecutar pruebas dirigidas al cambio y la compilación del frontend.
+5. Revisar migraciones, persistencia y respaldo antes de publicar. Registrar el resultado real y los pendientes.
+
+## Qué registrar por mejora
+
+Fecha y módulo; problema observado; decisión y motivo; comportamiento nuevo; pruebas y sus resultados; estado de publicación y limitaciones. El código y sus diferencias quedan en Git; aquí se conserva la explicación. No reconstruir fechas o resultados que no estén documentados: marcar cualquier reconstrucción como tal.
+
+## Límites conocidos
+
+Durante la remediación de seguridad se encontraron 12 fallos en la suite general del backend que también se reprodujeron sobre la versión original aislada; no presentarlos como corregidos. La auditoría npm de ese momento dejó cinco avisos bajos en herramientas Jest/deepmerge. Estos resultados son históricos y deben verificarse de nuevo cuando se cambien esas áreas.
+
+Una copia local de respaldo no sustituye un programa automático de respaldos externos. Los datos de producción y las copias de seguridad no están incluidos en el repositorio. No se ha realizado una prueba de penetración exhaustiva.

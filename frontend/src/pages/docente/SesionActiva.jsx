@@ -493,7 +493,7 @@ function ModalReportarDano({ pc, sesion, onClose }) {
 
 // ─── Modal Cerrar Sesión ───────────────────────────────────────────────────────
 
-function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosingError }) {
+export function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosingError, onContinuarAsistencia }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const [obs, setObs]         = useState('');
@@ -528,6 +528,11 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosi
           bloquear: bloquearPC,
         });
       }
+      if (onContinuarAsistencia) {
+        if (obs.trim()) await api.post(`/sesiones/${sesion.id}/observaciones`, { tipo: 'OTRO', descripcion: `Entrega del laboratorio: ${obs.trim()}`, prioridad: 'BAJA' });
+        onContinuarAsistencia();
+        return;
+      }
       // 2. Cerrar la sesión
       onClosing?.();
       await api.post(`/sesiones/${sesion.id}/cerrar`, { observacion_general: obs || null });
@@ -551,7 +556,7 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosi
                 d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
             </svg>
           </div>
-          <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>¿Cerrar sesión?</h3>
+          <h3 className={`font-semibold ${isDay ? 'text-slate-950' : 'text-white'}`}>{onContinuarAsistencia ? 'Revisar entrega del laboratorio' : '¿Cerrar sesión?'}</h3>
           <p className={`text-sm mt-1 ${isDay ? 'text-slate-600' : 'text-slate-400'}`}>
             {sesion.materia} · {sesion.grupo}
           </p>
@@ -668,7 +673,7 @@ function ModalCerrarSesion({ sesion, pcs, onClose, onCerrada, onClosing, onClosi
             </button>
             <button onClick={handleCerrar} disabled={loading}
               className="flex-1 bg-orange-600 hover:bg-orange-500 disabled:bg-orange-800 text-white rounded-lg py-2.5 text-sm font-semibold transition-colors">
-              {loading ? 'Cerrando...' : '⏹ Cerrar sesión'}
+              {loading ? 'Guardando...' : onContinuarAsistencia ? 'Continuar a asistencia y tema' : '⏹ Cerrar sesión'}
             </button>
           </div>
         </div>
@@ -2254,6 +2259,7 @@ export default function SesionActiva() {
         <ModalCerrarSesion sesion={sesion} pcs={pcs}
           onClose={() => setModalCerrar(false)}
           onCerrada={handleSesionCerrada}
+          onContinuarAsistencia={esDocente && sesion.clase_docente_id ? () => navigate(`/docente/clase/${sesion.clase_docente_id}`, { state: { avisoLaboratorio: 'Entrega del laboratorio revisada. Confirma la asistencia y el tema para cerrar la clase y liberar los equipos.' } }) : undefined}
           onClosing={() => { cierreSolicitadoRef.current = true; }}
           onClosingError={() => { cierreSolicitadoRef.current = false; }}
         />

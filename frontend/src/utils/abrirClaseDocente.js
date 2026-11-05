@@ -5,10 +5,19 @@ export async function abrirClaseDocente(api, navigate, item) {
     navigate(`/docente/clase/${data.id}`);
     return;
   }
+  const requiereEquipos = item.laboratorio_id && item.uso_laboratorio !== 'SOLO_AULA';
+  const sinReserva = item.estado_reserva_laboratorio !== 'RESERVADO' || !item.reservacion_laboratorio_id;
+  const avisoReserva = 'Esta clase requiere equipos. Confirma su reservación de laboratorio antes de iniciar; no se abrirá solo el pase de lista.';
+  if (!item.clase_id && requiereEquipos && sinReserva) throw new Error(avisoReserva);
   const clase = item.clase_id
-    ? { id: item.clase_id }
+    ? (await api.get(`/docencia/clases/${item.clase_id}`)).data
     : (await api.post(`/docencia/horario/${item.id}/iniciar`)).data;
-  if (item.clase_estado !== 'CERRADA' && item.laboratorio_id && item.uso_laboratorio !== 'SOLO_AULA' && item.estado_reserva_laboratorio === 'RESERVADO' && item.reservacion_laboratorio_id) {
+  if (clase.estado !== 'ABIERTA') {
+    navigate(`/docente/clase/${clase.id}`);
+    return;
+  }
+  if (requiereEquipos) {
+    if (sinReserva) throw new Error(avisoReserva);
     const [hi, mi] = item.hora_inicio.split(':').map(Number);
     const [hf, mf] = item.hora_fin.split(':').map(Number);
     const { data: sesion } = await api.post('/sesiones', {
