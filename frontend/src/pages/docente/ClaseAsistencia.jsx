@@ -72,7 +72,8 @@ export default function ClaseAsistencia() {
       setContextos(contextoRes.data);
       setModoLocal(false);
       setError('');
-      await saveOfflineSnapshot(snapshotKey, { clase: claseRes.data, contextos: contextoRes.data });
+      // La copia offline es opcional; su bloqueo no invalida la respuesta del servidor.
+      await saveOfflineSnapshot(snapshotKey, { clase: claseRes.data, contextos: contextoRes.data }).catch(() => {});
     } catch (err) {
       const local = await getOfflineSnapshot(snapshotKey).catch(() => null);
       if (local?.data?.clase) {
@@ -121,7 +122,8 @@ export default function ClaseAsistencia() {
     try {
       if (!navigator.onLine || offlineAccess) throw new TypeError('offline');
       await api.patch(`/docencia/clases/${claseId}/asistencia/${asistenciaId}`, { estado, observacion });
-      await aplicarLocal();
+      // Una asistencia ya confirmada no debe encolarse otra vez por un fallo de caché.
+      await aplicarLocal().catch(() => {});
       setModoLocal(false);
       return true;
     } catch (err) {
