@@ -95,7 +95,7 @@ export default function PanelOperacionLaboratorio({ categoria, estadoCategoria =
     </section>}
     <section className="op-agenda" aria-label="Agenda del laboratorio">
       {!errorStats && !cargandoStats && agenda ? agenda : <div className="op-agenda-body"><h3 className="op-agenda-title">Próximas reservaciones{' '}{!errorStats && !cargandoStats && Array.isArray(stats?.proximas_reservaciones) && <span className="op-agenda-count" aria-label={`${stats.proximas_reservaciones.length} próximas reservaciones`}>{stats.proximas_reservaciones.length}</span>}</h3>{cargandoStats || (!stats && !errorStats) ? <div className="op-agenda-loading" role="status" aria-label="Cargando agenda"><span className="op-skeleton"/><span className="op-caption">Consultando agenda…</span></div> : errorStats ? <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><p>No se pudo consultar la agenda.</p><button className="op-button" onClick={onRetry}>Reintentar resumen</button></div> : <p className="op-caption">No hay reservaciones próximas para mostrar.</p>}</div>}
-      <div className="op-agenda-footer"><button className="op-button" onClick={() => navigate(ruta('/admin/horarios'))}>Ver calendario completo</button></div>
+      <div className="op-agenda-footer"><button className="op-button" disabled={!laboratorioId} onClick={() => navigate(ruta('/admin/horarios'))}>Ver calendario completo</button></div>
     </section>
     <section className="op-summary" aria-label="Resumen operativo" aria-busy={Boolean(cargandoStats)}>
       <div className="op-section-heading"><h3>Resumen operativo</h3><span className="op-caption">Recursos y actividad</span></div>

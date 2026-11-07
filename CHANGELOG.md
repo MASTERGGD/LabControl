@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Horarios requieren laboratorio válido — 2026-11-07
+
+### Problema y comportamiento resultante
+El enlace del estado vacío abría la carga masiva sin laboratorio aunque los botones superiores estaban deshabilitados. Una respuesta 422 con objetos de validación se intentaba renderizar directamente y rompía la pantalla. Ahora solo se ofrecen horarios y formularios con un laboratorio presente en la lista disponible; sin laboratorios se explica la falta de asignación y se bloquean las acciones. Se respeta el laboratorio indicado en la URL si está disponible; si no lo está, se solicita seleccionar uno. El calendario del panel se deshabilita sin identificador de laboratorio. Los tres formularios de creación validan también antes del envío y los errores de horarios se convierten a texto con el normalizador existente.
+
+### Validación y estado
+34 suites y 136 pruebas frontend aprobadas, incluidas cuatro regresiones para ausencia de laboratorios, laboratorio de URL no disponible, error 422 sin caída de React y calendario sin asignación. Compilación Vite aprobada con avisos existentes de tamaño de paquete e importación mixta de offlineStore. Cambios preparados localmente; no publicados. Sin cambios de backend, permisos, migraciones ni datos. Cambios ajenos conservados. Pendiente: revisión autenticada en producción después de publicar.
+
+---
+
 ## Preparado — Acciones de alertas según disponibilidad de datos — 2026-11-06
 
 ### Problema y comportamiento resultante

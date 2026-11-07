@@ -134,3 +134,9 @@ test('badges de vencimiento y caducados aparecen únicamente con cantidades posi
  await act(async()=>window.dispatchEvent(new Event('focus')));
  expect([...container.querySelectorAll('.op-badge')].map(el=>el.textContent)).toEqual(['Revisar vencimiento','Revisar antes de usar']);
 });
+
+test('sin laboratorio asignado bloquea el acceso al calendario',async()=>{
+ await render({laboratorioId:null});
+ const boton=[...container.querySelectorAll('button')].find(b=>b.textContent==='Ver calendario completo');
+ expect(boton.disabled).toBe(true);await click('Ver calendario completo');expect(navigate).not.toHaveBeenCalled();
+});

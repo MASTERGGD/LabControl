@@ -5,6 +5,7 @@ import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/Cuat
 import TimeGrid from '../../components/TimeGrid';
 import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
+import { getApiErrorMessage } from '../../utils/apiError';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -65,7 +66,7 @@ function ModalHorario({ labId, cuatrimestre, slot, onClose, onSave, preselect })
       await api.delete(`/horarios/${slot.id}`);
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || 'No se pudo eliminar');
+      setError(getApiErrorMessage(err, 'No se pudo eliminar'));
       setEliminando(false);
       setConfirmarEliminar(false);
     }
@@ -81,6 +82,7 @@ function ModalHorario({ labId, cuatrimestre, slot, onClose, onSave, preselect })
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!labId) { setError('Selecciona un laboratorio antes de crear turnos'); return; }
     if (form.hora_fin <= form.hora_inicio) {
       setError('La hora de fin debe ser posterior a la de inicio');
       return;
@@ -99,7 +101,7 @@ function ModalHorario({ labId, cuatrimestre, slot, onClose, onSave, preselect })
       }
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al guardar');
+      setError(getApiErrorMessage(err, 'Error al guardar'));
     } finally {
       setLoading(false);
     }
@@ -221,6 +223,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!labId) { setError('Selecciona un laboratorio antes de crear turnos'); return; }
     if (dias.length === 0) { setError('Selecciona al menos un día'); return; }
     if (horaFin <= horaInicio) { setError('La hora de fin debe ser posterior a la de inicio'); return; }
     setLoading(true);
@@ -236,7 +239,7 @@ function ModalBulk({ labId, cuatrimestre, onClose, onSave }) {
       setResultado(data);
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error en carga masiva');
+      setError(getApiErrorMessage(err, 'Error en carga masiva'));
     } finally {
       setLoading(false);
     }
@@ -358,6 +361,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
   );
 
   const handleCargar = async () => {
+    if (!labId) { setError('Selecciona un laboratorio antes de crear turnos'); return; }
     if (dias.length === 0) { setError('Selecciona al menos un día'); return; }
     setLoading(true);
     setError('');
@@ -370,7 +374,7 @@ function ModalPeriodosUtecan({ labId, cuatrimestre, onClose, onSave }) {
       setResultado(data);
       onSave();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al cargar períodos');
+      setError(getApiErrorMessage(err, 'Error al cargar períodos'));
     } finally {
       setLoading(false);
     }
@@ -539,7 +543,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
       });
       onBloqueado();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al bloquear');
+      setError(getApiErrorMessage(err, 'Error al bloquear'));
       setLoading(false);
     }
   };
@@ -656,7 +660,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
       await api.delete(`/horarios/reservaciones/${r.id}`);
       onCancelada();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al cancelar');
+      setError(getApiErrorMessage(err, 'Error al cancelar'));
       setCancelando(false); setConfirmar(false);
     }
   };
@@ -673,7 +677,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
       setMostrarNotaReq(false);
       setNotaAdmin('');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al resolver requerimiento');
+      setError(getApiErrorMessage(err, 'Error al resolver requerimiento'));
     } finally { setResolviendoReq(false); }
   };
 
@@ -686,7 +690,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
       });
       onCancelada();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al marcar estado');
+      setError(getApiErrorMessage(err, 'Error al marcar estado'));
     } finally {
       setMarcando(false);
     }
@@ -980,7 +984,7 @@ function ModalDetalleBloqueo({ slot, onClose, onDesbloqueado }) {
       await api.delete(`/horarios/${slot.id}/bloquear`);
       onDesbloqueado();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al desbloquear');
+      setError(getApiErrorMessage(err, 'Error al desbloquear'));
       setDesbloqueando(false);
     }
   };
@@ -1061,16 +1065,23 @@ export default function Horarios() {
   const [selectedCells, setSelectedCells] = useState(new Set());
 
 
+  const laboratorioValido = labs.some(lab => Number(lab.id) === Number(labSeleccionado));
+  const [errorLabs, setErrorLabs] = useState('');
+  const [cargandoLabs, setCargandoLabs] = useState(true);
+
   // Cargar labs al inicio
   useEffect(() => {
     api.get('/laboratorios?solo_activos=true').then(({ data }) => {
       setLabs(data);
-      if (data.length > 0) setLabSeleccionado(data[0].id);
-    });
+      const solicitado = new URLSearchParams(window.location.search).get('laboratorio_id');
+      const elegido = solicitado ? data.find(lab => String(lab.id) === solicitado) : data[0];
+      setLabSeleccionado(elegido?.id || '');
+    }).catch(err => setErrorLabs(getApiErrorMessage(err, 'No se pudieron cargar los laboratorios')))
+      .finally(() => setCargandoLabs(false));
   }, []);
 
   const cargarHorarios = useCallback(async () => {
-    if (!labSeleccionado || !cuatrimestre) return;
+    if (!laboratorioValido || !cuatrimestre) { setHorarios([]); return; }
     setLoading(true);
     try {
       const { data } = await api.get(
@@ -1080,7 +1091,7 @@ export default function Horarios() {
     } finally {
       setLoading(false);
     }
-  }, [labSeleccionado, cuatrimestre]);
+  }, [labSeleccionado, cuatrimestre, laboratorioValido]);
 
   useEffect(() => { cargarHorarios(); }, [cargarHorarios]);
   // Drag-select: end on mouseup anywhere
@@ -1132,7 +1143,7 @@ export default function Horarios() {
       await api.delete(`/horarios/${id}`);
       cargarHorarios();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Error al desactivar');
+      alert(getApiErrorMessage(err, 'Error al desactivar'));
     }
   };
 
@@ -1146,7 +1157,7 @@ export default function Horarios() {
         </div>
         <div className="flex gap-2 flex-wrap">
           {/* Botón estrella: períodos UTECAN */}
-          <button onClick={() => setModalUtecan(true)} disabled={!labSeleccionado}
+          <button onClick={() => setModalUtecan(true)} disabled={!laboratorioValido}
             className="flex items-center gap-2 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40"
             title="Carga automática de los 8 períodos académicos UTECAN"
             style={{
@@ -1161,7 +1172,7 @@ export default function Horarios() {
             </svg>
             Períodos UTECAN
           </button>
-          <button onClick={() => setModalBulk(true)} disabled={!labSeleccionado}
+          <button onClick={() => setModalBulk(true)} disabled={!laboratorioValido}
             className="flex items-center gap-2 text-slate-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}
             onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.10)'}
@@ -1171,7 +1182,7 @@ export default function Horarios() {
             </svg>
             Carga masiva
           </button>
-          <button onClick={() => setModalNuevo(true)} disabled={!labSeleccionado}
+          <button onClick={() => setModalNuevo(true)} disabled={!laboratorioValido}
             className="flex items-center gap-2 btn-blue px-4 py-2.5 text-sm font-semibold disabled:opacity-40">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -1217,12 +1228,16 @@ export default function Horarios() {
       </div>
 
       {/* Grid semanal */}
-      {loading ? (
+      {cargandoLabs || loading ? (
         <div className="flex items-center justify-center py-16">
           <svg className="animate-spin w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
           </svg>
+        </div>
+      ) : errorLabs || !laboratorioValido ? (
+        <div className="text-center py-16 text-slate-400" role="status">
+          <p>{errorLabs || (labs.length ? 'Selecciona un laboratorio disponible para consultar y crear horarios.' : 'No tienes laboratorios activos disponibles. Solicita revisar tu asignación.')}</p>
         </div>
       ) : horasConSlots.length === 0 ? (
         <div className="text-center py-16 text-slate-500">
@@ -1428,7 +1443,7 @@ export default function Horarios() {
       )}
 
       {/* Modales */}
-      {(modalNuevo || slotEditar) && (
+      {laboratorioValido && (modalNuevo || slotEditar) && (
         <ModalHorario
           labId={labSeleccionado}
           cuatrimestre={cuatrimestre}
@@ -1438,7 +1453,7 @@ export default function Horarios() {
           onSave={() => { setModalNuevo(false); setSlotEditar(null); cargarHorarios(); }}
         />
       )}
-      {modalBulk && (
+      {laboratorioValido && modalBulk && (
         <ModalBulk
           labId={labSeleccionado}
           cuatrimestre={cuatrimestre}
@@ -1446,7 +1461,7 @@ export default function Horarios() {
           onSave={cargarHorarios}
         />
       )}
-      {modalUtecan && (
+      {laboratorioValido && modalUtecan && (
         <ModalPeriodosUtecan
           labId={labSeleccionado}
           cuatrimestre={cuatrimestre}
