@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import api from '../hooks/useApi';
+import ResumenReporteQuimica from './ResumenReporteQuimica';
 import { getApiErrorMessage } from '../utils/apiError';
 
 const TITULOS = {
@@ -47,7 +48,6 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
   const [revision, setRevision] = useState(0);
   const [aviso, setAviso] = useState('');
   const vigente = useRef(0);
-  const observacionesRefs = useRef({});
   useEffect(() => {
     let activo = true;
     const id = ++vigente.current;
@@ -79,21 +79,13 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
     } finally { setDescargando(false); }
   };
   const r = corte?.reporte;
-  const observaciones = Object.entries(r?.tablas || {}).filter(([nombre, filas]) => nombre.endsWith('informacion_incompleta') && filas.length);
-  const totalObservaciones = observaciones.reduce((total, [, filas]) => total + filas.length, 0);
-  const revisarObservaciones = () => {
-    observaciones.forEach(([nombre]) => { if (observacionesRefs.current[nombre]) observacionesRefs.current[nombre].open = true; });
-    const primero = observacionesRefs.current[observaciones[0]?.[0]];
-    primero?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-    primero?.querySelector('summary')?.focus();
-  };
   const estadoPeriodo = r ? (new Date(r.generado_en) < new Date(r.periodo.desde) ? 'Periodo futuro' : new Date(r.generado_en) < new Date(r.periodo.hasta_exclusivo) ? 'Periodo en curso: resultados parciales' : '') : '';
   const actual = nombre => nombre.endsWith('actuales');
   const titulo = nombre => {
     const prefijo = nombre.startsWith('actual_') ? 'actual_' : nombre.startsWith('anterior_') ? 'anterior_' : '';
     return `${prefijo ? `${prefijo === 'actual_' ? 'Cuatrimestre seleccionado' : 'Cuatrimestre anterior'}: ` : ''}${TITULOS[nombre.slice(prefijo.length)] || etiqueta(nombre)}`;
   };
-  const seccion = (nombre, filas) => <details key={nombre} ref={node => { if (nombre.endsWith('informacion_incompleta')) observacionesRefs.current[nombre] = node; }} className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', ...(nombre.endsWith('informacion_incompleta') && filas.length ? { borderLeft: '4px solid #d97706' } : {}) }}>
+  const seccion = (nombre, filas) => <details key={nombre} className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', ...(nombre.endsWith('informacion_incompleta') && filas.length ? { borderLeft: '4px solid #d97706' } : {}) }}>
     <summary className="cursor-pointer font-semibold">{titulo(nombre)} {nombre.endsWith('informacion_incompleta') && filas.length ? <span className="ml-2 rounded-full bg-amber-100 text-amber-900 px-2 py-1 text-xs">{contarObservaciones(filas.length)}</span> : `(${filas.length})`}</summary>
     {nombre.endsWith('alertas_actuales') && !filas.length && <p className="mt-2">Sin pendientes detectados en las fuentes consultadas.</p>}
     {nombre.endsWith('informacion_incompleta') && <p className="mt-2 text-sm">Revisa los datos faltantes o anteriores. Una sesión puede tener varias observaciones.</p>}
@@ -116,7 +108,8 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
         {r.comparacion && <p className="text-sm">Comparando {rangoLegible(r.comparacion.actual)} frente a {rangoLegible(r.comparacion.anterior)}</p>}
         {estadoPeriodo && <p className="text-sm font-semibold">{estadoPeriodo}</p>}
       </div>
-      {totalObservaciones > 0 && <aside aria-label="Observaciones sobre la información" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1"><p className="font-semibold">{contarObservaciones(totalObservaciones)} sobre los datos</p><button type="button" className="font-semibold underline" onClick={revisarObservaciones}>Revisar</button></aside>}
+      <ResumenReporteQuimica key={r.consulta_id} reporte={r} renderTabla={filas => <TablaReporte filas={filas}/>}/>
+      <details aria-label="Detalle completo" className="rounded-xl border p-4 space-y-4" style={{ borderColor: 'var(--surface-border)' }}><summary className="cursor-pointer font-semibold">Consultar detalle completo y tablas de respaldo</summary>
       <h3 className="text-lg font-bold">Actividad del periodo</h3>
       {GRUPOS.map((grupo, i) => {
         const indicadores = r.indicadores.filter(x => grupoIndicador(x.clave) === i);
@@ -135,6 +128,7 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
       <p className="text-sm">Existencias, activos y pendientes actuales. No representan cómo estaba el inventario en el mes consultado. Las alertas cubren las fuentes registradas; no certifican la seguridad del laboratorio.</p>
       <div className="space-y-3">{Object.entries(r.tablas).filter(([nombre]) => actual(nombre)).map(([nombre, filas]) => seccion(nombre, filas))}</div>
       <details className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)' }}><summary className="cursor-pointer font-semibold">Criterios de cálculo y alcance</summary><ul className="list-disc pl-5 space-y-2 mt-3">{r.reglas.map(regla => <li key={regla}>{regla}</li>)}</ul></details>
+      </details>
       <details className="rounded-xl border p-4 text-sm" style={{ borderColor: 'var(--surface-border)' }}><summary className="cursor-pointer font-semibold">Detalles del reporte</summary>
         <div className="mt-3 space-y-2 break-words"><p>Generado por: {r.generado_por}</p><p>Zona horaria: {r.zona_horaria}</p><p className="break-all">ID de consulta: {r.consulta_id}</p><p>Este ID identifica la consulta y el Excel correspondiente; no permite recuperar reportes anteriores. La firma de integridad es un mecanismo separado.</p><p>El Excel conserva los resultados de esta consulta; actualizar genera otra.</p></div>
       </details>

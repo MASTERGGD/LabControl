@@ -91,14 +91,14 @@ test('agrupa indicadores y conserva detalle de horas cero con sesiones pendiente
   expect(container.textContent).toContain('01/11/2026 al 30/11/2026');
 });
 
-test('observaciones destacadas abren el detalle desde el resumen', async () => {
+test('pendientes abre observaciones sin desplegar el respaldo completo', async () => {
   const data=corte('observaciones');data.reporte.tablas.informacion_incompleta=[{sesion_id:1,motivo:'Falta fecha'}];
   api.get.mockResolvedValueOnce({data});await render();
-  expect(container.querySelector('[aria-label="Observaciones sobre la información"]').textContent).toContain('1 observación');
-  await click('Revisar');
-  const detalle=[...container.querySelectorAll('details')].find(x=>x.textContent.includes('Falta fecha'));
-  expect(detalle.open).toBe(true);
-  expect(detalle.style.borderLeft).toContain('4px');
+  expect(container.querySelector('[aria-label="Pendientes por revisar"]').textContent).toContain('1 observación');
+  expect(container.querySelector('[aria-label="Detalle completo"]').open).toBe(false);
+  await click('Revisar pendientes');
+  expect(container.querySelector('#detalle-operativo-quimica').textContent).toContain('Falta fecha');
+  expect(container.querySelector('[aria-label="Detalle completo"]').open).toBe(false);
 });
 
 test('actualizar comunica carga, bloquea descarga y confirma nuevo corte', async () => {

@@ -4,6 +4,18 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Resumen operativo del laboratorio en tres tarjetas — 2026-11-07
+
+### Problema y comportamiento resultante
+El reporte seguía mostrando demasiadas métricas y secciones técnicas en cascada. La vista inicial ahora presenta Uso del laboratorio, Materiales y residuos y Pendientes por revisar. Conserva alumnos atendidos, cancelaciones explícitas, sesiones terminadas y horas confirmadas. Los consumos se presentan por material y unidad; sin movimientos o residuos se comunica ausencia de registros sin inventar cantidades. Sin inventario se indica Sin insumos registrados o Sin activos registrados.
+
+Cada botón abre su apartado específico, sin desplegar todo el reporte. Los pendientes separan observaciones y sesiones por revisar del periodo de las alertas actuales; no se agregan en un total que duplique asuntos. Se filtran sesiones con regularización y activos/insumos que requieren atención. Seleccionado y anterior se comparan dentro de las mismas tarjetas. Las tablas y criterios técnicos quedan dentro de un único desplegable de detalle completo, cerrado inicialmente; metadatos al pie. La descarga sigue usando el mismo corte firmado y los mismos datos, sin cambios backend ni migraciones.
+
+### Validación y estado
+41 suites y 175 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Nuevas regresiones verifican tres tarjetas, cancelaciones, alumnos, separación por unidad, falta de inventario, acciones aisladas, comparativo conjunto, ausencia de registros, cierre de detalle al cambiar consulta y respaldo cerrado inicialmente. Pendiente: publicación, comprobación pública y revisión visual autenticada en escritorio/móvil. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Cabecera operativa compacta en reportes de Química — 2026-11-07
 
 ### Problema y comportamiento resultante

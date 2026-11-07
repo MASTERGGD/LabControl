@@ -51,3 +51,10 @@ Pendientes de revisión con responsables: unidad oficial de capacidad, completit
 La cabecera operativa muestra laboratorio, rango y fecha/hora de actualización local, con Actualizar y Descargar Excel. En comparativo conserva ambos rangos. El estado se determina con la fecha de generación y límites de periodo: antes del inicio es Periodo futuro; desde el inicio hasta el final exclusivo es Periodo en curso: resultados parciales; después no se muestra aviso de parcialidad. El Excel comparativo utiliza la misma distinción en su alcance.
 
 Usuario, zona horaria e ID aparecen en Detalles del reporte al pie, sin acción de copia. El ID identifica la consulta y su Excel, no es una firma o hash ni recupera reportes históricos. Se oculta la capacidad sin unidad confirmada de la presentación operativa. El aviso de observaciones es compacto y su explicación aparece al abrir el detalle. Los materiales siguen separados por unidad, sin añadir totales de magnitudes heterogéneas.
+
+
+## Resumen operativo en tres tarjetas
+
+La vista inicial presenta Uso del laboratorio, Materiales y residuos, y Pendientes por revisar. Incluye alumnos atendidos, sesiones programadas y canceladas por separado, sesiones terminadas y horas confirmadas. El comparativo coloca seleccionado y anterior juntos en las mismas tarjetas. Consumos se muestran por material/unidad, sin sumar magnitudes distintas; sin movimientos se indica Sin consumo registrado.
+
+Cada acción abre únicamente actividad, materiales o pendientes. Los pendientes separan observaciones y sesiones por revisar del periodo de las alertas actuales; no se suman en una cifra global. Sin existencias o activos se indica falta de registro, no ausencia de problemas. El detalle de pendientes filtra sesiones por regularización y activos/insumos por alertas. Consultar detalle completo y tablas de respaldo permanece cerrado inicialmente y conserva todos los indicadores, tablas, criterios y datos, incluidos apartados vacíos. El Excel firmado conserva el mismo contenido y cálculos.
