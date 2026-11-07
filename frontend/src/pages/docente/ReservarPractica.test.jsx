@@ -25,7 +25,7 @@ beforeEach(() => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
   cerrar = jest.fn(); guardar = jest.fn();
-  api.get.mockImplementation(url => Promise.resolve({ data: url.includes('diagnostico') ? { compatibles: [{ id: 1, grupo: 'A', total_alumnos: 10 }] } : [] }));
+  api.get.mockImplementation(url => Promise.resolve({ data: url.includes('catalogo-materiales') ? [{ clave: 'activo:5', activo_id: 5, nombre: 'Balanza', codigo: 'EQ-5', tipo: 'EQUIPO', unidad: 'PIEZA', existencia: 1, disponible: 1, estado: 'Disponible' }] : url.includes('diagnostico') ? { compatibles: [{ id: 1, grupo: 'A', total_alumnos: 10 }] } : [] }));
   api.post.mockResolvedValue({ data: { id: 9 } });
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
@@ -39,6 +39,8 @@ test('guardar y editar práctica conserva la reservación y solo envía al reser
   expect(container.querySelector('h2').textContent).toBe('Datos de la práctica');
   await input(container.querySelector('[aria-label="Nombre de la práctica"]'), 'Medición de pH');
   await input(container.querySelector('input[type="date"]'), iso);
+  await input(container.querySelector('[aria-label="Insumo del catálogo"]'), 'activo:5');
+  await input(container.querySelector('[aria-label="Cantidad"]'), '1');
   await submit();
   expect(api.post).not.toHaveBeenCalled();
   expect(container.querySelector('h2').textContent).toBe('Reservar horario');
@@ -51,6 +53,7 @@ test('guardar y editar práctica conserva la reservación y solo envía al reser
   await submit();
   expect(api.post).toHaveBeenCalledWith('/horarios/reservaciones', expect.objectContaining({ materia: 'Química', grupo: 'A', horario_id: 8 }));
   expect(api.post).toHaveBeenCalledWith('/practicas-laboratorio', expect.objectContaining({ titulo: 'Medición de pH', fecha_sesion: iso, reservacion_id: 9 }));
+  expect(api.post.mock.calls.find(([url]) => url === '/practicas-laboratorio')[1].materiales).toEqual([expect.objectContaining({ insumo_id: null, descripcion: 'Balanza · EQ-5', cantidad_solicitada: 1, nota: expect.stringContaining('Equipo de inventario: EQ-5') })]);
   expect(guardar).toHaveBeenCalledTimes(1);
 });
 

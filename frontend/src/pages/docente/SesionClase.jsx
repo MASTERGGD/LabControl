@@ -10,6 +10,7 @@ import AdminLayout from '../../components/AdminLayout';
 import { useTheme } from '../../context/ThemeContext';
 import { dateToLocalISO, weekdayIndexInMexico } from '../../utils/timezone';
 import { getApiErrorMessage } from '../../utils/apiError';
+import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -354,7 +355,6 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
   const [procedimientoPractica, setProcedimientoPractica] = useState('');
   const [fechaPractica, setFechaPractica] = useState('');
   const [materialesPractica, setMaterialesPractica] = useState([nuevoMaterialPractica()]);
-  const [insumosPractica, setInsumosPractica] = useState([]);
   const [seguridadPractica, setSeguridadPractica] = useState('');
   const [tieneInstalador, setTieneInstalador] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -430,15 +430,6 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
     });
     return () => { vigente = false; };
   }, [form.carrera, form.cuatrimestre_materia, form.cuatrimestre]);
-
-  useEffect(() => {
-    let vigente = true;
-    if (!esPracticas || !laboratorio_id) { setInsumosPractica([]); return undefined; }
-    api.get(`/practicas-laboratorio/insumos?laboratorio_id=${laboratorio_id}`)
-      .then(({ data }) => { if (vigente) setInsumosPractica(data || []); })
-      .catch(() => { if (vigente) setInsumosPractica([]); });
-    return () => { vigente = false; };
-  }, [esPracticas, laboratorio_id]);
 
   const toggleCheck = (key) => setChecks(c => ({ ...c, [key]: !c[key] }));
   const requiereFlujoPractica = esPracticas && !esInstitucional;
@@ -558,6 +549,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
               descripcion: item.descripcion.trim(),
               cantidad_solicitada: Number(item.cantidad_solicitada),
               unidad: item.unidad.trim(),
+              nota: item.nota || (!item.insumo_id ? "Material no registrado: pendiente de confirmar por el responsable." : null),
             })),
           });
         }
@@ -606,23 +598,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
                 <textarea rows={2} value={objetivoPractica} onChange={e => setObjetivoPractica(e.target.value)} aria-label="Objetivo de la práctica" placeholder="Objetivo de la práctica (opcional)" className="input-dark w-full resize-y" />
                 <textarea rows={3} value={procedimientoPractica} onChange={e => setProcedimientoPractica(e.target.value)} aria-label="Procedimiento y consideraciones de seguridad" placeholder="Procedimiento y consideraciones de seguridad (opcional)" className="input-dark w-full resize-y" />
                 <div className="grid gap-4">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo solicitado</p>
-                    {materialesPractica.map((material, indice) => <div key={indice} className="grid gap-2 rounded-lg border p-2 md:grid-cols-2" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
-                      <select aria-label="Insumo del catálogo" className="input-dark w-full text-xs" value={material.insumo_id} onChange={e => {
-                        const siguiente = [...materialesPractica];
-                        const id = e.target.value;
-                        const insumo = insumosPractica.find(item => String(item.id) === id);
-                        siguiente[indice] = { ...material, insumo_id: id, descripcion: insumo?.nombre || (id ? material.descripcion : ''), unidad: insumo?.unidad || (id ? material.unidad : 'PIEZA') };
-                        setMaterialesPractica(siguiente);
-                      }}><option value="">Equipo o material libre</option>{insumosPractica.map(item => <option key={item.id} value={item.id}>{item.nombre} · disponible {item.cantidad_disponible} {item.unidad}</option>)}</select>
-                      <input className="input-dark w-full text-xs" aria-label="Descripción" placeholder="Descripción" value={material.descripcion} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, descripcion: e.target.value, insumo_id: '' }; setMaterialesPractica(siguiente); }} />
-                      <input className="input-dark w-full text-xs" type="number" min="0.001" step="any" aria-label="Cantidad" placeholder="Cantidad" value={material.cantidad_solicitada} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, cantidad_solicitada: e.target.value }; setMaterialesPractica(siguiente); }} />
-                      <input className="input-dark w-full text-xs" aria-label="Unidad" placeholder="Unidad" value={material.unidad} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, unidad: e.target.value }; setMaterialesPractica(siguiente); }} />
-                      <button type="button" className="rounded-lg border px-2 text-xs" onClick={() => setMaterialesPractica(actual => actual.length === 1 ? [nuevoMaterialPractica()] : actual.filter((_, i) => i !== indice))}>Quitar</button>
-                    </div>)}
-                    <button type="button" className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700" onClick={() => setMaterialesPractica(actual => [...actual, nuevoMaterialPractica()])}>+ Agregar material</button>
-                  </div>
+                  <MaterialesPracticaSelector laboratorioId={laboratorio_id} materiales={materialesPractica} onChange={setMaterialesPractica} />
                   <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
                     <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)} placeholder="Bata, guantes, lentes, manejo especial…" className="mt-1 w-full input-dark text-sm resize-y px-3 py-2" />
                   </label>

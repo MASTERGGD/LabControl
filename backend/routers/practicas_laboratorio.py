@@ -11,7 +11,7 @@ from dependencies import get_current_user
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
 from models.docencia import CargaDocente
 from models.horario import Reservacion
-from models.inventario import Activo, Incidente
+from models.inventario import Activo, Incidente, Prestamo
 from models.laboratorio import Laboratorio
 from models.practica_laboratorio import (
     AsistenciaPractica, IncidentePractica, InsumoLaboratorio,
@@ -227,6 +227,42 @@ def listar_insumos(laboratorio_id: int, db: Session = Depends(get_db), user: Usu
     _lab_para_usuario(db, laboratorio_id, user)
     q = db.query(InsumoLaboratorio).filter(InsumoLaboratorio.laboratorio_id == laboratorio_id, InsumoLaboratorio.activo == True)
     return [_serialize_insumo(i) for i in q.order_by(InsumoLaboratorio.nombre).all()]
+
+
+@router.get("/catalogo-materiales")
+def catalogo_materiales(laboratorio_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    """Catálogo docente con existencias orientativas, sin datos patrimoniales privados."""
+    if user.rol not in DOCENTES:
+        raise HTTPException(403, "Sin permiso para consultar materiales.")
+    _lab_para_usuario(db, laboratorio_id, user)
+    hoy = now_mx().date()
+    insumos = db.query(InsumoLaboratorio).filter(
+        InsumoLaboratorio.laboratorio_id == laboratorio_id, InsumoLaboratorio.activo == True
+    ).order_by(InsumoLaboratorio.nombre).all()
+    catalogo = []
+    for i in insumos:
+        caducado = bool(i.caduca_en and i.caduca_en < hoy)
+        catalogo.append({"clave": f"insumo:{i.id}", "insumo_id": i.id, "activo_id": None,
+            "nombre": i.nombre, "codigo": i.codigo_cas or "", "tipo": "REACTIVO" if i.categoria == "REACTIVO" else "MATERIAL",
+            "unidad": i.unidad, "existencia": i.cantidad_disponible,
+            "disponible": 0 if caducado else i.cantidad_disponible,
+            "estado": "Caducado" if caducado else "Sin existencias" if i.cantidad_disponible <= 0 else "Disponible",
+            "caduca_en": i.caduca_en.isoformat() if i.caduca_en else None})
+    activos = db.query(Activo).filter(Activo.laboratorio_id == laboratorio_id,
+        Activo.activo == True, Activo.estado_admin == "VALIDADO").order_by(Activo.nombre).all()
+    prestados = set(x[0] for x in db.query(Prestamo.activo_id).join(Activo).filter(
+        Activo.laboratorio_id == laboratorio_id, Prestamo.estado.in_(["ACTIVO", "VENCIDO"])
+    ).all())
+    for a in activos:
+        operativo = a.estado == "OPERATIVO" and a.id not in prestados
+        cantidad = max(0, a.cantidad or 0)
+        catalogo.append({"clave": f"activo:{a.id}", "insumo_id": None, "activo_id": a.id,
+            "nombre": a.nombre, "codigo": a.codigo_inventario, "tipo": "EQUIPO",
+            "unidad": a.unidad_medida, "existencia": cantidad,
+            "disponible": cantidad if operativo else 0,
+            "estado": "En préstamo" if a.id in prestados else "Disponible" if operativo else a.estado,
+            "caduca_en": None})
+    return catalogo
 
 
 @router.post("/insumos", status_code=201)

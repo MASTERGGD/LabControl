@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Materiales de práctica desde existencias — 2026-11-06
+
+### Problema y comportamiento resultante
+La captura de materiales no permitía buscar ni distinguir un catálogo vacío de una consulta fallida; tampoco ofrecía los equipos del inventario patrimonial. Se agrega un catálogo docente del laboratorio seleccionado con insumos activos y bienes activos validados, sin datos privados patrimoniales.
+
+El selector compartido de reservaciones y captura de prácticas permite buscar por nombre, código de inventario o CAS, filtrar materiales/reactivos/equipos, mostrar solo disponibles y actualizar existencias. Los insumos caducados, agotados, equipos no operativos o prestados se muestran sin disponibilidad al ampliar el filtro. Mantiene las selecciones al filtrar y advierte faltantes sumando renglones del mismo material. Distingue errores, carga, ausencia de registros y ausencia de coincidencias, con reintento.
+
+La captura libre permanece como pendiente de confirmación. Los equipos se identifican por código en descripción y nota de la solicitud; se conserva el flujo de confirmación por el responsable y se muestran sus notas en el seguimiento. Consultar y solicitar no descuenta ni aparta stock. La disponibilidad es orientativa al momento de consulta, no una garantía para la fecha futura. No se agregan préstamos automáticos ni un vínculo patrimonial nuevo en la base. Al reutilizar el selector en la captura de seguimiento se corrige también el envío de su lista de materiales, que utilizaba un nombre de variable incorrecto.
+
+### Validación y publicación
+27 suites y 102 pruebas frontend aprobadas, incluidas búsquedas, filtros, faltantes acumulados, recuperación de errores y envío de referencia del equipo. Siete pruebas nuevas backend aprobadas: aislamiento por laboratorio, permisos/autenticación, exclusión de datos privados, caducidad, mantenimiento, préstamos y consulta sin descuentos. Compilación frontend aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. Sin migraciones ni modificación de datos reales. Cambios previos de otros módulos conservados y excluidos de esta entrega.
+
+Estado: preparado y validado; pendiente comprobar publicación en Railway y disponibilidad web/API. La validación funcional utiliza datos ficticios en base aislada; no se crean solicitudes reales.
+
+---
+
 ## [30044d1] — Captura de prácticas al reservar — 2026-11-06
 
 ### Problema y comportamiento resultante

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
+import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 
 const card = 'rounded-2xl border p-5';
 const field = 'input-dark w-full';
@@ -100,7 +101,6 @@ function PracticasLaboratorio() {
     });
   }, [bloquesReservacion, practicas, esDocente, laboratorioId, laboratorios]);
   const reservacionSeleccionada = reservaciones.find(r => Number(r.id) === Number(seleccion));
-  const insumosSolicitud = insumos.filter(i => !reservacionSeleccionada || Number(i.laboratorio_id) === Number(reservacionSeleccionada.laboratorio_id));
   const hoyLocal = fechaLocal(new Date());
   const mananaLocal = fechaLocal(new Date(Date.now() + 24 * 60 * 60 * 1000));
   const proximaPractica = [...practicas].filter(p => !['CERRADA', 'CANCELADA'].includes(p.estado) && p.fecha >= hoyLocal)
@@ -129,11 +129,13 @@ function PracticasLaboratorio() {
     e.preventDefault();
     if (!seleccion) return setError('Selecciona una reservación de laboratorio.');
     const materials = form.materiales.filter(m => m.descripcion.trim() && Number(m.cantidad_solicitada) > 0).map(m => ({
-      ...m, insumo_id: m.insumo_id ? Number(m.insumo_id) : null, cantidad_solicitada: Number(m.cantidad_solicitada),
+      descripcion: m.descripcion.trim(), unidad: m.unidad.trim(),
+      insumo_id: m.insumo_id ? Number(m.insumo_id) : null, cantidad_solicitada: Number(m.cantidad_solicitada),
+      nota: m.nota || (!m.insumo_id ? "Material no registrado: pendiente de confirmar por el responsable." : null),
     }));
     run(() => api.post('/practicas-laboratorio', { ...form, plantilla_id: form.plantilla_id ? Number(form.plantilla_id) : null,
       fecha_sesion: form.fecha_sesion || null, titulo: form.titulo || null,
-      reservacion_id: Number(seleccion), materiales }), 'Práctica y solicitud de materiales enviadas al responsable.');
+      reservacion_id: Number(seleccion), materiales: materials }), 'Práctica y solicitud de materiales enviadas al responsable.');
   };
 
   const aplicarGuia = id => {
@@ -228,16 +230,7 @@ function PracticasLaboratorio() {
           <input className={field} placeholder="Objetivo" value={form.objetivo} onChange={e => setForm({ ...form, objetivo: e.target.value })}/></div>
         <textarea className={field} rows="3" placeholder="Procedimiento y consideraciones de seguridad" value={form.procedimiento} onChange={e => setForm({ ...form, procedimiento: e.target.value })}/>
         <textarea className={field} rows="2" placeholder="Precauciones o equipo de protección requerido" value={form.notas_seguridad} onChange={e => setForm({ ...form, notas_seguridad: e.target.value })}/>
-        <div className="space-y-2"><p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Materiales y reactivos</p>
-          {form.materiales.map((m, idx) => <div key={idx} className="grid gap-2 md:grid-cols-[2fr_1fr_1fr_1fr_auto]">
-            <select className={field} value={m.insumo_id} onChange={e => { const next = [...form.materiales]; const id = e.target.value; const item = insumosSolicitud.find(x => String(x.id) === id); next[idx] = { ...m, insumo_id: id, descripcion: item?.nombre || m.descripcion, unidad: item?.unidad || m.unidad }; setForm({ ...form, materiales: next }); }}><option value="">Texto libre / equipo reutilizable</option>{insumosSolicitud.map(i => <option key={i.id} value={i.id}>{i.nombre} · existencia {i.cantidad_disponible} {i.unidad}</option>)}</select>
-            <input className={field} placeholder="Descripción" value={m.descripcion} onChange={e => { const next = [...form.materiales]; next[idx].descripcion = e.target.value; setForm({ ...form, materiales: next }); }}/>
-            <input className={field} type="number" min="0" step="any" placeholder="Cantidad" value={m.cantidad_solicitada} onChange={e => { const next = [...form.materiales]; next[idx].cantidad_solicitada = e.target.value; setForm({ ...form, materiales: next }); }}/>
-            <input className={field} placeholder="Unidad" value={m.unidad} onChange={e => { const next = [...form.materiales]; next[idx].unidad = e.target.value; setForm({ ...form, materiales: next }); }}/>
-            <button type="button" className={`${btn} border`} onClick={() => setForm({ ...form, materiales: form.materiales.filter((_, i) => i !== idx) })}>Quitar</button>
-          </div>)}
-          <button type="button" className={`${btn} border border-emerald-300 text-emerald-700`} onClick={() => setForm({ ...form, materiales: [...form.materiales, blankMaterial()] })}>+ Agregar material</button>
-        </div>
+        <MaterialesPracticaSelector laboratorioId={reservacionSeleccionada?.laboratorio_id} materiales={form.materiales} onChange={materiales => setForm(f => ({ ...f, materiales }))} />
         <button className={`${btn} bg-emerald-700 text-white`} disabled={cargando}>Crear seguimiento anterior</button>
           </form>
         </details>
@@ -281,7 +274,7 @@ function PracticasLaboratorio() {
             {!esDocente && <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Docente: {p.docente_nombre}</span>}</div>
           {p.objetivo && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><b>Objetivo:</b> {p.objetivo}</p>}
           {(p.procedimiento || p.notas_seguridad) && <details><summary className="cursor-pointer text-sm font-semibold">Procedimiento y seguridad</summary>{p.procedimiento && <p className="mt-2 whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{p.procedimiento}</p>}{p.notas_seguridad && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-amber-700">Precauciones: {p.notas_seguridad}</p>}</details>}
-          {!!p.materiales.length && <div className="space-y-2"><h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Material solicitado</h4>{p.materiales.map(m => <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm" style={{ borderColor: 'var(--surface-border)' }}><span style={{ color: 'var(--text-primary)' }}>{m.descripcion}: solicita {m.cantidad_solicitada} {m.unidad}{m.existencia != null ? ` · existencia actual ${m.existencia}` : ''}</span>
+          {!!p.materiales.length && <div className="space-y-2"><h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Material solicitado</h4>{p.materiales.map(m => <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm" style={{ borderColor: 'var(--surface-border)' }}><span style={{ color: 'var(--text-primary)' }}>{m.descripcion}: solicita {m.cantidad_solicitada} {m.unidad}{m.existencia != null ? ` · existencia actual ${m.existencia}` : ''}{m.nota && <small className="block whitespace-pre-wrap opacity-80">{m.nota}</small>}</span>
             {puedePreparar && p.estado === 'SOLICITADA' && <label className="flex items-center gap-2 text-xs">Entregar <input className="input-dark w-24" type="number" min="0" max={m.cantidad_solicitada} step="any" value={m.cantidad_entregada_solicitada ?? m.cantidad_solicitada} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_entregada_solicitada', e.target.value)}/></label>}
             {puedePreparar && p.estado === 'EN_CURSO' && <div className="flex gap-2"><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Consumido" value={m.cantidad_consumida ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_consumida', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Merma" value={m.cantidad_merma ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_merma', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Devuelto" value={m.cantidad_devuelta ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_devuelta', e.target.value)}/></div>}
           </div>)}</div>}
