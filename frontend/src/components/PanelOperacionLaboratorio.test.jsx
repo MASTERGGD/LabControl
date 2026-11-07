@@ -32,3 +32,26 @@ test('alertas enlazan los insumos afectados y el filtro correcto',async()=>{
  api.get.mockResolvedValueOnce({data:{insumos_total:2,stock_bajo:1,reactivos_por_vencer:1,insumos_caducados:0,practicas_solicitadas:2,alertas_insumos:{por_vencer:[{id:7,nombre:'Reactivo ficticio',caduca_en:'2026-11-20'}]}}});
  await render();await click('Reactivo ficticio · 2026-11-20');expect(navigate).toHaveBeenLastCalledWith('/admin/practicas-laboratorio?laboratorio_id=4&alerta=por_vencer#insumo-7');
 });
+
+test('la carga muestra esqueletos y termina con ceros reales sin avisos de error',async()=>{
+ let resolver;api.get.mockImplementationOnce(()=>new Promise(resolve=>{resolver=resolve;}));
+ await render({stats:null,cargandoStats:true});
+ expect(container.querySelector('[aria-label="Cargando Prácticas pendientes de preparar"]')).not.toBeNull();
+ expect(container.querySelector('[aria-label="Cargando Activos registrados"]')).not.toBeNull();
+ expect(container.querySelector('[role="alert"]')).toBeNull();
+ await act(async()=>resolver({data:{insumos_total:0,stock_bajo:0,reactivos_por_vencer:0,insumos_caducados:0,practicas_solicitadas:0,alertas_insumos:{}}}));
+ await render({stats,cargandoStats:false});
+ expect(container.querySelector('.op-skeleton')).toBeNull();
+ expect(container.querySelectorAll('.op-number')).toHaveLength(8);
+ expect([...container.querySelectorAll('.op-number')].every(el=>el.textContent==='0')).toBe(true);
+});
+
+test('el error termina la carga, muestra folio y mantiene la jerarquía del panel',async()=>{
+ api.get.mockRejectedValueOnce({response:{data:{folio:'TEST-1234'}}});
+ await render();
+ const aviso=container.querySelector('[role="alert"]');
+ expect(aviso.textContent).toContain('Folio: TEST-1234');
+ expect(container.querySelector('[aria-label="Prioridades del laboratorio"]').getAttribute('aria-busy')).toBe('false');
+ expect(container.querySelector('.op-skeleton')).toBeNull();
+ expect([...container.querySelectorAll('h3')].map(el=>el.textContent)).toEqual(['Por atender en el laboratorio','Próximas reservaciones','Resumen operativo','Acciones frecuentes']);
+});

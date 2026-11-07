@@ -1,23 +1,30 @@
+import './PanelOperacionLaboratorio.css';
 import React, { useEffect, useState } from 'react';
 import api from '../hooks/useApi';
 import usePermission from '../hooks/usePermission';
 import { useTheme } from '../context/ThemeContext';
+
+function Indicador({ valor, cargando, error, etiqueta }) {
+  if (cargando) return <span role="status" aria-label={`Cargando ${etiqueta}`} className="op-skeleton"><span className="sr-only">Cargando…</span></span>;
+  if (error || valor === '—' || valor == null) return <span className="op-unavailable">No disponible</span>;
+  return <span className="op-number">{valor}</span>;
+}
 
 export default function PanelOperacionLaboratorio({ categoria, stats, navigate, laboratorioId, errorStats, cargandoStats, onRetry, agenda }) {
   const { themeKey } = useTheme();
   const { can } = usePermission();
   const [resumen, setResumen] = useState(null);
   const [error, setError] = useState(false);
+  const [folioError, setFolioError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [revision, setRevision] = useState(0);
   const practicas = ['QUIMICA', 'AGROINDUSTRIA'].includes(categoria);
   const dia = themeKey === 'day';
-  const panel = { background: dia ? '#fff' : '#182233', borderColor: dia ? '#dce5eb' : '#334155', color: dia ? '#0f172a' : '#f8fafc' };
   const contexto = laboratorioId ? `laboratorio_id=${encodeURIComponent(laboratorioId)}` : '';
   const ruta = (base, query = '', hash = '') => `${base}${contexto || query ? '?' : ''}${[contexto, query].filter(Boolean).join('&')}${hash}`;
   useEffect(() => {
     let vigente = true, solicitud = 0;
-    setResumen(null); setError(false);
+    setResumen(null); setError(false); setFolioError('');
     if (!practicas || !laboratorioId) { setCargando(false); return undefined; }
     const cargar = async () => {
       const actual = ++solicitud;
@@ -25,7 +32,13 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
       try {
         const { data } = await api.get('/practicas-laboratorio/resumen', { params: { laboratorio_id: laboratorioId, sin_contexto_periodo: true } });
         if (vigente && actual === solicitud) { setResumen(data); setError(false); }
-      } catch { if (vigente && actual === solicitud) setError(true); }
+      } catch (err) {
+        if (vigente && actual === solicitud) {
+          setError(true);
+          const folio = err.response?.data?.folio;
+          setFolioError(typeof folio === 'string' && /^[A-Za-z0-9._-]{6,64}$/.test(folio) ? folio : '');
+        }
+      }
       finally { if (vigente && actual === solicitud) setCargando(false); }
     };
     cargar();
@@ -49,29 +62,40 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
     ['Reactivos por vencer', 'reactivos_por_vencer', 'por_vencer', 'Revisar caducidades'],
     ['Insumos caducados', 'insumos_caducados', 'caducados', 'Revisar caducados'],
   ];
-  return <div className="space-y-5">
-    <section className="rounded-2xl border border-emerald-300 p-5" style={panel}><p className="text-xs font-bold uppercase text-emerald-600">Panel operativo · {categoria}</p><h2 className="mt-2 text-lg font-semibold">Gestión del laboratorio asignado</h2><p className="mt-1 text-sm opacity-80">Prepara las próximas prácticas y atiende materiales, equipos e incidencias.</p></section>
-    {practicas && <section className="space-y-3" aria-label="Prioridades del laboratorio"><h2 className="text-lg font-bold">Por atender en el laboratorio</h2>
-      <p className="text-sm opacity-80">Caducidades: hoy y los próximos 30 días. Existencias del laboratorio, independientes del periodo escolar.</p>
-      {error && <p role="alert">No se pudieron cargar las alertas. <button className="underline" onClick={() => setRevision(r => r + 1)}>Reintentar alertas</button></p>}
-      {cargando && !resumen && <p role="status">Consultando prácticas e insumos…</p>}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{alertas.map(([label, campo, filtro, accion, onClick]) => <article key={campo} className="rounded-xl border p-4" style={{ ...panel, borderColor: !error && resumen?.[campo] > 0 ? '#f59e0b' : panel.borderColor }}>
-        <p className="text-sm font-semibold">{label}</p><p className="mt-2 text-2xl font-bold">{valorAlerta(resumen?.[campo])}</p>
-        {!error && resumen && <p className="mt-1 text-xs opacity-80">{campo === 'practicas_solicitadas' ? (resumen[campo] ? 'Solicitudes que requieren preparación' : 'Sin prácticas pendientes de preparar') : !resumen.insumos_total ? 'Sin insumos registrados' : resumen[campo] ? 'Requieren revisión' : 'Sin alertas en este grupo'}</p>}
-        {!!resumen && !error && filtro && <ul className="mt-2 space-y-1 text-xs">{(resumen.alertas_insumos?.[filtro] || []).map(item => <li key={item.id}><button className="text-left underline" onClick={() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, `#insumo-${item.id}`))}>{item.nombre}{filtro === 'stock_bajo' ? ` · ${item.existencia} ${item.unidad}` : ` · ${item.caduca_en}`}</button></li>)}</ul>}
-        <button className="mt-3 text-sm font-semibold text-emerald-600 underline" onClick={onClick || (() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, '#insumos')))}>{accion}</button>
-      </article>)}</div>
-      {resumen && !error && !resumen.insumos_total && <button className="rounded-lg border px-4 py-2 text-sm font-semibold" onClick={() => navigate(ruta('/admin/practicas-laboratorio', 'accion=registrar-insumo', '#insumos'))}>Registrar primer insumo</button>}
+  return <div className="op-lab" style={{
+    '--op-bg': dia ? '#ffffff' : '#182233', '--op-soft': dia ? '#f4f7f9' : '#15202e',
+    '--op-border': dia ? '#dce4ea' : '#334155', '--op-text': dia ? '#172b3a' : '#f1f5f9',
+    '--op-muted': dia ? '#526575' : '#b3c1d0', '--op-accent': dia ? '#17634f' : '#9cddca',
+    '--op-warning': dia ? '#925b0a' : '#f4c97d', '--op-danger': dia ? '#a92d35' : '#fca5a5',
+  }}>
+    <header className="op-heading"><div><p className="op-eyebrow">Panel operativo · {categoria}</p><h2>Gestión del laboratorio asignado</h2></div><p className="op-caption">Preparación, agenda y recursos del laboratorio.</p></header>
+    {practicas && <section className="op-priorities" aria-label="Prioridades del laboratorio" aria-busy={cargando && !resumen}>
+      <div className="op-section-heading"><h3>Por atender en el laboratorio</h3><span className="op-caption">Caducidades: hoy y los próximos 30 días</span></div>
+      {error && <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><div><strong>No se pudieron cargar las alertas.</strong><p>Los indicadores no están disponibles.{folioError && ` Folio: ${folioError}`}</p></div><button className="op-button" onClick={() => setRevision(r => r + 1)}>Reintentar alertas</button></div>}
+      <div className="op-priority-grid">{alertas.map(([label, campo, filtro, accion, onClick]) => {
+        const pendiente = !error && resumen?.[campo] > 0;
+        return <article key={campo} className={`op-priority${pendiente ? campo === 'insumos_caducados' ? ' op-priority-danger' : ' op-priority-warning' : ''}`}>
+          <h4>{label}</h4>
+          <div className="op-value"><Indicador valor={valorAlerta(resumen?.[campo])} cargando={cargando && !resumen && !error} error={error} etiqueta={label} />{pendiente && <span className="op-badge">{campo === 'insumos_caducados' ? 'Atender' : 'Pendiente'}</span>}</div>
+          {!error && resumen && <p className="op-caption">{campo === 'practicas_solicitadas' ? (resumen[campo] ? 'Solicitudes por preparar' : 'Sin prácticas pendientes de preparar') : !resumen.insumos_total ? 'Sin insumos registrados' : resumen[campo] ? 'Requieren revisión' : 'Sin alertas en este grupo'}</p>}
+          {!!resumen && !error && filtro && resumen.alertas_insumos?.[filtro]?.length > 0 && <details className="op-affected"><summary>Ver insumos afectados</summary><ul>{resumen.alertas_insumos[filtro].map(item => <li key={item.id}><button className="op-item-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, `#insumo-${item.id}`))}>{item.nombre}{filtro === 'stock_bajo' ? ` · ${item.existencia} ${item.unidad}` : ` · ${item.caduca_en}`}</button></li>)}</ul></details>}
+          <button className={`op-button op-priority-action${campo === 'practicas_solicitadas' && pendiente ? ' op-button-primary' : ''}`} onClick={onClick || (() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, '#insumos')))}>{accion}</button>
+        </article>;
+      })}</div>
+      {resumen && !error && !resumen.insumos_total && <div className="op-priority-footer"><span className="op-caption">Registra los insumos para consultar existencias y caducidades.</span><button className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', 'accion=registrar-insumo', '#insumos'))}>Registrar primer insumo</button></div>}
     </section>}
-    {errorStats && <p role="alert">No se pudo cargar el resumen operativo. <button className="underline" onClick={onRetry}>Reintentar resumen</button></p>}
-    {cargandoStats && <p role="status">Cargando resumen operativo…</p>}
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{tarjetas.map(([label, valor, detalle, accion, onClick]) => <article key={label} className="rounded-2xl border p-4" style={panel}><p className="text-2xl font-bold">{valor}</p><h3 className="mt-2 text-sm font-semibold">{label}</h3><p className="mt-1 text-xs opacity-80">{errorStats ? 'No se pudo cargar' : cargandoStats || !stats ? 'Consultando datos' : detalle}</p><button className="mt-3 text-sm font-semibold text-emerald-600 underline" onClick={onClick}>{accion}</button></article>)}</div>
-    <div className="grid gap-5 xl:grid-cols-2">
-      <section className="rounded-2xl border p-5" style={panel}>{!errorStats && !cargandoStats && agenda ? agenda : <><h3 className="font-semibold">Próximas reservaciones</h3><p className="mt-2 text-sm opacity-80">{errorStats ? 'No se pudo consultar la agenda.' : cargandoStats || !stats ? 'Consultando agenda…' : 'No hay reservaciones próximas para mostrar.'}</p></>}<button className="mt-3 rounded-lg border px-4 py-2 text-sm font-semibold" onClick={() => navigate(ruta('/admin/horarios'))}>Ver calendario completo</button></section>
-      <section className="rounded-2xl border p-5" style={panel}><h3 className="font-semibold">Acciones frecuentes</h3><p className="mt-1 text-sm opacity-80">Atajos para las tareas del responsable.</p><div className="mt-4 grid gap-2 sm:grid-cols-2">
-        {practicas && <><button className="rounded-xl border p-3 text-left text-sm" onClick={irPracticas}>Revisar prácticas solicitadas</button><button className="rounded-xl border p-3 text-left text-sm" onClick={() => navigate(ruta('/admin/practicas-laboratorio', '', '#insumos'))}>Registrar entrada de reactivos</button></>}
-        <button className="rounded-xl border p-3 text-left text-sm" onClick={() => navigate(ruta('/admin/prestamos', 'estado=ACTIVO'))}>Consultar préstamos activos</button><button className="rounded-xl border p-3 text-left text-sm" onClick={() => navigate(ruta('/admin/mantenimiento'))}>Atender incidentes y mantenimiento</button>
-      </div></section>
-    </div>
+    <section className="op-agenda" aria-label="Agenda del laboratorio">
+      {!errorStats && !cargandoStats && agenda ? agenda : <div className="op-agenda-body"><h3>Próximas reservaciones</h3>{cargandoStats || (!stats && !errorStats) ? <div className="op-agenda-loading" role="status" aria-label="Cargando agenda"><span className="op-skeleton"/><span className="op-caption">Consultando agenda…</span></div> : errorStats ? <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><p>No se pudo consultar la agenda.</p><button className="op-button" onClick={onRetry}>Reintentar resumen</button></div> : <p className="op-caption">No hay reservaciones próximas para mostrar.</p>}</div>}
+      <div className="op-agenda-footer"><button className="op-button" onClick={() => navigate(ruta('/admin/horarios'))}>Ver calendario completo</button></div>
+    </section>
+    <section className="op-summary" aria-label="Resumen operativo" aria-busy={Boolean(cargandoStats)}>
+      <div className="op-section-heading"><h3>Resumen operativo</h3><span className="op-caption">Recursos y actividad</span></div>
+      {errorStats && <p className="op-caption">El resumen operativo no está disponible hasta completar la consulta.</p>}
+      <div className="op-summary-grid">{tarjetas.map(([label, valor, detalle, accion, onClick]) => <article key={label} className="op-summary-item"><div className="op-value"><Indicador valor={valor} cargando={cargandoStats || (!stats && !errorStats)} error={errorStats} etiqueta={label} /></div><h4>{label}</h4>{!errorStats && !cargandoStats && stats && <p className="op-caption">{detalle}</p>}<button className="op-button" onClick={onClick}>{accion}</button></article>)}</div>
+    </section>
+    <section className="op-actions" aria-label="Acciones frecuentes"><h3>Acciones frecuentes</h3><div className="op-actions-row">
+      {practicas && <><button className="op-button" onClick={irPracticas}>Revisar prácticas solicitadas</button><button className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', '', '#insumos'))}>Registrar entrada de reactivos</button></>}
+      <button className="op-button" onClick={() => navigate(ruta('/admin/prestamos', 'estado=ACTIVO'))}>Consultar préstamos activos</button><button className="op-button" onClick={() => navigate(ruta('/admin/mantenimiento'))}>Atender incidentes y mantenimiento</button>
+    </div></section>
   </div>;
 }

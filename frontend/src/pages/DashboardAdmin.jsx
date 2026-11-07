@@ -177,7 +177,7 @@ function KpiRow({ stats, sesiones, navigate }) {
 }
 
 function DashboardLaboratorioNoComputo(props) {
-  return <PanelOperacionLaboratorio {...props} agenda={props.stats?.proximas_reservaciones?.length ? <WidgetProximas reservaciones={props.stats.proximas_reservaciones} navigate={props.navigate} /> : null} />;
+  return <PanelOperacionLaboratorio {...props} agenda={props.stats?.proximas_reservaciones?.length ? <WidgetProximas integrado reservaciones={props.stats.proximas_reservaciones} navigate={props.navigate} /> : null} />;
 }
 
 function TarjetaSesion({ sesion, onIr }) {
@@ -574,7 +574,7 @@ function WidgetEquipos({ pcs, navigate }) {
 }
 
 // ─── Próximas reservaciones ───────────────────────────────────────────────────
-function WidgetProximas({ reservaciones, navigate }) {
+function WidgetProximas({ reservaciones, navigate, integrado = false }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   if (!reservaciones?.length) return null;
@@ -583,7 +583,7 @@ function WidgetProximas({ reservaciones, navigate }) {
     <div style={{
       background: isDay ? '#fff' : 'rgba(30,41,59,0.55)',
       backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
-      border: isDay ? '1px solid #dce5eb' : '1px solid rgba(255,255,255,0.07)',
+      border: integrado ? 'none' : isDay ? '1px solid #dce5eb' : '1px solid rgba(255,255,255,0.07)',
       borderRadius:'1.25rem', overflow:'hidden',
     }}>
       <div style={{ padding:'0.875rem 1.25rem', borderBottom: isDay ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -591,7 +591,7 @@ function WidgetProximas({ reservaciones, navigate }) {
           <span>📅</span>
           <p className="text-sm font-semibold" style={{margin:0, color: isDay ? '#0f172a' : '#fff'}}>Próximas reservaciones</p>
         </div>
-        <button onClick={() => navigate('/admin/reservaciones')} className="text-xs transition-colors" style={{background:'none',border:'none',cursor:'pointer',color: isDay ? '#047857' : '#10b981',fontWeight:600}}>Ver todas →</button>
+        <button className={integrado ? 'op-button' : 'text-xs transition-colors'} onClick={() => navigate('/admin/reservaciones')} style={integrado ? undefined : {background:'none',border:'none',cursor:'pointer',color: isDay ? '#047857' : '#10b981',fontWeight:600}}>Ver todas →</button>
       </div>
       <div>
         {reservaciones.map(r => {

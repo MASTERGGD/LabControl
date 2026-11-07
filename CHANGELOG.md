@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Jerarquía visual y estados del panel operativo — 2026-11-06
+
+### Problema y comportamiento resultante
+Las alertas y métricas repetían tarjetas con el mismo peso visual y enlaces verdes, dificultando distinguir prioridades. Por atender ahora es una franja unificada con separadores, cifras neutras cuando no hay pendientes, ámbar para atención y rojo para caducados. Los insumos afectados quedan en detalles desplegables. Se reduce el encabezado y los textos secundarios, y la agenda precede al resumen operativo compacto y a las acciones frecuentes.
+
+Las acciones usan botones pequeños de borde fino o fondo suave; el verde sólido se reserva para revisar solicitudes cuando hay pendientes. Los estados de carga tienen esqueletos, con animación desactivada si el usuario prefiere movimiento reducido. Los errores terminan la carga con un aviso de sistema, reintento y folio si el servidor lo proporciona; los ceros reales permanecen como números. El diseño adapta separadores y columnas a tabletas y teléfonos y conserva foco visible en botones.
+
+### Validación y publicación
+31 suites y 120 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Dos pruebas nuevas verifican transición de carga a cero confirmado, error con folio sin carga indefinida y orden de secciones; se mantienen las comprobaciones de acciones y destinos. Sin cambios de backend, migraciones, permisos ni datos. Los registros disponibles no mostraron un fallo reciente de la consulta de alertas; su causa no se considera diagnosticada ni corregida con este cambio visual. Cambios ajenos conservados y excluidos.
+
+Estado: preparado y validado localmente; pendiente verificar publicación. La revisión autenticada de apariencia y una eventual repetición del error de alertas quedan pendientes con el responsable.
+
+---
+
 ## [3b5f530] — Panel operativo de Química y Agroindustria — 2026-11-06
 
 ### Problema y comportamiento resultante
