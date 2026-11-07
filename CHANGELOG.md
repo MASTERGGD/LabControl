@@ -4,6 +4,18 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Lectura y acciones del reporte de Química — 2026-11-07
+
+### Problema y comportamiento resultante
+La rejilla repetía métricas sin agrupación, ofrecía abrir detalles vacíos y dejaba las observaciones de información incompleta entre secciones sin destacar. Los indicadores se organizan ahora en Prácticas y sesiones, Tiempo y seguimiento, Personas y asistencia y Estados de sesión; los estados usan cifras más compactas. El detalle depende de la existencia de registros y no del valor numérico: cero horas con sesiones por regularizar conserva el acceso. Sin registros se muestra una tarjeta sin desplegable vacío.
+
+Las observaciones tienen borde ámbar y un aviso junto al resumen que abre y enfoca su detalle; se explica que una sesión puede tener varias observaciones. Actualizar muestra indicador y texto de carga, bloquea acciones, anuncia un nuevo corte al finalizar y ofrece reintento si falla. Fechas de periodo y rangos comparativos con formato uniforme día/mes/año. ID completo disponible en identificación desplegable, con Copiar ID y respuesta de éxito o alternativa manual si falla. El Excel sigue usando el corte firmado original; sin cambios en cálculos, permisos, backend o datos operativos.
+
+### Validación y estado
+40 suites y 167 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Nuevas regresiones cubren grupos, cero con respaldo, tarjetas sin detalle, advertencias y acceso al detalle, fechas, carga y bloqueo de descarga, nuevo corte y copia de ID. Pendiente: publicación, comprobación pública y revisión visual autenticada. Sin migraciones. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Reportes de Química con fuentes propias y Excel del mismo corte — 2026-11-07
 
 ### Problema y comportamiento resultante

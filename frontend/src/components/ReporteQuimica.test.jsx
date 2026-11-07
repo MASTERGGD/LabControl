@@ -72,3 +72,44 @@ test('detalle pagina registros completos y no cantidad visible en viewport', asy
   await click('Siguiente');
   expect(container.textContent).toContain('Mostrando 11–11 de 11 registros');
 });
+
+test('agrupa indicadores y conserva detalle de horas cero con sesiones pendientes', async () => {
+  const data=corte('agrupado');
+  data.reporte.indicadores=[
+    {clave:'horas',titulo:'Horas confirmadas',valor:0,detalle:[{id:9,horas_confirmadas:null}]},
+    {clave:'alumnos',titulo:'Alumnos únicos',valor:0,detalle:[]},
+    {clave:'CANCELADA',titulo:'Sesiones canceladas',valor:0,detalle:[]},
+  ];
+  api.get.mockResolvedValueOnce({data}); await render();
+  const horas=container.querySelector('[aria-label="Tiempo y seguimiento"]');
+  expect(horas.querySelector('details').textContent).toContain('Ver registros (1)');
+  expect(horas.textContent).toContain('No determinada');
+  expect(container.querySelector('[aria-label="Personas y asistencia"]').querySelector('details')).toBeNull();
+  expect(container.querySelector('[aria-label="Estados de sesión"]').textContent).toContain('Sin registros');
+  expect(container.textContent).toContain('01/11/2026 al 30/11/2026');
+});
+
+test('observaciones destacadas abren el detalle desde el resumen', async () => {
+  const data=corte('observaciones');data.reporte.tablas.informacion_incompleta=[{sesion_id:1,motivo:'Falta fecha'}];
+  api.get.mockResolvedValueOnce({data});await render();
+  expect(container.querySelector('[aria-label="Observaciones sobre la información"]').textContent).toContain('1 observación');
+  await click('Revisar observaciones');
+  const detalle=[...container.querySelectorAll('details')].find(x=>x.textContent.includes('Falta fecha'));
+  expect(detalle.open).toBe(true);
+  expect(detalle.style.borderLeft).toContain('4px');
+});
+
+test('actualizar comunica carga, bloquea descarga y confirma nuevo corte; copia el ID', async () => {
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:jest.fn().mockResolvedValue()}});
+  await render();await click('Copiar ID de consulta');
+  expect(navigator.clipboard.writeText).toHaveBeenCalledWith('consulta-1');
+  expect(container.textContent).toContain('ID de consulta copiado.');
+  let resolver;api.get.mockImplementationOnce(()=>new Promise(resolve=>{resolver=resolve;}));
+  await click('Actualizar reporte');
+  expect(container.querySelector('[aria-label="Reporte de Química"]').getAttribute('aria-busy')).toBe('true');
+  expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Actualizando…').disabled).toBe(true);
+  expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Descargar Excel de esta consulta').disabled).toBe(true);
+  await act(async()=>resolver({data:corte('consulta-2')}));
+  expect(container.textContent).toContain('Reporte actualizado.');
+  expect(container.textContent).toContain('ID de consulta: consulta-2');
+});

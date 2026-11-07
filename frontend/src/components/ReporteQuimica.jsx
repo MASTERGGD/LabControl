@@ -12,6 +12,17 @@ const TITULOS = {
 };
 const etiqueta = texto => texto.replaceAll('_', ' ');
 const mostrar = value => value === null || value === undefined ? 'No registrado' : typeof value === 'boolean' ? (value ? 'Sí' : 'No') : String(value);
+const GRUPOS = [
+  { titulo: 'Prácticas y sesiones', claves: ['programadas', 'practicas', 'iniciadas', 'ejecutadas', 'cerradas_reales'] },
+  { titulo: 'Tiempo y seguimiento', claves: ['horas', 'regularizar'] },
+  { titulo: 'Personas y asistencia', claves: ['docentes', 'alumnos', 'asistencias'] },
+  { titulo: 'Estados de sesión', claves: ['SOLICITADA', 'PREPARADA', 'EN_CURSO', 'CERRADA', 'CANCELADA'], compacto: true },
+];
+const contarObservaciones = n => `${n} ${n === 1 ? 'observación' : 'observaciones'}`;
+const rangoLegible = texto => texto.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1');
+const claveBase = clave => clave.replace(/^(actual|anterior)_/, '');
+const grupoIndicador = clave => Math.max(0, GRUPOS.findIndex(g => g.claves.includes(claveBase(clave))));
+const fechaReporte = (fecha, zona) => new Date(fecha).toLocaleDateString('es-MX', { timeZone: zona, day: '2-digit', month: '2-digit', year: 'numeric' });
 
 export function TablaReporte({ filas }) {
   const [pagina, setPagina] = useState(1);
@@ -34,13 +45,16 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
   const [cargando, setCargando] = useState(true);
   const [descargando, setDescargando] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [aviso, setAviso] = useState('');
+  const [avisoCopia, setAvisoCopia] = useState('');
   const vigente = useRef(0);
+  const observacionesRefs = useRef({});
   useEffect(() => {
     let activo = true;
     const id = ++vigente.current;
-    setCorte(null); setError(''); setCargando(true);
+    setCorte(null); setError(''); setCargando(true); setAviso(''); setAvisoCopia('');
     api.get(`/reportes/quimica/${modo}?laboratorio_id=${laboratorioId}&mes=${mes}&anio=${anio}`, { params: { sin_contexto_periodo: true } })
-      .then(({ data }) => { if (activo && id === vigente.current) setCorte(data); })
+      .then(({ data }) => { if (activo && id === vigente.current) { setCorte(data); if (revision > 0) setAviso('Reporte actualizado. Se generó un nuevo ID de consulta.'); } })
       .catch(e => { if (activo) setError(getApiErrorMessage(e, 'No se pudo cargar el reporte de Química.')); })
       .finally(() => { if (activo) setCargando(false); });
     return () => { activo = false; vigente.current++; };
@@ -66,36 +80,63 @@ export default function ReporteQuimica({ laboratorioId, mes, anio, modo = 'mensu
     } finally { setDescargando(false); }
   };
   const r = corte?.reporte;
+  const copiarId = async () => {
+    const id = vigente.current;
+    try {
+      await navigator.clipboard.writeText(r.consulta_id);
+      if (id === vigente.current) setAvisoCopia('ID de consulta copiado.');
+    } catch {
+      if (id === vigente.current) setAvisoCopia('No se pudo copiar. Puedes seleccionar el ID de consulta que aparece aquí.');
+    }
+  };
+  const observaciones = Object.entries(r?.tablas || {}).filter(([nombre, filas]) => nombre.endsWith('informacion_incompleta') && filas.length);
+  const totalObservaciones = observaciones.reduce((total, [, filas]) => total + filas.length, 0);
+  const revisarObservaciones = () => {
+    observaciones.forEach(([nombre]) => { if (observacionesRefs.current[nombre]) observacionesRefs.current[nombre].open = true; });
+    const primero = observacionesRefs.current[observaciones[0]?.[0]];
+    primero?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    primero?.querySelector('summary')?.focus();
+  };
   const actual = nombre => nombre.endsWith('actuales');
   const titulo = nombre => {
     const prefijo = nombre.startsWith('actual_') ? 'actual_' : nombre.startsWith('anterior_') ? 'anterior_' : '';
     return `${prefijo ? `${prefijo === 'actual_' ? 'Cuatrimestre seleccionado' : 'Cuatrimestre anterior'}: ` : ''}${TITULOS[nombre.slice(prefijo.length)] || etiqueta(nombre)}`;
   };
-  const seccion = (nombre, filas) => <details key={nombre} className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)' }}>
-    <summary className="cursor-pointer font-semibold">{titulo(nombre)} ({filas.length})</summary>
+  const seccion = (nombre, filas) => <details key={nombre} ref={node => { if (nombre.endsWith('informacion_incompleta')) observacionesRefs.current[nombre] = node; }} className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)', background: 'var(--surface-panel)', ...(nombre.endsWith('informacion_incompleta') && filas.length ? { borderLeft: '4px solid #d97706' } : {}) }}>
+    <summary className="cursor-pointer font-semibold">{titulo(nombre)} {nombre.endsWith('informacion_incompleta') && filas.length ? <span className="ml-2 rounded-full bg-amber-100 text-amber-900 px-2 py-1 text-xs">{contarObservaciones(filas.length)}</span> : `(${filas.length})`}</summary>
     {nombre.endsWith('alertas_actuales') && !filas.length && <p className="mt-2">Sin pendientes detectados en las fuentes consultadas.</p>}
     <TablaReporte filas={filas}/>
   </details>;
-  return <section className="space-y-5" aria-label="Reporte de Química">
+  return <section className="space-y-5" aria-label="Reporte de Química" aria-busy={cargando}>
     <div className="flex flex-wrap justify-between items-center gap-3"><h2 className="text-xl font-bold">{modo === 'comparativo' ? 'Comparativo de Química y Agroindustria' : 'Reporte de Química y Agroindustria'}</h2>
-      <div className="flex gap-3"><button type="button" className="rounded-xl border px-4 py-2" disabled={cargando} onClick={() => setRevision(x => x + 1)}>Actualizar reporte</button>
+      <div className="flex flex-wrap gap-3"><button type="button" className="rounded-xl border px-4 py-2 inline-flex items-center gap-2 disabled:opacity-60" disabled={cargando} onClick={() => setRevision(x => x + 1)}>{cargando && <svg aria-hidden="true" className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M12 3a9 9 0 019 9" stroke="currentColor" strokeWidth="3"/></svg>}{cargando ? 'Actualizando…' : error && !r ? 'Reintentar reporte' : 'Actualizar reporte'}</button>
         <button type="button" className="rounded-xl bg-emerald-700 text-white px-4 py-2 disabled:opacity-50" disabled={!r || cargando || descargando} onClick={descargar}>{descargando ? 'Generando…' : 'Descargar Excel de esta consulta'}</button></div>
     </div>
     {error && <p role="alert">{error}</p>}
     {cargando && <p role="status">Calculando actividad registrada…</p>}
+    <p role="status" aria-live="polite" className="text-sm">{aviso}</p>
     {r && <>
       <div className="rounded-xl border p-4" style={{ borderColor: 'var(--surface-border)' }}><h3 className="font-bold">{r.laboratorio.nombre}</h3>
         <p>Capacidad registrada: {r.laboratorio.capacidad_registrada ?? 'No registrada'} · Unidad pendiente de confirmar.</p>
-        <p>Periodo: {r.periodo.desde.slice(0, 10)} a {new Date(new Date(r.periodo.hasta_exclusivo).getTime() - 86400000).toLocaleDateString('es-MX', { timeZone: r.zona_horaria })}</p>
-        {r.comparacion && <p>Seleccionado: {r.comparacion.actual} · Anterior: {r.comparacion.anterior}. {r.comparacion.alcance}</p>}
+        <p>Periodo: {fechaReporte(r.periodo.desde, r.zona_horaria)} al {fechaReporte(new Date(new Date(r.periodo.hasta_exclusivo).getTime() - 86400000), r.zona_horaria)}</p>
+        {r.comparacion && <p>Seleccionado: {rangoLegible(r.comparacion.actual)} · Anterior: {rangoLegible(r.comparacion.anterior)}. {r.comparacion.alcance}</p>}
         <p className="mt-2 text-sm">Generado el {new Date(r.generado_en).toLocaleString('es-MX', { timeZone: r.zona_horaria })} por {r.generado_por} · {r.zona_horaria}</p>
-        <p className="text-xs break-all">ID de consulta: {r.consulta_id}. El Excel conserva este mismo corte; actualizar crea uno nuevo.</p>
+        <p className="text-sm">El Excel conserva este mismo corte; actualizar crea uno nuevo.</p>
+        <details className="mt-2 text-sm"><summary className="cursor-pointer">Identificación de la consulta</summary><p className="text-xs break-all mt-2">ID de consulta: {r.consulta_id}</p><button type="button" className="rounded-lg border px-3 py-1 mt-2" onClick={copiarId}>Copiar ID de consulta</button><p role="status">{avisoCopia}</p></details>
       </div>
+      {totalObservaciones > 0 && <aside aria-label="Observaciones sobre la información" className="rounded-xl border border-amber-300 bg-amber-50 text-amber-950 p-4 flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">{contarObservaciones(totalObservaciones)} sobre la información</p><p className="text-sm">Revisa los datos faltantes o anteriores. Una sesión puede tener varias observaciones.</p></div><button type="button" className="font-semibold underline" onClick={revisarObservaciones}>Revisar observaciones</button></aside>}
       <h3 className="text-lg font-bold">Actividad del periodo</h3>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">{r.indicadores.map(x => <details key={x.clave} className="rounded-xl border p-4 open:col-span-full" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
-        <summary className="cursor-pointer"><span className="block text-sm">{x.titulo}</span><span className="block text-2xl font-bold mt-2">{x.valor} {x.unidad}</span><span className="text-xs">Ver registros</span></summary>
-        <TablaReporte filas={x.detalle}/>
-      </details>)}</div>
+      {GRUPOS.map((grupo, i) => {
+        const indicadores = r.indicadores.filter(x => grupoIndicador(x.clave) === i);
+        if (!indicadores.length) return null;
+        return <section key={grupo.titulo} aria-label={grupo.titulo} className="space-y-3"><h4 className="text-sm font-semibold border-b pb-2" style={{ borderColor: 'var(--surface-border)' }}>{grupo.titulo}</h4>
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${grupo.compacto ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-3`}>{indicadores.map(x => {
+            const contenido = <><span className="block text-sm">{x.titulo}</span><span className={`block font-bold ${grupo.compacto ? 'text-lg mt-1' : 'text-2xl mt-2'}`}>{x.valor} {x.unidad}</span></>;
+            return x.detalle.length ? <details key={x.clave} className="rounded-xl border p-4 open:col-span-full" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}><summary className="cursor-pointer">{contenido}<span className="text-xs font-semibold underline">Ver registros ({x.detalle.length})</span></summary><TablaReporte filas={x.detalle}/></details>
+              : <div key={x.clave} className="rounded-xl border p-4" style={{ background: 'var(--surface-panel-soft)', borderColor: 'var(--surface-border)' }}>{contenido}<span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Sin registros</span></div>;
+          })}</div>
+        </section>;
+      })}
       <p className="text-sm">Las horas sin cierre se muestran como no determinadas. Las cantidades se separan por material, lote, unidad y tipo de movimiento. Las asistencias reflejan el estado guardado en prácticas.</p>
       <div className="space-y-3">{Object.entries(r.tablas).filter(([nombre]) => !actual(nombre)).map(([nombre, filas]) => seccion(nombre, filas))}</div>
       <h3 className="text-lg font-bold">Situación actual al generar el reporte</h3>
