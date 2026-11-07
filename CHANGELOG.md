@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Prácticas por sesiones vinculadas a la materia — 2026-11-07
+## [7d7b6ac] — Prácticas por sesiones vinculadas a la materia — 2026-11-07
 
 ### Problema y comportamiento resultante
 La práctica tenía una sola fecha y se operaba desde un módulo separado, sin continuidad entre sesiones ni acceso contextual desde la jornada docente. Se permite planificar hasta 30 fechas por operación (60 por práctica), tomando los bloques de una misma materia y grupo, todos sus días o días elegidos, y ajustar sesiones fuera del horario habitual. La revisión muestra los conflictos por fecha; la confirmación vuelve a validar laboratorio, docente, grupo, bloqueos, calendario, periodo y pertenencia, y guarda todas las sesiones en una sola transacción. Se reutilizan las reservaciones vigentes de la misma carga cuando cubren el bloque, conservando el horario recurrente.
@@ -16,7 +16,7 @@ El docente puede cerrar una sesión y continuar con las fechas restantes, agrega
 ### Validación y estado
 36 suites y 143 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. 27 pruebas backend dirigidas aprobadas, incluidas 15 nuevas de programación, conflictos sin guardados parciales, pertenencia, sesiones extraordinarias, continuidad, asistencia académica, agenda, avisos, reservas recurrentes y migración conservando registros. Comprobación ampliada inicial: 46 aprobadas y cuatro fallos; los cuatro se reprodujeron sin cambios en una copia aislada del commit ced4736 (expectativa de conteo histórico y pruebas con fechas/periodos fijos). No se presentan como corregidos.
 
-Migración aditiva e6f7a8b9c0d1 desde d5e6f7a8b9c0; conserva prácticas existentes sin agruparlas retroactivamente. Confirmados volúmenes persistentes de archivos y PostgreSQL antes de publicar. Preparado localmente; pendiente publicación, verificación de migración y revisión visual autenticada con el docente. Pruebas con datos ficticios y base aislada; no se modificaron reservaciones reales. Cambios ajenos conservados y excluidos.
+Migración aditiva e6f7a8b9c0d1 desde d5e6f7a8b9c0; conserva prácticas existentes sin agruparlas retroactivamente. Confirmados volúmenes persistentes de archivos y PostgreSQL antes de publicar. Publicado el 7 de noviembre de 2026 y verificado a las 09:24 de Ciudad de México (15:24 UTC). GitHub recibió 7d7b6ac y Railway confirmó SUCCESS para backend (87deba67-d534-41c7-8a96-1565715bb064) y frontend (5442b047-c76b-4049-b152-e56ec400868e) de ese commit. El arranque confirmó upgrade d5e6f7a8b9c0 a e6f7a8b9c0d1 y migraciones aplicadas. Web y JavaScript HTTP 200, con programación por sesiones, continuación y revisión de disponibilidad presentes en el paquete publicado. API HTTP 200/healthy con base y almacenamiento correctos. Pendiente: revisión visual autenticada del docente con datos representativos. Pruebas con datos ficticios y base aislada; no se modificaron reservaciones reales. Cambios ajenos conservados y excluidos.
 
 ---
 
