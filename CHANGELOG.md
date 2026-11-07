@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Jerarquía visual y estados del panel operativo — 2026-11-06
+## [e556745] — Jerarquía visual y estados del panel operativo — 2026-11-06
 
 ### Problema y comportamiento resultante
 Las alertas y métricas repetían tarjetas con el mismo peso visual y enlaces verdes, dificultando distinguir prioridades. Por atender ahora es una franja unificada con separadores, cifras neutras cuando no hay pendientes, ámbar para atención y rojo para caducados. Los insumos afectados quedan en detalles desplegables. Se reduce el encabezado y los textos secundarios, y la agenda precede al resumen operativo compacto y a las acciones frecuentes.
@@ -14,7 +14,7 @@ Las acciones usan botones pequeños de borde fino o fondo suave; el verde sólid
 ### Validación y publicación
 31 suites y 120 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Dos pruebas nuevas verifican transición de carga a cero confirmado, error con folio sin carga indefinida y orden de secciones; se mantienen las comprobaciones de acciones y destinos. Sin cambios de backend, migraciones, permisos ni datos. Los registros disponibles no mostraron un fallo reciente de la consulta de alertas; su causa no se considera diagnosticada ni corregida con este cambio visual. Cambios ajenos conservados y excluidos.
 
-Estado: preparado y validado localmente; pendiente verificar publicación. La revisión autenticada de apariencia y una eventual repetición del error de alertas quedan pendientes con el responsable.
+Publicado el 6 de noviembre de 2026 y verificado a las 23:04 de Ciudad de México (7 de noviembre, 05:04 UTC). Railway confirmó SUCCESS para backend (`11eb5f28-a417-418a-baf2-b33a4c3057d9`) y frontend (`09fad198-ba43-4e0a-85d4-99c7864c3066`) del commit `e556745`. Web, JavaScript y CSS HTTP 200; estilos publicados de franja unificada, botones y esqueletos, y folio en el componente. API HTTP 200/healthy. La revisión autenticada de apariencia y una eventual repetición del error de alertas quedan pendientes con el responsable.
 
 ---
 
