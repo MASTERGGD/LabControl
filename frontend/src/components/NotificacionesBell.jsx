@@ -26,6 +26,7 @@ const IconX = ({ className = '' }) => (
 
 // ── Colores y emojis por tipo ─────────────────────────────────────────────────
 const TIPO_CONFIG = {
+  PRACTICA_PROXIMA: { color: 'text-blue-400', bg: 'bg-blue-900/30', icon: '🧪', label: 'Práctica' },
   PRESTAMO_VENCIDO:      { color: 'text-red-400',     bg: 'bg-red-900/30',     icon: '🔴', label: 'Préstamo' },
   MANTENIMIENTO:         { color: 'text-orange-400',   bg: 'bg-orange-900/30',  icon: '🔧', label: 'Mantenimiento' },
   RESERVACION:           { color: 'text-blue-400',     bg: 'bg-blue-900/30',    icon: '📅', label: 'Reservación' },
@@ -64,6 +65,7 @@ export default function NotificacionesBell({ comunicadosPendientes = 0 }) {
   const fetchCount = useCallback(async () => {
     if (!usuario || !sessionStorage.getItem('token')) return;
     try {
+      if (usuario.rol === 'DOCENTE') await api.post('/notificaciones/verificar?solo_practicas=true').catch(() => {});
       const { data } = await api.get('/notificaciones/no-leidas');
       setNoLeidas(data.count);
     } catch (_) {}

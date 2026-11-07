@@ -1,3 +1,4 @@
+import AgendaPracticasDocente from '../../components/AgendaPracticasDocente';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -2430,6 +2431,7 @@ export default function SesionClase() {
 
   return (
     <AdminLayout>
+      <AgendaPracticasDocente />
 
       {/* ── Panel: Solicitudes recibidas (otro docente quiere mi espacio) ──── */}
       {solicRecibidas.length > 0 && (

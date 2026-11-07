@@ -29,3 +29,14 @@ Fecha y módulo; problema observado; decisión y motivo; comportamiento nuevo; p
 Durante la remediación de seguridad se encontraron 12 fallos en la suite general del backend que también se reprodujeron sobre la versión original aislada; no presentarlos como corregidos. La auditoría npm de ese momento dejó cinco avisos bajos en herramientas Jest/deepmerge. Estos resultados son históricos y deben verificarse de nuevo cuando se cambien esas áreas.
 
 Una copia local de respaldo no sustituye un programa automático de respaldos externos. Los datos de producción y las copias de seguridad no están incluidos en el repositorio. No se ha realizado una prueba de penetración exhaustiva.
+
+
+## Prácticas con varias sesiones (7 de noviembre de 2026)
+
+La programación de prácticas se implementa en `services/programacion_practicas.py` y se expone bajo `/practicas-laboratorio/programacion`. Cada sesión conserva el registro `PracticaLaboratorio` existente; `practica_origen_id` relaciona las continuaciones con la primera sesión y `plan_estado` de esa raíz distingue planificación, pendiente de continuación y finalizada. No agrupar automáticamente las prácticas históricas. La migración aditiva es `e6f7a8b9c0d1`.
+
+La confirmación valida todas las fechas y guarda en una transacción; los conflictos no deben dejar reservaciones parciales. Los bloqueos se toman en orden laboratorio, docente y grupo para programación; las transiciones de prácticas bloquean laboratorio, raíz y sesión. Las reservaciones puntuales nuevas se liberan al cerrar/cancelar; las recurrentes reutilizadas siguen perteneciendo al horario oficial de la materia. No liberar una reserva recurrente al finalizar una práctica.
+
+Cada fecha requiere su preparación y mantiene materiales, incidentes y asistencia propios. Una sesión dentro del horario vincula su asistencia con `ClaseDocente`; las extraordinarias conservan su asistencia en la práctica y se consultan desde la agenda y el historial sin alterar el horario semanal. La clase vinculada se cierra desde la práctica para registrar materiales y avance. La última sesión cerrada no implica finalizar el conjunto: el docente decide continuar o finalizar. No cancelar automáticamente una sesión preparada con materiales entregados.
+
+Los avisos de próximas prácticas se generan al verificar notificaciones mientras la aplicación está abierta; no son un envío externo garantizado con SIGA cerrado. Revisar `CHANGELOG.md` para el estado real de publicación y las comprobaciones realizadas.

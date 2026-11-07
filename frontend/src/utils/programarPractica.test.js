@@ -1,0 +1,6 @@
+import { proponerSesiones } from './programarPractica';
+const cargas=[0,2,4].map(d=>({id:d+1,dia_semana:d,hora_inicio:'08:00',hora_fin:'10:00'}));
+test('tres sesiones siguen lunes miércoles viernes de la materia',()=>{expect(proponerSesiones(cargas,'2026-11-09',3).map(s=>s.fecha)).toEqual(['2026-11-09','2026-11-11','2026-11-13']);});
+test('solo miércoles avanza semanas y conserva el bloque',()=>{const r=proponerSesiones([cargas[1]],'2026-11-09',3);expect(r.map(s=>s.fecha)).toEqual(['2026-11-11','2026-11-18','2026-11-25']);expect(r.every(s=>s.carga_id===3&&!s.fuera_horario)).toBe(true);});
+import { puedeIniciarPractica } from './programarPractica';
+test('la ventana de práctica abre al llegar la hora y cierra después de 15 minutos',()=>{const p={estado:'PREPARADA',fecha:'2026-11-09',hora_inicio:'08:00',hora_fin:'10:00',reservacion_estado:'PROGRAMADA'};expect(puedeIniciarPractica(p,new Date('2026-11-09T07:44:59-06:00'))).toBe(false);expect(puedeIniciarPractica(p,new Date('2026-11-09T07:45:00-06:00'))).toBe(true);expect(puedeIniciarPractica(p,new Date('2026-11-09T10:16:00-06:00'))).toBe(false);expect(puedeIniciarPractica({...p,estado:'SOLICITADA'},new Date('2026-11-09T08:00:00-06:00'))).toBe(false);});

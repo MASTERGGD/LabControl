@@ -1,3 +1,4 @@
+import AgendaPracticasDocente from '../components/AgendaPracticasDocente';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
@@ -159,9 +160,9 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
-            {esTutoria ? (esHoy ? 'Próxima tutoría hoy' : 'Próxima tutoría') : accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
+            {reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Práctica en curso' : 'Próxima práctica') : esTutoria ? (esHoy ? 'Próxima tutoría hoy' : 'Próxima tutoría') : accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
           </p>
-          <p className="text-white font-bold text-base leading-tight">{reservacion.materia}</p>
+          <p className="text-white font-bold text-base leading-tight">{reservacion.materia}{reservacion.practica_titulo ? ` · ${reservacion.practica_titulo}` : ''}</p>
           <p className="text-slate-400 text-sm mt-0.5">
             {reservacion.grupo} · {toTitleCase(reservacion.laboratorio_nombre)}
           </p>
@@ -169,8 +170,8 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
         <div className="flex-shrink-0 text-left sm:text-right">
           {enCurso ? (
             <>
-              <p className="text-lg font-bold text-emerald-400">Clase en curso</p>
-              <p className="text-xs text-slate-500">{accion.texto === 'Continuar clase' ? 'Continúa con el registro de tu clase' : 'Puedes iniciar la clase'}</p>
+              <p className="text-lg font-bold text-emerald-400">{reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Práctica en curso' : 'Horario de práctica') : 'Clase en curso'}</p>
+              <p className="text-xs text-slate-500">{reservacion.practica_id ? (reservacion.practica_estado === 'SOLICITADA' ? 'Materiales pendientes de preparación' : 'Consulta la práctica y su lista de asistencia') : accion.texto === 'Continuar clase' ? 'Continúa con el registro de tu clase' : 'Puedes iniciar la clase'}</p>
             </>
           ) : comienzaPronto ? (
             <>
@@ -409,8 +410,8 @@ export default function DashboardDocente() {
 
   const jornada = operacion?.jornada || [];
   const jornadaVigente = operacion?.fecha === todayISOInMexico(ahora);
-  const actual = jornadaVigente && (jornada.find(item => ['CLASE', 'TUTORIA'].includes(item.tipo_actividad) && (item.estado === 'EN_CURSO' || item.estado === 'CORRECCION'))
-    || jornada.find(item => accionClaseDashboard(item, operacion?.fecha, ahora).iniciar));
+  const actual = jornadaVigente && (jornada.find(item => ['CLASE', 'TUTORIA', 'PRACTICA'].includes(item.tipo_actividad) && (item.estado === 'EN_CURSO' || item.estado === 'CORRECCION'))
+    || jornada.find(item => item.practica_puede_iniciar || accionClaseDashboard(item, operacion?.fecha, ahora).iniciar));
   const claseDestacada = actual ? {
     ...actual, fecha: operacion.fecha,
     laboratorio_nombre: actual.espacio,
@@ -556,6 +557,7 @@ export default function DashboardDocente() {
 
   return (
     <AdminLayout>
+      <AgendaPracticasDocente soloExtra/>
       <div className="siga-flip7-panel siga-flip7-panel--docente w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {modoLocal && !(offlineAccess && navigator.onLine) && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>{navigator.onLine ? 'Trabajando con datos descargados' : 'Modo sin conexión'}</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}

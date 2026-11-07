@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Prácticas por sesiones vinculadas a la materia — 2026-11-07
+
+### Problema y comportamiento resultante
+La práctica tenía una sola fecha y se operaba desde un módulo separado, sin continuidad entre sesiones ni acceso contextual desde la jornada docente. Se permite planificar hasta 30 fechas por operación (60 por práctica), tomando los bloques de una misma materia y grupo, todos sus días o días elegidos, y ajustar sesiones fuera del horario habitual. La revisión muestra los conflictos por fecha; la confirmación vuelve a validar laboratorio, docente, grupo, bloqueos, calendario, periodo y pertenencia, y guarda todas las sesiones en una sola transacción. Se reutilizan las reservaciones vigentes de la misma carga cuando cubren el bloque, conservando el horario recurrente.
+
+Una práctica agrupa sus sesiones; cada fecha mantiene reservación, preparación, asistencia, avance, materiales e incidentes propios. El panel y el horario docente permiten abrir la sesión exacta, y el historial académico enlaza la práctica de su clase. Las sesiones fuera del horario se muestran también en la agenda e historial de prácticas sin alterar el horario recurrente. La asistencia vinculada se refleja en la clase académica; su cierre desde la práctica guarda el avance y libera la reserva puntual. Se evita iniciar o cerrar por el flujo académico una práctica que requiere su propio control de materiales.
+
+El docente puede cerrar una sesión y continuar con las fechas restantes, agregar fechas validadas o finalizar la práctica. La última sesión queda pendiente de decisión si no se finaliza explícitamente. La finalización anticipada exige confirmar las sesiones que se cancelarán; no elimina registros ni cancela el horario oficial recurrente. Las sesiones con materiales ya entregados deben concluir su control antes de finalizar el conjunto. El inicio requiere preparación, fecha y ventana de 15 minutos antes a 15 minutos después del horario completo. La campana verifica avisos de prácticas próximas cada minuto mientras SIGA está abierto, dentro de los 30 minutos previos; el aviso evita duplicados y abre la sesión correspondiente, indicando si falta preparación.
+
+### Validación y estado
+36 suites y 143 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. 27 pruebas backend dirigidas aprobadas, incluidas 15 nuevas de programación, conflictos sin guardados parciales, pertenencia, sesiones extraordinarias, continuidad, asistencia académica, agenda, avisos, reservas recurrentes y migración conservando registros. Comprobación ampliada inicial: 46 aprobadas y cuatro fallos; los cuatro se reprodujeron sin cambios en una copia aislada del commit ced4736 (expectativa de conteo histórico y pruebas con fechas/periodos fijos). No se presentan como corregidos.
+
+Migración aditiva e6f7a8b9c0d1 desde d5e6f7a8b9c0; conserva prácticas existentes sin agruparlas retroactivamente. Confirmados volúmenes persistentes de archivos y PostgreSQL antes de publicar. Preparado localmente; pendiente publicación, verificación de migración y revisión visual autenticada con el docente. Pruebas con datos ficticios y base aislada; no se modificaron reservaciones reales. Cambios ajenos conservados y excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Horarios requieren laboratorio válido — 2026-11-07
 
 ### Problema y comportamiento resultante

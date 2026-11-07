@@ -1034,6 +1034,8 @@ def crear_reservacion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user)
 ):
+    db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id).with_for_update().first()
+
     # Solo SUPER_ADMIN, LAB_ADMIN y DOCENTE pueden reservar
     if current_user.rol == RolUsuario.ALUMNO:
         raise HTTPException(status_code=403, detail="Acceso denegado")

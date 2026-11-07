@@ -88,6 +88,9 @@ class PracticaLaboratorio(Base):
 
     id = Column(Integer, primary_key=True)
     reservacion_id = Column(Integer, ForeignKey("reservaciones.id"), nullable=False, index=True)
+    practica_origen_id = Column(Integer, ForeignKey("practicas_laboratorio.id"), nullable=True, index=True)
+    plan_estado = Column(String(30), nullable=True)
+    fuera_horario = Column(Boolean, nullable=False, default=False, server_default="false")
     fecha_sesion = Column(Date, nullable=False, index=True)
     plantilla_id = Column(Integer, ForeignKey("plantillas_practica_laboratorio.id"), nullable=True)
     titulo = Column(String(180), nullable=False)

@@ -4,6 +4,9 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
   if (item.estado === 'NO_LECTIVA' || item.calendario?.requiere_asistencia === false || item.calendario?.permite_iniciar_clase === false) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
+  if (item.practica_id) {
+    return { texto: item.practica_estado === 'EN_CURSO' ? 'Continuar práctica' : item.practica_puede_iniciar ? 'Iniciar práctica' : 'Ver práctica', path: item.practica_url };
+  }
   if (item.tipo_actividad === 'TUTORIA') {
     return accionTutoria(item, fecha);
   }

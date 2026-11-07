@@ -1,5 +1,8 @@
+import ProgramarPractica from '../../components/ProgramarPractica';
+import { puedeIniciarPractica } from '../../utils/programarPractica';
+import { getApiErrorMessage } from '../../utils/apiError';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
@@ -20,7 +23,14 @@ const coloresEstado = {
 
 function PracticasLaboratorio() {
   const { usuario } = useAuth();
+  const [ahora, setAhora] = useState(() => new Date());
+  useEffect(() => { const timer = setInterval(() => setAhora(new Date()), 30000); return () => clearInterval(timer); }, []);
   const [searchParams, setSearchParams] = useSearchParams();
+  const practicaSolicitada = searchParams.get('practica_id');
+  const reporteCargado = useRef(null);
+  const [programar, setProgramar] = useState(null);
+  const [cierre, setCierre] = useState(null);
+  const [finalizar, setFinalizar] = useState(false);
   const location = useLocation();
   const alertaInsumos = searchParams.get('alerta') || '';
   const filtrosIniciales = { ...filtrosVacios, estado: searchParams.get('estado') === 'SOLICITADA' ? 'SOLICITADA' : '' };
@@ -78,7 +88,7 @@ function PracticasLaboratorio() {
         setReservaciones((res.data || []).filter(r => ['PROGRAMADA', 'EN_CURSO'].includes(r.estado)));
       }
     } catch (e) {
-      setError(e.response?.data?.detail || 'No se pudieron cargar los datos de prácticas.');
+      setError(getApiErrorMessage(e, 'No se pudieron cargar los datos de prácticas.'));
     } finally { setCargando(false); }
   }, [laboratorioId, esDocente]);
 
@@ -93,11 +103,19 @@ function PracticasLaboratorio() {
     if (laboratorioId) params.set('laboratorio_id', laboratorioId);
     Object.entries(consulta).forEach(([key, value]) => { if (value) params.set(key, value); });
     api.get(`/practicas-laboratorio/seguimiento?${params}`)
-      .then(({ data }) => { if (vigente) { setPracticas(data.items || []); setSeguimiento(data); } })
-      .catch(e => { if (vigente) setError(e.response?.data?.detail || 'No se pudo cargar el seguimiento de prácticas.'); })
+      .then(async ({ data }) => {
+        let items = data.items || [];
+        if (practicaSolicitada) {
+          const detalle = await api.get(`/practicas-laboratorio/${practicaSolicitada}`);
+          items = [detalle.data, ...items.filter(p => p.id !== detalle.data.id)];
+          if (vigente) { setDetalleAbierto(detalle.data.id); if (reporteCargado.current !== detalle.data.id) { setReporte({resultados:detalle.data.resultados||'',conclusiones:detalle.data.conclusiones||'',observaciones_docente:detalle.data.observaciones_docente||''}); reporteCargado.current = detalle.data.id; } }
+        }
+        if (vigente) { setPracticas(items); setSeguimiento(data); }
+      })
+      .catch(e => { if (vigente) setError(getApiErrorMessage(e, 'No se pudo cargar el seguimiento de prácticas.')); })
       .finally(() => { if (vigente) setCargandoSeguimiento(false); });
     return () => { vigente = false; };
-  }, [esDocente, laboratorioId, vista, consulta, pagina, revision]);
+  }, [esDocente, laboratorioId, vista, consulta, pagina, revision, practicaSolicitada]);
 
   const cambiarVista = nueva => {
     setVista(nueva); setPagina(1); setDetalleAbierto(null);
@@ -161,7 +179,7 @@ function PracticasLaboratorio() {
   const run = async (operation, success = 'Cambios guardados.') => {
     setError(''); setMensaje('');
     try { await operation(); window.dispatchEvent(new Event('labcontrol:practicas-updated')); setMensaje(success); await cargar(); setRevision(v => v + 1); return true; }
-    catch (e) { setError(e.response?.data?.detail || 'No se pudo completar la operación.'); }
+    catch (e) { setError(getApiErrorMessage(e, 'No se pudo completar la operación.')); }
     return false;
   };
 
@@ -208,7 +226,7 @@ function PracticasLaboratorio() {
     try {
       const { data } = await api.get(`/practicas-laboratorio/insumos/${insumo.id}/movimientos`);
       setMovimientos(current => ({ ...current, [insumo.id]: data }));
-    } catch (e) { setError(e.response?.data?.detail || 'No se pudo cargar la bitácora.'); }
+    } catch (e) { setError(getApiErrorMessage(e, 'No se pudo cargar la bitácora.')); }
   };
 
   const preparar = practica => {
@@ -218,6 +236,7 @@ function PracticasLaboratorio() {
 
   const iniciar = practica => run(async () => {
     const result = await api.post(`/practicas-laboratorio/${practica.id}/iniciar`);
+    setSearchParams({practica_id:String(practica.id)}); setDetalleAbierto(practica.id);
     setReporte({ resultados: result.data.resultados || '', conclusiones: result.data.conclusiones || '', observaciones_docente: result.data.observaciones_docente || '' });
   }, 'Práctica iniciada. Lista del grupo cargada.');
 
@@ -225,11 +244,15 @@ function PracticasLaboratorio() {
     alumnos: practica.asistencias.map(a => ({ alumno_id: a.alumno_id, estado: a.estado, observacion: a.observacion || null })),
   }), 'Asistencia guardada.');
 
-  const cerrar = practica => {
+  const cerrar = (practica, terminar = false) => {
     const materiales = practica.materiales.map(m => ({ material_id: m.id,
       cantidad_consumida: Number(m.cantidad_consumida ?? m.cantidad_entregada), cantidad_merma: Number(m.cantidad_merma || 0),
       cantidad_devuelta: Number(m.cantidad_devuelta || 0), nota: m.nota || null }));
-    run(() => api.post(`/practicas-laboratorio/${practica.id}/cerrar`, { ...reporte, materiales }), 'Práctica cerrada; consumos y devoluciones registrados.');
+    run(async () => {
+      await api.put(`/practicas-laboratorio/${practica.id}/asistencia`, { alumnos: practica.asistencias.map(a=>({alumno_id:a.alumno_id,estado:a.estado,observacion:a.observacion||null})) });
+      await api.post(`/practicas-laboratorio/${practica.id}/cerrar`, { ...reporte, materiales, finalizar_practica: terminar, cancelar_futuras: terminar });
+      setCierre(null);
+    }, terminar ? 'Práctica finalizada; reservaciones pendientes liberadas.' : 'Sesión cerrada; puedes continuar con las fechas programadas o agregar sesiones.');
   };
 
   const actualizarAsistencia = (practica, alumnoId, estado) => setPracticas(current => current.map(p => p.id !== practica.id ? p : ({
@@ -240,6 +263,10 @@ function PracticasLaboratorio() {
   })));
 
   return <AdminLayout>
+    {esDocente && <button className={`${btn} bg-blue-700 text-white mb-4`} onClick={()=>setProgramar({})}>Programar práctica por sesiones</button>}
+    {programar && <ProgramarPractica origen={programar.id ? programar : null} onClose={()=>setProgramar(null)} onGuardado={actualizar}/>}
+    {cierre && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><section role="dialog" aria-modal="true" aria-label="Cerrar sesión de práctica" className="glass max-w-lg space-y-4 p-6"><h2 className="text-lg font-bold">{cierre.estado === 'CERRADA' ? 'Finalizar práctica' : 'Cerrar sesión de práctica'}</h2><p>Se guardarán la asistencia y el avance de esta sesión.</p><label className="block"><input type="checkbox" checked={finalizar} disabled={cierre.estado === 'CERRADA'} onChange={e=>setFinalizar(e.target.checked)}/> Finalizar toda la práctica</label>{finalizar ? <div><p>Se cancelarán y liberarán estas sesiones pendientes:</p>{(cierre.sesiones_plan||[]).filter(x=>x.id!==cierre.id&&['SOLICITADA','PREPARADA','EN_CURSO'].includes(x.estado)).map(x=><p key={x.id}>{x.fecha} · {x.estado}</p>)}<p className="text-xs">Las sesiones con materiales entregados deben cerrarse antes de finalizar.</p></div> : <p>La práctica continuará en las fechas pendientes. Si ya no hay fechas, quedará pendiente de que agregues sesiones o decidas finalizarla.</p>}<div className="flex gap-3"><button className={`${btn} bg-emerald-700 text-white`} onClick={()=>cierre.estado === 'CERRADA' ? run(async()=>{await api.post(`/practicas-laboratorio/${cierre.id}/finalizar-plan`,{cancelar_futuras:true});setCierre(null);},'Práctica finalizada.') : cerrar(cierre,finalizar)}>Confirmar cierre</button><button className={`${btn} border`} onClick={()=>setCierre(null)}>Cancelar</button></div></section></div>}
+
     <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-xs font-bold uppercase tracking-[.18em] text-emerald-600">SIGA · Laboratorios docentes</p>
@@ -252,7 +279,7 @@ function PracticasLaboratorio() {
       </header>
       {mensaje && <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{mensaje}</div>}
       {error && <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{String(error)}</div>}
-      {esDocente && proximaPractica && proximaPractica.fecha <= mananaLocal && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div><p className="text-xs font-bold uppercase tracking-wider">Próxima práctica</p><p className="mt-1 text-lg font-bold">{proximaPractica.titulo} · {proximaPractica.fecha === hoyLocal ? 'Hoy' : 'Mañana'}</p><p className="text-sm">{proximaPractica.laboratorio_nombre} · {proximaPractica.hora_inicio}–{proximaPractica.hora_fin} · {proximaPractica.estado}</p></div>{proximaPractica.estado === 'PREPARADA' && proximaPractica.fecha === hoyLocal && <button className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(proximaPractica)}>Iniciar práctica</button>}</div>}
+      {esDocente && proximaPractica && proximaPractica.fecha <= mananaLocal && <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div><p className="text-xs font-bold uppercase tracking-wider">Próxima práctica</p><p className="mt-1 text-lg font-bold">{proximaPractica.titulo} · {proximaPractica.fecha === hoyLocal ? 'Hoy' : 'Mañana'}</p><p className="text-sm">{proximaPractica.laboratorio_nombre} · {proximaPractica.hora_inicio}–{proximaPractica.hora_fin} · {proximaPractica.estado}</p></div>{puedeIniciarPractica(proximaPractica, ahora) && <button className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(proximaPractica)}>Iniciar práctica</button>}</div>}
 
       {esDocente && <div className={`${card} space-y-3`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
         <div><h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Seguimiento de prácticas</h2><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Al reservar, SIGA crea aquí la solicitud y la envía al responsable. No vuelvas a capturarla.</p></div>
@@ -332,16 +359,19 @@ function PracticasLaboratorio() {
             {!esDocente && <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Docente: {p.docente_nombre}</span>}</div>
           <button type="button" className="text-sm font-semibold text-blue-700 underline" aria-expanded={detalleAbierto === p.id} onClick={() => setDetalleAbierto(detalleAbierto === p.id ? null : p.id)}>{detalleAbierto === p.id ? 'Ocultar detalle' : 'Ver detalle'}</button>
           {detalleAbierto === p.id && <div className="space-y-4 border-t pt-4" style={{ borderColor: 'var(--surface-border)' }}>
+          <p className="text-sm">Sesión {p.numero_sesion || 1} de {p.total_sesiones || 1} · {p.plan_estado?.replaceAll('_',' ') || 'Planificada'}{p.fuera_horario ? ' · Fuera del horario habitual' : ''}</p>
+          {!!p.sesiones_plan?.length && <div className="flex flex-wrap gap-2">{p.sesiones_plan.map(x=><button key={x.id} className="rounded-lg border px-2 py-1 text-xs" onClick={()=>setSearchParams({practica_id:String(x.id)})}>{x.fecha} · {x.estado.replaceAll('_',' ')}</button>)}</div>}
+          {esDocente && p.plan_estado !== 'FINALIZADA' && <div className="flex gap-2"><button className={`${btn} border`} onClick={()=>setProgramar(p)}>Agregar sesiones de continuación</button>{p.estado === 'CERRADA' && <button className={`${btn} border`} onClick={()=>{setCierre(p);setFinalizar(true);}}>Finalizar práctica</button>}</div>}
           {p.objetivo && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><b>Objetivo:</b> {p.objetivo}</p>}
           {(p.procedimiento || p.notas_seguridad) && <details><summary className="cursor-pointer text-sm font-semibold">Procedimiento y seguridad</summary>{p.procedimiento && <p className="mt-2 whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{p.procedimiento}</p>}{p.notas_seguridad && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-amber-700">Precauciones: {p.notas_seguridad}</p>}</details>}
           {!!p.materiales.length && <div className="space-y-2"><h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Material solicitado</h4>{p.materiales.map(m => <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm" style={{ borderColor: 'var(--surface-border)' }}><span style={{ color: 'var(--text-primary)' }}>{m.descripcion}: solicita {m.cantidad_solicitada} {m.unidad}{m.existencia != null ? ` · existencia actual ${m.existencia}` : ''}{m.nota && <small className="block whitespace-pre-wrap opacity-80">{m.nota}</small>}</span>
             {puedePreparar && p.estado === 'SOLICITADA' && <label className="flex items-center gap-2 text-xs">Entregar <input className="input-dark w-24" type="number" min="0" max={m.cantidad_solicitada} step="any" value={m.cantidad_entregada_solicitada ?? m.cantidad_solicitada} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_entregada_solicitada', e.target.value)}/></label>}
-            {puedePreparar && p.estado === 'EN_CURSO' && <div className="flex gap-2"><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Consumido" value={m.cantidad_consumida ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_consumida', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Merma" value={m.cantidad_merma ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_merma', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Devuelto" value={m.cantidad_devuelta ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_devuelta', e.target.value)}/></div>}
+            {(puedePreparar || esDocente) && p.estado === 'EN_CURSO' && <div className="flex flex-wrap gap-2"><span className="w-full text-xs">Entregado: {m.cantidad_entregada} {m.unidad}. Registra consumo, merma y devolución; deben sumar lo entregado.</span><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Consumido" value={m.cantidad_consumida ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_consumida', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Merma" value={m.cantidad_merma ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_merma', e.target.value)}/><input className="input-dark w-24" type="number" min="0" step="any" placeholder="Devuelto" value={m.cantidad_devuelta ?? ''} onChange={e => actualizarCierreMaterial(p, m.id, 'cantidad_devuelta', e.target.value)}/></div>}
           </div>)}</div>}
           {p.estado === 'EN_CURSO' && <>
             <div className="space-y-2"><div><h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Lista oficial del grupo · {p.asistencias.length} estudiantes</h4><p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{p.grupo_academico_periodo ? `Inscripciones activas del periodo ${p.grupo_academico_periodo}` : 'Inscripciones activas del grupo académico'}{p.carga_docente_id ? ' · Carga docente vinculada' : ' · Vinculación por periodo, carrera y grupo'}{p.clase_docente_id ? ` · Registro de clase #${p.clase_docente_id}` : ''}</p></div><div className="max-h-72 space-y-1 overflow-auto">{p.asistencias.map(a => <div key={a.alumno_id} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: 'var(--surface-border)' }}><span style={{ color: 'var(--text-primary)' }}>{a.matricula} · {a.alumno_nombre}</span><select className="input-dark" value={a.estado} onChange={e => actualizarAsistencia(p, a.alumno_id, e.target.value)}><option value="PRESENTE">Presente</option><option value="FALTA">Falta</option><option value="RETARDO">Retardo</option><option value="JUSTIFICADA">Justificada</option></select></div>)}</div><button className={`${btn} border border-blue-300 text-blue-700`} onClick={() => guardarAsistencia(p)}>Guardar asistencia</button></div>
             <div className="grid gap-2 md:grid-cols-3"><textarea className={field} rows="3" placeholder="Resultados" value={reporte.resultados} onChange={e => setReporte({ ...reporte, resultados: e.target.value })}/><textarea className={field} rows="3" placeholder="Conclusiones" value={reporte.conclusiones} onChange={e => setReporte({ ...reporte, conclusiones: e.target.value })}/><textarea className={field} rows="3" placeholder="Observaciones" value={reporte.observaciones_docente} onChange={e => setReporte({ ...reporte, observaciones_docente: e.target.value })}/></div>
-            <div className="space-y-2"><div className="flex flex-wrap gap-2"><button className={`${btn} bg-emerald-700 text-white`} onClick={() => cerrar(p)}>Cerrar práctica y guardar informe</button><button className={`${btn} border border-red-300 text-red-700`} onClick={() => { setIncidenteAbierto(incidenteAbierto === p.id ? null : p.id); setIncidenteForm({ tipo: 'SEGURIDAD', severidad: 'MEDIA', descripcion: '', acciones: '', activo_id: '' }); }}>Reportar incidente</button><button className={`${btn} border border-amber-300 text-amber-800`} onClick={() => { setResiduoAbierto(residuoAbierto === p.id ? null : p.id); setResiduoForm({ descripcion: '', clasificacion: 'QUIMICO', cantidad: '', unidad: 'g', destino: '' }); }}>Registrar residuo</button></div>
+            <div className="space-y-2"><div className="flex flex-wrap gap-2"><button className={`${btn} bg-emerald-700 text-white`} onClick={() => { setCierre(p); setFinalizar(false); }}>Cerrar sesión y guardar avance</button><button className={`${btn} border border-red-300 text-red-700`} onClick={() => { setIncidenteAbierto(incidenteAbierto === p.id ? null : p.id); setIncidenteForm({ tipo: 'SEGURIDAD', severidad: 'MEDIA', descripcion: '', acciones: '', activo_id: '' }); }}>Reportar incidente</button><button className={`${btn} border border-amber-300 text-amber-800`} onClick={() => { setResiduoAbierto(residuoAbierto === p.id ? null : p.id); setResiduoForm({ descripcion: '', clasificacion: 'QUIMICO', cantidad: '', unidad: 'g', destino: '' }); }}>Registrar residuo</button></div>
               {incidenteAbierto === p.id && <form className="grid gap-2 rounded-xl border border-red-200 bg-red-50 p-3 md:grid-cols-2" onSubmit={e => { e.preventDefault(); run(() => api.post(`/practicas-laboratorio/${p.id}/incidentes`, { ...incidenteForm, activo_id: incidenteForm.activo_id ? Number(incidenteForm.activo_id) : null, requiere_seguimiento: true }), 'Incidente registrado y enviado a seguimiento.'); setIncidenteAbierto(null); }}>
                 <select className={field} value={incidenteForm.tipo} onChange={e => setIncidenteForm({ ...incidenteForm, tipo: e.target.value })}><option>SEGURIDAD</option><option>DERRAME</option><option>ROTURA</option><option>EXPOSICION</option><option>EQUIPO</option><option>OTRO</option></select>
                 <select className={field} value={incidenteForm.severidad} onChange={e => setIncidenteForm({ ...incidenteForm, severidad: e.target.value })}><option>BAJA</option><option>MEDIA</option><option>ALTA</option><option>CRITICA</option></select>
@@ -363,7 +393,7 @@ function PracticasLaboratorio() {
           {p.incidentes.length > 0 && <div className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><b>Incidentes reportados</b>{p.incidentes.map(i => <div key={i.id} className="flex flex-wrap items-center justify-between gap-2"><span>{i.severidad} · {i.tipo} · {i.estado}{i.activo_nombre ? ` · Equipo: ${i.activo_nombre}` : ''}: {i.descripcion}{i.acciones ? ` · Acciones: ${i.acciones}` : ''}</span>{puedePreparar && i.estado !== 'RESUELTO' && <button className="rounded-lg border border-amber-500 px-2 py-1 text-xs font-semibold" onClick={() => { const acciones = window.prompt('Acciones y seguimiento realizado:', i.acciones || '') || ''; run(() => api.put(`/practicas-laboratorio/incidentes/${i.id}`, { estado: 'RESUELTO', acciones }), 'Incidente marcado como resuelto.'); }}>Marcar resuelto</button>}</div>)}</div>}
           {puedePreparar && p.estado === 'SOLICITADA' && <button className={`${btn} bg-emerald-700 text-white`} onClick={() => preparar(p)}>Preparar y entregar materiales</button>}
           {puedePreparar && p.estado === 'CERRADA' && <button className={`${btn} border border-blue-300 text-blue-700`} onClick={() => run(() => api.post(`/practicas-laboratorio/guias/desde-practica/${p.id}`, {}), 'Guía guardada para reutilizar en futuras sesiones.')}>Guardar como guía de práctica</button>}
-          {esDocente && p.estado === 'PREPARADA' && <button className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(p)}>Iniciar práctica y cargar lista</button>}
+          {esDocente && p.estado === 'PREPARADA' && <button disabled={!puedeIniciarPractica(p, ahora)} title={!puedeIniciarPractica(p, ahora) ? 'Disponible el día de la sesión, desde 15 minutos antes hasta 15 minutos después del horario.' : ''} className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(p)}>Iniciar práctica y cargar lista</button>}
           {p.estado === 'CERRADA' && <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700"><b>Informe:</b> {p.resultados || 'Sin resultados registrados'}<br/><b>Conclusiones:</b> {p.conclusiones || 'Sin conclusiones registradas'}</div>}
           </div>}
         </article>)}

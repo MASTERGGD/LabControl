@@ -173,6 +173,7 @@ def eliminar_notificacion(
 
 @router.post("/verificar", summary="Revisar eventos y generar notificaciones automáticas")
 def verificar_eventos(
+    solo_practicas: bool = False,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -203,6 +204,27 @@ def verificar_eventos(
             Notificacion.mensaje.contains(referencia),
             Notificacion.fecha >= desde,
         ).count() > 0
+
+    if current_user.rol == RolUsuario.DOCENTE:
+        from services.programacion_practicas import contexto_docente
+        from services.timezone import now_mx
+        local = now_mx()
+        for practica in contexto_docente(db, current_user.id, desde=local.date(), hasta=local.date()):
+            if practica.estado not in {'SOLICITADA', 'PREPARADA'}: continue
+            inicio = datetime.datetime.combine(practica.fecha_sesion,
+                datetime.time.fromisoformat(practica.reservacion.horario.hora_inicio), tzinfo=local.tzinfo)
+            minutos = (inicio - local).total_seconds() / 60
+            referencia = f"Práctica #{practica.id} · {practica.fecha_sesion.isoformat()}"
+            if -15 <= minutos <= 30 and not _ya_notificado(current_user.id, 'PRACTICA_PROXIMA', referencia, horas=24):
+                crear_notificacion(db, current_user.id, 'PRACTICA_PROXIMA', 'Tu práctica está por comenzar',
+                    f"{referencia}: {practica.titulo} · {practica.reservacion.materia}. "
+                    + ('Materiales preparados. Abre la práctica para pasar lista.' if practica.estado == 'PREPARADA' else 'La entrega de materiales está pendiente; consulta el estado con el responsable.'),
+                    f'/docente/practicas-laboratorio?practica_id={practica.id}', enviar_email=False)
+                generadas += 1
+
+    if solo_practicas:
+        db.commit()
+        return {'generadas': generadas}
 
     # ── 1. Préstamos vencidos ─────────────────────────────────────────────────
     q_prestamos = db.query(Prestamo).filter(

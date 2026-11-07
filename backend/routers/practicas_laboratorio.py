@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from dependencies import get_current_user
 from models.catalogo import CatalogoAlumno, GrupoAcademico, InscripcionAlumno, PeriodoEscolar
-from models.docencia import CargaDocente
+from models.docencia import CargaDocente, ClaseDocente, AsistenciaDocente
 from models.horario import Reservacion
 from models.inventario import Activo, Incidente, Prestamo
 from models.laboratorio import Laboratorio
@@ -27,6 +27,8 @@ from services.timezone import now_mx
 router = APIRouter(prefix="/practicas-laboratorio", tags=["Prácticas de laboratorio"])
 RESPONSABLES = {RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}
 DOCENTES = RESPONSABLES | {RolUsuario.DOCENTE}
+from services.programacion_practicas import router as programacion_router, sesiones_plan, ventana_inicio
+router.include_router(programacion_router)
 
 
 class InsumoCreate(BaseModel):
@@ -103,6 +105,8 @@ class AsistenciaBody(BaseModel):
 
 
 class CerrarBody(BaseModel):
+    finalizar_practica: bool = False
+    cancelar_futuras: bool = False
     resultados: Optional[str] = None
     conclusiones: Optional[str] = None
     observaciones_docente: Optional[str] = None
@@ -181,12 +185,23 @@ def _serialize(p: PracticaLaboratorio, db: Session):
     clase_docente = next(
         (clase for clase in carga.clases if clase.fecha == p.fecha_sesion),
         None,
-    ) if carga else None
+    ) if carga and not p.fuera_horario else None
+    asistencia_clase = {a.alumno_id:a for a in clase_docente.asistencias} if clase_docente else {}
+    plan = sesiones_plan(db, p)
+    raiz = next((x for x in plan if x.id == (p.practica_origen_id or p.id)), p)
     return {
+        "practica_origen_id": raiz.id,
+        "plan_estado": raiz.plan_estado or ('FINALIZADA' if raiz.estado == 'CERRADA' else 'PLANIFICADA'),
+        "numero_sesion": next((i for i, x in enumerate(plan, 1) if x.id == p.id), 1),
+        "total_sesiones": len(plan),
+        "sesiones_plan": [{"id": x.id, "fecha": x.fecha_sesion.isoformat(), "estado": x.estado} for x in plan],
+        "fuera_horario": p.fuera_horario,
+        "puede_iniciar": ventana_inicio(p),
         "id": p.id, "reservacion_id": r.id, "laboratorio_id": r.laboratorio_id,
         "laboratorio_nombre": r.laboratorio.nombre if r.laboratorio else None,
         "docente_id": r.docente_id, "docente_nombre": r.docente.nombre if r.docente else None,
         "materia": r.materia, "grupo": r.grupo, "fecha": p.fecha_sesion.isoformat() if p.fecha_sesion else None,
+        "reservacion_estado": r.estado,
         "bloque_reserva_id": r.bloque_reserva_id,
         "reservacion_ids": [item.id for item in bloque],
         "carga_docente_id": r.carga_docente_id,
@@ -208,7 +223,7 @@ def _serialize(p: PracticaLaboratorio, db: Session):
                         "cantidad_devuelta": m.cantidad_devuelta, "unidad": m.unidad, "nota": m.nota,
                         "existencia": m.insumo.cantidad_disponible if m.insumo else None} for m in p.materiales],
         "asistencias": [{"alumno_id": a.alumno_id, "matricula": a.matricula, "alumno_nombre": a.alumno_nombre,
-                         "estado": a.estado, "observacion": a.observacion} for a in p.asistencias],
+                         "estado": asistencia_clase[a.alumno_id].estado if a.alumno_id in asistencia_clase else a.estado, "observacion": asistencia_clase[a.alumno_id].observacion if a.alumno_id in asistencia_clase else a.observacion} for a in p.asistencias],
         "incidentes": [{"id": i.id, "tipo": i.tipo, "severidad": i.severidad, "descripcion": i.descripcion,
                          "activo_id": i.activo_id, "activo_nombre": i.activo.nombre if i.activo else None,
                          "estado": i.estado, "acciones": i.acciones, "requiere_seguimiento": i.requiere_seguimiento,
@@ -491,7 +506,9 @@ def crear_practica(data: PracticaCreate, db: Session = Depends(get_db), user: Us
     calendario = estado_fecha_academica(db, r.periodo_id, fecha_sesion)
     if not calendario["permite_iniciar_clase"]:
         raise HTTPException(400, f"La práctica no se puede programar en esta fecha: {calendario['motivo'] or 'día no lectivo'}.")
-    if fecha_sesion < datetime.date.today():
+    if r.estado not in {"PROGRAMADA", "EN_CURSO"}:
+        raise HTTPException(409, "La reservación no está disponible para una práctica.")
+    if fecha_sesion < now_mx().date():
         raise HTTPException(400, "No se puede crear una nueva práctica para una fecha pasada.")
     plantilla = None
     if data.plantilla_id:
@@ -525,6 +542,70 @@ def crear_practica(data: PracticaCreate, db: Session = Depends(get_db), user: Us
     return respuesta
 
 
+def _bloquear_plan(db, p):
+    db.query(Laboratorio).filter(Laboratorio.id == p.reservacion.laboratorio_id).with_for_update().first()
+    db.query(PracticaLaboratorio).filter(PracticaLaboratorio.id == (p.practica_origen_id or p.id)).with_for_update().populate_existing().first()
+    db.query(PracticaLaboratorio).filter(PracticaLaboratorio.id == p.id).with_for_update().populate_existing().first()
+
+
+def _reservas_de_practica(db, p):
+    r = p.reservacion
+    return db.query(Reservacion).filter(Reservacion.bloque_reserva_id == r.bloque_reserva_id).all() if r.bloque_reserva_id else [r]
+
+
+def _clase_de_practica(db, p, crear=False):
+    r = p.reservacion
+    if not r.carga_docente_id or p.fuera_horario:
+        return None
+    carga = r.carga_docente
+    if carga.dia_semana != p.fecha_sesion.weekday(): return None
+    clase = db.query(ClaseDocente).filter(ClaseDocente.carga_docente_id == carga.id, ClaseDocente.fecha == p.fecha_sesion).first()
+    if crear and clase and clase.estado != 'ABIERTA':
+        raise HTTPException(409, 'La clase ya tiene un registro cerrado; revisa su historial antes de iniciar la práctica.')
+    if not clase and crear:
+        clase = ClaseDocente(carga_docente_id=carga.id, fecha=p.fecha_sesion, estado='ABIERTA')
+        db.add(clase); db.flush()
+        for inscripcion in db.query(InscripcionAlumno).filter(InscripcionAlumno.grupo_academico_id == carga.grupo_academico_id, InscripcionAlumno.estado == 'ACTIVO').all():
+            db.add(AsistenciaDocente(clase_docente_id=clase.id, alumno_id=inscripcion.alumno_id, estado='PRESENTE'))
+        db.flush(); db.refresh(clase)
+    return clase
+
+
+def _sincronizar_asistencia(db, p):
+    clase = _clase_de_practica(db, p)
+    if not clase or clase.estado != 'ABIERTA': return
+    por_alumno = {a.alumno_id: a for a in clase.asistencias}
+    for a in p.asistencias:
+        if a.alumno_id in por_alumno:
+            por_alumno[a.alumno_id].estado = a.estado
+            por_alumno[a.alumno_id].observacion = a.observacion
+
+
+class FinalizarPlanBody(BaseModel):
+    cancelar_futuras: bool = False
+
+
+@router.post('/{practica_id}/finalizar-plan')
+def finalizar_plan(practica_id: int, data: FinalizarPlanBody, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    p = _get_practica(db, practica_id, user)
+    _bloquear_plan(db, p)
+    if user.rol != RolUsuario.DOCENTE: raise HTTPException(403, 'Solo el docente puede finalizar su práctica.')
+    plan = sesiones_plan(db, p)
+    raiz = next(x for x in plan if x.id == (p.practica_origen_id or p.id))
+    pendientes = [x for x in plan if x.estado in {'SOLICITADA', 'PREPARADA', 'EN_CURSO'}]
+    if any(x.estado in {'PREPARADA', 'EN_CURSO'} for x in pendientes):
+        raise HTTPException(409, 'Cierra las sesiones preparadas o iniciadas y registra los materiales entregados antes de finalizar.')
+    if pendientes and not data.cancelar_futuras:
+        raise HTTPException(409, 'Confirma la cancelación de las sesiones pendientes.')
+    for x in pendientes:
+        x.estado = 'CANCELADA'
+        for r in _reservas_de_practica(db, x):
+            if r.fecha_actividad: r.estado = 'CANCELADA'
+    raiz.plan_estado = 'FINALIZADA'
+    db.commit()
+    return _serialize(p, db)
+
+
 @router.get("/{practica_id}")
 def detalle_practica(practica_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     return _serialize(_get_practica(db, practica_id, user), db)
@@ -533,6 +614,7 @@ def detalle_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
 @router.post("/{practica_id}/preparar")
 def preparar_practica(practica_id: int, data: PrepararBody, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     p = _get_practica(db, practica_id, user, responsable=True)
+    _bloquear_plan(db, p)
     if p.estado != "SOLICITADA": raise HTTPException(409, "La práctica ya fue preparada o iniciada.")
     by_id = {m.id: m for m in p.materiales}
     submitted = {x.material_id: x.cantidad_entregada for x in data.materiales}
@@ -552,7 +634,7 @@ def preparar_practica(practica_id: int, data: PrepararBody, db: Session = Depend
     p.estado = "PREPARADA"
     crear_notificacion(db, p.reservacion.docente_id, "PRACTICA_LABORATORIO", "Materiales listos para la práctica",
         f"El responsable preparó '{p.titulo}'. Puedes iniciar la sesión desde Prácticas y reportes.",
-        "/docente/practicas-laboratorio", enviar_email=False)
+        f"/docente/practicas-laboratorio?practica_id={p.id}", enviar_email=False)
     db.commit(); db.refresh(p)
     return _serialize(p, db)
 
@@ -560,13 +642,16 @@ def preparar_practica(practica_id: int, data: PrepararBody, db: Session = Depend
 @router.post("/{practica_id}/iniciar")
 def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     p = _get_practica(db, practica_id, user)
-    if user.rol == RolUsuario.DOCENTE and p.reservacion.docente_id != user.id:
+    _bloquear_plan(db, p)
+    if user.rol != RolUsuario.DOCENTE or p.reservacion.docente_id != user.id:
         raise HTTPException(403, "Solo el docente responsable puede iniciar la práctica.")
     if p.estado != "PREPARADA": raise HTTPException(409, "El laboratorio debe preparar y entregar los materiales antes de iniciar.")
     r = p.reservacion
     fecha_hoy = now_mx().date()
     if p.fecha_sesion != fecha_hoy:
         raise HTTPException(409, f"La práctica está programada para {p.fecha_sesion.isoformat()} y solo puede iniciarse ese día.")
+    if not ventana_inicio(p):
+        raise HTTPException(409, "La práctica puede iniciarse desde 15 minutos antes hasta 15 minutos después de su horario, con reservación vigente.")
     calendario = estado_fecha_academica(db, r.periodo_id, p.fecha_sesion)
     if not calendario["permite_iniciar_clase"] or not calendario["requiere_asistencia"]:
         raise HTTPException(409, f"El calendario académico no permite iniciar la práctica: {calendario['motivo'] or 'día no lectivo'}.")
@@ -609,10 +694,14 @@ def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
                .filter(InscripcionAlumno.grupo_academico_id == grupo.id, InscripcionAlumno.estado == "ACTIVO", CatalogoAlumno.activo == True)
                .order_by(CatalogoAlumno.apellido_paterno, CatalogoAlumno.apellido_materno, CatalogoAlumno.nombres).all())
     if not alumnos: raise HTTPException(400, "El grupo no tiene alumnos activos para registrar asistencia.")
+    clase = _clase_de_practica(db, p, crear=True)
+    estados = {a.alumno_id: a.estado for a in clase.asistencias} if clase else {}
     for a in alumnos:
-        db.add(AsistenciaPractica(practica_id=p.id, alumno_id=a.id, matricula=a.matricula,
+        db.add(AsistenciaPractica(practica_id=p.id, alumno_id=a.id, estado=estados.get(a.id, "PRESENTE"), matricula=a.matricula,
                                   alumno_nombre=" ".join(x for x in [a.apellido_paterno, a.apellido_materno, a.nombres] if x)))
     p.estado = "EN_CURSO"; p.iniciada_en = datetime.datetime.utcnow()
+    for reserva in _reservas_de_practica(db, p):
+        if reserva.fecha_actividad: reserva.estado = 'EN_CURSO'
     db.commit(); db.refresh(p)
     return _serialize(p, db)
 
@@ -623,11 +712,15 @@ def guardar_asistencia(practica_id: int, data: AsistenciaBody, db: Session = Dep
     if p.estado != "EN_CURSO": raise HTTPException(409, "La asistencia solo se puede registrar durante la práctica.")
     if user.rol == RolUsuario.DOCENTE and p.reservacion.docente_id != user.id:
         raise HTTPException(403, "Solo el docente responsable puede registrar asistencia.")
+    clase = _clase_de_practica(db, p)
+    if clase and clase.estado != 'ABIERTA':
+        raise HTTPException(409, 'La clase ya está cerrada; utiliza el proceso de corrección de asistencia.')
     rows = {a.alumno_id: a for a in p.asistencias}
     for item in data.alumnos:
         if item.alumno_id not in rows: raise HTTPException(400, "La lista incluye un alumno que no pertenece a esta práctica.")
         rows[item.alumno_id].estado = item.estado
         rows[item.alumno_id].observacion = item.observacion
+    _sincronizar_asistencia(db, p)
     db.commit(); db.refresh(p)
     return _serialize(p, db)
 
@@ -692,9 +785,17 @@ def actualizar_incidente(incidente_id: int, data: IncidenteSeguimientoBody, db: 
 @router.post("/{practica_id}/cerrar")
 def cerrar_practica(practica_id: int, data: CerrarBody, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     p = _get_practica(db, practica_id, user)
+    _bloquear_plan(db, p)
     if p.estado != "EN_CURSO": raise HTTPException(409, "Solo se pueden cerrar prácticas iniciadas.")
     if user.rol == RolUsuario.DOCENTE and p.reservacion.docente_id != user.id:
         raise HTTPException(403, "Solo el docente responsable puede cerrar la práctica.")
+    plan = sesiones_plan(db, p)
+    raiz = next(x for x in plan if x.id == (p.practica_origen_id or p.id))
+    futuras = [x for x in plan if x.id != p.id and x.estado in {'SOLICITADA', 'PREPARADA', 'EN_CURSO'}]
+    if data.finalizar_practica and futuras and not data.cancelar_futuras:
+        raise HTTPException(409, 'Confirma la cancelación de las sesiones pendientes antes de finalizar la práctica.')
+    if data.finalizar_practica and any(x.estado in {'PREPARADA', 'EN_CURSO'} for x in futuras):
+        raise HTTPException(409, 'Hay otra sesión preparada o iniciada. Concluye su entrega de materiales antes de finalizar.')
     materials = {m.id: m for m in p.materiales}
     submitted = {int(x.get("material_id", -1)): x for x in data.materiales}
     if set(submitted) != set(materials): raise HTTPException(400, "Registra consumo, merma y devolución de cada material.")
@@ -715,6 +816,22 @@ def cerrar_practica(practica_id: int, data: CerrarBody, db: Session = Depends(ge
                 db.add(MovimientoInsumoLaboratorio(insumo_id=stock.id, practica_id=p.id, tipo="MERMA", cantidad=waste, usuario_id=user.id, observaciones=row.get("nota")))
     p.resultados = data.resultados; p.conclusiones = data.conclusiones
     p.observaciones_docente = data.observaciones_docente
+    clase = _clase_de_practica(db, p)
+    if clase and clase.estado == 'ABIERTA':
+        clase.estado = 'CERRADA'; clase.fin = datetime.datetime.utcnow()
+        clase.tema_impartido = p.titulo
+        clase.actividades_realizadas = data.resultados
+        clase.observacion_general = data.observaciones_docente
+    for reserva in _reservas_de_practica(db, p):
+        if reserva.fecha_actividad: reserva.estado = 'IMPARTIDA'
+    if data.finalizar_practica:
+        for otra in futuras:
+            otra.estado = 'CANCELADA'
+            for reserva in _reservas_de_practica(db, otra):
+                if reserva.fecha_actividad: reserva.estado = 'CANCELADA'
+        raiz.plan_estado = 'FINALIZADA'
+    else:
+        raiz.plan_estado = 'PLANIFICADA' if futuras else 'PENDIENTE_CONTINUACION'
     p.estado = "CERRADA"; p.cerrada_en = datetime.datetime.utcnow()
     db.commit(); db.refresh(p)
     return _serialize(p, db)

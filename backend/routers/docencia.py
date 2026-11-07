@@ -642,6 +642,9 @@ def _validar_asignacion_tutoria(db: Session, data: CargaInput, docente_id: int, 
 
 
 def _serializar_carga(c: CargaDocente, db: Session):
+    from services.programacion_practicas import contexto_docente, accion_practica
+    practica = next((p for p in contexto_docente(db, c.docente_id, c.periodo_id, _ahora_mx().date(), _ahora_mx().date())
+                     if p.reservacion.carga_docente_id == c.id and not p.fuera_horario and p.estado != 'CANCELADA'), None)
     grupo = c.grupo_academico
     lab = c.laboratorio
     reservas_lab = db.query(Reservacion).filter(
@@ -695,6 +698,7 @@ def _serializar_carga(c: CargaDocente, db: Session):
         "espacio_nombre": lab.nombre if lab else c.espacio_nombre,
         "laboratorio_id": c.laboratorio_id,
         "uso_laboratorio": c.uso_laboratorio or "EQUIPOS",
+        **(accion_practica(practica) if practica else {}),
         "estado_reserva_laboratorio": estado_reserva_lab if c.laboratorio_id else None,
         "reservacion_laboratorio_id": reserva_operable.id if reserva_operable else None,
         "estado": c.estado,
@@ -708,6 +712,11 @@ def _serializar_carga(c: CargaDocente, db: Session):
 
 
 def _serializar_clase(clase: ClaseDocente):
+    from sqlalchemy.orm import object_session
+    from services.programacion_practicas import contexto_docente, accion_practica
+    sesion_db = object_session(clase)
+    practicas_clase = [p for p in contexto_docente(sesion_db, clase.carga.docente_id, clase.carga.periodo_id, clase.fecha, clase.fecha)
+                       if p.reservacion.carga_docente_id == clase.carga_docente_id and not p.fuera_horario] if sesion_db else []
     carga = clase.carga
     asistencias = clase.asistencias
     conteos = {estado: 0 for estado in ESTADOS_ASISTENCIA}
@@ -752,6 +761,7 @@ def _serializar_clase(clase: ClaseDocente):
         frase in tema_normalizado for frase in ("no se impart", "no impartida", "no hubo clase")
     )
     return {
+        "practicas": [accion_practica(p) for p in practicas_clase],
         "id": clase.id,
         "fecha": clase.fecha.isoformat(),
         "estado": clase.estado,
@@ -1693,6 +1703,11 @@ def iniciar_clase(
     estado_fecha = estado_fecha_academica(db, carga.periodo_id, hoy.date())
     if not estado_fecha["permite_iniciar_clase"] or not estado_fecha["requiere_asistencia"]:
         raise HTTPException(409, f"No se puede iniciar la clase: {estado_fecha['motivo']}")
+    from services.programacion_practicas import contexto_docente
+    vinculada = next((p for p in contexto_docente(db, current_user.id, carga.periodo_id, hoy.date(), hoy.date())
+                     if p.reservacion.carga_docente_id == carga.id and not p.fuera_horario and p.estado != 'CANCELADA'), None)
+    if vinculada:
+        raise HTTPException(409, f'Esta clase incluye una práctica. Abre la práctica #{vinculada.id} desde tu agenda para iniciar y pasar lista.')
     existente = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id == carga.id, ClaseDocente.fecha == hoy.date()
     ).first()
@@ -1826,6 +1841,11 @@ async def cerrar_clase(
     _validar_carga_actual(db, clase.carga)
     if clase.estado not in {"ABIERTA", "CORRECCION"}:
         raise HTTPException(409, "La asistencia ya está cerrada")
+    from services.programacion_practicas import contexto_docente
+    vinculada = next((p for p in contexto_docente(db, current_user.id, clase.carga.periodo_id, clase.fecha, clase.fecha)
+                     if p.reservacion.carga_docente_id == clase.carga_docente_id and not p.fuera_horario and p.estado == 'EN_CURSO'), None)
+    if vinculada:
+        raise HTTPException(409, f'Cierra la sesión desde la práctica #{vinculada.id} para registrar también materiales y liberar el laboratorio.')
     tema_propuesto = (
         data.tema_impartido
         if data.tema_impartido is not None
@@ -3465,6 +3485,22 @@ def dashboard_docente(
             "calendario": estado_fecha,
             "resumen": _serializar_clase(clase)["resumen"] if clase else None,
         })
+
+    from services.programacion_practicas import contexto_docente, accion_practica, resumen_sesion
+    for practica in contexto_docente(db, current_user.id, actual.id, hoy, hoy):
+        if practica.estado == 'CANCELADA': continue
+        item = next((x for x in jornada if x['carga_id'] == practica.reservacion.carga_docente_id), None) if not practica.fuera_horario else None
+        if item is not None:
+            item.update(accion_practica(practica))
+        else:
+            rango = resumen_sesion(practica)
+            jornada.append({**accion_practica(practica), 'carga_id': practica.reservacion.carga_docente_id,
+                'tipo_actividad': 'PRACTICA', 'clase_id': None, 'materia': practica.reservacion.materia,
+                'grupo': practica.reservacion.grupo, 'carrera': practica.reservacion.carrera,
+                'espacio': practica.reservacion.laboratorio.nombre, 'hora_inicio': rango['hora_inicio'],
+                'hora_fin': rango['hora_fin'], 'estado': 'CERRADA' if practica.estado == 'CERRADA' else 'EN_CURSO' if practica.estado == 'EN_CURSO' else 'PROGRAMADA',
+                'calendario': estado_fecha_academica(db, actual.id, hoy), 'resumen': None})
+    jornada.sort(key=lambda x: x['hora_inicio'])
 
     # Una materia puede tener varios bloques semanales. El dashboard debe
     # analizarla una sola vez, porque seguimiento_grupo ya consolida sus bloques.

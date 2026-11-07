@@ -1,3 +1,4 @@
+import AgendaPracticasDocente from '../../components/AgendaPracticasDocente';
 import { accionTutoria } from '../../utils/accionClaseDashboard';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -87,7 +88,7 @@ export const estadoActividad = (item, minutoActual) => {
 };
 
 const puedeIniciarActividad = (item, minutoActual) => (
-  Boolean(item?.clase_id)
+  Boolean(item?.practica_id) || Boolean(item?.clase_id)
   || (
     minutoActual >= minutosDeHora(item?.hora_inicio) - 15
     && minutoActual <= minutosDeHora(item?.hora_fin) + 15
@@ -849,7 +850,7 @@ export default function MiHorarioDocente() {
       : estadoPrincipal === 'PROXIMA'
         ? 'Tu siguiente actividad'
         : 'Última actividad de hoy';
-  const textoAccionClase = (item) => (
+  const textoAccionClase = (item) => item.practica_id ? (item.practica_puede_iniciar ? 'Iniciar práctica' : item.practica_estado === 'EN_CURSO' ? 'Continuar práctica' : 'Ver práctica') : (
     item.clase_estado === 'NO_IMPARTIDA'
       ? 'Ver registro'
       : item.clase_estado === 'CERRADA'
@@ -893,6 +894,7 @@ export default function MiHorarioDocente() {
 
   return (
     <AdminLayout>
+      <AgendaPracticasDocente />
       <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>

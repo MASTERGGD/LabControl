@@ -1,5 +1,6 @@
 // Flujo compartido por el horario y el inicio docente.
 export async function abrirClaseDocente(api, navigate, item) {
+  if (item.practica_id) { navigate(item.practica_url); return; }
   if (item.es_reposicion && item.clase_estado === 'PROGRAMADA') {
     const { data } = await api.post(`/docencia/reposiciones/${item.clase_id}/iniciar`);
     navigate(`/docente/clase/${data.id}`);

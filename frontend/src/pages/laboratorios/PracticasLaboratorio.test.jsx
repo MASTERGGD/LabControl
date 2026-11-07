@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import PracticasLaboratorio from './PracticasLaboratorio';
 import api from '../../hooks/useApi';
 let mockUsuario = { id: 1, rol: 'DOCENTE' };
-jest.mock('../../hooks/useApi', () => ({ get: jest.fn(), post: jest.fn() }));
+jest.mock('../../hooks/useApi', () => ({ get: jest.fn(), post: jest.fn(), put: jest.fn() }));
 jest.mock('../../context/AuthContext', () => ({ useAuth: () => ({ usuario: mockUsuario }) }));
 jest.mock('../../components/AdminLayout', () => ({ children }) => <div>{children}</div>);
 const practica = (id, estado) => ({ id, reservacion_id: id, titulo: `Práctica ${id}`, estado, fecha: '2099-11-04', materia: 'Materia de prueba', grupo:'A', laboratorio_nombre:'Lab ficticio', objetivo:'Objetivo reservado al detalle', materiales:[{ id:1, descripcion:'Matraz', cantidad_solicitada:2, unidad:'PIEZA' }], asistencias:[], incidentes:[], residuos:[] });
@@ -28,7 +28,7 @@ beforeEach(() => {
     if(url.includes('/resumen')) return {data:{}};
     return {data:[]};
   });
-  api.post.mockResolvedValue({data:{}});
+  api.post.mockResolvedValue({data:{}}); api.put.mockResolvedValue({data:{}});
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
 const render = async () => act(async () => root.render(<MemoryRouter><PracticasLaboratorio /></MemoryRouter>));
@@ -70,4 +70,22 @@ test('responsable conserva preparación de materiales dentro del detalle', async
   await click('Ver detalle');
   await click('Preparar y entregar materiales');
   expect(api.post).toHaveBeenCalledWith('/practicas-laboratorio/1/preparar',{materiales:[{material_id:1,cantidad_entregada:2}]});
+});
+
+
+test('enlace directo abre la sesión exacta y el cierre confirma la liberación de fechas', async () => {
+  const detalle={...practica(45,'EN_CURSO'),materiales:[],asistencias:[{alumno_id:3,estado:'PRESENTE',matricula:'FICTICIA',alumno_nombre:'Alumno de prueba'}],numero_sesion:1,total_sesiones:3,plan_estado:'PLANIFICADA',sesiones_plan:[{id:45,fecha:'2099-11-04',estado:'EN_CURSO'},{id:46,fecha:'2099-11-11',estado:'SOLICITADA'}]};
+  const original=api.get.getMockImplementation();
+  api.get.mockImplementation(url=>url==='/practicas-laboratorio/45'?Promise.resolve({data:detalle}):original(url));
+  await act(async()=>root.render(<MemoryRouter initialEntries={['/docente/practicas-laboratorio?practica_id=45']}><PracticasLaboratorio/></MemoryRouter>));
+  expect(container.textContent).toContain('Lista oficial del grupo');
+  expect(container.textContent).toContain('Sesión 1 de 3');
+  await click('Cerrar sesión y guardar avance');
+  const dialog=container.querySelector('[aria-label="Cerrar sesión de práctica"]');
+  expect(api.post).not.toHaveBeenCalled();
+  await act(async()=>dialog.querySelector('input[type="checkbox"]').click());
+  expect(dialog.textContent).toContain('2099-11-11');
+  await click('Confirmar cierre');
+  expect(api.put).toHaveBeenCalledWith('/practicas-laboratorio/45/asistencia',expect.objectContaining({alumnos:expect.any(Array)}));
+  expect(api.post).toHaveBeenCalledWith('/practicas-laboratorio/45/cerrar',expect.objectContaining({finalizar_practica:true,cancelar_futuras:true}));
 });
