@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Captura de prácticas al reservar — 2026-11-06
+## [30044d1] — Captura de prácticas al reservar — 2026-11-06
 
 ### Problema y comportamiento resultante
 El formulario completo de práctica saturaba la reservación del docente en Química y Agroindustria. Marcar la opción ahora abre un paso dedicado dentro de la misma ventana, con nombre, fecha, objetivo, procedimiento, materiales del catálogo o libres, cantidades, unidades y seguridad. Los materiales disponen de más espacio y la ventana ajusta su altura al dispositivo.
@@ -14,7 +14,7 @@ Guardar práctica y continuar regresa al horario con un resumen y la opción Edi
 ### Validación y publicación
 26 suites y 98 pruebas frontend aprobadas, incluidas cinco pruebas nuevas del flujo; compilación Vite aprobada con avisos de tamaño del paquete e importación mixta de offlineStore. Sin cambios de backend, esquema ni datos. Se preservaron los cambios previos de otros módulos y archivos locales, excluidos de esta entrega.
 
-Estado: preparado y validado localmente; publicación pendiente de comprobar en Railway. La prueba funcional utiliza datos simulados y no crea reservaciones reales. Pendiente: verificar despliegue y disponibilidad pública.
+Publicado el 6 de noviembre de 2026 y verificado a las 19:38 de Ciudad de México (7 de noviembre, 01:38 UTC). GitHub recibió el commit `30044d1`; Railway confirmó SUCCESS en frontend (`5cf19527-8de2-4d1d-9dff-ff435a26bdb0`) y backend (`67faab4f-6fca-42c9-b381-53b1b5822f45`), ambos del mismo commit. Web, paquete JavaScript publicado y salud de API responden HTTP 200; el paquete contiene el nuevo paso y su botón de continuación. API healthy con base de datos y almacenamiento correctos. La prueba funcional utiliza datos simulados y no crea reservaciones reales. Pendiente: revisión visual del docente con su cuenta y sus datos.
 
 ---
 
