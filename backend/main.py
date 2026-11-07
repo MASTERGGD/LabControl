@@ -180,6 +180,12 @@ else:
     _CORS_ORIGINS = ["*"]
     _CORS_ALL     = True
 
+app.add_middleware(ErrorHandlingMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BodyLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
+
+# CORS debe envolver también las respuestas generadas por los otros middleware.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
@@ -189,11 +195,6 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Request-ID"],
     max_age=600,
 )
-
-app.add_middleware(ErrorHandlingMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(BodyLimitMiddleware)
-app.add_middleware(RateLimitMiddleware)
 
 # --- Routers -----------------------------------------------------------------
 

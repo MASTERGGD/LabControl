@@ -4,6 +4,21 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Error al guardar prácticas y CORS — 2026-11-06
+
+### Problema y causa verificada
+Al reservar con práctica, la reserva se creaba pero el POST de práctica respondía HTTP 500; el cliente cancelaba la reserva y mostraba Network Error. El registro persistente del servidor confirmó UndefinedColumn en incidentes_practica.activo_id durante la serialización de la respuesta. El modelo incluía esa referencia al equipo, pero las migraciones publicadas no creaban la columna. Las pruebas basadas en create_all de los modelos no reproducían esa diferencia.
+
+### Corrección
+Nueva migración d5e6f7a8b9c0 desde c4d5e6f7a8b9: agrega activo_id nullable y su clave foránea a activos conservando los incidentes previos. No cambia registros históricos ni restaura la base. La creación de práctica prepara su respuesta antes del commit para evitar confirmar una operación cuya respuesta falla. CORS ahora envuelve los demás middleware, manteniendo orígenes y permisos existentes, de modo que los errores puedan llegar al navegador con mensaje y folio.
+
+### Validación y publicación
+24 pruebas backend aprobadas: creación real con materiales y notificación, fallo de respuesta sin commit, migración de tabla antigua conservando registros, CORS de error interno en la aplicación real, catálogo de materiales y controles de seguridad existentes. Validación con datos ficticios y base aislada; no se crean ni cancelan reservaciones reales para probar. Cambios previos de otros módulos conservados y excluidos de esta entrega.
+
+Estado: preparado; pendiente aplicar la migración mediante el despliegue y comprobar web/API. No se eliminan automáticamente los registros del intento fallido del usuario. La confirmación funcional autenticada en producción queda pendiente del reintento del docente.
+
+---
+
 ## [3eac2a6] — Validación inmediata de fecha del horario — 2026-11-06
 
 ### Problema y comportamiento resultante

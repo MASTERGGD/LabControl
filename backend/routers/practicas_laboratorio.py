@@ -452,8 +452,11 @@ def crear_practica(data: PracticaCreate, db: Session = Depends(get_db), user: Us
         crear_notificacion(db, receptor.id, "PRACTICA_LABORATORIO", "Nueva solicitud de práctica",
             f"{user.nombre} solicitó '{p.titulo}' para {r.materia}, grupo {r.grupo}.",
             "/admin/practicas-laboratorio", enviar_email=False)
-    db.commit(); db.refresh(p)
-    return _serialize(p, db)
+    # Preparar la respuesta antes de confirmar: un fallo no debe dejar una práctica guardada a medias.
+    db.flush()
+    respuesta = _serialize(p, db)
+    db.commit()
+    return respuesta
 
 
 @router.get("/{practica_id}")
