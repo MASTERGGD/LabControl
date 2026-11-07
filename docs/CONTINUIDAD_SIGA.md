@@ -54,3 +54,12 @@ El modo Docente no hereda privilegios del rol adicional de responsable para evit
 ## Resumen de agenda docente (7 de noviembre de 2026)
 
 La agenda operativa excluye canceladas y cerradas, salvo la raíz cerrada con decisión explícita pendiente de continuación. Las sesiones en curso no se ocultan por tener fecha anterior. El resumen muestra como máximo tres actividades ordenadas por prioridad; las decisiones se agrupan por práctica en un desplegable. El historial conserva los registros terminales y se consulta mediante la vista HISTORIAL de la pantalla paginada de sesiones y prácticas. No volver a colocar un listado histórico completo encima del horario docente ni usar la existencia de una cancelación como alerta permanente.
+
+
+## Reportes de Química y Agroindustria (7 de noviembre de 2026)
+
+El reporte mensual y comparativo de estas categorías utiliza services/reporte_quimica.py mediante /reportes/quimica/mensual y /reportes/quimica/comparativo. Los demás laboratorios conservan el reporte anterior. Consultar docs/REPORTES_QUIMICA.md para fuentes, límites y aceptación. Se cuentan sesiones iniciadas y cierres reales por separado; las horas reales se recortan al periodo local, nunca se completa un cierre con fin_estimado. La agrupación de prácticas por raíz no sustituye los estados de plan existentes.
+
+La exportación POST /reportes/quimica/excel recibe el mismo corte firmado que muestra la pantalla, revalida usuario y permisos vigentes y no consulta otra vez las cifras. La firma normaliza números enteros representados como float para tolerar el recorrido JSON por JavaScript. El corte expira en 24 horas, queda en memoria de la página y no se archiva permanentemente en el servidor. Actualizar genera otra consulta. No confundir este mecanismo con un archivo institucional histórico de reportes.
+
+Los movimientos se agrupan por insumo/lote/unidad/tipo y su fecha; los materiales sin vínculo o fecha verificable se señalan como incompletos. Inventario, préstamos vencidos y alertas son situación actual de cualquier mes, separados de la actividad histórica. No se infiere asistencia desde PCs ni se equipara una declaración de participantes con personas únicas. La capacidad mantiene su número sin inventar su unidad. No se agregaron migraciones ni se modifican registros operativos al consultar.

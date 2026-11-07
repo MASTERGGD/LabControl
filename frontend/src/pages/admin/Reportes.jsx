@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import SelectDark from '../../components/SelectDark';
+import ReporteQuimica from '../../components/ReporteQuimica';
 import { useTheme } from '../../context/ThemeContext';
 
 const MESES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -602,6 +603,7 @@ function TabMensual() {
   const [cargando, setCargando] = useState(false);
   const [descargando, setDescargando] = useState(false);
   const [error, setError]       = useState('');
+  const esQuimico = ['QUIMICA', 'AGROINDUSTRIA'].includes((labs.find(l => String(l.id) === String(labId))?.categoria || '').toUpperCase());
 
   useEffect(() => {
     api.get('/laboratorios?solo_activos=true')
@@ -610,14 +612,14 @@ function TabMensual() {
   }, []);
 
   const cargar = useCallback(async () => {
-    if (!labId) return;
+    if (!labId || esQuimico) { setDatos(null); return; }
     setCargando(true); setError('');
     try {
       const { data } = await api.get(`/reportes/mensual?laboratorio_id=${labId}&mes=${mes}&anio=${anio}`);
       setDatos(data);
     } catch { setError('No se pudo cargar el reporte.'); }
     finally { setCargando(false); }
-  }, [labId, mes, anio]);
+  }, [labId, mes, anio, esQuimico]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
@@ -663,25 +665,26 @@ function TabMensual() {
           <SelectDark value={anio} onChange={v => setAnio(Number(v))} className="w-28"
             options={anios.map(y => ({ value: y, label: String(y) }))}/>
         </div>
-        <button onClick={cargar} disabled={cargando}
+        {!esQuimico && <button onClick={cargar} disabled={cargando}
           className="flex items-center gap-2 border border-white/15 text-slate-300 hover:bg-white/8 hover:text-white disabled:opacity-50 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
           title="Actualizar">
           {cargando
             ? <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
             : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>}
-        </button>
+        </button>}
         {/* Descargar Excel en la misma fila — extremo derecho */}
-        <div className="ml-auto">
+        {!esQuimico && <div className="ml-auto">
           <button onClick={descargar} disabled={descargando || !datos}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
             {descargando ? 'Generando…' : 'Descargar Excel'}
           </button>
-        </div>
+        </div>}
       </div>
 
-      {error && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
-      {cargando && !datos && (
+      {esQuimico && <ReporteQuimica key={`${labId}-${mes}-${anio}`} laboratorioId={labId} mes={mes} anio={anio}/>}
+      {error && !esQuimico && <p className="text-sm text-red-400 bg-red-900/30 border border-red-800 rounded-lg px-4 py-3">{error}</p>}
+      {!esQuimico && cargando && !datos && (
         <div className="flex justify-center py-20">
           <svg className="animate-spin w-8 h-8 text-blue-400" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -690,7 +693,7 @@ function TabMensual() {
         </div>
       )}
 
-      {datos && (
+      {!esQuimico && datos && (
         <div className="space-y-5">
           <div className="glass px-5 py-4 flex items-center justify-between">
             <div>
@@ -860,6 +863,9 @@ function TabComparativo() {
   const [datos, setDatos]       = useState(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError]       = useState('');
+  const [mesQuimico, setMesQuimico] = useState(new Date().getMonth() + 1);
+  const [anioQuimico, setAnioQuimico] = useState(new Date().getFullYear());
+  const esQuimico = ['QUIMICA', 'AGROINDUSTRIA'].includes((labs.find(l => String(l.id) === String(labId))?.categoria || '').toUpperCase());
 
   useEffect(() => {
     api.get('/laboratorios?solo_activos=true')
@@ -868,6 +874,7 @@ function TabComparativo() {
   }, []);
 
   const cargar = useCallback(async () => {
+    if (!labs.length || esQuimico) { setDatos(null); return; }
     setCargando(true); setError('');
     try {
       const params = labId ? `?laboratorio_id=${labId}` : '';
@@ -875,10 +882,18 @@ function TabComparativo() {
       setDatos(data);
     } catch { setError('No se pudo cargar el análisis comparativo.'); }
     finally { setCargando(false); }
-  }, [labId]);
+  }, [labId, esQuimico, labs.length]);
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  if (esQuimico) return <div className="space-y-5">
+    <div className="flex flex-wrap gap-3 items-end">
+      <label>Laboratorio<SelectDark value={labId} onChange={v => setLabId(Number(v) || '')} options={labs.map(l => ({ value:l.id, label:l.nombre }))}/></label>
+      <label>Mes de referencia<SelectDark value={mesQuimico} onChange={v => setMesQuimico(Number(v))} options={MESES.slice(1).map((m,i) => ({value:i+1,label:m}))}/></label>
+      <label>Año<input className="input-dark w-28" type="number" min="2000" max="2200" value={anioQuimico} onChange={e => setAnioQuimico(Number(e.target.value))}/></label>
+    </div>
+    <ReporteQuimica key={`${labId}-${mesQuimico}-${anioQuimico}`} laboratorioId={labId} mes={mesQuimico} anio={anioQuimico} modo="comparativo"/>
+  </div>;
   return (
     <div className="space-y-5">
       {/* Filtros — fila compacta */}

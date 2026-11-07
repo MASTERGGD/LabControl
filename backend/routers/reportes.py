@@ -25,6 +25,59 @@ from openpyxl.utils import get_column_letter
 
 router = APIRouter(prefix="/reportes", tags=["Reportes"])
 
+
+def _laboratorio_quimico(db, laboratorio_id, user):
+    if user.rol not in {RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}:
+        raise HTTPException(403, "Sin acceso a reportes de laboratorio.")
+    assert_report_access(laboratorio_id, user)
+    lab = db.query(Laboratorio).filter(Laboratorio.id == laboratorio_id).first()
+    if not lab:
+        raise HTTPException(404, "Laboratorio no encontrado.")
+    if (lab.categoria or '').upper() not in {'QUIMICA', 'AGROINDUSTRIA'}:
+        raise HTTPException(422, "Este reporte corresponde a Química y Agroindustria.")
+    return lab
+
+
+@router.get('/quimica/mensual')
+def reporte_quimico(laboratorio_id: int, mes: int, anio: int,
+                    db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    from services.reporte_quimica import generar, firma
+    lab = _laboratorio_quimico(db, laboratorio_id, user)
+    reporte = generar(db, lab, mes, anio, user)
+    return {'reporte': reporte, 'firma': firma(reporte)}
+
+
+@router.get('/quimica/comparativo')
+def comparativo_quimico(laboratorio_id: int, mes: int, anio: int,
+                        db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    from services.reporte_quimica import comparativo, firma
+    lab = _laboratorio_quimico(db, laboratorio_id, user)
+    reporte = comparativo(db, lab, mes, anio, user)
+    return {'reporte': reporte, 'firma': firma(reporte)}
+
+
+from pydantic import BaseModel
+
+
+class CorteQuimico(BaseModel):
+    reporte: dict
+    firma: str
+
+
+@router.post('/quimica/excel')
+def exportar_quimico(data: CorteQuimico, db: Session = Depends(get_db),
+                     user: Usuario = Depends(get_current_user)):
+    from services.reporte_quimica import validar_corte, excel
+    validar_corte(data.reporte, data.firma, user)
+    _laboratorio_quimico(db, data.reporte['laboratorio']['id'], user)
+    from services.auditoria import registrar, Accion, Recurso
+    registrar(db, accion=Accion.EXPORTAR_REPORTE_EXCEL, recurso=Recurso.REPORTE,
+        usuario=user, recurso_id=data.reporte['laboratorio']['id'],
+        detalle={'consulta_id': data.reporte['consulta_id'], 'periodo': data.reporte['periodo']})
+    return StreamingResponse(excel(data.reporte),
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="Reporte_Quimica_{data.reporte["consulta_id"]}.xlsx"'})
+
 MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
             "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 DIAS_ES  = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]

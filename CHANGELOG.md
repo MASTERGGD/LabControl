@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Reportes de Química con fuentes propias y Excel del mismo corte — 2026-11-07
+
+### Problema y comportamiento resultante
+El reporte mensual de Química se calculaba desde sesiones y asignaciones de PCs, sin integrar directamente las prácticas, su asistencia, reactivos y residuos. Química y Agroindustria ahora utilizan un servicio específico para mensual y comparativo; los demás laboratorios conservan su reporte. Se separan sesiones programadas, prácticas distintas por raíz, ejecución iniciada, cierre real, estados de sesión y estados originales del plan. Se distinguen alumnos únicos con asistencia registrada de asistencias acumuladas; PRESENTE y RETARDO cuentan, las faltas y justificaciones no. Participantes declarados permanecen informativos, sin inferir personas únicas ni investigación.
+
+Las horas usan inicio y cierre reales, zona America/Mexico_City e intervalos con fin exclusivo; se reparten al cruzar meses y conservan tiempo real incluso en cambios históricos de horario. Sin cierre no se utiliza fin estimado. Sesiones anteriores se identifican y no duplican prácticas iniciadas con la misma reserva/fecha local. Se muestran fuentes incompletas, materiales sin vínculo y ejecución académica sin asistencia. Una cancelación no elimina movimientos o evidencia existente.
+
+Entregas, consumos, devoluciones, mermas y ajustes se mantienen por material/lote/unidad/tipo y fecha de movimiento, separados de residuos e incidentes. Los incidentes espejo del inventario no duplican el conteo mensual. Existencias, activos, vencidos y alertas se muestran como situación actual de cualquier mes, no como reconstrucción histórica ni garantía de seguridad. La capacidad conserva su número sin asignarle una unidad no verificada. Cada indicador abre sus registros y los detalles se paginan.
+
+La pantalla y el Excel utilizan el mismo corte con ID, filtros, usuario, fecha y firma; descargar verifica integridad, propietario y permisos vigentes, sin recalcular. Tolera la normalización numérica JSON del navegador y escribe los textos como texto, no fórmulas. El corte queda en memoria de la página y expira en 24 horas: no es archivo permanente del servidor. El comparativo utiliza el mismo cálculo por cuatrimestres calendario, deduplicando personas y prácticas en todo el intervalo y señalando periodos parciales. Fuentes, criterios, límites y aceptación en docs/REPORTES_QUIMICA.md.
+
+### Validación y estado
+40 suites y 164 pruebas frontend aprobadas; Vite aprobado con los avisos existentes de tamaño e importación mixta de offlineStore. 61 pruebas backend dirigidas aprobadas: 45 regresiones de seguimiento, programación y creación, y 16 casos del reporte (ejecutados en la validación final). Datos ficticios y base aislada. Volúmenes persistentes de backend y PostgreSQL verificados activos. Sin migraciones ni modificaciones de registros operativos reales. Pendiente: publicación, comprobación pública y revisión visual autenticada con datos reales. Confirmar unidad de capacidad y valorar archivo permanente y conciliación de correcciones académicas posteriores. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Jerarquía visual y contexto del historial de laboratorio — 2026-11-07
 
 ### Problema y comportamiento resultante
