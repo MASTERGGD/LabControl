@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Prioridad operativa y distribución del panel — 2026-11-06
+## [3cafa1c] — Prioridad operativa y distribución del panel — 2026-11-06
 
 ### Problema y comportamiento resultante
 Se repetían las próximas reservaciones en agenda y resumen, las acciones frecuentes dejaban espacio desigual y la criticidad dependía demasiado del color. Se elimina la métrica duplicada: el resumen conserva activos, préstamos e incidentes. Las alertas positivas explicitan Preparar materiales, Planificar reposición, Revisar vencimiento o Revisar antes de usar; se conserva ámbar para pendientes y rojo para caducados.
@@ -14,7 +14,7 @@ Las acciones frecuentes usan cuatro columnas en escritorio, dos en tableta y una
 ### Validación y publicación
 31 suites y 122 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Dos pruebas nuevas cubren las etiquetas operativas, la ausencia de reservaciones duplicadas y la transición de reintento a carga sin bloquear navegación. Sin cambios de backend, permisos, migraciones ni datos. Cambios ajenos conservados y excluidos.
 
-Estado: preparado y validado localmente; pendiente verificar publicación. La revisión visual autenticada queda pendiente con el responsable. Esta mejora no atribuye ni corrige una causa nueva del fallo de carga de alertas.
+Publicado el 6 de noviembre de 2026 y verificado a las 23:14 de Ciudad de México (7 de noviembre, 05:14 UTC). Railway confirmó SUCCESS para backend (`08cdb3fe-cbc9-49a1-990d-d9718b877be7`) y frontend (`20913119-ac43-413c-a5f2-76c36abda770`) del commit `3cafa1c`. Web, JavaScript y CSS HTTP 200; etiquetas de criticidad y reposición presentes, y cuadrícula de acciones de cuatro columnas comprobada en CSS publicado. API HTTP 200/healthy. La revisión visual autenticada queda pendiente con el responsable. Esta mejora no atribuye ni corrige una causa nueva del fallo de carga de alertas.
 
 ---
 
