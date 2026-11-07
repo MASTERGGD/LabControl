@@ -910,6 +910,7 @@ function ModalMiReservacion({ slot, sesionActiva, onClose, onCancelada, onSesion
     setCancelando(true);
     try {
       await api.delete(`/horarios/reservaciones/${r.id}`, { data: { motivo: motivoCancelacion.trim() || undefined } });
+      window.dispatchEvent(new Event('labcontrol:reserva-cancelada'));
       onCancelada(); onClose();
     } catch (err) {
       alert(getApiErrorMessage(err, 'Error al cancelar'));
@@ -2440,7 +2441,6 @@ export default function SesionClase() {
 
   return (
     <AdminLayout>
-      <AgendaPracticasDocente />
 
       {/* ── Panel: Solicitudes recibidas (otro docente quiere mi espacio) ──── */}
       {solicRecibidas.length > 0 && (
@@ -2526,6 +2526,8 @@ export default function SesionClase() {
           </button>
         </div>
       </div>
+
+      <div className="mb-4"><AgendaPracticasDocente /></div>
 
       {/* Filtros */}
       <div

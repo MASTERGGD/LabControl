@@ -290,9 +290,19 @@ def agenda_docente(periodo_id: int | None = None, historial: bool = False,
     hoy = now_mx().date()
     practicas = contexto_docente(db, user.id, periodo_id, None if historial else hoy,
                                hoy + dt.timedelta(days=120) if not historial else None)
-    if not historial:
+    if historial:
+        practicas = [p for p in practicas if p.estado in {'CERRADA', 'CANCELADA'}]
+        practicas.sort(key=lambda p: (p.fecha_sesion, p.id), reverse=True)
+    else:
+        practicas = [p for p in practicas if p.estado in {'SOLICITADA', 'PREPARADA', 'EN_CURSO'}]
+        abiertas_anteriores = db.query(PracticaLaboratorio).join(Reservacion).filter(
+            Reservacion.docente_id == user.id, PracticaLaboratorio.estado == 'EN_CURSO',
+            PracticaLaboratorio.fecha_sesion < hoy).all()
+        if periodo_id: abiertas_anteriores = [p for p in abiertas_anteriores if p.reservacion.periodo_id == periodo_id]
+        practicas += abiertas_anteriores
         pendientes = db.query(PracticaLaboratorio).join(Reservacion).filter(Reservacion.docente_id == user.id,
-            PracticaLaboratorio.plan_estado == 'PENDIENTE_CONTINUACION').all()
+            PracticaLaboratorio.plan_estado == 'PENDIENTE_CONTINUACION',
+            PracticaLaboratorio.estado == 'CERRADA').all()
         if periodo_id: pendientes = [p for p in pendientes if p.reservacion.periodo_id == periodo_id]
         incluidos = {p.id for p in practicas}
         practicas += [p for p in pendientes if p.id not in incluidos]

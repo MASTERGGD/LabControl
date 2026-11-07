@@ -44,7 +44,9 @@ function PracticasLaboratorio() {
   const [laboratorioId, setLaboratorioId] = useState(usuario?.rol !== 'DOCENTE' && usuario?.laboratorio_id ? String(usuario.laboratorio_id) : (searchParams.get('laboratorio_id') || ''));
   const [insumos, setInsumos] = useState([]);
   const [practicas, setPracticas] = useState([]);
-  const [vista, setVista] = useState('ACTIVAS');
+  const vistaUrl = searchParams.get('vista') === 'HISTORIAL' ? 'HISTORIAL' : 'ACTIVAS';
+  const [vista, setVista] = useState(vistaUrl);
+  useEffect(() => { setVista(vistaUrl); setPagina(1); setDetalleAbierto(null); }, [vistaUrl]);
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const [consulta, setConsulta] = useState(filtrosIniciales);
   const [pagina, setPagina] = useState(1);
@@ -123,6 +125,7 @@ function PracticasLaboratorio() {
 
   const cambiarVista = nueva => {
     setVista(nueva); setPagina(1); setDetalleAbierto(null);
+    setSearchParams(actual => { const params = new URLSearchParams(actual); params.set('vista', nueva); params.delete('practica_id'); params.delete('estado'); return params; });
     const nuevos = { ...filtros, estado: '' };
     setFiltros(nuevos); setConsulta(nuevos);
   };

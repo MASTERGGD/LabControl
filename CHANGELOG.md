@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Agenda docente compacta y cancelaciones en historial — 2026-11-07
+
+### Problema y comportamiento resultante
+La consulta de agenda incluía cancelaciones mientras su fecha siguiera siendo futura, y la interfaz mostraba todas las filas sobre el encabezado del horario. La agenda operativa ahora excluye canceladas y sesiones cerradas, conserva las sesiones en curso aunque su fecha sea anterior y muestra hasta tres actividades, priorizando en curso y hoy antes de próximas fechas. La consulta completa sigue disponible desde el enlace con contador.
+
+Las prácticas cerradas pendientes de decidir continuación se agrupan por práctica en un bloque desplegable separado; una cancelada no reaparece por conservar un indicador de continuación. El historial conserva canceladas y cerradas sin eliminar registros. Los enlaces abren directamente Activas o Historial en la consulta paginada existente, con sus filtros y búsqueda; en el historial académico se muestra solo un acceso compacto al historial de laboratorio. El encabezado de cada pantalla precede al resumen. Sin próximas actividades se muestra una franja breve; los errores mantienen reintento y no se presentan como ausencia confirmada.
+
+Las cancelaciones exitosas desde los dos controles de la cuadrícula actualizan la agenda y muestran durante seis segundos una confirmación de liberación. El sondeo y el enfoque de ventana actualizan los datos sin conservar respuestas tardías de otro periodo. Sin cambios de reservaciones reales, permisos, esquema ni asistencia; se modifica la consulta y presentación.
+
+### Validación y estado
+38 suites y 153 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. 40 pruebas backend dirigidas aprobadas. Siete pruebas frontend nuevas cubren 30 actividades con tres filas, orden por prioridad, canceladas fuera del resumen, decisiones agrupadas, error/reintento, confirmación temporal y acceso directo al historial; tres pruebas backend nuevas verifican exclusión de terminales, conservación del historial, decisión solo para una raíz cerrada y permanencia de sesiones antiguas en curso. Pruebas con datos ficticios y base aislada.
+
+Preparado localmente; pendiente publicación y verificación del despliegue, además de revisión visual autenticada del docente. Sin migraciones. Cambios ajenos conservados y excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Solicitud académica o individual de laboratorio — 2026-11-07
 
 ### Problema y comportamiento resultante

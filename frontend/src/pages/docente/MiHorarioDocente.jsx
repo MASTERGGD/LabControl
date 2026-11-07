@@ -894,7 +894,6 @@ export default function MiHorarioDocente() {
 
   return (
     <AdminLayout>
-      <AgendaPracticasDocente />
       <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -918,6 +917,8 @@ export default function MiHorarioDocente() {
             {esPeriodoActual && reposicionesPendientes.length > 0 && <button type="button" onClick={() => abrirReposicion()} className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300">Programar reposición ({reposicionesPendientes.length})</button>}
           </div>
         </div>
+
+        <AgendaPracticasDocente periodoId={periodoId || undefined}/>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
         {cierre && cierre.estado !== 'ACTIVO' && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA')) && (

@@ -381,3 +381,37 @@ def test_cors_conserva_origen_en_preflight_y_rechazo_de_solicitud():
     assert preflight.headers.get('access-control-allow-origin') in {origin,'*'}
     respuesta=client.post('/practicas-laboratorio/programacion/validar',headers={'Origin':origin},json={})
     assert respuesta.status_code==401 and respuesta.headers.get('access-control-allow-origin') in {origin,'*'}
+
+def test_agenda_excluye_canceladas_y_finalizadas_pero_conserva_historial(plan,db):
+    client,payload,_,_=plan
+    data=client.post('/practicas-laboratorio/programacion',json=payload).json()
+    ids=[p['id'] for p in data['sesiones']]
+    db.get(PracticaLaboratorio,ids[0]).estado='CANCELADA'
+    db.get(PracticaLaboratorio,ids[1]).estado='CERRADA'
+    db.commit()
+    agenda=client.get('/practicas-laboratorio/agenda-docente').json()
+    assert [p['id'] for p in agenda]==[ids[2]]
+    historial=client.get('/practicas-laboratorio/agenda-docente?historial=true').json()
+    assert [p['id'] for p in historial]==[ids[1],ids[0]]
+    assert db.query(PracticaLaboratorio).count()==3
+
+
+def test_decision_pendiente_solo_aparece_para_raiz_cerrada_y_no_cancelada(plan,db):
+    client,payload,_,_=plan
+    data=client.post('/practicas-laboratorio/programacion',json=payload).json()
+    raiz=db.get(PracticaLaboratorio,data['practica_id']);raiz.estado='CERRADA';raiz.plan_estado='PENDIENTE_CONTINUACION'
+    for p in data['sesiones'][1:]:db.get(PracticaLaboratorio,p['id']).estado='CANCELADA'
+    db.commit()
+    agenda=client.get('/practicas-laboratorio/agenda-docente').json()
+    assert [p['id'] for p in agenda]==[raiz.id] and agenda[0]['plan_estado']=='PENDIENTE_CONTINUACION'
+    raiz.estado='CANCELADA';db.commit()
+    assert client.get('/practicas-laboratorio/agenda-docente').json()==[]
+
+
+def test_agenda_no_oculta_una_sesion_en_curso_de_fecha_anterior(plan,db):
+    client,payload,_,_=plan
+    data=client.post('/practicas-laboratorio/programacion',json=payload).json()
+    raiz=db.get(PracticaLaboratorio,data['practica_id']);raiz.fecha_sesion=dt.date(2026,11,2);raiz.reservacion.fecha_actividad=raiz.fecha_sesion;raiz.estado='EN_CURSO';db.commit()
+    agenda=client.get('/practicas-laboratorio/agenda-docente').json()
+    assert raiz.id in {p['id'] for p in agenda}
+    assert next(p for p in agenda if p['id']==raiz.id)['estado']=='EN_CURSO'

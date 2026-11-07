@@ -557,7 +557,6 @@ export default function DashboardDocente() {
 
   return (
     <AdminLayout>
-      <AgendaPracticasDocente soloExtra/>
       <div className="siga-flip7-panel siga-flip7-panel--docente w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {modoLocal && !(offlineAccess && navigator.onLine) && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>{navigator.onLine ? 'Trabajando con datos descargados' : 'Modo sin conexión'}</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}
@@ -574,6 +573,8 @@ export default function DashboardDocente() {
             {[periodo?.clave, semana && `Semana ${semana}`, new Date().toLocaleDateString('es-MX', { timeZone: MEXICO_TIME_ZONE, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })].filter(Boolean).join(' · ')}
           </p>
         </div>
+
+        <AgendaPracticasDocente soloExtra periodoId={periodo?.id}/>
 
         {!offlineAccess && !modoLocal && (
           <section aria-label="Preparación para trabajar sin conexión" className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-sm ${themeKey === 'day' ? 'border-slate-200 bg-white text-slate-700' : 'border-slate-700 bg-slate-800/40 text-slate-300'}`}>

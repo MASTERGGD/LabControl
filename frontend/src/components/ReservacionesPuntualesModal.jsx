@@ -24,6 +24,7 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
       await api.delete(`/horarios/reservaciones/${seleccionada.id}`, {
         data: { motivo: motivo.trim() || undefined },
       });
+      window.dispatchEvent(new Event('labcontrol:reserva-cancelada'));
       onActualizada();
       onClose();
     } catch (err) {

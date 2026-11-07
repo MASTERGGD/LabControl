@@ -194,8 +194,9 @@ export default function HistorialClasesDocente() {
 
   return (
     <AdminLayout>
-      <AgendaPracticasDocente historial/><main className="mx-auto w-full max-w-7xl space-y-5">
+      <main className="mx-auto w-full max-w-7xl space-y-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">Actividad académica</p><h1 className="mt-1 text-2xl font-bold text-white">Historial de clases</h1><p className="mt-1 text-sm text-slate-400">Consulta muchas sesiones rápidamente y despliega solo el detalle que necesites.</p></div><button onClick={() => navigate('/docente/horario')} className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/5">Ver mi horario</button></header>
+      <AgendaPracticasDocente historial/>
       <section className="grid gap-3 sm:grid-cols-3"><Kpi valor={filtradas.length} etiqueta="Sesiones registradas" detalle={(busqueda || periodo !== 'TODOS' || estado !== 'TODOS' || filtroEspecial !== 'TODAS' || desde || hasta) ? 'Resultado de los filtros activos' : 'Historial disponible'}/><Kpi valor={`${resumen.concluidas} de ${filtradas.length}`} etiqueta="Capturas concluidas" detalle={resumen.pendientes ? `${resumen.pendientes} pendiente${resumen.pendientes === 1 ? '' : 's'} · ver en captura` : `${resumen.impartidas} ${resumen.impartidas === 1 ? 'impartida' : 'impartidas'} · ${resumen.noImpartidas} ${resumen.noImpartidas === 1 ? 'no impartida' : 'no impartidas'}`} tono={resumen.pendientes ? 'text-amber-400' : 'text-emerald-400'} onClick={resumen.pendientes ? () => setEstado('ABIERTA') : undefined}/><Kpi valor={resumen.asistencia == null ? '—' : `${resumen.asistencia}%`} etiqueta="Asistencia acumulada" detalle="Solo clases impartidas con lista" tono={resumen.asistencia != null && resumen.asistencia < 80 ? 'text-amber-400' : 'text-slate-300'}/></section>
       <section className="glass space-y-4 rounded-2xl p-4">
         <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">

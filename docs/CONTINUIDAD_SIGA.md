@@ -49,3 +49,8 @@ Los accesos docentes del panel y la cuadrícula comparten `ProgramarPractica`. P
 La migración aditiva `f7a8b9c0d1e2` agrega propósito, indicador de práctica y participantes a cada sesión. El propósito nulo de una sesión anterior sin carga significa SIN_VINCULACION; nunca inferir investigación a partir de la ausencia de carga. Su vinculación es explícita, conserva los datos anteriores y valida correspondencia y conflictos. No reclasificar ni cancelar reservaciones reales para verificar la publicación.
 
 El modo Docente no hereda privilegios del rol adicional de responsable para evitar requisitos académicos. El inicio mediante la reservación reconoce su seguimiento propio y no debe permitir abrir una segunda sesión que omita la preparación o bitácora. Las fallas al consultar carga deben distinguirse de una respuesta vacía confirmada. Los avisos continúan dependiendo de que SIGA esté abierto; la revisión CORS no garantiza disponibilidad durante una interrupción del servicio.
+
+
+## Resumen de agenda docente (7 de noviembre de 2026)
+
+La agenda operativa excluye canceladas y cerradas, salvo la raíz cerrada con decisión explícita pendiente de continuación. Las sesiones en curso no se ocultan por tener fecha anterior. El resumen muestra como máximo tres actividades ordenadas por prioridad; las decisiones se agrupan por práctica en un desplegable. El historial conserva los registros terminales y se consulta mediante la vista HISTORIAL de la pantalla paginada de sesiones y prácticas. No volver a colocar un listado histórico completo encima del horario docente ni usar la existencia de una cancelación como alerta permanente.

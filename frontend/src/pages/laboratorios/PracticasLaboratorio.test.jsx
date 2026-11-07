@@ -89,3 +89,10 @@ test('enlace directo abre la sesión exacta y el cierre confirma la liberación 
   expect(api.put).toHaveBeenCalledWith('/practicas-laboratorio/45/asistencia',expect.objectContaining({alumnos:expect.any(Array)}));
   expect(api.post).toHaveBeenCalledWith('/practicas-laboratorio/45/cerrar',expect.objectContaining({finalizar_practica:true,cancelar_futuras:true}));
 });
+
+test('enlace al historial abre directamente la vista con canceladas y conserva el acceso a activas',async()=>{
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/docente/practicas-laboratorio?vista=HISTORIAL']}><PracticasLaboratorio/></MemoryRouter>));
+ const llamada=api.get.mock.calls.filter(([url])=>url.includes('/seguimiento?')).at(-1)[0];expect(new URLSearchParams(llamada.split('?')[1]).get('vista')).toBe('HISTORIAL');
+ expect(container.querySelector('article').textContent).toContain('CANCELADA');
+ await click('Activas');expect(container.querySelector('article').textContent).toContain('SOLICITADA');
+});
