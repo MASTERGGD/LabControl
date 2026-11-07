@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Acciones de alertas según disponibilidad de datos — 2026-11-06
+
+### Problema y comportamiento resultante
+Los botones del bloque de alertas permanecían activos aunque sus indicadores no estuvieran disponibles. Ahora se deshabilitan durante la carga, ante un error o cuando su contador no es un número válido; recuperan su disponibilidad al recibir la respuesta correcta. Los accesos independientes de Acciones frecuentes siguen disponibles para una categoría confirmada, permitiendo continuar trabajando aunque falle el resumen.
+
+Se mantienen los badges de próximos a vencer en ámbar y caducados en rojo exclusivamente para cantidades positivas, con etiquetas explícitas de acción; cero confirmado no genera badges. No cambia inventario, permisos ni categorías reales.
+
+### Validación y estado
+33 suites y 132 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Dos pruebas nuevas cubren bloqueo de botones de alertas, navegación independiente, recuperación al reintentar y badges solo para cantidades positivas; se actualiza la prueba de carga para distinguir navegación de acciones del resumen. Cambios ajenos preservados.
+
+Preparado localmente; no publicado. Incluye la corrección local anterior de identificación del laboratorio. Pendiente: publicación y revisión visual autenticada con datos representativos.
+
+---
+
 ## Preparado — Identificación del laboratorio y permanencia de alertas — 2026-11-06
 
 ### Problema y comportamiento resultante

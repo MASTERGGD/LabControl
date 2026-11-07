@@ -77,10 +77,12 @@ test('reintentar cambia el error por esqueletos y conserva la navegación dispon
  expect(container.querySelector('[aria-label="Prioridades del laboratorio"]').getAttribute('aria-busy')).toBe('true');
  expect(container.querySelector('[role="alert"]')).toBeNull();
  expect(container.querySelector('[aria-label="Cargando Insumos caducados"]')).not.toBeNull();
- await click('Revisar solicitudes');
+ expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Revisar solicitudes').disabled).toBe(true);
+ await click('Revisar prácticas solicitadas');
  expect(navigate).toHaveBeenLastCalledWith('/admin/practicas-laboratorio?laboratorio_id=4&estado=SOLICITADA');
  await act(async()=>resolver({data:{insumos_total:0,stock_bajo:0,reactivos_por_vencer:0,insumos_caducados:0,practicas_solicitadas:0,alertas_insumos:{}}}));
  expect(container.querySelector('.op-skeleton')).toBeNull();
+ expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Revisar solicitudes').disabled).toBe(false);
 });
 
 test('identificación pendiente o fallida conserva el bloque de alertas sin asumir una categoría',async()=>{
@@ -110,4 +112,25 @@ test('contador de agenda distingue cero confirmado de datos no disponibles',asyn
  expect(container.querySelector('[aria-label="Resumen operativo"]').querySelectorAll('article')).toHaveLength(3);
  await render({stats:null,errorStats:true});
  expect(container.querySelector('[aria-label="0 próximas reservaciones"]')).toBeNull();
+});
+
+
+test('el error bloquea solo las acciones del resumen de alertas y reintentar las recupera',async()=>{
+ api.get.mockRejectedValueOnce(new Error('Sin red'));
+ await render();
+ const bloque=container.querySelector('[aria-label="Prioridades del laboratorio"]');
+ const acciones=[...bloque.querySelectorAll('.op-priority-action')];
+ expect(acciones).toHaveLength(4);
+ expect(acciones.every(b=>b.disabled)).toBe(true);
+ await act(async()=>acciones[0].click());expect(navigate).not.toHaveBeenCalled();
+ await click('Revisar prácticas solicitadas');expect(navigate).toHaveBeenCalled();
+ await click('Reintentar alertas');
+ expect([...container.querySelectorAll('.op-priority-action')].every(b=>!b.disabled)).toBe(true);
+});
+
+test('badges de vencimiento y caducados aparecen únicamente con cantidades positivas',async()=>{
+ await render();expect(container.querySelectorAll('.op-badge')).toHaveLength(0);
+ api.get.mockResolvedValueOnce({data:{insumos_total:2,stock_bajo:0,reactivos_por_vencer:1,insumos_caducados:1,practicas_solicitadas:0,alertas_insumos:{}}});
+ await act(async()=>window.dispatchEvent(new Event('focus')));
+ expect([...container.querySelectorAll('.op-badge')].map(el=>el.textContent)).toEqual(['Revisar vencimiento','Revisar antes de usar']);
 });
