@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Error al guardar prácticas y CORS — 2026-11-06
+## [419eedd] — Error al guardar prácticas y CORS — 2026-11-06
 
 ### Problema y causa verificada
 Al reservar con práctica, la reserva se creaba pero el POST de práctica respondía HTTP 500; el cliente cancelaba la reserva y mostraba Network Error. El registro persistente del servidor confirmó UndefinedColumn en incidentes_practica.activo_id durante la serialización de la respuesta. El modelo incluía esa referencia al equipo, pero las migraciones publicadas no creaban la columna. Las pruebas basadas en create_all de los modelos no reproducían esa diferencia.
@@ -15,7 +15,7 @@ Nueva migración d5e6f7a8b9c0 desde c4d5e6f7a8b9: agrega activo_id nullable y su
 ### Validación y publicación
 24 pruebas backend aprobadas: creación real con materiales y notificación, fallo de respuesta sin commit, migración de tabla antigua conservando registros, CORS de error interno en la aplicación real, catálogo de materiales y controles de seguridad existentes. Validación con datos ficticios y base aislada; no se crean ni cancelan reservaciones reales para probar. Cambios previos de otros módulos conservados y excluidos de esta entrega.
 
-Estado: preparado; pendiente aplicar la migración mediante el despliegue y comprobar web/API. No se eliminan automáticamente los registros del intento fallido del usuario. La confirmación funcional autenticada en producción queda pendiente del reintento del docente.
+Publicado el 6 de noviembre de 2026 y verificado a las 20:35 de Ciudad de México (7 de noviembre, 02:35 UTC). Railway confirmó SUCCESS para backend (`f3ce4984-08ad-4c47-b689-5c9274f019ae`) y frontend (`a907afa0-74b9-4806-a8f0-1538111684e3`) del commit `419eedd`. El arranque del backend confirmó upgrade c4d5e6f7a8b9 a d5e6f7a8b9c0 y migraciones aplicadas. Web y salud de API HTTP 200/healthy; preflight POST HTTP 200 con el origen autorizado, y rechazo anónimo HTTP 401 también con CORS. No se eliminan automáticamente los registros del intento fallido del usuario. La confirmación funcional autenticada en producción queda pendiente del reintento del docente.
 
 ---
 
