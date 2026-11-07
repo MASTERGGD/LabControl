@@ -311,14 +311,24 @@ def resumen_laboratorio(laboratorio_id: int, db: Session = Depends(get_db), user
     _lab_para_usuario(db, laboratorio_id, user)
     practicas = db.query(PracticaLaboratorio).join(Reservacion).filter(Reservacion.laboratorio_id == laboratorio_id).all()
     insumos = db.query(InsumoLaboratorio).filter(InsumoLaboratorio.laboratorio_id == laboratorio_id, InsumoLaboratorio.activo == True).all()
+    hoy = now_mx().date()
+    limite = hoy + datetime.timedelta(days=30)
+    bajos = [i for i in insumos if i.cantidad_disponible <= i.stock_minimo]
+    caducados = [i for i in insumos if i.caduca_en and i.caduca_en < hoy]
+    por_vencer = sorted([i for i in insumos if i.categoria == "REACTIVO" and i.caduca_en and hoy <= i.caduca_en <= limite], key=lambda i: i.caduca_en)
+    def muestra(items):
+        return [{"id": i.id, "nombre": i.nombre, "existencia": i.cantidad_disponible, "unidad": i.unidad,
+            "caduca_en": i.caduca_en.isoformat() if i.caduca_en else None} for i in items[:5]]
     return {
+        "insumos_total": len(insumos), "reactivos_por_vencer": len(por_vencer), "por_vencer_dias": 30,
+        "alertas_insumos": {"stock_bajo": muestra(bajos), "por_vencer": muestra(por_vencer), "caducados": muestra(caducados)},
         "practicas_total": len(practicas),
         "practicas_solicitadas": sum(p.estado == "SOLICITADA" for p in practicas),
         "practicas_en_curso": sum(p.estado == "EN_CURSO" for p in practicas),
         "practicas_cerradas": sum(p.estado == "CERRADA" for p in practicas),
         "incidentes": sum(len(p.incidentes) for p in practicas),
-        "stock_bajo": sum(i.cantidad_disponible <= i.stock_minimo for i in insumos),
-        "insumos_caducados": sum(bool(i.caduca_en and i.caduca_en < datetime.date.today()) for i in insumos),
+        "stock_bajo": len(bajos),
+        "insumos_caducados": len(caducados),
         "cantidad_consumida": round(sum(m.cantidad_consumida for p in practicas for m in p.materiales), 3),
         "mermas": round(sum(m.cantidad_merma for p in practicas for m in p.materiales), 3),
     }

@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Panel operativo de Química y Agroindustria — 2026-11-06
+
+### Problema y comportamiento resultante
+El panel mostraba ceros ambiguos, no distinguía errores de consulta y repetía enlaces generales sin priorizar preparación ni insumos. Ahora presenta prácticas pendientes de preparar, insumos en mínimo o sin existencias, reactivos por vencer de hoy a 30 días e insumos caducados, con conteos separados, muestra de hasta cinco registros afectados y enlaces a las listas filtradas del laboratorio. La caducidad usa la fecha de Ciudad de México y excluye inactivos.
+
+Las métricas explican ausencia de registros o pendientes; las consultas fallidas muestran guiones, mensajes y reintento, sin convertirse en cero ni agenda vacía. Se controla la respuesta vigente al cambiar laboratorio. La agenda ofrece Ver calendario completo y los accesos frecuentes abren solicitudes pendientes, entradas de insumos, préstamos activos y mantenimiento. Agregar primer activo abre el formulario solo con permiso inventario:write; Registrar primer insumo abre su captura. Las rutas conservan el laboratorio seleccionado y los enlaces a insumos desplazan a la sección correspondiente después de cargarla. No se agrega creación de reservaciones desde el panel ni se amplían permisos.
+
+### Validación y publicación
+31 suites y 118 pruebas frontend aprobadas; 17 pruebas backend dirigidas aprobadas. Nuevas pruebas verifican ceros explicados, fallos/reintento, destinos con contexto, límites de caducidad hoy/30/31 días, stock mínimo, insumos inactivos y aislamiento de laboratorio. Compilación aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Sin migraciones ni modificación de inventarios reales; cambios previos de otros módulos preservados y excluidos.
+
+Estado: preparado y validado localmente; pendiente verificar publicación en Railway. Las pruebas funcionales usan datos ficticios en base aislada.
+
+---
+
 ## [217cd4a] — Menú de prácticas según actividad del docente — 2026-11-06
 
 ### Problema y comportamiento resultante

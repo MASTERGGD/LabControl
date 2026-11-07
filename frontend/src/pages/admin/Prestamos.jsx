@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -214,8 +215,9 @@ export default function Prestamos() {
   const [error, setError]               = useState('');
 
   // ── Filtros ──
-  const [filtroEstado, setFiltroEstado]   = useState('');
-  const [filtroLab, setFiltroLab]         = useState('');
+  const [searchParams] = useSearchParams();
+  const [filtroEstado, setFiltroEstado]   = useState(['ACTIVO', 'VENCIDO'].includes(searchParams.get('estado')) ? searchParams.get('estado') : '');
+  const [filtroLab, setFiltroLab]         = useState(searchParams.get('laboratorio_id') || '');
   const [filtroTexto, setFiltroTexto]     = useState('');
 
   // ── Modales ──

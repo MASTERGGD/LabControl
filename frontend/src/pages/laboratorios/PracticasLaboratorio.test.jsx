@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import PracticasLaboratorio from './PracticasLaboratorio';
@@ -30,7 +31,7 @@ beforeEach(() => {
   api.post.mockResolvedValue({data:{}});
 });
 afterEach(() => { act(() => root.unmount()); container.remove(); });
-const render = async () => act(async () => root.render(<PracticasLaboratorio />));
+const render = async () => act(async () => root.render(<MemoryRouter><PracticasLaboratorio /></MemoryRouter>));
 
 test('vista activa compacta abre detalle y separa canceladas en historial', async () => {
   await render();

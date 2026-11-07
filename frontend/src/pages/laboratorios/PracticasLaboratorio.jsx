@@ -1,8 +1,9 @@
+import { useSearchParams, useLocation } from 'react-router-dom';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
-import { formatDateInMexico } from '../../utils/timezone';
+import { formatDateInMexico, todayISOInMexico } from '../../utils/timezone';
 import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 
 const card = 'rounded-2xl border p-5';
@@ -19,15 +20,19 @@ const coloresEstado = {
 
 function PracticasLaboratorio() {
   const { usuario } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const alertaInsumos = searchParams.get('alerta') || '';
+  const filtrosIniciales = { ...filtrosVacios, estado: searchParams.get('estado') === 'SOLICITADA' ? 'SOLICITADA' : '' };
   const esDocente = usuario?.rol === 'DOCENTE';
   const puedePreparar = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol);
   const [laboratorios, setLaboratorios] = useState([]);
-  const [laboratorioId, setLaboratorioId] = useState(usuario?.laboratorio_id ? String(usuario.laboratorio_id) : '');
+  const [laboratorioId, setLaboratorioId] = useState(usuario?.laboratorio_id ? String(usuario.laboratorio_id) : (searchParams.get('laboratorio_id') || ''));
   const [insumos, setInsumos] = useState([]);
   const [practicas, setPracticas] = useState([]);
   const [vista, setVista] = useState('ACTIVAS');
-  const [filtros, setFiltros] = useState(filtrosVacios);
-  const [consulta, setConsulta] = useState(filtrosVacios);
+  const [filtros, setFiltros] = useState(filtrosIniciales);
+  const [consulta, setConsulta] = useState(filtrosIniciales);
   const [pagina, setPagina] = useState(1);
   const [revision, setRevision] = useState(0);
   const [cargandoSeguimiento, setCargandoSeguimiento] = useState(false);
@@ -40,7 +45,7 @@ function PracticasLaboratorio() {
   const [mensaje, setMensaje] = useState('');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
-  const [nuevoInsumo, setNuevoInsumo] = useState(false);
+  const [nuevoInsumo, setNuevoInsumo] = useState(searchParams.get('accion') === 'registrar-insumo');
   const [stockForm, setStockForm] = useState({ nombre: '', categoria: 'CONSUMIBLE', unidad: 'PIEZA', cantidad_disponible: 0, stock_minimo: 0, codigo_cas: '', lote: '', caduca_en: '', ubicacion_almacen: '', ficha_seguridad_url: '' });
   const [reporte, setReporte] = useState({ resultados: '', conclusiones: '', observaciones_docente: '' });
   const [resumen, setResumen] = useState(null);
@@ -101,6 +106,12 @@ function PracticasLaboratorio() {
   };
   const actualizar = () => { cargar(); setRevision(v => v + 1); };
 
+  useEffect(() => {
+    if (!location.hash.startsWith('#insumo')) return;
+    const elemento = document.getElementById(location.hash.slice(1));
+    elemento?.scrollIntoView?.({ block: 'start' });
+  }, [location.hash, insumos]);
+
   const bloquesReservacion = useMemo(() => {
     const bloques = new Map();
     for (const reservacion of reservaciones) {
@@ -131,7 +142,7 @@ function PracticasLaboratorio() {
     });
   }, [bloquesReservacion, seguimiento.reservaciones_con_practica, esDocente, laboratorioId, laboratorios]);
   const reservacionSeleccionada = reservaciones.find(r => Number(r.id) === Number(seleccion));
-  const hoyLocal = fechaLocal(new Date());
+  const hoyLocal = todayISOInMexico();
   const mananaLocal = fechaLocal(new Date(Date.now() + 24 * 60 * 60 * 1000));
   const proximaPractica = seguimiento.proxima;
 
@@ -265,7 +276,7 @@ function PracticasLaboratorio() {
         </details>
       </div>}
 
-      {puedePreparar && laboratorioId && <section className={`${card} space-y-4`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
+      {puedePreparar && laboratorioId && <section id="insumos" className={`${card} space-y-4`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
         {resumen && <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">{[
           ['Total prácticas', resumen.practicas_total], ['Solicitadas', resumen.practicas_solicitadas], ['En curso', resumen.practicas_en_curso],
           ['Cerradas', resumen.practicas_cerradas], ['Stock bajo', resumen.stock_bajo], ['Incidentes', resumen.incidentes],
@@ -285,7 +296,13 @@ function PracticasLaboratorio() {
           <input className={`${field} md:col-span-2`} type="url" placeholder="URL de ficha de seguridad" value={stockForm.ficha_seguridad_url} onChange={e => setStockForm({ ...stockForm, ficha_seguridad_url: e.target.value })}/>
           <button className={`${btn} bg-emerald-700 text-white md:col-span-4`}>Guardar insumo</button>
         </form>}
-        <div className="grid gap-2 md:grid-cols-2">{insumos.map(i => <div key={i.id} className="rounded-xl border p-3" style={{ borderColor: i.stock_bajo || i.caducado ? '#ef4444' : 'var(--surface-border)' }}>
+        {alertaInsumos && <p className="text-sm font-semibold">{alertaInsumos === 'por_vencer' ? 'Reactivos por vencer en los próximos 30 días' : alertaInsumos === 'caducados' ? 'Insumos caducados' : 'Insumos en mínimo o sin existencias'} · <button className="underline" onClick={() => { const params = new URLSearchParams(searchParams); params.delete('alerta'); setSearchParams(params); }}>Ver todos los insumos</button></p>}
+        <div className="grid gap-2 md:grid-cols-2">{insumos.filter(i => {
+          if (alertaInsumos === 'stock_bajo') return i.stock_bajo;
+          if (alertaInsumos === 'caducados') return i.caducado;
+          if (alertaInsumos === 'por_vencer') { const limite = new Date(hoyLocal + 'T12:00:00'); limite.setDate(limite.getDate() + 30); return i.categoria === 'REACTIVO' && i.caduca_en >= hoyLocal && i.caduca_en <= fechaLocal(limite); }
+          return true;
+        }).map(i => <div id={`insumo-${i.id}`} key={i.id} className="rounded-xl border p-3" style={{ borderColor: i.stock_bajo || i.caducado ? '#ef4444' : 'var(--surface-border)' }}>
           <div className="flex justify-between gap-2"><strong style={{ color: 'var(--text-primary)' }}>{i.nombre}</strong><span className="text-sm">{i.cantidad_disponible} {i.unidad}</span></div>
           <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>{i.categoria}{i.codigo_cas ? ` · CAS ${i.codigo_cas}` : ''}{i.lote ? ` · Lote ${i.lote}` : ''}{i.caduca_en ? ` · Caduca ${i.caduca_en}` : ''}</p>
           {i.ficha_seguridad_url && <a className="mr-3 text-xs text-blue-600 underline" href={i.ficha_seguridad_url} target="_blank" rel="noreferrer">Ficha de seguridad</a>}

@@ -2630,7 +2630,7 @@ export default function Inventario() {
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const vistaGrid = false;
   const setVistaGrid = () => {};
-  const [modalNuevo, setModalNuevo]       = useState(false);
+  const [modalNuevo, setModalNuevo]       = useState(puedeEditarInventario && searchParams.get('nuevo') === '1');
   const [activoEditar, setActivoEditar]   = useState(null);
   const [activoMover, setActivoMover]     = useState(null);
   const [activoBaja, setActivoBaja]       = useState(null);
