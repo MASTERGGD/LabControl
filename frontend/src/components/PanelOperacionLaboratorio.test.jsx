@@ -42,7 +42,7 @@ test('la carga muestra esqueletos y termina con ceros reales sin avisos de error
  await act(async()=>resolver({data:{insumos_total:0,stock_bajo:0,reactivos_por_vencer:0,insumos_caducados:0,practicas_solicitadas:0,alertas_insumos:{}}}));
  await render({stats,cargandoStats:false});
  expect(container.querySelector('.op-skeleton')).toBeNull();
- expect(container.querySelectorAll('.op-number')).toHaveLength(8);
+ expect(container.querySelectorAll('.op-number')).toHaveLength(7);
  expect([...container.querySelectorAll('.op-number')].every(el=>el.textContent==='0')).toBe(true);
 });
 
@@ -54,4 +54,31 @@ test('el error termina la carga, muestra folio y mantiene la jerarquía del pane
  expect(container.querySelector('[aria-label="Prioridades del laboratorio"]').getAttribute('aria-busy')).toBe('false');
  expect(container.querySelector('.op-skeleton')).toBeNull();
  expect([...container.querySelectorAll('h3')].map(el=>el.textContent)).toEqual(['Por atender en el laboratorio','Próximas reservaciones','Resumen operativo','Acciones frecuentes']);
+});
+
+
+test('las prioridades explican la acción y las reservaciones aparecen solo en la agenda',async()=>{
+ api.get.mockResolvedValueOnce({data:{insumos_total:4,stock_bajo:1,reactivos_por_vencer:1,insumos_caducados:1,practicas_solicitadas:2,alertas_insumos:{}}});
+ await render();
+ const prioridades=container.querySelector('[aria-label="Prioridades del laboratorio"]');
+ expect(prioridades.textContent).toContain('Preparar materiales');
+ expect(prioridades.textContent).toContain('Planificar reposición');
+ expect(prioridades.textContent).toContain('Revisar vencimiento');
+ expect(prioridades.textContent).toContain('Revisar antes de usar');
+ expect(container.querySelector('[aria-label="Resumen operativo"]').textContent).not.toContain('Próximas reservaciones');
+ expect(container.querySelector('[aria-label="Agenda del laboratorio"]').textContent).toContain('Próximas reservaciones');
+});
+
+test('reintentar cambia el error por esqueletos y conserva la navegación disponible',async()=>{
+ api.get.mockRejectedValueOnce(new Error('Sin red'));
+ await render();
+ let resolver;api.get.mockImplementationOnce(()=>new Promise(resolve=>{resolver=resolve;}));
+ await click('Reintentar alertas');
+ expect(container.querySelector('[aria-label="Prioridades del laboratorio"]').getAttribute('aria-busy')).toBe('true');
+ expect(container.querySelector('[role="alert"]')).toBeNull();
+ expect(container.querySelector('[aria-label="Cargando Insumos caducados"]')).not.toBeNull();
+ await click('Revisar solicitudes');
+ expect(navigate).toHaveBeenLastCalledWith('/admin/practicas-laboratorio?laboratorio_id=4&estado=SOLICITADA');
+ await act(async()=>resolver({data:{insumos_total:0,stock_bajo:0,reactivos_por_vencer:0,insumos_caducados:0,practicas_solicitadas:0,alertas_insumos:{}}}));
+ expect(container.querySelector('.op-skeleton')).toBeNull();
 });

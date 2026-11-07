@@ -54,8 +54,11 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
     ['Activos registrados', valorStats(stats?.activos_inventario), !stats?.activos_inventario ? 'Sin activos registrados' : 'Equipo y materiales en inventario', sinActivos && can('inventario:write') ? 'Agregar primer activo' : 'Consultar activos', () => navigate(ruta('/admin/inventario', sinActivos && can('inventario:write') ? 'nuevo=1' : ''))],
     ['Préstamos activos', valorStats(stats?.prestamos?.activos), stats?.prestamos?.activos ? `${stats.prestamos.vencidos || 0} vencidos` : 'Sin préstamos activos', 'Consultar entregas y devoluciones', () => navigate(ruta('/admin/prestamos', stats?.prestamos?.vencidos ? 'estado=VENCIDO' : 'estado=ACTIVO'))],
     ['Incidentes abiertos', valorStats(stats?.incidentes_abiertos), stats?.incidentes_abiertos ? 'Requieren atención' : 'Sin incidentes pendientes', 'Revisar mantenimiento', () => navigate(ruta('/admin/mantenimiento'))],
-    ['Próximas reservaciones', valorStats(stats?.proximas_reservaciones?.length), stats?.proximas_reservaciones?.length ? 'Siguientes sesiones programadas' : 'Sin próximas reservaciones', 'Ver calendario completo', () => navigate(ruta('/admin/horarios'))],
   ];
+  const prioridad = {
+    practicas_solicitadas: 'Preparar materiales', stock_bajo: 'Planificar reposición',
+    reactivos_por_vencer: 'Revisar vencimiento', insumos_caducados: 'Revisar antes de usar',
+  };
   const alertas = [
     ['Prácticas pendientes de preparar', 'practicas_solicitadas', null, 'Revisar solicitudes', irPracticas],
     ['Insumos bajo mínimo', 'stock_bajo', 'stock_bajo', 'Revisar existencias'],
@@ -71,12 +74,12 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
     <header className="op-heading"><div><p className="op-eyebrow">Panel operativo · {categoria}</p><h2>Gestión del laboratorio asignado</h2></div><p className="op-caption">Preparación, agenda y recursos del laboratorio.</p></header>
     {practicas && <section className="op-priorities" aria-label="Prioridades del laboratorio" aria-busy={cargando && !resumen}>
       <div className="op-section-heading"><h3>Por atender en el laboratorio</h3><span className="op-caption">Caducidades: hoy y los próximos 30 días</span></div>
-      {error && <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><div><strong>No se pudieron cargar las alertas.</strong><p>Los indicadores no están disponibles.{folioError && ` Folio: ${folioError}`}</p></div><button className="op-button" onClick={() => setRevision(r => r + 1)}>Reintentar alertas</button></div>}
+      {error && <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><div><strong>No se pudieron cargar las alertas.</strong><small className="op-error-folio">{folioError && `Folio: ${folioError}`}</small></div><button className="op-button" onClick={() => setRevision(r => r + 1)}>Reintentar alertas</button></div>}
       <div className="op-priority-grid">{alertas.map(([label, campo, filtro, accion, onClick]) => {
         const pendiente = !error && resumen?.[campo] > 0;
         return <article key={campo} className={`op-priority${pendiente ? campo === 'insumos_caducados' ? ' op-priority-danger' : ' op-priority-warning' : ''}`}>
           <h4>{label}</h4>
-          <div className="op-value"><Indicador valor={valorAlerta(resumen?.[campo])} cargando={cargando && !resumen && !error} error={error} etiqueta={label} />{pendiente && <span className="op-badge">{campo === 'insumos_caducados' ? 'Atender' : 'Pendiente'}</span>}</div>
+          <div className="op-value"><Indicador valor={valorAlerta(resumen?.[campo])} cargando={cargando && !resumen && !error} error={error} etiqueta={label} /></div>{pendiente && <span className="op-badge">{prioridad[campo]}</span>}
           {!error && resumen && <p className="op-caption">{campo === 'practicas_solicitadas' ? (resumen[campo] ? 'Solicitudes por preparar' : 'Sin prácticas pendientes de preparar') : !resumen.insumos_total ? 'Sin insumos registrados' : resumen[campo] ? 'Requieren revisión' : 'Sin alertas en este grupo'}</p>}
           {!!resumen && !error && filtro && resumen.alertas_insumos?.[filtro]?.length > 0 && <details className="op-affected"><summary>Ver insumos afectados</summary><ul>{resumen.alertas_insumos[filtro].map(item => <li key={item.id}><button className="op-item-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, `#insumo-${item.id}`))}>{item.nombre}{filtro === 'stock_bajo' ? ` · ${item.existencia} ${item.unidad}` : ` · ${item.caduca_en}`}</button></li>)}</ul></details>}
           <button className={`op-button op-priority-action${campo === 'practicas_solicitadas' && pendiente ? ' op-button-primary' : ''}`} onClick={onClick || (() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, '#insumos')))}>{accion}</button>
@@ -93,7 +96,7 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
       {errorStats && <p className="op-caption">El resumen operativo no está disponible hasta completar la consulta.</p>}
       <div className="op-summary-grid">{tarjetas.map(([label, valor, detalle, accion, onClick]) => <article key={label} className="op-summary-item"><div className="op-value"><Indicador valor={valor} cargando={cargandoStats || (!stats && !errorStats)} error={errorStats} etiqueta={label} /></div><h4>{label}</h4>{!errorStats && !cargandoStats && stats && <p className="op-caption">{detalle}</p>}<button className="op-button" onClick={onClick}>{accion}</button></article>)}</div>
     </section>
-    <section className="op-actions" aria-label="Acciones frecuentes"><h3>Acciones frecuentes</h3><div className="op-actions-row">
+    <section className="op-actions" aria-label="Acciones frecuentes"><h3>Acciones frecuentes</h3><div className={`op-actions-row${practicas ? '' : ' op-actions-short'}`}>
       {practicas && <><button className="op-button" onClick={irPracticas}>Revisar prácticas solicitadas</button><button className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', '', '#insumos'))}>Registrar entrada de reactivos</button></>}
       <button className="op-button" onClick={() => navigate(ruta('/admin/prestamos', 'estado=ACTIVO'))}>Consultar préstamos activos</button><button className="op-button" onClick={() => navigate(ruta('/admin/mantenimiento'))}>Atender incidentes y mantenimiento</button>
     </div></section>

@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Prioridad operativa y distribución del panel — 2026-11-06
+
+### Problema y comportamiento resultante
+Se repetían las próximas reservaciones en agenda y resumen, las acciones frecuentes dejaban espacio desigual y la criticidad dependía demasiado del color. Se elimina la métrica duplicada: el resumen conserva activos, préstamos e incidentes. Las alertas positivas explicitan Preparar materiales, Planificar reposición, Revisar vencimiento o Revisar antes de usar; se conserva ámbar para pendientes y rojo para caducados.
+
+Las acciones frecuentes usan cuatro columnas en escritorio, dos en tableta y una en móvil, con botones uniformes. Se alinean títulos y contadores y se mejora contraste de No disponible. El aviso de error reduce márgenes y relleno y deja el folio como información secundaria; al reintentar se muestran esqueletos y al fallar termina la carga. Los accesos de navegación independientes continúan disponibles.
+
+### Validación y publicación
+31 suites y 122 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Dos pruebas nuevas cubren las etiquetas operativas, la ausencia de reservaciones duplicadas y la transición de reintento a carga sin bloquear navegación. Sin cambios de backend, permisos, migraciones ni datos. Cambios ajenos conservados y excluidos.
+
+Estado: preparado y validado localmente; pendiente verificar publicación. La revisión visual autenticada queda pendiente con el responsable. Esta mejora no atribuye ni corrige una causa nueva del fallo de carga de alertas.
+
+---
+
 ## [e556745] — Jerarquía visual y estados del panel operativo — 2026-11-06
 
 ### Problema y comportamiento resultante
