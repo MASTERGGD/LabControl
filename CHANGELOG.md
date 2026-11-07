@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Identificación del laboratorio y permanencia de alertas — 2026-11-06
+
+### Problema y comportamiento resultante
+La carga de categoría reemplazaba cualquier fallo por una cadena vacía. Eso permitía renderizar un panel sin alertas ni accesos específicos, sin indicar que falló la identificación. Se separan los estados cargando, listo y error, con reintento visible y conservación de la última categoría confirmada del mismo laboratorio. Se normalizan acentos, espacios y la variante Agroindustrial; no se cambia la categoría almacenada ni se infiere Química por el nombre.
+
+Mientras no se identifica el laboratorio, el bloque de cuatro prioridades permanece visible con esqueletos; si falla, termina la carga y muestra indicadores no disponibles y la indicación para reintentar. Sus acciones específicas quedan deshabilitadas hasta confirmar una categoría compatible. Química y Agroindustria conservan alertas y accesos aunque falle la consulta de su resumen. Las respuestas tardías de otro laboratorio se ignoran. La agenda incorpora un contador tanto con registros como con cero confirmado, sin inventar cero ante errores. El resumen conserva tres métricas y ocupa todo el ancho con tres columnas de escritorio.
+
+### Validación y estado
+33 suites y 130 pruebas frontend aprobadas y compilación Vite aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Ocho pruebas nuevas cubren normalización, error/reintento, conservación de categoría, respuestas tardías, prioridades visibles durante identificación, fallo del resumen y contador de agenda con cero y registros. Sin cambios de backend, datos, migraciones ni permisos. Cambios ajenos conservados.
+
+Preparado localmente; no publicado. La inspección del código confirma el defecto de estados de identificación, pero no demuestra por sí sola qué respuesta recibió la cuenta del usuario durante la incidencia. Pendiente: publicación y revisión visual autenticada con el laboratorio asignado.
+
+---
+
 ## [3cafa1c] — Prioridad operativa y distribución del panel — 2026-11-06
 
 ### Problema y comportamiento resultante

@@ -1,3 +1,4 @@
+import useCategoriaLaboratorio from '../hooks/useCategoriaLaboratorio';
 import PanelOperacionLaboratorio from '../components/PanelOperacionLaboratorio';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -574,7 +575,7 @@ function WidgetEquipos({ pcs, navigate }) {
 }
 
 // ─── Próximas reservaciones ───────────────────────────────────────────────────
-function WidgetProximas({ reservaciones, navigate, integrado = false }) {
+export function WidgetProximas({ reservaciones, navigate, integrado = false }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   if (!reservaciones?.length) return null;
@@ -589,7 +590,7 @@ function WidgetProximas({ reservaciones, navigate, integrado = false }) {
       <div style={{ padding:'0.875rem 1.25rem', borderBottom: isDay ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.04)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <span>📅</span>
-          <p className="text-sm font-semibold" style={{margin:0, color: isDay ? '#0f172a' : '#fff'}}>Próximas reservaciones</p>
+          <p className="text-sm font-semibold" style={{margin:0, color: isDay ? '#0f172a' : '#fff'}}>Próximas reservaciones</p>{integrado && <span className="op-agenda-count" aria-label={`${reservaciones.length} próximas reservaciones`}>{reservaciones.length}</span>}
         </div>
         <button className={integrado ? 'op-button' : 'text-xs transition-colors'} onClick={() => navigate('/admin/reservaciones')} style={integrado ? undefined : {background:'none',border:'none',cursor:'pointer',color: isDay ? '#047857' : '#10b981',fontWeight:600}}>Ver todas →</button>
       </div>
@@ -782,12 +783,12 @@ export default function DashboardAdmin() {
   const [cargandoStats, setCargandoStats] = useState(true);
   const [sesiones, setSesiones] = useState([]);
   const [labId, setLabId]       = useState('');
-  const [categoriaLaboratorio, setCategoriaLaboratorio] = useState('');
   const [cargando, setCargando] = useState(true);
   const timerRef = useRef(null);
   const statsSolicitud = useRef(0);
   const statsLaboratorio = useRef(undefined);
   const idLaboratorioContexto = usuario?.laboratorio_id || labId;
+  const { categoria: categoriaLaboratorio, estado: estadoCategoria, reintentar: reintentarCategoria } = useCategoriaLaboratorio(idLaboratorioContexto);
   const esPanelComputo = !idLaboratorioContexto || categoriaLaboratorio === 'COMPUTO';
 
   const cargarStats = useCallback(async (lid) => {
@@ -809,18 +810,6 @@ export default function DashboardAdmin() {
     } catch { setSesiones([]); }
     finally { setCargando(false); }
   }, []);
-
-  useEffect(() => {
-    if (!idLaboratorioContexto) {
-      setCategoriaLaboratorio('');
-      return undefined;
-    }
-    let vigente = true;
-    api.get(`/laboratorios/${idLaboratorioContexto}`)
-      .then(({ data }) => { if (vigente) setCategoriaLaboratorio((data?.categoria || '').toUpperCase()); })
-      .catch(() => { if (vigente) setCategoriaLaboratorio(''); });
-    return () => { vigente = false; };
-  }, [idLaboratorioContexto]);
 
   useEffect(() => {
     cargarStats(idLaboratorioContexto);
@@ -869,6 +858,10 @@ export default function DashboardAdmin() {
           )}
         </div>
 
+        {estadoCategoria === 'error' && <div role="alert" className="rounded-xl border border-amber-300 px-4 py-3 text-sm" style={{ color: 'var(--main-text)' }}>
+          No se pudo identificar la categoría del laboratorio. Se conserva la última categoría confirmada, si existe.
+          <button className="ml-3 rounded-lg border px-3 py-1.5 font-semibold" onClick={reintentarCategoria}>Reintentar identificación</button>
+        </div>}
         {esPanelComputo ? <>
         {/* KPIs principales — fila de 6 tarjetas compactas */}
         <KpiRow stats={stats} sesiones={sesiones} navigate={navigate} />
@@ -918,7 +911,7 @@ export default function DashboardAdmin() {
             ))}
           </div>
         </div>
-        </> : <DashboardLaboratorioNoComputo categoria={categoriaLaboratorio} stats={stats} navigate={navigate} laboratorioId={idLaboratorioContexto} rol={usuario?.rol} errorStats={errorStats} cargandoStats={cargandoStats && !stats} onRetry={() => cargarStats(idLaboratorioContexto)} />}
+        </> : <DashboardLaboratorioNoComputo categoria={categoriaLaboratorio} estadoCategoria={estadoCategoria} stats={stats} navigate={navigate} laboratorioId={idLaboratorioContexto} rol={usuario?.rol} errorStats={errorStats} cargandoStats={cargandoStats && !stats} onRetry={() => cargarStats(idLaboratorioContexto)} />}
 
         <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-slate-700" style={{margin:0}}>SIGA UTECAN v1.0 — Universidad Tecnológica de Candelaria</p>

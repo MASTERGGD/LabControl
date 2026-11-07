@@ -53,7 +53,7 @@ test('el error termina la carga, muestra folio y mantiene la jerarquía del pane
  expect(aviso.textContent).toContain('Folio: TEST-1234');
  expect(container.querySelector('[aria-label="Prioridades del laboratorio"]').getAttribute('aria-busy')).toBe('false');
  expect(container.querySelector('.op-skeleton')).toBeNull();
- expect([...container.querySelectorAll('h3')].map(el=>el.textContent)).toEqual(['Por atender en el laboratorio','Próximas reservaciones','Resumen operativo','Acciones frecuentes']);
+ expect([...container.querySelectorAll('h3')].map(el=>el.textContent)).toEqual(['Por atender en el laboratorio','Próximas reservaciones 0','Resumen operativo','Acciones frecuentes']);
 });
 
 
@@ -81,4 +81,33 @@ test('reintentar cambia el error por esqueletos y conserva la navegación dispon
  expect(navigate).toHaveBeenLastCalledWith('/admin/practicas-laboratorio?laboratorio_id=4&estado=SOLICITADA');
  await act(async()=>resolver({data:{insumos_total:0,stock_bajo:0,reactivos_por_vencer:0,insumos_caducados:0,practicas_solicitadas:0,alertas_insumos:{}}}));
  expect(container.querySelector('.op-skeleton')).toBeNull();
+});
+
+test('identificación pendiente o fallida conserva el bloque de alertas sin asumir una categoría',async()=>{
+ await render({categoria:'',estadoCategoria:'cargando'});
+ expect(api.get).not.toHaveBeenCalled();
+ expect(container.querySelector('[aria-label="Prioridades del laboratorio"]')).not.toBeNull();
+ expect(container.querySelector('[aria-label="Cargando Insumos caducados"]')).not.toBeNull();
+ await render({categoria:'',estadoCategoria:'error'});
+ expect(container.querySelector('[aria-label="Prioridades del laboratorio"]')).not.toBeNull();
+ expect(container.textContent).toContain('Reintentar identificación');
+ expect(container.querySelector('.op-skeleton')).toBeNull();
+ expect([...container.querySelectorAll('button')].find(b=>b.textContent==='Revisar solicitudes').disabled).toBe(true);
+});
+
+test('química con formato distinto conserva alertas y el fallo del resumen no las oculta',async()=>{
+ api.get.mockRejectedValueOnce(new Error('Sin red'));
+ await render({categoria:' Química '});
+ expect(api.get).toHaveBeenCalled();
+ expect(container.querySelector('[aria-label="Prioridades del laboratorio"]')).not.toBeNull();
+ expect(container.textContent).toContain('Revisar prácticas solicitadas');
+ expect(container.querySelector('[role="alert"]').textContent).toContain('No se pudieron cargar las alertas');
+});
+
+test('contador de agenda distingue cero confirmado de datos no disponibles',async()=>{
+ await render();
+ expect(container.querySelector('[aria-label="0 próximas reservaciones"]')).not.toBeNull();
+ expect(container.querySelector('[aria-label="Resumen operativo"]').querySelectorAll('article')).toHaveLength(3);
+ await render({stats:null,errorStats:true});
+ expect(container.querySelector('[aria-label="0 próximas reservaciones"]')).toBeNull();
 });

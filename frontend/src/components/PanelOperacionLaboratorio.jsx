@@ -1,3 +1,4 @@
+import { normalizarCategoriaLaboratorio } from '../hooks/useCategoriaLaboratorio';
 import './PanelOperacionLaboratorio.css';
 import React, { useEffect, useState } from 'react';
 import api from '../hooks/useApi';
@@ -10,7 +11,7 @@ function Indicador({ valor, cargando, error, etiqueta }) {
   return <span className="op-number">{valor}</span>;
 }
 
-export default function PanelOperacionLaboratorio({ categoria, stats, navigate, laboratorioId, errorStats, cargandoStats, onRetry, agenda }) {
+export default function PanelOperacionLaboratorio({ categoria, estadoCategoria = 'listo', stats, navigate, laboratorioId, errorStats, cargandoStats, onRetry, agenda }) {
   const { themeKey } = useTheme();
   const { can } = usePermission();
   const [resumen, setResumen] = useState(null);
@@ -18,7 +19,11 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
   const [folioError, setFolioError] = useState('');
   const [cargando, setCargando] = useState(true);
   const [revision, setRevision] = useState(0);
-  const practicas = ['QUIMICA', 'AGROINDUSTRIA'].includes(categoria);
+  const categoriaNormalizada = normalizarCategoriaLaboratorio(categoria);
+  const practicas = ['QUIMICA', 'AGROINDUSTRIA'].includes(categoriaNormalizada);
+  const identificando = !categoriaNormalizada && estadoCategoria === 'cargando';
+  const sinIdentificar = !categoriaNormalizada && estadoCategoria === 'error';
+  const mostrarPrioridades = practicas || identificando || sinIdentificar;
   const dia = themeKey === 'day';
   const contexto = laboratorioId ? `laboratorio_id=${encodeURIComponent(laboratorioId)}` : '';
   const ruta = (base, query = '', hash = '') => `${base}${contexto || query ? '?' : ''}${[contexto, query].filter(Boolean).join('&')}${hash}`;
@@ -71,24 +76,25 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
     '--op-muted': dia ? '#526575' : '#b3c1d0', '--op-accent': dia ? '#17634f' : '#9cddca',
     '--op-warning': dia ? '#925b0a' : '#f4c97d', '--op-danger': dia ? '#a92d35' : '#fca5a5',
   }}>
-    <header className="op-heading"><div><p className="op-eyebrow">Panel operativo · {categoria}</p><h2>Gestión del laboratorio asignado</h2></div><p className="op-caption">Preparación, agenda y recursos del laboratorio.</p></header>
-    {practicas && <section className="op-priorities" aria-label="Prioridades del laboratorio" aria-busy={cargando && !resumen}>
+    <header className="op-heading"><div><p className="op-eyebrow">Panel operativo · {categoriaNormalizada || (sinIdentificar ? 'Categoría no disponible' : 'Identificando laboratorio')}</p><h2>Gestión del laboratorio asignado</h2></div><p className="op-caption">Preparación, agenda y recursos del laboratorio.</p></header>
+    {mostrarPrioridades && <section className="op-priorities" aria-label="Prioridades del laboratorio" aria-busy={identificando || (practicas && cargando && !resumen)}>
       <div className="op-section-heading"><h3>Por atender en el laboratorio</h3><span className="op-caption">Caducidades: hoy y los próximos 30 días</span></div>
+      {sinIdentificar && <p className="op-category-status">Confirma la categoría con «Reintentar identificación» para consultar las alertas de este laboratorio.</p>}
       {error && <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><div><strong>No se pudieron cargar las alertas.</strong><small className="op-error-folio">{folioError && `Folio: ${folioError}`}</small></div><button className="op-button" onClick={() => setRevision(r => r + 1)}>Reintentar alertas</button></div>}
       <div className="op-priority-grid">{alertas.map(([label, campo, filtro, accion, onClick]) => {
         const pendiente = !error && resumen?.[campo] > 0;
         return <article key={campo} className={`op-priority${pendiente ? campo === 'insumos_caducados' ? ' op-priority-danger' : ' op-priority-warning' : ''}`}>
           <h4>{label}</h4>
-          <div className="op-value"><Indicador valor={valorAlerta(resumen?.[campo])} cargando={cargando && !resumen && !error} error={error} etiqueta={label} /></div>{pendiente && <span className="op-badge">{prioridad[campo]}</span>}
+          <div className="op-value"><Indicador valor={valorAlerta(resumen?.[campo])} cargando={identificando || (practicas && cargando && !resumen && !error)} error={error || sinIdentificar} etiqueta={label} /></div>{pendiente && <span className="op-badge">{prioridad[campo]}</span>}
           {!error && resumen && <p className="op-caption">{campo === 'practicas_solicitadas' ? (resumen[campo] ? 'Solicitudes por preparar' : 'Sin prácticas pendientes de preparar') : !resumen.insumos_total ? 'Sin insumos registrados' : resumen[campo] ? 'Requieren revisión' : 'Sin alertas en este grupo'}</p>}
           {!!resumen && !error && filtro && resumen.alertas_insumos?.[filtro]?.length > 0 && <details className="op-affected"><summary>Ver insumos afectados</summary><ul>{resumen.alertas_insumos[filtro].map(item => <li key={item.id}><button className="op-item-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, `#insumo-${item.id}`))}>{item.nombre}{filtro === 'stock_bajo' ? ` · ${item.existencia} ${item.unidad}` : ` · ${item.caduca_en}`}</button></li>)}</ul></details>}
-          <button className={`op-button op-priority-action${campo === 'practicas_solicitadas' && pendiente ? ' op-button-primary' : ''}`} onClick={onClick || (() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, '#insumos')))}>{accion}</button>
+          <button disabled={!practicas} className={`op-button op-priority-action${campo === 'practicas_solicitadas' && pendiente ? ' op-button-primary' : ''}`} onClick={onClick || (() => navigate(ruta('/admin/practicas-laboratorio', `alerta=${filtro}`, '#insumos')))}>{accion}</button>
         </article>;
       })}</div>
       {resumen && !error && !resumen.insumos_total && <div className="op-priority-footer"><span className="op-caption">Registra los insumos para consultar existencias y caducidades.</span><button className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', 'accion=registrar-insumo', '#insumos'))}>Registrar primer insumo</button></div>}
     </section>}
     <section className="op-agenda" aria-label="Agenda del laboratorio">
-      {!errorStats && !cargandoStats && agenda ? agenda : <div className="op-agenda-body"><h3>Próximas reservaciones</h3>{cargandoStats || (!stats && !errorStats) ? <div className="op-agenda-loading" role="status" aria-label="Cargando agenda"><span className="op-skeleton"/><span className="op-caption">Consultando agenda…</span></div> : errorStats ? <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><p>No se pudo consultar la agenda.</p><button className="op-button" onClick={onRetry}>Reintentar resumen</button></div> : <p className="op-caption">No hay reservaciones próximas para mostrar.</p>}</div>}
+      {!errorStats && !cargandoStats && agenda ? agenda : <div className="op-agenda-body"><h3 className="op-agenda-title">Próximas reservaciones{' '}{!errorStats && !cargandoStats && Array.isArray(stats?.proximas_reservaciones) && <span className="op-agenda-count" aria-label={`${stats.proximas_reservaciones.length} próximas reservaciones`}>{stats.proximas_reservaciones.length}</span>}</h3>{cargandoStats || (!stats && !errorStats) ? <div className="op-agenda-loading" role="status" aria-label="Cargando agenda"><span className="op-skeleton"/><span className="op-caption">Consultando agenda…</span></div> : errorStats ? <div role="alert" className="op-notice"><span aria-hidden="true">⚠</span><p>No se pudo consultar la agenda.</p><button className="op-button" onClick={onRetry}>Reintentar resumen</button></div> : <p className="op-caption">No hay reservaciones próximas para mostrar.</p>}</div>}
       <div className="op-agenda-footer"><button className="op-button" onClick={() => navigate(ruta('/admin/horarios'))}>Ver calendario completo</button></div>
     </section>
     <section className="op-summary" aria-label="Resumen operativo" aria-busy={Boolean(cargandoStats)}>
@@ -96,8 +102,8 @@ export default function PanelOperacionLaboratorio({ categoria, stats, navigate, 
       {errorStats && <p className="op-caption">El resumen operativo no está disponible hasta completar la consulta.</p>}
       <div className="op-summary-grid">{tarjetas.map(([label, valor, detalle, accion, onClick]) => <article key={label} className="op-summary-item"><div className="op-value"><Indicador valor={valor} cargando={cargandoStats || (!stats && !errorStats)} error={errorStats} etiqueta={label} /></div><h4>{label}</h4>{!errorStats && !cargandoStats && stats && <p className="op-caption">{detalle}</p>}<button className="op-button" onClick={onClick}>{accion}</button></article>)}</div>
     </section>
-    <section className="op-actions" aria-label="Acciones frecuentes"><h3>Acciones frecuentes</h3><div className={`op-actions-row${practicas ? '' : ' op-actions-short'}`}>
-      {practicas && <><button className="op-button" onClick={irPracticas}>Revisar prácticas solicitadas</button><button className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', '', '#insumos'))}>Registrar entrada de reactivos</button></>}
+    <section className="op-actions" aria-label="Acciones frecuentes"><h3>Acciones frecuentes</h3><div className={`op-actions-row${mostrarPrioridades ? '' : ' op-actions-short'}`}>
+      {mostrarPrioridades && <><button disabled={!practicas} className="op-button" onClick={irPracticas}>Revisar prácticas solicitadas</button><button disabled={!practicas} className="op-button" onClick={() => navigate(ruta('/admin/practicas-laboratorio', '', '#insumos'))}>Registrar entrada de reactivos</button></>}
       <button className="op-button" onClick={() => navigate(ruta('/admin/prestamos', 'estado=ACTIVO'))}>Consultar préstamos activos</button><button className="op-button" onClick={() => navigate(ruta('/admin/mantenimiento'))}>Atender incidentes y mantenimiento</button>
     </div></section>
   </div>;
