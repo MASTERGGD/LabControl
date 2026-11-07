@@ -329,7 +329,7 @@ function duracionLegible(minutos) {
   return `${horas} h ${resto} min`;
 }
 
-function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio, onClose, onGuardado }) {
+export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio, onClose, onGuardado }) {
   const { usuario } = useAuth();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
@@ -346,6 +346,8 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
   const [cargandoGrupos, setCargandoGrupos] = useState(false);
   const [checks, setChecks]             = useState({});
   const [notaReq, setNotaReq]           = useState('');
+  const [editandoPractica, setEditandoPractica] = useState(false);
+  const [practicaAnterior, setPracticaAnterior] = useState(null);
   const [incluyePractica, setIncluyePractica] = useState(false);
   const [tituloPractica, setTituloPractica] = useState('');
   const [objetivoPractica, setObjetivoPractica] = useState('');
@@ -446,16 +448,51 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
     ? !incluyePractica && (resumenMaterialesPractica || seguridadPractica.trim())
     : CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
+  const abrirPractica = () => {
+    setPracticaAnterior({ tituloPractica, objetivoPractica, procedimientoPractica, fechaPractica, materialesPractica, seguridadPractica });
+    setError('');
+    setEditandoPractica(true);
+  };
+  const cancelarPractica = () => {
+    if (practicaAnterior) {
+      setTituloPractica(practicaAnterior.tituloPractica);
+      setObjetivoPractica(practicaAnterior.objetivoPractica);
+      setProcedimientoPractica(practicaAnterior.procedimientoPractica);
+      setFechaPractica(practicaAnterior.fechaPractica);
+      setMaterialesPractica(practicaAnterior.materialesPractica);
+      setSeguridadPractica(practicaAnterior.seguridadPractica);
+    }
+    setError('');
+    setEditandoPractica(false);
+  };
+  const validarPractica = () => {
+    if (!tituloPractica.trim()) return 'Escribe el nombre de la práctica.';
+    if (!soloUnaFecha && !fechaPractica) return 'Selecciona la fecha en que se realizará la práctica.';
+    const fecha = soloUnaFecha ? form.fecha_actividad : fechaPractica;
+    if (fecha && (fecha < dateToLocalISO(new Date()) || new Date(fecha + 'T00:00:00').getDay() !== (slot.dia_semana + 1) % 7)) return 'Elige una fecha vigente que coincida con el día del horario reservado.';
+    if (materialesPracticaConDatos.some(item => !item.descripcion.trim() || !Number.isFinite(Number(item.cantidad_solicitada)) || Number(item.cantidad_solicitada) <= 0 || !item.unidad.trim())) return 'Completa descripción, cantidad y unidad de cada material solicitado.';
+    return '';
+  };
+  const guardarPractica = e => {
+    e.preventDefault();
+    const mensaje = validarPractica();
+    if (mensaje) { setError(mensaje); return; }
+    setIncluyePractica(true);
+    setEditandoPractica(false);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (requiereFlujoPractica && incluyePractica) {
+      const mensaje = validarPractica();
+      if (mensaje) { setError(mensaje); return; }
+    }
     if (!form.materia.trim()) { setError(esInstitucional ? 'Escribe el nombre de la actividad.' : 'Escribe o selecciona una materia.'); return; }
     if (!esInstitucional && !materiaInfo) { setError('Selecciona una materia del catálogo académico para registrar su identidad.'); return; }
     if (!esInstitucional && !form.grupo.trim()) { setError('El grupo es obligatorio.'); return; }
     if (esInstitucional && !form.fecha_actividad) { setError('Selecciona la fecha específica de la actividad.'); return; }
     if (!esInstitucional && soloUnaFecha && !form.fecha_actividad) { setError('Selecciona la fecha de la sesión.'); return; }
-    if (requiereFlujoPractica && incluyePractica && !soloUnaFecha && !fechaPractica) { setError('Selecciona la fecha en que se realizará la práctica.'); return; }
-    if (requiereFlujoPractica && incluyePractica && !soloUnaFecha && new Date(`${fechaPractica}T00:00:00`).getDay() !== (slot.dia_semana + 1) % 7) { setError('La fecha de la práctica debe coincidir con el día del horario reservado.'); return; }
-    if (requiereFlujoPractica && incluyePractica && materialesPracticaConDatos.some(item => !item.descripcion.trim() || !Number(item.cantidad_solicitada) || Number(item.cantidad_solicitada) <= 0 || !item.unidad.trim())) { setError('Completa descripción, cantidad y unidad de cada material solicitado.'); return; }
     if (fechaPuntualEnConflicto) { setError('Ya hay una sesión reservada en esa fecha. Elige otra fecha para continuar.'); return; }
     setSaving(true); setError('');
     const reqItems = requiereFlujoPractica && incluyePractica
@@ -537,7 +574,8 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div
-        className="w-full max-w-2xl shadow-xl rounded-2xl overflow-hidden"
+        role="dialog" aria-modal="true" aria-labelledby="reserva-practica-titulo"
+        className="w-full max-w-3xl max-h-[94dvh] flex flex-col shadow-xl rounded-2xl overflow-hidden"
         style={{
           background: isDay ? '#ffffff' : 'rgba(15,23,42,0.94)',
           border: `1px solid ${isDay ? '#cbd5e1' : 'rgba(255,255,255,0.08)'}`,
@@ -549,18 +587,48 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
           style={{ borderBottom: `1px solid ${isDay ? '#e2e8f0' : 'rgba(255,255,255,0.07)'}` }}
         >
           <div>
-            <h2 className="font-bold" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>Reservar horario</h2>
+            <h2 id="reserva-practica-titulo" className="font-bold" style={{ color: isDay ? '#0f172a' : '#ffffff' }}>{editandoPractica ? 'Datos de la práctica' : 'Reservar horario'}</h2>
             <p className="text-sm mt-0.5" style={{ color: isDay ? '#475569' : '#cbd5e1' }}>
               {DIAS_LABEL[slot.dia_semana]} · {slot.hora_inicio} – {slot.hora_fin}
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={editandoPractica ? cancelarPractica : onClose}
             className="text-2xl leading-none transition-colors"
             style={{ color: isDay ? '#475569' : '#cbd5e1' }}
           >×</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
+        <form onSubmit={editandoPractica ? guardarPractica : handleSubmit} className="p-5 md:p-6 space-y-4 overflow-y-auto min-h-0">
+          {editandoPractica && <p className="text-sm opacity-80">Completa la preparación de la práctica. Al continuar regresarás a tu reservación; el horario se apartará al pulsar Reservar.</p>}
+              {editandoPractica && <div className="space-y-3">
+                {!soloUnaFecha && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de esta práctica *<input required type="date" min={dateToLocalISO(new Date())} value={fechaPractica} onChange={e => setFechaPractica(e.target.value)} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe coincidir con el día del horario semanal.</span></label>}
+                <input className="input-dark w-full" aria-label="Nombre de la práctica" autoFocus required placeholder="Nombre de la práctica *" value={tituloPractica} onChange={e => setTituloPractica(e.target.value)} />
+                <textarea rows={2} value={objetivoPractica} onChange={e => setObjetivoPractica(e.target.value)} aria-label="Objetivo de la práctica" placeholder="Objetivo de la práctica (opcional)" className="input-dark w-full resize-y" />
+                <textarea rows={3} value={procedimientoPractica} onChange={e => setProcedimientoPractica(e.target.value)} aria-label="Procedimiento y consideraciones de seguridad" placeholder="Procedimiento y consideraciones de seguridad (opcional)" className="input-dark w-full resize-y" />
+                <div className="grid gap-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo solicitado</p>
+                    {materialesPractica.map((material, indice) => <div key={indice} className="grid gap-2 rounded-lg border p-2 md:grid-cols-2" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
+                      <select aria-label="Insumo del catálogo" className="input-dark w-full text-xs" value={material.insumo_id} onChange={e => {
+                        const siguiente = [...materialesPractica];
+                        const id = e.target.value;
+                        const insumo = insumosPractica.find(item => String(item.id) === id);
+                        siguiente[indice] = { ...material, insumo_id: id, descripcion: insumo?.nombre || (id ? material.descripcion : ''), unidad: insumo?.unidad || (id ? material.unidad : 'PIEZA') };
+                        setMaterialesPractica(siguiente);
+                      }}><option value="">Equipo o material libre</option>{insumosPractica.map(item => <option key={item.id} value={item.id}>{item.nombre} · disponible {item.cantidad_disponible} {item.unidad}</option>)}</select>
+                      <input className="input-dark w-full text-xs" aria-label="Descripción" placeholder="Descripción" value={material.descripcion} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, descripcion: e.target.value, insumo_id: '' }; setMaterialesPractica(siguiente); }} />
+                      <input className="input-dark w-full text-xs" type="number" min="0.001" step="any" aria-label="Cantidad" placeholder="Cantidad" value={material.cantidad_solicitada} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, cantidad_solicitada: e.target.value }; setMaterialesPractica(siguiente); }} />
+                      <input className="input-dark w-full text-xs" aria-label="Unidad" placeholder="Unidad" value={material.unidad} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, unidad: e.target.value }; setMaterialesPractica(siguiente); }} />
+                      <button type="button" className="rounded-lg border px-2 text-xs" onClick={() => setMaterialesPractica(actual => actual.length === 1 ? [nuevoMaterialPractica()] : actual.filter((_, i) => i !== indice))}>Quitar</button>
+                    </div>)}
+                    <button type="button" className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700" onClick={() => setMaterialesPractica(actual => [...actual, nuevoMaterialPractica()])}>+ Agregar material</button>
+                  </div>
+                  <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
+                    <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)} placeholder="Bata, guantes, lentes, manejo especial…" className="mt-1 w-full input-dark text-sm resize-y px-3 py-2" />
+                  </label>
+                </div>
+              </div>}
+          <fieldset hidden={editandoPractica} disabled={editandoPractica} className="space-y-4 min-w-0">
           <div>
             <label className="block text-sm mb-1" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Tipo de actividad *</label>
           <select value={form.tipo_actividad} onChange={e => { const tipo = e.target.value; setSoloUnaFecha(false); setIncluyePractica(false); setFechaPractica(''); setForm(f => ({ ...f, tipo_actividad: tipo, materia: '', carrera: '', cuatrimestre_materia: '', grupo: '', fecha_actividad: '' })); setMateriaInfo(null); setMateriaQuery(''); }} className="input-dark w-full">
@@ -577,7 +645,7 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
                 : <>Este bloque está apartado el <b>{resumenFechasPuntuales(reservasPuntualesBloque)}</b> para {reservasPuntualesBloque[0]?.materia || 'otra sesión'}. Para evitar traslapes, la nueva solicitud debe ser para una sola fecha. Marca la casilla y elige otra fecha.</>}
               <span className="mt-1 block opacity-80">{detalleReservasPuntuales(reservasPuntualesBloque)}</span>
             </div>}
-            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la sesión *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
+            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la sesión *<input required type="date" min={dateToLocalISO(new Date())} value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
             {fechaPuntualEnConflicto && <p className="mt-2 text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>Esa fecha ya está apartada. Selecciona otra fecha.</p>}
           </div>}
           <div>
@@ -703,36 +771,12 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
           >
             {requiereFlujoPractica ? <>
               <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
-                <input type="checkbox" checked={incluyePractica} onChange={e => setIncluyePractica(e.target.checked)} className="mt-1" />
+                <input type="checkbox" checked={incluyePractica} onChange={e => { if (e.target.checked) abrirPractica(); else setIncluyePractica(false); }} className="mt-1" />
                 <span><b>Esta clase incluye una práctica de laboratorio</b><span className="mt-0.5 block text-xs opacity-75">Al enviar la reserva, SIGA creará la solicitud para el responsable y la mostrará en tu seguimiento. No tendrás que volver a capturarla.</span></span>
               </label>
-              {incluyePractica && <div className="space-y-3">
-                {!soloUnaFecha && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de esta práctica *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaPractica} onChange={e => setFechaPractica(e.target.value)} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe coincidir con el día del horario semanal.</span></label>}
-                <input className="input-dark w-full" placeholder="Nombre de la práctica" value={tituloPractica} onChange={e => setTituloPractica(e.target.value)} />
-                <textarea rows={2} value={objetivoPractica} onChange={e => setObjetivoPractica(e.target.value)} placeholder="Objetivo de la práctica (opcional)" className="input-dark w-full resize-y" />
-                <textarea rows={3} value={procedimientoPractica} onChange={e => setProcedimientoPractica(e.target.value)} placeholder="Procedimiento y consideraciones de seguridad (opcional)" className="input-dark w-full resize-y" />
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Materiales, reactivos y equipo solicitado</p>
-                    {materialesPractica.map((material, indice) => <div key={indice} className="grid gap-2 rounded-lg border p-2 sm:grid-cols-[1.4fr_1fr_.55fr_.65fr_auto]" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
-                      <select className="input-dark w-full text-xs" value={material.insumo_id} onChange={e => {
-                        const siguiente = [...materialesPractica];
-                        const id = e.target.value;
-                        const insumo = insumosPractica.find(item => String(item.id) === id);
-                        siguiente[indice] = { ...material, insumo_id: id, descripcion: insumo?.nombre || (id ? material.descripcion : ''), unidad: insumo?.unidad || (id ? material.unidad : 'PIEZA') };
-                        setMaterialesPractica(siguiente);
-                      }}><option value="">Equipo o material libre</option>{insumosPractica.map(item => <option key={item.id} value={item.id}>{item.nombre} · disponible {item.cantidad_disponible} {item.unidad}</option>)}</select>
-                      <input className="input-dark w-full text-xs" placeholder="Descripción" value={material.descripcion} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, descripcion: e.target.value, insumo_id: '' }; setMaterialesPractica(siguiente); }} />
-                      <input className="input-dark w-full text-xs" type="number" min="0.001" step="any" placeholder="Cantidad" value={material.cantidad_solicitada} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, cantidad_solicitada: e.target.value }; setMaterialesPractica(siguiente); }} />
-                      <input className="input-dark w-full text-xs" placeholder="Unidad" value={material.unidad} onChange={e => { const siguiente = [...materialesPractica]; siguiente[indice] = { ...material, unidad: e.target.value }; setMaterialesPractica(siguiente); }} />
-                      <button type="button" className="rounded-lg border px-2 text-xs" onClick={() => setMaterialesPractica(actual => actual.length === 1 ? [nuevoMaterialPractica()] : actual.filter((_, i) => i !== indice))}>Quitar</button>
-                    </div>)}
-                    <button type="button" className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-700" onClick={() => setMaterialesPractica(actual => [...actual, nuevoMaterialPractica()])}>+ Agregar material</button>
-                  </div>
-                  <label className="block text-xs font-medium" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Seguridad y equipo de protección
-                    <textarea rows={4} value={seguridadPractica} onChange={e => setSeguridadPractica(e.target.value)} placeholder="Bata, guantes, lentes, manejo especial…" className="mt-1 w-full input-dark text-sm resize-y px-3 py-2" />
-                  </label>
-                </div>
+              {incluyePractica && <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/40 p-3">
+                <div><p className="font-semibold">Práctica: {tituloPractica}</p><p className="text-xs opacity-75">{soloUnaFecha ? form.fecha_actividad : fechaPractica} · {materialesPracticaConDatos.length} materiales solicitados</p></div>
+                <button type="button" className="btn-ghost px-3 py-2" onClick={abrirPractica}>Editar práctica</button>
               </div>}
             </> : <>
             <p className={`text-xs uppercase tracking-wide font-semibold ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>Requerimientos para la clase <span className="normal-case font-normal">(opcional)</span></p>
@@ -804,6 +848,7 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
             )}
           </div>
 
+          </fieldset>
           {error && (
             <p
               className="text-sm rounded-lg px-3 py-2"
@@ -817,16 +862,16 @@ function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, laboratorio,
             </p>
           )}
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
+            <button type="button" onClick={editandoPractica ? cancelarPractica : onClose}
               className="flex-1 rounded-lg py-2 text-sm font-medium transition-colors"
               style={{
                 background: isDay ? '#f1f5f9' : '#374151',
                 color: isDay ? '#334155' : '#e5e7eb',
                 border: `1px solid ${isDay ? '#e2e8f0' : 'transparent'}`,
               }}>Cancelar</button>
-            <button type="submit" disabled={saving || faltaElegirFechaUnica || fechaPuntualEnConflicto}
+            <button type="submit" disabled={!editandoPractica && (saving || faltaElegirFechaUnica || fechaPuntualEnConflicto)}
               className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg py-2 text-sm font-semibold">
-              {saving ? 'Reservando…' : faltaElegirFechaUnica ? 'Elige una fecha única' : fechaPuntualEnConflicto ? 'Fecha ya reservada' : '✓ Reservar'}
+              {editandoPractica ? 'Guardar práctica y continuar' : saving ? 'Reservando…' : faltaElegirFechaUnica ? 'Elige una fecha única' : fechaPuntualEnConflicto ? 'Fecha ya reservada' : '✓ Reservar'}
             </button>
           </div>
         </form>

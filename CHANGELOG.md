@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Captura de prácticas al reservar — 2026-11-06
+
+### Problema y comportamiento resultante
+El formulario completo de práctica saturaba la reservación del docente en Química y Agroindustria. Marcar la opción ahora abre un paso dedicado dentro de la misma ventana, con nombre, fecha, objetivo, procedimiento, materiales del catálogo o libres, cantidades, unidades y seguridad. Los materiales disponen de más espacio y la ventana ajusta su altura al dispositivo.
+
+Guardar práctica y continuar regresa al horario con un resumen y la opción Editar práctica. Conserva materia, grupo, duración y fecha de la reservación; todavía no envía solicitudes ni aparta el horario. Cancelar la captura inicial regresa sin activar la práctica; cancelar una edición recupera los datos aceptados previamente. Reservar confirma la reserva y su práctica mediante el flujo existente. Se valida nombre, fecha compatible y cantidades antes de continuar y nuevamente al reservar. Cómputo conserva sus requerimientos actuales.
+
+### Validación y publicación
+26 suites y 98 pruebas frontend aprobadas, incluidas cinco pruebas nuevas del flujo; compilación Vite aprobada con avisos de tamaño del paquete e importación mixta de offlineStore. Sin cambios de backend, esquema ni datos. Se preservaron los cambios previos de otros módulos y archivos locales, excluidos de esta entrega.
+
+Estado: preparado y validado localmente; publicación pendiente de comprobar en Railway. La prueba funcional utiliza datos simulados y no crea reservaciones reales. Pendiente: verificar despliegue y disponibilidad pública.
+
+---
+
 ## [0c3ff7c] — Flujo de clase y laboratorio — 2026-11-05
 
 ### Problema y decisión
