@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Panel operativo de Química y Agroindustria — 2026-11-06
+## [3b5f530] — Panel operativo de Química y Agroindustria — 2026-11-06
 
 ### Problema y comportamiento resultante
 El panel mostraba ceros ambiguos, no distinguía errores de consulta y repetía enlaces generales sin priorizar preparación ni insumos. Ahora presenta prácticas pendientes de preparar, insumos en mínimo o sin existencias, reactivos por vencer de hoy a 30 días e insumos caducados, con conteos separados, muestra de hasta cinco registros afectados y enlaces a las listas filtradas del laboratorio. La caducidad usa la fecha de Ciudad de México y excluye inactivos.
@@ -14,7 +14,7 @@ Las métricas explican ausencia de registros o pendientes; las consultas fallida
 ### Validación y publicación
 31 suites y 118 pruebas frontend aprobadas; 17 pruebas backend dirigidas aprobadas. Nuevas pruebas verifican ceros explicados, fallos/reintento, destinos con contexto, límites de caducidad hoy/30/31 días, stock mínimo, insumos inactivos y aislamiento de laboratorio. Compilación aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Sin migraciones ni modificación de inventarios reales; cambios previos de otros módulos preservados y excluidos.
 
-Estado: preparado y validado localmente; pendiente verificar publicación en Railway. Las pruebas funcionales usan datos ficticios en base aislada.
+Publicado el 6 de noviembre de 2026 y verificado a las 22:22 de Ciudad de México (7 de noviembre, 04:22 UTC). Railway confirmó SUCCESS para backend (`be9dfaf8-a615-453f-b928-adc04703ac71`) y frontend (`cf103622-6b30-4ae3-9f6d-a8f6846b8482`) del commit `3b5f530`. Web y paquete JavaScript HTTP 200 con pendientes de preparar, reactivos por vencer y reintento de alertas; API HTTP 200/healthy. Las pruebas funcionales usan datos ficticios en base aislada. Pendiente: revisión visual autenticada del responsable con el inventario real.
 
 ---
 
