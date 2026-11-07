@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Seguimiento de prácticas con historial y paginación — 2026-11-06
+## [9a359a4] — Seguimiento de prácticas con historial y paginación — 2026-11-06
 
 ### Problema y comportamiento resultante
 El seguimiento mezclaba solicitadas y canceladas en tarjetas extensas; el listado anterior se limitaba a las últimas 200 prácticas. Se incorpora una consulta paginada en servidor y una vista inicial Activas (solicitadas, preparadas, en curso), separada de Historial (finalizadas y canceladas). No se eliminan ni reclasifican registros anteriores.
@@ -14,7 +14,7 @@ Cada fila muestra título, materia, grupo, fecha y estado con color diferenciado
 ### Validación y publicación
 29 suites y 110 pruebas frontend aprobadas; 13 pruebas backend dirigidas aprobadas. Cuatro pruebas nuevas backend cubren paginación, historial de 205 registros, filtros y aislamiento de usuarios/laboratorios. Tres pruebas nuevas frontend cubren filas compactas, detalle, historial, filtros, páginas y preparación de materiales por el responsable. Compilación aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Sin migraciones ni modificación de datos históricos; cambios ajenos conservados y excluidos.
 
-Estado: preparado y validado localmente; publicación pendiente de verificar. Las comprobaciones funcionales utilizan datos ficticios en base aislada.
+Publicado el 6 de noviembre de 2026 y verificado a las 20:57 de Ciudad de México (7 de noviembre, 02:57 UTC). Railway confirmó SUCCESS para frontend (`2ca8de0d-a5c8-4e62-af32-188c15fabb6b`) y backend (`e5202c36-518d-4299-8a3b-12237ae7847c`) del commit `9a359a4`. Web y paquete JavaScript HTTP 200 con historial, paginación y nueva consulta; API HTTP 200/healthy y seguimiento protegido con HTTP 401 para acceso anónimo. Las comprobaciones funcionales utilizan datos ficticios en base aislada. Pendiente: revisión visual autenticada del docente; no se modifican sus prácticas para probar.
 
 ---
 
