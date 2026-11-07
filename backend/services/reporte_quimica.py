@@ -289,6 +289,14 @@ def generar(db, lab, mes, anio, usuario, rango=None):
         ])
 
 
+def estado_periodo(desde, hasta, generado):
+    if generado < desde:
+        return 'Periodo futuro'
+    if generado < hasta:
+        return 'Periodo en curso: resultados parciales'
+    return ''
+
+
 def comparativo(db, lab, mes, anio, usuario):
     limites(mes, anio)
     primero = ((mes - 1) // 4) * 4 + 1
@@ -297,9 +305,10 @@ def comparativo(db, lab, mes, anio, usuario):
     anterior = dt.datetime(anio - (primero == 1), 9 if primero == 1 else primero - 4, 1, tzinfo=ZONA)
     actual = generar(db, lab, mes, anio, usuario, (desde, hasta))
     previo = generar(db, lab, anterior.month, anterior.year, usuario, (anterior, desde))
+    estado = estado_periodo(desde, hasta, dt.datetime.fromisoformat(actual['generado_en']))
     actual['comparacion'] = dict(actual=f'{desde.date()} a {(hasta - dt.timedelta(days=1)).date()}',
         anterior=f'{anterior.date()} a {(desde - dt.timedelta(days=1)).date()}',
-        alcance='Cuatrimestres calendario. El periodo en curso es parcial; no se proyectan resultados futuros.')
+        alcance='Cuatrimestres calendario.' + (f' {estado}. No se proyectan resultados futuros.' if estado else ''))
     tablas_actuales = actual['tablas']
     actual['tablas'] = {}
     for prefijo, reporte in [('actual', actual), ('anterior', previo)]:

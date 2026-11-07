@@ -4,6 +4,18 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Cabecera operativa compacta en reportes de Química — 2026-11-07
+
+### Problema y comportamiento resultante
+La cabecera dedicaba demasiado espacio a metadatos y capacidad sin unidad confirmada. Ahora muestra laboratorio, periodo y Actualizado con hora local; las acciones se llaman Actualizar y Descargar Excel y la confirmación es Reporte actualizado. Ambos rangos comparados siguen visibles. Usuario, zona horaria e ID se trasladan al desplegable final Detalles del reporte, sin botón de copia; se aclara que el ID identifica la consulta y su Excel, no recupera reportes anteriores ni equivale a la firma. La capacidad ambigua queda fuera del resumen operativo.
+
+El aviso ámbar se reduce a un conteo de observaciones y Revisar; la explicación queda en el detalle. La cabecera se adapta con líneas flexibles a pantallas estrechas. Los indicadores, detalles y separación por unidades se conservan. Periodo futuro y Periodo en curso: resultados parciales se calculan contra la generación y los límites del periodo; al concluir se oculta la parcialidad. El alcance del Excel comparativo aplica la misma distinción. Sin cambios en cifras, permisos, firma, datos operativos o esquema.
+
+### Validación y estado
+40 suites y 171 pruebas frontend aprobadas; Vite aprobado con los avisos existentes de tamaño e importación mixta de offlineStore. Verificación de límites de inicio/fin, metadatos fuera de la cabecera, retiro de copia y conservación de descarga del mismo corte. 20 pruebas backend del reporte aprobadas, incluyendo límites temporales, Excel del mismo corte y permisos. Pendiente: publicación, comprobación pública y revisión visual autenticada. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Lectura y acciones del reporte de Química — 2026-11-07
 
 ### Problema y comportamiento resultante

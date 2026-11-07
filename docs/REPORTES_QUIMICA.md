@@ -44,3 +44,10 @@ backend/tests/test_reporte_quimica.py cubre multisesión, estado del conjunto, r
 frontend/src/components/ReporteQuimica.test.jsx cubre consulta explícita, detalle de fuentes, alcance de alertas, descarga del mismo corte sin recalcular, respuestas tardías, errores sin falsos ceros, comparativo químico y paginación de detalle. frontend/src/pages/admin/ReportesQuimica.test.jsx comprueba la sustitución de las consultas de cómputo en ambas pestañas para Química. Los demás laboratorios conservan su reporte anterior.
 
 Pendientes de revisión con responsables: unidad oficial de capacidad, completitud de registros antiguos, correspondencia de correcciones académicas posteriores con asistencia de prácticas y necesidad de archivo permanente de reportes. La comprobación pública del despliegue no sustituye una revisión visual autenticada con datos reales.
+
+
+## Presentación compacta del reporte
+
+La cabecera operativa muestra laboratorio, rango y fecha/hora de actualización local, con Actualizar y Descargar Excel. En comparativo conserva ambos rangos. El estado se determina con la fecha de generación y límites de periodo: antes del inicio es Periodo futuro; desde el inicio hasta el final exclusivo es Periodo en curso: resultados parciales; después no se muestra aviso de parcialidad. El Excel comparativo utiliza la misma distinción en su alcance.
+
+Usuario, zona horaria e ID aparecen en Detalles del reporte al pie, sin acción de copia. El ID identifica la consulta y su Excel, no es una firma o hash ni recupera reportes históricos. Se oculta la capacidad sin unidad confirmada de la presentación operativa. El aviso de observaciones es compacto y su explicación aparece al abrir el detalle. Los materiales siguen separados por unidad, sin añadir totales de magnitudes heterogéneas.

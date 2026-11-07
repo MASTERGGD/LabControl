@@ -18,7 +18,7 @@ from models.practica_laboratorio import (
     IncidentePractica, ResiduoPractica,
 )
 from routers.reportes import router
-from services.reporte_quimica import generar, comparativo, firma, horas_intervalo, limites
+from services.reporte_quimica import generar, comparativo, firma, horas_intervalo, limites, estado_periodo
 
 
 @pytest.fixture
@@ -225,3 +225,14 @@ def test_duracion_real_en_cambio_historico_de_horario():
     desde,hasta=limites(10,2022)
     # Dos horas reales a través del cambio de horario de Ciudad de México de 2022.
     assert horas_intervalo(dt.datetime(2022,10,30,6,30),dt.datetime(2022,10,30,8,30),desde,hasta)==2
+
+
+@pytest.mark.parametrize('generado,esperado', [
+    ('2026-10-31T23:59:59-06:00', 'Periodo futuro'),
+    ('2026-11-01T00:00:00-06:00', 'Periodo en curso: resultados parciales'),
+    ('2026-11-30T23:59:59-06:00', 'Periodo en curso: resultados parciales'),
+    ('2026-12-01T00:00:00-06:00', ''),
+])
+def test_estado_temporal_del_corte(generado, esperado):
+    desde,hasta=limites(11,2026)
+    assert estado_periodo(desde,hasta,dt.datetime.fromisoformat(generado))==esperado
