@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Validación inmediata de fecha del horario — 2026-11-06
+## [3eac2a6] — Validación inmediata de fecha del horario — 2026-11-06
 
 ### Problema y comportamiento resultante
 Era posible elegir una fecha de otro día de la semana y llenar la reservación y la práctica antes de conocer el error. Se comparte un campo de fecha entre la reservación docente, actividades institucionales, fecha de práctica y reservación administrativa. El calendario nativo utiliza un mínimo correspondiente a la próxima fecha del horario y pasos de siete días; la escritura manual se valida de inmediato con un aviso junto al campo. Se muestra además la fecha completa con día y mes.
@@ -14,7 +14,7 @@ Una fecha incorrecta bloquea Reservar y abrir/editar la práctica; una fecha de 
 ### Validación y publicación
 28 suites y 107 pruebas frontend aprobadas. Cinco pruebas nuevas verifican miércoles frente a sábado, bloqueo inmediato, conservación de materia/grupo/práctica, cómputo y actividad institucional, mínimos semanales y cambios de mes/año. Compilación aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. Sin cambios de backend, esquema ni datos; cambios ajenos del árbol conservados y excluidos.
 
-Estado: preparado y validado localmente; pendiente verificar despliegue y acceso público. Pruebas con datos ficticios, sin reservaciones reales. La presentación del calendario nativo depende del navegador; min/step y la validación inmediata del campo se complementan.
+Publicado el 6 de noviembre de 2026 y verificado a las 20:19 de Ciudad de México (7 de noviembre, 02:19 UTC). GitHub recibió `3eac2a6`; Railway confirmó SUCCESS para frontend (`cffba1ed-631f-45ae-aa0b-13a688e67d46`) y backend (`2c71b52c-10b9-42b0-b841-6b66c81058b3`) con ese commit. Web y paquete JavaScript HTTP 200, con aviso de día incorrecto y bloqueo de fecha incluidos; API HTTP 200 y healthy. Pruebas con datos ficticios, sin reservaciones reales. La presentación del calendario nativo depende del navegador; min/step y la validación inmediata del campo se complementan. Pendiente: revisión visual autenticada en el navegador del docente.
 
 ---
 
