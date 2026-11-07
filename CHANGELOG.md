@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Menú de prácticas según actividad del docente — 2026-11-06
+
+### Problema y comportamiento resultante
+El menú mostraba Seguimiento de prácticas a todos los docentes aunque nunca utilizaran Química o Agroindustria. Ahora se consulta únicamente si la cuenta tiene alguna práctica de esos laboratorios, incluyendo finalizadas y canceladas de cualquier periodo. La opción se oculta sin registros y aparece después de guardar la primera práctica, sin depender de carrera, departamento o periodo seleccionado.
+
+La consulta devuelve solo un indicador de la cuenta autenticada. La navegación se actualiza al guardar prácticas, volver a enfocar la ventana y navegar. No hereda el indicador al cambiar de cuenta o función; mantiene el acceso ya confirmado ante fallos transitorios para la misma cuenta. El menú de responsables y los permisos del servidor conservan su funcionamiento. Ocultar la opción es una adaptación de navegación, no una prohibición de acceso directo.
+
+### Validación y publicación
+30 suites y 115 pruebas frontend aprobadas; cinco pruebas dirigidas del indicador aprobadas tras el ajuste final de conservación de estado. Ocho pruebas backend de seguimiento aprobadas, incluidas cuatro nuevas de visibilidad sin práctica propia, historial cancelado de ambas categorías sin filtro de periodo y rol responsable. Compilación frontend aprobada con avisos existentes de tamaño del paquete e importación mixta de offlineStore. Sin migraciones ni cambios de datos; cambios ajenos conservados y excluidos.
+
+Estado: preparado y validado; pendiente publicar y comprobar Railway. Validación funcional con datos ficticios en base aislada.
+
+---
+
 ## [9a359a4] — Seguimiento de prácticas con historial y paginación — 2026-11-06
 
 ### Problema y comportamiento resultante

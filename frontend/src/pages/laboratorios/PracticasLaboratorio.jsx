@@ -149,7 +149,7 @@ function PracticasLaboratorio() {
 
   const run = async (operation, success = 'Cambios guardados.') => {
     setError(''); setMensaje('');
-    try { await operation(); setMensaje(success); await cargar(); setRevision(v => v + 1); return true; }
+    try { await operation(); window.dispatchEvent(new Event('labcontrol:practicas-updated')); setMensaje(success); await cargar(); setRevision(v => v + 1); return true; }
     catch (e) { setError(e.response?.data?.detail || 'No se pudo completar la operación.'); }
     return false;
   };

@@ -1,3 +1,4 @@
+import useAccesoPracticas from '../hooks/useAccesoPracticas';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -981,6 +982,7 @@ export default function AdminLayout({ children }) {
   const { usuario, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const tienePracticas = useAccesoPracticas(usuario, offlineAccess, location.pathname);
   const homePath = getHomePath(usuario);
   const { themeKey } = useTheme();
   const { periodos, periodo, periodoActual, esHistorico, esPreparacion, esCerrado, cargando: cargandoPeriodos, seleccionarPeriodo } = usePeriodo();
@@ -1110,6 +1112,7 @@ export default function AdminLayout({ children }) {
     || usuario?.rol === 'LAB_ADMIN'
     || espaciosResponsable.length > 0;
   const itemsVisibles = NAV_ITEMS.filter(item => {
+    if (item.path === '/docente/practicas-laboratorio' && !tienePracticas) return false;
     if (offlineAccess) return ['/docente', '/docente/horario', '/docente/historial-clases', '/docente/seguimiento'].includes(item.path);
     if (usuario?.rol === 'SUPER_ADMIN' && item.ocultarSuperAdmin) return false;
     // Permiso base por rol

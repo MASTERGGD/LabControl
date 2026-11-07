@@ -70,3 +70,23 @@ def test_responsable_solo_ve_su_laboratorio(db, seguimiento, docente_user):
     r = seguimiento.get('/practicas-laboratorio/seguimiento').json()
     assert r['items'] == [] and r['totales'] == {'activas':0,'historial':0}
     assert r['reservaciones_con_practica'] == [] and r['proxima'] is None
+
+
+def test_acceso_menu_sin_practicas_no_se_activa_por_reservar_o_por_otro_docente(db, seguimiento, docente_user):
+    db.query(PracticaLaboratorio).filter(PracticaLaboratorio.titulo != 'Privada de otro docente').delete(synchronize_session=False)
+    db.commit()
+    assert seguimiento.get('/practicas-laboratorio/acceso-docente').json() == {'tiene_practicas': False}
+
+
+@pytest.mark.parametrize('categoria', ['QUIMICA', 'AGROINDUSTRIA'])
+def test_acceso_menu_conserva_historial_cancelado_sin_depender_del_periodo(db, seguimiento, lab, categoria):
+    lab.categoria = categoria
+    db.query(PracticaLaboratorio).update({'estado':'CANCELADA'}, synchronize_session=False)
+    db.commit()
+    r = seguimiento.get('/practicas-laboratorio/acceso-docente?periodo_id=9999&periodo=AJENO')
+    assert r.status_code == 200 and r.json() == {'tiene_practicas': True}
+
+
+def test_acceso_menu_es_consulta_docente_no_cambia_permisos_de_responsables(db, seguimiento, docente_user):
+    docente_user.rol = RolUsuario.RESPONSABLE_LAB; db.commit()
+    assert seguimiento.get('/practicas-laboratorio/acceso-docente').status_code == 403

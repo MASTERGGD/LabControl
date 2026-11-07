@@ -563,6 +563,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
               nota: item.nota || (!item.insumo_id ? "Material no registrado: pendiente de confirmar por el responsable." : null),
             })),
           });
+          window.dispatchEvent(new Event('labcontrol:practicas-updated'));
         }
       } catch (err) {
         await Promise.allSettled(creadas.map(id => api.delete(`/horarios/reservaciones/${id}`)));

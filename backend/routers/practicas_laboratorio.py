@@ -324,6 +324,18 @@ def resumen_laboratorio(laboratorio_id: int, db: Session = Depends(get_db), user
     }
 
 
+@router.get("/acceso-docente")
+def acceso_practicas_docente(db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    if user.rol != RolUsuario.DOCENTE:
+        raise HTTPException(403, "Esta consulta corresponde al docente.")
+    # La navegación depende de su actividad completa, incluido el historial.
+    existe = db.query(PracticaLaboratorio.id).join(Reservacion).join(
+        Laboratorio, Laboratorio.id == Reservacion.laboratorio_id
+    ).filter(Reservacion.docente_id == user.id,
+        Laboratorio.categoria.in_(["QUIMICA", "AGROINDUSTRIA"])).first()
+    return {"tiene_practicas": existe is not None}
+
+
 @router.get("/seguimiento")
 def seguimiento_practicas(
     laboratorio_id: Optional[int] = None,
