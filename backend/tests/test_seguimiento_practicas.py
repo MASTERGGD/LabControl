@@ -90,3 +90,44 @@ def test_acceso_menu_conserva_historial_cancelado_sin_depender_del_periodo(db, s
 def test_acceso_menu_es_consulta_docente_no_cambia_permisos_de_responsables(db, seguimiento, docente_user):
     docente_user.rol = RolUsuario.RESPONSABLE_LAB; db.commit()
     assert seguimiento.get('/practicas-laboratorio/acceso-docente').status_code == 403
+
+def test_contadores_y_resultados_comparten_busqueda_fechas_y_estado(seguimiento):
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','buscar':'inexistente'}).json()
+    assert r['total']==0 and r['items']==[] and r['totales']=={'activas':0,'historial':0}
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','estado':'CANCELADA','buscar':'Anterior','desde':'2098-01-01','hasta':'2098-01-04'}).json()
+    assert r['total']==r['totales']['historial']==2 and r['totales']['activas']==0
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'ACTIVAS','estado':'CANCELADA','buscar':'Anterior','desde':'2098-01-01','hasta':'2098-01-04'}).json()
+    assert r['total']==r['totales']['activas']==0 and r['totales']['historial']==2
+
+
+@pytest.mark.parametrize('periodo',['SEP-DIC 2099','sep-dic-2099',' SEP–DIC\u00a02099 ','SEPDIC2099'])
+def test_periodo_heredado_reconoce_formatos_equivalentes(seguimiento,periodo):
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','periodo':periodo}).json()
+    assert r['total']==r['totales']['historial']==205
+    assert r['totales']['activas']==12
+
+
+def test_periodo_formal_prevalece_y_opciones_no_se_duplican(db,seguimiento):
+    from models.catalogo import PeriodoEscolar
+    formal=PeriodoEscolar(clave='SEP-DIC 2099',activo=True,es_actual=True)
+    db.add(formal);db.flush()
+    reserva=db.query(Reservacion).filter_by(materia='Química de prueba').one()
+    reserva.periodo_id=formal.id
+    reserva.cuatrimestre='TEXTO HEREDADO INCONSISTENTE'
+    db.commit()
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','periodo':'SEP-DIC-2099'}).json()
+    assert r['total']==r['totales']['historial']==205 and r['periodos']==['SEP-DIC 2099']
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','periodo':'TEXTO HEREDADO INCONSISTENTE'}).json()
+    assert r['total']==0 and r['totales']=={'activas':0,'historial':0}
+
+
+def test_periodos_equivalentes_de_activa_e_historial_se_consultan_juntos(db,seguimiento):
+    original=db.query(Reservacion).filter_by(materia='Química de prueba').one()
+    otra=Reservacion(horario_id=original.horario_id,laboratorio_id=original.laboratorio_id,docente_id=original.docente_id,
+        creado_por=original.creado_por,materia=original.materia,grupo=original.grupo,cuatrimestre='SEP-DIC 2099')
+    db.add(otra);db.flush()
+    registro=db.query(PracticaLaboratorio).filter_by(titulo='Anterior 0').one();registro.reservacion_id=otra.id;db.commit()
+    r=seguimiento.get('/practicas-laboratorio/seguimiento',params={'vista':'HISTORIAL','periodo':'SEP-DIC-2099','buscar':'Anterior 0'}).json()
+    assert r['total']==r['totales']['historial']==1 and r['items'][0]['id']==registro.id
+    assert len(r['periodos'])==1
+    assert r['totales']['activas']==0

@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Contadores y filtros coherentes en sesiones e historial — 2026-11-07
+
+### Problema y comportamiento resultante
+Las pestañas mostraban el total de registros de la cuenta aunque los filtros produjeran cero resultados. Ahora búsqueda, periodo, fechas y estado se aplican antes de calcular ambos contadores y la lista. Cambiar de pestaña conserva los filtros aplicados sin aplicar borradores; el selector mantiene visibles todos los estados y se avisa cuando hay cambios pendientes de aplicar.
+
+El periodo dejaba fuera formatos equivalentes al comparar el texto exactamente. La consulta reconoce claves equivalentes con espacios o guiones, agrupa sus opciones y da prioridad al periodo escolar formal cuando está vinculado. La normalización se aplica a la consulta y no reescribe los periodos guardados. Los permisos y el ámbito por docente/laboratorio se mantienen.
+
+Con cero coincidencias se muestra 0 resultados, un mensaje específico y acceso a Limpiar filtros; se oculta la paginación vacía. Durante carga o error los contadores muestran un guion en lugar de cero confirmado. No se interpreta una búsqueda sin coincidencias como ausencia total de actividad. Aplicar/limpiar filtros cierra el detalle abierto por enlace para que no se mezcle con los resultados filtrados.
+
+### Validación y estado
+38 suites y 156 pruebas frontend aprobadas; 45 pruebas backend dirigidas aprobadas. Tres regresiones frontend verifican historial en cero, eliminación de paginación vacía, recuperación al limpiar, conservación de filtros aplicados frente a borradores y contadores no disponibles durante carga/error. Siete casos backend adicionales cubren conteos filtrados, cambio de vista, formatos equivalentes, prioridad del periodo formal y deduplicación de opciones. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore; un primer intento falló en Tailwind (blocklist) y el reintento sin cambios aprobó. Pruebas con datos ficticios y base aislada.
+
+Preparado localmente; pendiente publicación, comprobación del despliegue y revisión autenticada del filtro reportado por el docente. Sin migraciones ni cambios de registros reales. Cambios ajenos conservados y excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Agenda docente compacta y cancelaciones en historial — 2026-11-07
 
 ### Problema y comportamiento resultante

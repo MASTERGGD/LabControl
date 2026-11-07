@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -384,19 +384,37 @@ def seguimiento_practicas(
         base = base.filter(Reservacion.laboratorio_id == user.laboratorio_id)
     if laboratorio_id:
         base = base.filter(Reservacion.laboratorio_id == laboratorio_id)
-    activas = base.filter(PracticaLaboratorio.estado.in_(["SOLICITADA", "PREPARADA", "EN_CURSO"]))
-    historial = base.filter(PracticaLaboratorio.estado.in_(["CERRADA", "CANCELADA"]))
-    periodos = [x[0] for x in base.with_entities(Reservacion.cuatrimestre).distinct().order_by(Reservacion.cuatrimestre.desc()).all() if x[0]]
+    # El periodo formal tiene precedencia; las reservas heredadas se comparan
+    # por clave normalizada sin reescribir el texto almacenado.
+    pares_periodo = base.with_entities(Reservacion.periodo_id, Reservacion.cuatrimestre).distinct().all()
+    ids_periodo = {pid for pid, _ in pares_periodo if pid is not None}
+    formales = {p.id: p.clave for p in db.query(PeriodoEscolar).filter(PeriodoEscolar.id.in_(ids_periodo)).all()} if ids_periodo else {}
+    clave_periodo = lambda valor: ''.join(c for c in str(valor or '').upper() if c.isalnum())
+    opciones_periodo = {}
+    for pid, texto in pares_periodo:
+        etiqueta = formales.get(pid) or texto
+        if etiqueta:
+            clave = clave_periodo(etiqueta)
+            if clave not in opciones_periodo or pid in formales: opciones_periodo[clave] = etiqueta
+    periodos = sorted(opciones_periodo.values(), reverse=True)
     usadas = [x[0] for x in base.with_entities(PracticaLaboratorio.reservacion_id).distinct().all()]
-    proxima = activas.filter(PracticaLaboratorio.fecha_sesion >= now_mx().date()).order_by(PracticaLaboratorio.fecha_sesion, PracticaLaboratorio.id).first()
-    q = activas if vista == "ACTIVAS" else historial
-    if estado: q = q.filter(PracticaLaboratorio.estado == estado)
-    if periodo: q = q.filter(Reservacion.cuatrimestre == periodo)
-    if desde: q = q.filter(PracticaLaboratorio.fecha_sesion >= desde)
-    if hasta: q = q.filter(PracticaLaboratorio.fecha_sesion <= hasta)
+    filtrada = base
+    if periodo:
+        clave = clave_periodo(periodo)
+        ids_coincidentes = {pid for pid, etiqueta in formales.items() if clave_periodo(etiqueta) == clave}
+        heredadas = [and_(Reservacion.periodo_id == pid, Reservacion.cuatrimestre == texto)
+                     for pid, texto in pares_periodo if pid not in formales and clave_periodo(texto) == clave]
+        filtrada = filtrada.filter(or_(Reservacion.periodo_id.in_(ids_coincidentes), *heredadas))
+    if desde: filtrada = filtrada.filter(PracticaLaboratorio.fecha_sesion >= desde)
+    if hasta: filtrada = filtrada.filter(PracticaLaboratorio.fecha_sesion <= hasta)
     if buscar.strip():
         texto = f"%{buscar.strip()}%"
-        q = q.filter(or_(PracticaLaboratorio.titulo.ilike(texto), Reservacion.materia.ilike(texto), Reservacion.grupo.ilike(texto)))
+        filtrada = filtrada.filter(or_(PracticaLaboratorio.titulo.ilike(texto), Reservacion.materia.ilike(texto), Reservacion.grupo.ilike(texto)))
+    if estado: filtrada = filtrada.filter(PracticaLaboratorio.estado == estado)
+    activas = filtrada.filter(PracticaLaboratorio.estado.in_(["SOLICITADA", "PREPARADA", "EN_CURSO"]))
+    historial = filtrada.filter(PracticaLaboratorio.estado.in_(["CERRADA", "CANCELADA"]))
+    proxima = activas.filter(PracticaLaboratorio.fecha_sesion >= now_mx().date()).order_by(PracticaLaboratorio.fecha_sesion, PracticaLaboratorio.id).first()
+    q = activas if vista == "ACTIVAS" else historial
     total = q.count()
     paginas = max(1, (total + tamano - 1) // tamano)
     pagina = min(pagina, paginas)

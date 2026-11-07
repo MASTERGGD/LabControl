@@ -51,7 +51,8 @@ function PracticasLaboratorio() {
   const [consulta, setConsulta] = useState(filtrosIniciales);
   const [pagina, setPagina] = useState(1);
   const [revision, setRevision] = useState(0);
-  const [cargandoSeguimiento, setCargandoSeguimiento] = useState(false);
+  const [cargandoSeguimiento, setCargandoSeguimiento] = useState(true);
+  const [seguimientoDisponible, setSeguimientoDisponible] = useState(false);
   const [detalleAbierto, setDetalleAbierto] = useState(null);
   const [seguimiento, setSeguimiento] = useState({ total: 0, pagina: 1, paginas: 1, totales: { activas: 0, historial: 0 }, periodos: [], reservaciones_con_practica: [], proxima: null });
   const [reservaciones, setReservaciones] = useState([]);
@@ -103,8 +104,8 @@ function PracticasLaboratorio() {
 
   useEffect(() => {
     let vigente = true;
-    if (!esDocente && !laboratorioId) { setPracticas([]); return undefined; }
-    setCargandoSeguimiento(true); setError(''); setPracticas([]);
+    if (!esDocente && !laboratorioId) { setPracticas([]); setSeguimientoDisponible(false); setCargandoSeguimiento(false); return undefined; }
+    setCargandoSeguimiento(true); setSeguimientoDisponible(false); setError(''); setPracticas([]);
     const params = new URLSearchParams({ vista, pagina: String(pagina), tamano: '10' });
     if (laboratorioId) params.set('laboratorio_id', laboratorioId);
     Object.entries(consulta).forEach(([key, value]) => { if (value) params.set(key, value); });
@@ -116,7 +117,7 @@ function PracticasLaboratorio() {
           items = [detalle.data, ...items.filter(p => p.id !== detalle.data.id)];
           if (vigente) { setDetalleAbierto(detalle.data.id); if (reporteCargado.current !== detalle.data.id) { setReporte({resultados:detalle.data.resultados||'',conclusiones:detalle.data.conclusiones||'',observaciones_docente:detalle.data.observaciones_docente||''}); reporteCargado.current = detalle.data.id; } }
         }
-        if (vigente) { setPracticas(items); setSeguimiento(data); }
+        if (vigente) { setPracticas(items); setSeguimiento(data); setSeguimientoDisponible(true); }
       })
       .catch(e => { if (vigente) setError(getApiErrorMessage(e, 'No se pudo cargar el seguimiento de prácticas.')); })
       .finally(() => { if (vigente) setCargandoSeguimiento(false); });
@@ -125,10 +126,19 @@ function PracticasLaboratorio() {
 
   const cambiarVista = nueva => {
     setVista(nueva); setPagina(1); setDetalleAbierto(null);
-    setSearchParams(actual => { const params = new URLSearchParams(actual); params.set('vista', nueva); params.delete('practica_id'); params.delete('estado'); return params; });
-    const nuevos = { ...filtros, estado: '' };
-    setFiltros(nuevos); setConsulta(nuevos);
+    setSearchParams(actual => { const params = new URLSearchParams(actual); params.set('vista', nueva); params.delete('practica_id'); return params; });
+
   };
+  const quitarDetalleDeEnlace = () => setSearchParams(actual => { const params = new URLSearchParams(actual); params.delete('practica_id'); return params; });
+  const aplicarFiltros = e => {
+    e.preventDefault(); quitarDetalleDeEnlace(); setConsulta({ ...filtros }); setPagina(1); setDetalleAbierto(null);
+  };
+  const limpiarFiltros = () => {
+    setFiltros({ ...filtrosVacios }); setConsulta({ ...filtrosVacios }); setPagina(1); setDetalleAbierto(null);
+    setSearchParams(actual => { const params = new URLSearchParams(actual); params.delete('practica_id'); params.delete('estado'); return params; });
+  };
+  const filtrosPendientes = Object.keys(filtrosVacios).some(key => filtros[key] !== consulta[key]);
+  const hayFiltrosAplicados = Object.values(consulta).some(Boolean);
   const actualizar = () => { cargar(); setRevision(v => v + 1); };
 
   useEffect(() => {
@@ -169,7 +179,7 @@ function PracticasLaboratorio() {
   const reservacionSeleccionada = reservaciones.find(r => Number(r.id) === Number(seleccion));
   const hoyLocal = todayISOInMexico();
   const mananaLocal = fechaLocal(new Date(Date.now() + 24 * 60 * 60 * 1000));
-  const proximaPractica = seguimiento.proxima;
+  const proximaPractica = seguimientoDisponible ? seguimiento.proxima : null;
 
   useEffect(() => {
     const labId = esDocente ? reservacionSeleccionada?.laboratorio_id : laboratorioId;
@@ -290,7 +300,7 @@ function PracticasLaboratorio() {
 
       {esDocente && <div className={`${card} space-y-3`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
         <div><h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Sesiones y prácticas de laboratorio</h2><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Al reservar, SIGA crea aquí la solicitud y la envía al responsable. No vuelvas a capturarla.</p></div>
-        {seguimiento.totales.activas + seguimiento.totales.historial === 0 && !cargandoSeguimiento && <p className="rounded-xl border border-dashed p-4 text-sm" style={{ color: 'var(--text-secondary)', borderColor: 'var(--surface-border)' }}>Aún no tienes prácticas solicitadas. Para iniciar una, abre <b>Solicitar laboratorio</b>, elige el propósito de la actividad y completa sus datos.</p>}
+        {seguimientoDisponible && !cargandoSeguimiento && !hayFiltrosAplicados && seguimiento.reservaciones_con_practica.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm" style={{ color: 'var(--text-secondary)', borderColor: 'var(--surface-border)' }}>Aún no tienes prácticas solicitadas. Para iniciar una, abre <b>Solicitar laboratorio</b>, elige el propósito de la actividad y completa sus datos.</p>}
 
       </div>}
 
@@ -333,18 +343,20 @@ function PracticasLaboratorio() {
 
       <section className="space-y-3" aria-label="Seguimiento de prácticas">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Sesiones y seguimiento</h2><button className={`${btn} border`} disabled={cargandoSeguimiento} onClick={actualizar}>{cargandoSeguimiento ? 'Actualizando…' : 'Actualizar'}</button></div>
-        <div className="flex gap-2" aria-label="Vistas del seguimiento">{[['ACTIVAS', 'Activas', seguimiento.totales.activas], ['HISTORIAL', 'Historial', seguimiento.totales.historial]].map(([key, label, cantidad]) => <button key={key} type="button" aria-pressed={vista === key} className={`${btn} border ${vista === key ? 'bg-emerald-700 text-white' : ''}`} onClick={() => cambiarVista(key)}>{label} ({cantidad})</button>)}</div>
+        <div className="flex gap-2" aria-label="Vistas del seguimiento">{[['ACTIVAS', 'Activas', seguimiento.totales.activas], ['HISTORIAL', 'Historial', seguimiento.totales.historial]].map(([key, label, cantidad]) => <button key={key} type="button" aria-pressed={vista === key} className={`${btn} border ${vista === key ? 'bg-emerald-700 text-white' : ''}`} onClick={() => cambiarVista(key)}>{label} ({seguimientoDisponible && !cargandoSeguimiento ? cantidad : '—'})</button>)}</div>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{vista === 'ACTIVAS' ? 'Solicitadas, preparadas y en curso. Las finalizadas y canceladas se conservan en Historial.' : 'Prácticas finalizadas y canceladas, conservadas para consulta.'}</p>
-        <form aria-label="Filtros de prácticas" className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-3" style={{ borderColor: 'var(--surface-border)' }} onSubmit={e => { e.preventDefault(); setConsulta({ ...filtros }); setPagina(1); setDetalleAbierto(null); }}>
+        <form aria-label="Filtros de prácticas" className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-3" style={{ borderColor: 'var(--surface-border)' }} onSubmit={aplicarFiltros}>
           <label className="text-xs">Buscar práctica, materia o grupo<input className={`${field} mt-1`} value={filtros.buscar} maxLength={120} onChange={e => setFiltros(f => ({ ...f, buscar: e.target.value }))} /></label>
-          <label className="text-xs">Periodo<select className={`${field} mt-1`} value={filtros.periodo} onChange={e => setFiltros(f => ({ ...f, periodo: e.target.value }))}><option value="">Todos los periodos</option>{seguimiento.periodos.map(periodo => <option key={periodo}>{periodo}</option>)}</select></label>
-          <label className="text-xs">Estado<select className={`${field} mt-1`} value={filtros.estado} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))}><option value="">Todos los estados</option>{(vista === 'ACTIVAS' ? [['SOLICITADA','Solicitada'],['PREPARADA','Preparada'],['EN_CURSO','En curso']] : [['CERRADA','Finalizada'],['CANCELADA','Cancelada']]).map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}</select></label>
+          <label className="text-xs">Periodo<select className={`${field} mt-1`} value={filtros.periodo} onChange={e => setFiltros(f => ({ ...f, periodo: e.target.value }))}><option value="">Todos los periodos</option>{filtros.periodo && !seguimiento.periodos.includes(filtros.periodo) && <option value={filtros.periodo}>{filtros.periodo}</option>}{seguimiento.periodos.map(periodo => <option key={periodo}>{periodo}</option>)}</select></label>
+          <label className="text-xs">Estado<select className={`${field} mt-1`} value={filtros.estado} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))}><option value="">Todos los estados</option>{[['SOLICITADA','Solicitada'],['PREPARADA','Preparada'],['EN_CURSO','En curso'],['CERRADA','Finalizada'],['CANCELADA','Cancelada']].map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}</select></label>
           <label className="text-xs">Desde<input className={`${field} mt-1`} type="date" value={filtros.desde} onChange={e => setFiltros(f => ({ ...f, desde: e.target.value }))} /></label>
           <label className="text-xs">Hasta<input className={`${field} mt-1`} type="date" min={filtros.desde || undefined} value={filtros.hasta} onChange={e => setFiltros(f => ({ ...f, hasta: e.target.value }))} /></label>
-          <div className="flex items-end gap-2"><button type="submit" className={`${btn} bg-emerald-700 text-white`}>Aplicar filtros</button><button type="button" className={`${btn} border`} onClick={() => { setFiltros(filtrosVacios); setConsulta(filtrosVacios); setPagina(1); setDetalleAbierto(null); }}>Limpiar</button></div>
+          <div className="flex items-end gap-2"><button type="submit" className={`${btn} bg-emerald-700 text-white`}>Aplicar filtros</button><button type="button" className={`${btn} border`} onClick={limpiarFiltros}>Limpiar</button></div>
         </form>
+        {filtrosPendientes && <p role="status" className="text-xs text-amber-700">Hay cambios sin aplicar. Pulsa «Aplicar filtros» para actualizar resultados y contadores.</p>}
+
         {cargandoSeguimiento && <p role="status">Cargando prácticas…</p>}
-        {!cargandoSeguimiento && !practicas.length && <div className={`${card} text-sm`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>No hay prácticas en esta vista con los filtros seleccionados.</div>}
+        {!cargandoSeguimiento && seguimientoDisponible && !practicas.length && <div className={`${card} space-y-2 text-sm`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}><p>{hayFiltrosAplicados ? 'No hay actividades con estos filtros.' : 'No hay actividades en esta vista.'}</p><p role="status">0 resultados</p>{hayFiltrosAplicados && <button className="font-semibold text-blue-700 underline" onClick={limpiarFiltros}>Limpiar filtros</button>}</div>}
         {practicas.map(p => <article key={p.id} className="rounded-xl border p-4 space-y-3" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
           <div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${coloresEstado[p.estado] || coloresEstado.CERRADA}`}>{p.estado === 'CERRADA' ? 'FINALIZADA' : p.estado === 'PREPARADA' && p.incluye_practica === false ? 'RESERVADA' : p.estado.replace('_', ' ')}</span><h3 className="mt-2 text-base font-bold" style={{ color: 'var(--text-primary)' }}>{p.titulo}</h3><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{p.laboratorio_nombre} · {p.materia} {p.proposito === 'INDIVIDUAL' ? '· Trabajo individual' : `· Grupo ${p.grupo}`} · {p.fecha ? formatDateInMexico(p.fecha, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fecha de reservación'} {p.hora_inicio && `· ${p.hora_inicio}–${p.hora_fin}`}</p></div>
             {!esDocente && <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Docente: {p.docente_nombre}</span>}</div>
@@ -391,7 +403,8 @@ function PracticasLaboratorio() {
           {p.estado === 'CERRADA' && <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700"><b>Informe:</b> {p.resultados || 'Sin resultados registrados'}<br/><b>Conclusiones:</b> {p.conclusiones || 'Sin conclusiones registradas'}</div>}
           </div>}
         </article>)}
-        <nav className="flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Paginación de prácticas"><span role="status">{seguimiento.total} resultados · Página {seguimiento.pagina} de {seguimiento.paginas}</span><div className="flex gap-2"><button className={`${btn} border`} disabled={cargandoSeguimiento || seguimiento.pagina <= 1} onClick={() => { setPagina(seguimiento.pagina - 1); setDetalleAbierto(null); }}>Anterior</button><button className={`${btn} border`} disabled={cargandoSeguimiento || seguimiento.pagina >= seguimiento.paginas} onClick={() => { setPagina(seguimiento.pagina + 1); setDetalleAbierto(null); }}>Siguiente</button></div></nav>
+        {seguimientoDisponible && !cargandoSeguimiento && seguimiento.total > 0 && <nav className="flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Paginación de prácticas"><span role="status">{seguimiento.total} {seguimiento.total === 1 ? 'resultado' : 'resultados'}{seguimiento.paginas > 1 ? ` · Página ${seguimiento.pagina} de ${seguimiento.paginas}` : ''}</span>{seguimiento.paginas > 1 && <div className="flex gap-2"><button className={`${btn} border`} disabled={seguimiento.pagina <= 1} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina - 1); setDetalleAbierto(null); }}>Anterior</button><button className={`${btn} border`} disabled={seguimiento.pagina >= seguimiento.paginas} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina + 1); setDetalleAbierto(null); }}>Siguiente</button></div>}</nav>}
+
       </section>
     </div>
   </AdminLayout>;

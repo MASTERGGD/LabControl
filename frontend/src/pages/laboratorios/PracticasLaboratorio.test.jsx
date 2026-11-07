@@ -22,7 +22,7 @@ beforeEach(() => {
     if(url.includes('/seguimiento?')) {
       const q = new URLSearchParams(url.split('?')[1]); const pagina=Number(q.get('pagina'));
       const historial=q.get('vista') === 'HISTORIAL'; const filtrado=q.get('buscar');
-      return { data: { items: filtrado ? [] : [practica(historial ? 30 : pagina===2 ? 11 : 1, historial ? 'CANCELADA':'SOLICITADA')], total:filtrado?0:historial?1:11, pagina:filtrado?1:pagina, paginas:filtrado||historial?1:2, totales:{activas:11,historial:1}, periodos:['SEP-DIC-2099'],reservaciones_con_practica:[1,11,30],proxima:null } };
+      return { data: { items: filtrado ? [] : [practica(historial ? 30 : pagina===2 ? 11 : 1, historial ? 'CANCELADA':'SOLICITADA')], total:filtrado?0:historial?1:11, pagina:filtrado?1:pagina, paginas:filtrado||historial?1:2, totales:{activas:filtrado?0:11,historial:filtrado?0:1}, periodos:['SEP-DIC-2099'],reservaciones_con_practica:[1,11,30],proxima:null } };
     }
     if(url.startsWith('/laboratorios')) return {data:[{id:1,nombre:'Lab ficticio',categoria:'QUIMICA'}]};
     if(url.includes('/resumen')) return {data:{}};
@@ -55,7 +55,7 @@ test('paginación y filtros consultan servidor y muestran estado vacío', async 
   await cambiar(form.querySelector('input'), 'No coincide');
   await act(async () => form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
   expect(container.querySelector('article')).toBeNull();
-  expect(container.textContent).toContain('No hay prácticas en esta vista');
+  expect(container.textContent).toContain('No hay actividades con estos filtros.');
   const call = api.get.mock.calls.filter(([url])=>url.includes('/seguimiento?')).at(-1)[0];
   const q=new URLSearchParams(call.split('?')[1]);
   expect(q.get('pagina')).toBe('1'); expect(q.get('buscar')).toBe('No coincide');
@@ -95,4 +95,31 @@ test('enlace al historial abre directamente la vista con canceladas y conserva e
  const llamada=api.get.mock.calls.filter(([url])=>url.includes('/seguimiento?')).at(-1)[0];expect(new URLSearchParams(llamada.split('?')[1]).get('vista')).toBe('HISTORIAL');
  expect(container.querySelector('article').textContent).toContain('CANCELADA');
  await click('Activas');expect(container.querySelector('article').textContent).toContain('SOLICITADA');
+});
+
+test('contador del historial llega a cero con los filtros y no muestra paginación vacía',async()=>{
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/docente/practicas-laboratorio?vista=HISTORIAL']}><PracticasLaboratorio/></MemoryRouter>));
+ expect(container.textContent).toContain('Historial (1)');
+ const form=container.querySelector('[aria-label="Filtros de prácticas"]');await cambiar(form.querySelector('input'),'Sin coincidencias');
+ expect(container.textContent).toContain('Hay cambios sin aplicar');expect(container.textContent).toContain('Historial (1)');
+ await act(async()=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ expect(container.textContent).toContain('Historial (0)');expect(container.textContent).not.toContain('Aún no tienes prácticas solicitadas');expect(container.textContent).toContain('0 resultados');expect(container.textContent).toContain('No hay actividades con estos filtros.');
+ expect(container.querySelector('[aria-label="Paginación de prácticas"]')).toBeNull();expect(container.textContent).not.toContain('Página 1 de 1');
+ await click('Limpiar filtros');expect(container.textContent).toContain('Historial (1)');expect(container.querySelector('article')).not.toBeNull();
+});
+
+test('cambiar de pestaña conserva filtros aplicados y no aplica borradores',async()=>{
+ await render();const form=container.querySelector('[aria-label="Filtros de prácticas"]');
+ await cambiar(form.querySelectorAll('select')[1],'CANCELADA');await cambiar(form.querySelector('input'),'Anterior');
+ await act(async()=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ await cambiar(form.querySelector('input'),'Borrador sin aplicar');await click('Historial');
+ const ultima=api.get.mock.calls.filter(([url])=>url.includes('/seguimiento?')).at(-1)[0],params=new URLSearchParams(ultima.split('?')[1]);
+ expect(params.get('estado')).toBe('CANCELADA');expect(params.get('buscar')).toBe('Anterior');expect(params.get('vista')).toBe('HISTORIAL');
+ expect(form.querySelectorAll('select')[1].value).toBe('CANCELADA');expect(container.textContent).toContain('Hay cambios sin aplicar');
+});
+
+test('carga y error muestran contadores no disponibles en lugar de ceros confirmados',async()=>{
+ let rechazar;const original=api.get.getMockImplementation();api.get.mockImplementation(url=>url.includes('/seguimiento?')?new Promise((_,reject)=>{rechazar=reject;}):original(url));
+ await render();expect(container.textContent).toContain('Activas (—)');expect(container.textContent).toContain('Historial (—)');expect(container.textContent).not.toContain('0 resultados');
+ await act(async()=>rechazar(new Error('Sin red')));expect(container.textContent).toContain('Historial (—)');expect(container.textContent).not.toContain('No hay actividades');expect(container.textContent).not.toContain('0 resultados');
 });
