@@ -850,7 +850,7 @@ export default function MiHorarioDocente() {
       : estadoPrincipal === 'PROXIMA'
         ? 'Tu siguiente actividad'
         : 'Última actividad de hoy';
-  const textoAccionClase = (item) => item.practica_id ? (item.practica_puede_iniciar ? 'Iniciar práctica' : item.practica_estado === 'EN_CURSO' ? 'Continuar práctica' : 'Ver práctica') : (
+  const textoAccionClase = (item) => item.practica_id ? (item.practica_puede_iniciar ? 'Iniciar actividad de laboratorio' : item.practica_estado === 'EN_CURSO' ? 'Continuar actividad de laboratorio' : 'Ver actividad de laboratorio') : (
     item.clase_estado === 'NO_IMPARTIDA'
       ? 'Ver registro'
       : item.clase_estado === 'CERRADA'

@@ -160,7 +160,7 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-widest mb-1" style={{ color: '#10b981' }}>
-            {reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Práctica en curso' : 'Próxima práctica') : esTutoria ? (esHoy ? 'Próxima tutoría hoy' : 'Próxima tutoría') : accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
+            {reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Actividad de laboratorio en curso' : 'Próxima actividad de laboratorio') : esTutoria ? (esHoy ? 'Próxima tutoría hoy' : 'Próxima tutoría') : accion.texto === 'Continuar clase' ? 'Clase en curso' : enCurso ? 'Tu clase actual' : esHoy ? 'Próxima clase hoy' : 'Próxima clase'}
           </p>
           <p className="text-white font-bold text-base leading-tight">{reservacion.materia}{reservacion.practica_titulo ? ` · ${reservacion.practica_titulo}` : ''}</p>
           <p className="text-slate-400 text-sm mt-0.5">
@@ -170,8 +170,8 @@ function BloqueProximaClase({ reservacion, tiempoRestante, accion, ocupado, onIr
         <div className="flex-shrink-0 text-left sm:text-right">
           {enCurso ? (
             <>
-              <p className="text-lg font-bold text-emerald-400">{reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Práctica en curso' : 'Horario de práctica') : 'Clase en curso'}</p>
-              <p className="text-xs text-slate-500">{reservacion.practica_id ? (reservacion.practica_estado === 'SOLICITADA' ? 'Materiales pendientes de preparación' : 'Consulta la práctica y su lista de asistencia') : accion.texto === 'Continuar clase' ? 'Continúa con el registro de tu clase' : 'Puedes iniciar la clase'}</p>
+              <p className="text-lg font-bold text-emerald-400">{reservacion.practica_id ? (reservacion.practica_estado === 'EN_CURSO' ? 'Actividad en curso' : 'Horario de laboratorio') : 'Clase en curso'}</p>
+              <p className="text-xs text-slate-500">{reservacion.practica_id ? (reservacion.practica_estado === 'SOLICITADA' ? 'Materiales pendientes de preparación' : (reservacion.proposito === 'INDIVIDUAL' ? 'Consulta la sesión y su bitácora de trabajo' : 'Consulta la sesión y la asistencia del grupo')) : accion.texto === 'Continuar clase' ? 'Continúa con el registro de tu clase' : 'Puedes iniciar la clase'}</p>
             </>
           ) : comienzaPronto ? (
             <>

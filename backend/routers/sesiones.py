@@ -70,7 +70,10 @@ def clase_reservada_hoy(reservacion_id: int, db: Session = Depends(get_db), curr
         ClaseDocente.carga_docente_id == reserva.carga_docente_id,
         ClaseDocente.fecha == now_mx().date(),
     ).first() if reserva.carga_docente_id else None
-    return {"clase_id": clase.id if clase else None, "estado": clase.estado if clase else None}
+    from services.programacion_practicas import seguimiento_reserva, accion_practica
+    actividad = seguimiento_reserva(db, reserva)
+    return {"clase_id": clase.id if clase else None, "estado": clase.estado if clase else None,
+            **(accion_practica(actividad) if actividad else {})}
 
 
 class ObservacionCreate(BaseModel):
@@ -445,6 +448,11 @@ async def abrir_sesion(
                     status_code=403,
                     detail="Esta reservación no te pertenece. Solo puedes iniciar tus propias clases."
                 )
+
+            from services.programacion_practicas import seguimiento_reserva
+            actividad = seguimiento_reserva(db, res)
+            if actividad:
+                raise HTTPException(409, f'Esta reservación tiene seguimiento propio. Abre la actividad #{actividad.id} desde tu agenda para iniciar y registrar materiales o bitácora.')
 
             # ── Verificar que la reservación tenga identidad académica completa ─
             faltan_res = [f for f, v in [

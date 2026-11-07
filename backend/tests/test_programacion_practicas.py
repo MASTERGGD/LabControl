@@ -9,6 +9,7 @@ from models.docencia import CargaDocente, ClaseDocente, AsistenciaDocente
 from models.horario import HorarioDisponible, Reservacion, BloqueoSlot
 from models.practica_laboratorio import PracticaLaboratorio
 from models.notificacion import Notificacion
+from models.usuario import Usuario
 from routers.practicas_laboratorio import router
 from services.timezone import MEXICO_TZ
 
@@ -39,6 +40,10 @@ def plan(db, lab, docente_user, monkeypatch):
     app.include_router(notificaciones)
     from routers.docencia import router as docencia
     app.include_router(docencia)
+    from routers.sesiones import router as sesiones
+    app.include_router(sesiones)
+    import routers.sesiones as sesiones_mod
+    monkeypatch.setattr(sesiones_mod, "now_mx", lambda: ahora)
     import routers.docencia as docencia_mod
     monkeypatch.setattr(docencia_mod, "_ahora_mx", lambda: ahora)
     app.dependency_overrides[get_db]=lambda:db
@@ -248,3 +253,131 @@ def test_materiales_por_sesion_y_devolucion_conservan_existencias(plan,db,docent
     assert cierre.status_code==200,cierre.text
     db.refresh(stock);assert stock.cantidad_disponible==5
     assert db.query(MovimientoInsumoLaboratorio).filter_by(tipo='DEVOLUCION').one().cantidad==1
+
+def test_uso_individual_sin_carga_inicia_y_cierra_sin_clase_ni_lista(plan,db):
+    client,payload,cargas,_=plan
+    for c in cargas:c.activo=False
+    db.commit()
+    payload.update(proposito='INDIVIDUAL',incluye_practica=False,objetivo='Estudiar conservación de muestras',participantes='Trabajo del solicitante')
+    payload['sesiones']=[{'fecha':'2026-11-09','hora_inicio':'08:00','hora_fin':'10:00'}]
+    r=client.post('/practicas-laboratorio/programacion',json=payload)
+    assert r.status_code==201,r.text
+    p=r.json()['sesiones'][0];assert p['proposito']=='INDIVIDUAL' and p['carga_docente_id'] is None
+    assert p['estado']=='PREPARADA' and p['participantes']=='Trabajo del solicitante'
+    iniciado=client.post(f"/practicas-laboratorio/{p['id']}/iniciar")
+    assert iniciado.status_code==200 and iniciado.json()['asistencias']==[],iniciado.text
+    assert db.query(ClaseDocente).count()==0 and db.query(AsistenciaDocente).count()==0
+    assert client.put(f"/practicas-laboratorio/{p['id']}/asistencia",json={'alumnos':[{'alumno_id':1,'estado':'PRESENTE'}]}).status_code==409
+    cerrado=client.post(f"/practicas-laboratorio/{p['id']}/cerrar",json={'resultados':'Se registró el avance','finalizar_practica':True})
+    assert cerrado.status_code==200 and cerrado.json()['resultados']=='Se registró el avance',cerrado.text
+    assert db.query(ClaseDocente).count()==0
+    historial=client.get('/practicas-laboratorio/agenda-docente?historial=true').json()
+    assert historial[0]['proposito']=='INDIVIDUAL'
+
+
+def test_individual_exige_objetivo_y_no_permite_carga_disfrazada(plan,db):
+    client,payload,_,_=plan
+    payload.update(proposito='INDIVIDUAL',objetivo='',incluye_practica=False)
+    assert client.post('/practicas-laboratorio/programacion',json=payload).status_code==422
+    payload['objetivo']='Estudio de muestras'
+    assert client.post('/practicas-laboratorio/programacion',json=payload).status_code==409
+    assert db.query(Reservacion).count()==0
+
+
+def test_individual_varias_fechas_conflicto_del_docente_no_guarda_parcial(plan,db):
+    client,payload,_,_=plan
+    payload.update(proposito='INDIVIDUAL',incluye_practica=False,objetivo='Estudio individual de muestras')
+    payload['sesiones']=[{'fecha':'2026-11-09','hora_inicio':'16:00','hora_fin':'17:00'}, {'fecha':'2026-11-11','hora_inicio':'08:00','hora_fin':'10:00'}]
+    r=client.post('/practicas-laboratorio/programacion',json=payload)
+    assert r.status_code==409 and r.json()['detail']['conflictos'][0]['sesion']==2,r.text
+    assert db.query(Reservacion).count()==0
+
+
+def test_academica_sin_practica_reserva_espacio_y_asistencia_sin_preparar(plan,db):
+    client,payload,_,_=plan
+    payload['incluye_practica']=False;payload['sesiones']=payload['sesiones'][:1]
+    r=client.post('/practicas-laboratorio/programacion',json=payload)
+    assert r.status_code==201,r.text
+    p=r.json()['sesiones'][0];assert p['estado']=='PREPARADA' and not p['incluye_practica']
+    r=client.post(f"/practicas-laboratorio/{p['id']}/iniciar")
+    assert r.status_code==200 and len(r.json()['asistencias'])==1,r.text
+    assert db.query(ClaseDocente).count()==1
+
+
+def test_no_materiales_sin_activar_practica_y_no_cambiar_proposito_al_continuar(plan):
+    client,payload,_,_=plan
+    payload['incluye_practica']=False;payload['materiales']=[{'descripcion':'Reactivo ficticio','cantidad_solicitada':1}]
+    assert client.post('/practicas-laboratorio/programacion',json=payload).status_code==422
+    payload['materiales']=[];payload['incluye_practica']=True
+    origen=client.post('/practicas-laboratorio/programacion',json=payload).json()['practica_id']
+    payload.update(practica_origen_id=origen,proposito='INDIVIDUAL',objetivo='Cambiar propósito no autorizado')
+    payload['sesiones']=[{'fecha':'2026-11-16','hora_inicio':'16:00','hora_fin':'17:00'}]
+    assert client.post('/practicas-laboratorio/programacion',json=payload).status_code==422
+
+
+def test_formulario_anterior_no_permite_docente_sin_carga_y_conserva_solicitudes(plan,db):
+    client,payload,cargas,_=plan
+    from routers.horarios import crear_reservacion, ReservacionCreate
+    from fastapi import BackgroundTasks, HTTPException
+    slot=db.query(HorarioDisponible).filter_by(dia_semana=0,hora_inicio='08:00').one()
+    datos=ReservacionCreate(horario_id=slot.id,laboratorio_id=payload['laboratorio_id'],docente_id=cargas[0].docente_id,materia='Manejo de Postcosecha',carrera='Agricultura',cuatrimestre='SEP-DIC-2026',cuatrimestre_materia='3',grupo='A')
+    with pytest.raises(HTTPException) as error:crear_reservacion(datos,BackgroundTasks(),db,db.get(Usuario,cargas[0].docente_id))
+    assert error.value.status_code==422 and db.query(Reservacion).count()==0
+    slot=db.query(HorarioDisponible).filter_by(dia_semana=0,hora_inicio='16:00').one()
+    reserva=Reservacion(horario_id=slot.id,laboratorio_id=payload['laboratorio_id'],docente_id=cargas[0].docente_id,creado_por=cargas[0].docente_id,materia='Manejo de Postcosecha',periodo_id=cargas[0].periodo_id,cuatrimestre='SEP-DIC-2026',grupo='A',fecha_actividad=dt.date(2026,11,9))
+    db.add(reserva);db.flush();anterior=PracticaLaboratorio(reservacion_id=reserva.id,titulo='Registro anterior',fecha_sesion=dt.date(2026,11,9));db.add(anterior);db.commit()
+    detalle=client.get(f'/practicas-laboratorio/{anterior.id}').json()
+    assert detalle['proposito']=='SIN_VINCULACION'
+    vinculada=client.post(f'/practicas-laboratorio/{anterior.id}/vincular-carga',json={'carga_id':cargas[0].id,'fuera_horario':True})
+    assert vinculada.status_code==200 and vinculada.json()['proposito']=='ACADEMICA',vinculada.text
+    assert db.query(PracticaLaboratorio).count()==1
+
+def test_individual_con_practica_requiere_preparacion_y_responsable_no_suplanta_docente(plan,db,docente_user):
+    from models.usuario import RolUsuario
+    client,payload,_,_=plan
+    payload.update(proposito='INDIVIDUAL',objetivo='Estudio individual con insumos')
+    payload['sesiones']=[{'fecha':'2026-11-09','hora_inicio':'16:00','hora_fin':'17:00'}]
+    p_id=client.post('/practicas-laboratorio/programacion',json=payload).json()['practica_id']
+    assert client.post(f'/practicas-laboratorio/{p_id}/iniciar').status_code==409
+    docente_user.rol=RolUsuario.RESPONSABLE_LAB;docente_user.laboratorio_id=payload['laboratorio_id'];db.commit()
+    assert client.post('/practicas-laboratorio/programacion',json=payload).status_code==403
+
+
+def test_migracion_proposito_no_reclasifica_registros_previos(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    engine=sa.create_engine('sqlite:///'+str(tmp_path/'proposito.db'))
+    with engine.begin() as conn:
+        conn.execute(sa.text('CREATE TABLE practicas_laboratorio (id INTEGER PRIMARY KEY, titulo TEXT NOT NULL)'))
+        conn.execute(sa.text("INSERT INTO practicas_laboratorio VALUES (1,'Solicitud anterior')"))
+        path=Path(__file__).parents[1]/'alembic/versions/f7a8b9c0d1e2_proposito_laboratorio.py'
+        spec=importlib.util.spec_from_file_location('migration_proposito',path);migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        with Operations.context(MigrationContext.configure(conn)):migration.upgrade()
+        assert conn.execute(sa.text('SELECT titulo, proposito, incluye_practica, participantes FROM practicas_laboratorio')).one()==('Solicitud anterior',None,True,None)
+    engine.dispose()
+
+
+def test_reservacion_con_seguimiento_dirige_a_sesion_y_no_permite_inicio_alterno(plan,db):
+    client,payload,_,_=plan
+    r=client.post('/practicas-laboratorio/programacion',json=payload).json()
+    p=db.get(PracticaLaboratorio,r['practica_id'])
+    from routers.sesiones import clase_reservada_hoy
+    user=db.get(Usuario,p.reservacion.docente_id)
+    contexto=clase_reservada_hoy(p.reservacion_id,db,user)
+    assert contexto['practica_id']==p.id and contexto['practica_url'].endswith(f'practica_id={p.id}')
+    intento=client.post('/sesiones',json={'laboratorio_id':p.reservacion.laboratorio_id,'reservacion_id':p.reservacion_id,'fin_estimado_min':60})
+    assert intento.status_code==409 and 'seguimiento propio' in intento.json()['detail'],intento.text
+
+
+def test_cors_conserva_origen_en_preflight_y_rechazo_de_solicitud():
+    import main
+    client=TestClient(main.app)
+    origin='https://siga-utecan.up.railway.app'
+    preflight=client.options('/practicas-laboratorio/programacion/validar',headers={'Origin':origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,content-type'})
+    assert preflight.status_code==200
+    assert preflight.headers.get('access-control-allow-origin') in {origin,'*'}
+    respuesta=client.post('/practicas-laboratorio/programacion/validar',headers={'Origin':origin},json={})
+    assert respuesta.status_code==401 and respuesta.headers.get('access-control-allow-origin') in {origin,'*'}

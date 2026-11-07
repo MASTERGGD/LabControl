@@ -27,7 +27,7 @@ from services.timezone import now_mx
 router = APIRouter(prefix="/practicas-laboratorio", tags=["Prácticas de laboratorio"])
 RESPONSABLES = {RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB}
 DOCENTES = RESPONSABLES | {RolUsuario.DOCENTE}
-from services.programacion_practicas import router as programacion_router, sesiones_plan, ventana_inicio
+from services.programacion_practicas import router as programacion_router, sesiones_plan, ventana_inicio, proposito_sesion
 router.include_router(programacion_router)
 
 
@@ -190,6 +190,9 @@ def _serialize(p: PracticaLaboratorio, db: Session):
     plan = sesiones_plan(db, p)
     raiz = next((x for x in plan if x.id == (p.practica_origen_id or p.id)), p)
     return {
+        "proposito": proposito_sesion(p),
+        "incluye_practica": p.incluye_practica,
+        "participantes": p.participantes,
         "practica_origen_id": raiz.id,
         "plan_estado": raiz.plan_estado or ('FINALIZADA' if raiz.estado == 'CERRADA' else 'PLANIFICADA'),
         "numero_sesion": next((i for i, x in enumerate(plan, 1) if x.id == p.id), 1),
@@ -356,8 +359,7 @@ def acceso_practicas_docente(db: Session = Depends(get_db), user: Usuario = Depe
     # La navegación depende de su actividad completa, incluido el historial.
     existe = db.query(PracticaLaboratorio.id).join(Reservacion).join(
         Laboratorio, Laboratorio.id == Reservacion.laboratorio_id
-    ).filter(Reservacion.docente_id == user.id,
-        Laboratorio.categoria.in_(["QUIMICA", "AGROINDUSTRIA"])).first()
+    ).filter(Reservacion.docente_id == user.id).first()
     return {"tiene_practicas": existe is not None}
 
 
@@ -490,6 +492,11 @@ def crear_practica(data: PracticaCreate, db: Session = Depends(get_db), user: Us
         raise HTTPException(403, "La reservación no pertenece a tu cuenta.")
     if user.rol in RESPONSABLES and user.rol != RolUsuario.SUPER_ADMIN and r.laboratorio_id != user.laboratorio_id:
         raise HTTPException(403, "La reservación corresponde a otro laboratorio.")
+    if not r.carga_docente_id:
+        raise HTTPException(422, "Vincula la reservación a tu carga docente o utiliza Solicitar laboratorio para un estudio individual.")
+    carga = r.carga_docente
+    if not carga or carga.docente_id != r.docente_id or not carga.activo or carga.estado != 'ACTIVO' or not carga.grupo_academico_id or not carga.grupo_academico.activo:
+        raise HTTPException(422, 'La práctica requiere una carga docente activa con su grupo correspondiente.')
     lab = db.query(Laboratorio).filter(Laboratorio.id == r.laboratorio_id).first()
     if not lab or (lab.categoria or "").upper() not in {"QUIMICA", "AGROINDUSTRIA"}:
         raise HTTPException(400, "Las prácticas estructuradas están habilitadas para laboratorios de Química y Agroindustria.")
@@ -555,7 +562,7 @@ def _reservas_de_practica(db, p):
 
 def _clase_de_practica(db, p, crear=False):
     r = p.reservacion
-    if not r.carga_docente_id or p.fuera_horario:
+    if not r.carga_docente_id or p.fuera_horario or proposito_sesion(p) != 'ACADEMICA':
         return None
     carga = r.carga_docente
     if carga.dia_semana != p.fecha_sesion.weekday(): return None
@@ -579,6 +586,43 @@ def _sincronizar_asistencia(db, p):
         if a.alumno_id in por_alumno:
             por_alumno[a.alumno_id].estado = a.estado
             por_alumno[a.alumno_id].observacion = a.observacion
+
+
+class VincularCargaBody(BaseModel):
+    carga_id: int
+    fuera_horario: bool = False
+
+
+@router.post('/{practica_id}/vincular-carga')
+def vincular_carga(practica_id: int, data: VincularCargaBody, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    p = _get_practica(db, practica_id, user)
+    if user.rol != RolUsuario.DOCENTE: raise HTTPException(403, 'Vincula la práctica desde tu función Docente.')
+    _bloquear_plan(db, p)
+    if proposito_sesion(p) != 'SIN_VINCULACION' or p.estado not in {'SOLICITADA', 'PREPARADA'}:
+        raise HTTPException(409, 'Solo se pueden vincular solicitudes anteriores sin inicio ni vinculación.')
+    carga = db.get(CargaDocente, data.carga_id)
+    if not carga or carga.docente_id != user.id or not carga.activo or carga.estado != 'ACTIVO' or carga.tipo_actividad != 'CLASE' or not carga.grupo_academico_id:
+        raise HTTPException(422, 'Selecciona una materia y grupo activos de tu carga docente.')
+    from routers.docencia import _validar_periodo_actual
+    _validar_periodo_actual(db, carga.periodo_id)
+    r = p.reservacion
+    grupo = carga.grupo_academico
+    if r.materia.strip().casefold() != carga.actividad_nombre.strip().casefold() or r.grupo.strip().casefold() != grupo.grupo.strip().casefold() or r.periodo_id != carga.periodo_id:
+        raise HTTPException(422, 'La materia, grupo y periodo deben coincidir con la solicitud original. Cancela la solicitud y crea una nueva si corresponde a otra actividad.')
+    rango = _serialize(p, db)
+    if not data.fuera_horario and (p.fecha_sesion.weekday() != carga.dia_semana or rango['hora_inicio'] != carga.hora_inicio or rango['hora_fin'] != carga.hora_fin):
+        raise HTTPException(422, 'La fecha y hora no coinciden con el bloque. Confirma que se trata de una sesión académica extraordinaria.')
+    from services.programacion_practicas import validar_programacion, ProgramacionPractica
+    propuesta = ProgramacionPractica(laboratorio_id=r.laboratorio_id, titulo=p.titulo, proposito='ACADEMICA', incluye_practica=p.incluye_practica,
+        sesiones=[{'fecha':p.fecha_sesion, 'carga_id':carga.id, 'hora_inicio':rango['hora_inicio'], 'hora_fin':rango['hora_fin'], 'fuera_horario':data.fuera_horario}])
+    errores, _, _ = validar_programacion(propuesta, db, user, excluir_reservas={reserva.id for reserva in _reservas_de_practica(db,p)})
+    if errores: raise HTTPException(409, {'message':'La solicitud no puede vincularse hasta resolver los conflictos.', 'conflictos':errores})
+    for reserva in _reservas_de_practica(db, p):
+        reserva.carga_docente_id = carga.id
+        reserva.carrera = grupo.carrera; reserva.cuatrimestre_materia = str(grupo.cuatrimestre)
+    p.proposito = 'ACADEMICA'; p.fuera_horario = data.fuera_horario
+    db.commit(); db.refresh(p)
+    return _serialize(p, db)
 
 
 class FinalizarPlanBody(BaseModel):
@@ -655,6 +699,14 @@ def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
     calendario = estado_fecha_academica(db, r.periodo_id, p.fecha_sesion)
     if not calendario["permite_iniciar_clase"] or not calendario["requiere_asistencia"]:
         raise HTTPException(409, f"El calendario académico no permite iniciar la práctica: {calendario['motivo'] or 'día no lectivo'}.")
+    if proposito_sesion(p) == 'SIN_VINCULACION':
+        raise HTTPException(409, 'Esta práctica no tiene vinculación académica. Vincúlala a tu carga antes de iniciar; no se reclasificará como investigación.')
+    if proposito_sesion(p) == 'INDIVIDUAL':
+        p.estado = 'EN_CURSO'; p.iniciada_en = datetime.datetime.utcnow()
+        for reserva in _reservas_de_practica(db, p):
+            if reserva.fecha_actividad: reserva.estado = 'EN_CURSO'
+        db.commit(); db.refresh(p)
+        return _serialize(p, db)
     grupo = None
     carga = None
     if r.carga_docente_id:
@@ -709,6 +761,7 @@ def iniciar_practica(practica_id: int, db: Session = Depends(get_db), user: Usua
 @router.put("/{practica_id}/asistencia")
 def guardar_asistencia(practica_id: int, data: AsistenciaBody, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     p = _get_practica(db, practica_id, user)
+    if proposito_sesion(p) != 'ACADEMICA': raise HTTPException(409, 'El trabajo individual no genera asistencia académica.')
     if p.estado != "EN_CURSO": raise HTTPException(409, "La asistencia solo se puede registrar durante la práctica.")
     if user.rol == RolUsuario.DOCENTE and p.reservacion.docente_id != user.id:
         raise HTTPException(403, "Solo el docente responsable puede registrar asistencia.")

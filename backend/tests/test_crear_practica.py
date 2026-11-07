@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 from database import get_db
 from dependencies import get_current_user
 from models.horario import HorarioDisponible, Reservacion
-from models.catalogo import PeriodoEscolar
+from models.catalogo import PeriodoEscolar, GrupoAcademico
+from models.docencia import CargaDocente
 from models.usuario import Usuario, RolUsuario
 from models.notificacion import Notificacion
 from models.practica_laboratorio import PracticaLaboratorio, MaterialPractica
@@ -21,7 +22,11 @@ def test_crear_practica_con_material_notifica_responsable(db, lab, docente_user,
     db.add_all([responsable, periodo]); db.flush()
     horario = HorarioDisponible(laboratorio_id=lab.id, dia_semana=2, hora_inicio='08:00', hora_fin='09:00', cuatrimestre='SEP-DIC-2099')
     db.add(horario); db.flush()
-    reserva = Reservacion(horario_id=horario.id, laboratorio_id=lab.id, docente_id=docente_user.id, creado_por=docente_user.id, periodo_id=periodo.id, materia='Materia ficticia', cuatrimestre='SEP-DIC-2099', grupo='A', fecha_actividad=datetime.date(2099, 11, 18))
+    grupo = GrupoAcademico(periodo_id=periodo.id, carrera='Carrera ficticia', cuatrimestre=1, grupo='A', activo=True)
+    db.add(grupo); db.flush()
+    carga = CargaDocente(docente_id=docente_user.id, periodo_id=periodo.id, grupo_academico_id=grupo.id, actividad_nombre='Materia ficticia', tipo_actividad='CLASE', dia_semana=2, hora_inicio='08:00', hora_fin='09:00', estado='ACTIVO', activo=True)
+    db.add(carga); db.flush()
+    reserva = Reservacion(carga_docente_id=carga.id, horario_id=horario.id, laboratorio_id=lab.id, docente_id=docente_user.id, creado_por=docente_user.id, periodo_id=periodo.id, materia='Materia ficticia', cuatrimestre='SEP-DIC-2099', grupo='A', fecha_actividad=datetime.date(2099, 11, 18))
     # Fecha de miércoles equivalente a la solicitud reportada.
     fecha = datetime.date(2099, 11, 4)
     reserva.fecha_actividad = fecha

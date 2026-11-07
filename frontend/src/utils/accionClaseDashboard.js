@@ -5,7 +5,8 @@ export function accionClaseDashboard(item, fecha, ahora = new Date()) {
     return { texto: 'Ver calendario', path: '/calendario-academico' };
   }
   if (item.practica_id) {
-    return { texto: item.practica_estado === 'EN_CURSO' ? 'Continuar práctica' : item.practica_puede_iniciar ? 'Iniciar práctica' : 'Ver práctica', path: item.practica_url };
+    const nombre = item.incluye_practica === false ? 'sesión' : 'práctica';
+    return { texto: item.practica_estado === 'EN_CURSO' ? `Continuar ${nombre}` : item.practica_puede_iniciar ? `Iniciar ${nombre}` : `Ver ${nombre}`, path: item.practica_url };
   }
   if (item.tipo_actividad === 'TUTORIA') {
     return accionTutoria(item, fecha);

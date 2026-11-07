@@ -2,55 +2,121 @@ import React, { useEffect, useState } from 'react';
 import api from '../hooks/useApi';
 import { getApiErrorMessage } from '../utils/apiError';
 import { todayISOInMexico } from '../utils/timezone';
-import { proponerSesiones } from '../utils/programarPractica';
+import { proponerSesiones, proponerFechasIndividuales } from '../utils/programarPractica';
 import MaterialesPracticaSelector from './MaterialesPracticaSelector';
-const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const campo = 'input-dark w-full';
-export default function ProgramarPractica({ origen, onGuardado, onClose }) {
-  const [cargas,setCargas]=useState([]), [labs,setLabs]=useState([]);
-  const [cargaId,setCargaId]=useState(''), [labId,setLabId]=useState(String(origen?.laboratorio_id || ''));
-  const [titulo,setTitulo]=useState(origen?.titulo || ''), [objetivo,setObjetivo]=useState(origen?.objetivo || '');
-  const [cantidad,setCantidad]=useState(3), [inicio,setInicio]=useState(todayISOInMexico());
-  const [diasElegidos,setDiasElegidos]=useState([]), [sesiones,setSesiones]=useState([]);
-  const [materiales,setMateriales]=useState([]), [error,setError]=useState(''), [conflictos,setConflictos]=useState([]);
-  const [ocupado,setOcupado]=useState(false), [validado,setValidado]=useState(false), [cargando,setCargando]=useState(true);
-  useEffect(()=>{let vigente=true;Promise.all([api.get('/docencia/horario'),api.get('/laboratorios?solo_activos=true')]).then(([c,l])=>{
-    if(!vigente)return;const clases=(c.data||[]).filter(x=>x.tipo_actividad==='CLASE'&&x.grupo_academico_id&&x.estado==='ACTIVO');
-    setCargas(clases);setLabs((l.data||[]).filter(x=>['QUIMICA','AGROINDUSTRIA'].includes(x.categoria)));
-    if(origen){const carga=clases.find(x=>x.id===origen.carga_docente_id);if(carga){setCargaId(String(carga.id));setDiasElegidos([carga.dia_semana]);}}
-  }).catch(e=>{if(vigente)setError(getApiErrorMessage(e,'No se pudo cargar tu horario.'));}).finally(()=>{if(vigente)setCargando(false);});return()=>{vigente=false;};},[origen]);
-  const carga=cargas.find(c=>String(c.id)===cargaId);
-  const mismaMateria=cargas.filter(c=>c.grupo_academico_id===carga?.grupo_academico_id&&c.materia_id===carga?.materia_id&&c.actividad_nombre===carga?.actividad_nombre);
-  const cambiar=fn=>{fn();setValidado(false);setConflictos([]);setError('');};
-  const editar=(i,cambios)=>cambiar(()=>setSesiones(actual=>actual.map((s,j)=>i===j?{...s,...cambios}:s)));
-  const payload=()=>({laboratorio_id:Number(labId),titulo,objetivo,practica_origen_id:origen?.practica_origen_id || origen?.id || null,sesiones,
-    materiales:materiales.filter(m=>m.descripcion?.trim()).map(m=>({descripcion:m.descripcion,insumo_id:m.insumo_id?Number(m.insumo_id):null,cantidad_solicitada:Number(m.cantidad_solicitada),unidad:m.unidad||'PIEZA',nota:m.nota||null}))});
-  const enviar=async confirmar=>{
-    if(!sesiones.length||!cargaId||!labId||titulo.trim().length<2)return setError('Selecciona materia y laboratorio, escribe el título y genera las fechas.');
-    setOcupado(true);setError('');setConflictos([]);
-    try{const {data}=await api.post(`/practicas-laboratorio/programacion${confirmar?'':'/validar'}`,payload());
-      if(confirmar){window.dispatchEvent(new Event('labcontrol:practicas-updated'));onGuardado?.(data);onClose();}
-      else{setValidado(data.disponible);setConflictos(data.conflictos||[]);}
-    }catch(e){setValidado(false);setError(getApiErrorMessage(e));setConflictos(e.response?.data?.detail?.conflictos||[]);}finally{setOcupado(false);}
+const boton = 'rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-40';
+
+export default function ProgramarPractica({ origen, onGuardado, onClose, laboratorioInicialId, slotInicial }) {
+  const [cargas, setCargas] = useState([]);
+  const [labs, setLabs] = useState([]);
+  const [cargaError, setCargaError] = useState(false);
+  const [labsError, setLabsError] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [proposito, setProposito] = useState(origen?.proposito || '');
+  const [incluyePractica, setIncluyePractica] = useState(origen?.incluye_practica ?? false);
+  const [participantes, setParticipantes] = useState(origen?.participantes || '');
+  const [cargaId, setCargaId] = useState('');
+  const [labId, setLabId] = useState(String(origen?.laboratorio_id || laboratorioInicialId || ''));
+  const [titulo, setTitulo] = useState(origen?.titulo || '');
+  const [objetivo, setObjetivo] = useState(origen?.objetivo || '');
+  const [cantidad, setCantidad] = useState(3);
+  const [inicio, setInicio] = useState(todayISOInMexico());
+  const [intervalo, setIntervalo] = useState(7);
+  const [horaInicio, setHoraInicio] = useState(slotInicial?.hora_inicio || '08:00');
+  const [horaFin, setHoraFin] = useState(slotInicial?.hora_fin || '09:00');
+  const [diasElegidos, setDiasElegidos] = useState([]);
+  const [sesiones, setSesiones] = useState([]);
+  const [materiales, setMateriales] = useState([]);
+  const [error, setError] = useState('');
+  const [conflictos, setConflictos] = useState([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [validado, setValidado] = useState(false);
+  const academica = proposito === 'ACADEMICA';
+
+  useEffect(() => {
+    let vigente = true;
+    setCargando(true); setCargaError(false); setLabsError(false);
+    Promise.allSettled([api.get('/docencia/horario'), api.get('/laboratorios?solo_activos=true')]).then(([c, l]) => {
+      if (!vigente) return;
+      if (c.status === 'fulfilled' && Array.isArray(c.value.data)) {
+        const clases = c.value.data.filter(x => x.tipo_actividad === 'CLASE' && x.grupo_academico_id && x.estado === 'ACTIVO');
+        setCargas(clases);
+        if (origen) {
+          const carga = clases.find(x => x.id === origen.carga_docente_id);
+          if (carga) { setCargaId(String(carga.id)); setDiasElegidos([carga.dia_semana]); }
+        }
+      } else { setCargas([]); setCargaError(true); }
+      if (l.status === 'fulfilled' && Array.isArray(l.value.data)) setLabs(l.value.data.filter(l => ['QUIMICA','AGROINDUSTRIA'].includes(l.categoria?.toUpperCase())));
+      else { setLabs([]); setLabsError(true); }
+      setCargando(false);
+    });
+    return () => { vigente = false; };
+  }, [origen, revision]);
+
+  const carga = cargas.find(c => String(c.id) === cargaId);
+  const mismaMateria = cargas.filter(c => c.grupo_academico_id === carga?.grupo_academico_id && c.materia_id === carga?.materia_id && c.actividad_nombre === carga?.actividad_nombre);
+  const lab = labs.find(l => String(l.id) === labId);
+  const permitePractica = ['QUIMICA', 'AGROINDUSTRIA'].includes(lab?.categoria?.toUpperCase());
+  const cambiar = fn => { fn(); setValidado(false); setConflictos([]); setError(''); };
+  const editar = (i, cambios) => cambiar(() => setSesiones(actual => actual.map((s, j) => i === j ? { ...s, ...cambios } : s)));
+  const elegirProposito = valor => cambiar(() => { setProposito(valor); setSesiones([]); setCargaId(''); setDiasElegidos([]); setMateriales([]); setIncluyePractica(false); setCantidad(valor === 'INDIVIDUAL' ? 1 : 3); });
+  const payload = () => ({
+    laboratorio_id: Number(labId), titulo, objetivo, proposito, incluye_practica: incluyePractica, participantes: academica ? null : participantes || null,
+    practica_origen_id: origen?.practica_origen_id || origen?.id || null, sesiones,
+    materiales: incluyePractica ? materiales.filter(m => m.descripcion?.trim()).map(m => ({ descripcion: m.descripcion, insumo_id: m.insumo_id ? Number(m.insumo_id) : null, cantidad_solicitada: Number(m.cantidad_solicitada), unidad: m.unidad || 'PIEZA', nota: m.nota || null })) : [],
+  });
+  const enviar = async confirmar => {
+    if (!sesiones.length || (academica && !carga) || !lab || titulo.trim().length < 2 || (!academica && objetivo.trim().length < 4)) {
+      setError('Completa el propósito, los datos de la actividad y sus fechas antes de verificar.'); return;
+    }
+    setOcupado(true); setError(''); setConflictos([]);
+    try {
+      const { data } = await api.post(`/practicas-laboratorio/programacion${confirmar ? '' : '/validar'}`, payload());
+      if (confirmar) { window.dispatchEvent(new Event('labcontrol:practicas-updated')); onGuardado?.(data); onClose(); }
+      else { setValidado(data.disponible); setConflictos(data.conflictos || []); }
+    } catch (e) {
+      setValidado(false); setError(e.response ? getApiErrorMessage(e) : 'No se pudo conectar con SIGA. Tus datos siguen aquí; reintenta la verificación.');
+      setConflictos(e.response?.data?.detail?.conflictos || []);
+    } finally { setOcupado(false); }
   };
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"><section role="dialog" aria-modal="true" aria-labelledby="programar-practica-titulo" className="glass max-h-[92vh] w-full max-w-3xl overflow-auto p-6 text-slate-300">
-    <h2 id="programar-practica-titulo" className="text-xl font-bold text-white">{origen?'Agregar sesiones a la práctica':'Programar práctica por sesiones'}</h2>
-    <p className="mt-1 text-sm">Una práctica, varias fechas. Cada sesión conserva su asistencia y materiales; las reservaciones se confirman juntas.</p>
-    {cargando?<p role="status">Cargando tu horario…</p>:<fieldset disabled={ocupado} className="mt-4 space-y-4">
-      {!cargas.length&&<p role="status">Primero registra una materia con grupo en tu horario docente.</p>}
-      <label className="block">Materia y grupo<select aria-label="Materia y grupo" className={campo} value={cargaId} onChange={e=>cambiar(()=>{setCargaId(e.target.value);setSesiones([]);const c=cargas.find(x=>String(x.id)===e.target.value);setDiasElegidos(c?[...new Set(cargas.filter(x=>x.grupo_academico_id===c.grupo_academico_id&&x.materia_id===c.materia_id&&x.actividad_nombre===c.actividad_nombre).map(x=>x.dia_semana))]:[]);})}><option value="">Seleccionar materia</option>{cargas.filter((c,i,a)=>a.findIndex(x=>x.grupo_academico_id===c.grupo_academico_id&&x.materia_id===c.materia_id&&x.actividad_nombre===c.actividad_nombre)===i || (origen&&c.id===origen.carga_docente_id)).map(c=><option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.carrera}</option>)}</select></label>
-      <label className="block">Laboratorio<select aria-label="Laboratorio de la práctica" className={campo} disabled={Boolean(origen)} value={labId} onChange={e=>cambiar(()=>{setLabId(e.target.value);setMateriales([]);})}><option value="">Seleccionar laboratorio</option>{labs.map(l=><option key={l.id} value={l.id}>{l.nombre}</option>)}</select></label>
-      <label className="block">Nombre de la práctica<input aria-label="Título de la práctica" className={campo} disabled={Boolean(origen)} maxLength={180} value={titulo} onChange={e=>cambiar(()=>setTitulo(e.target.value))}/></label>
-      {!origen&&<label className="block">Objetivo<textarea className={campo} value={objetivo} onChange={e=>cambiar(()=>setObjetivo(e.target.value))}/></label>}
-      <div className="flex flex-wrap gap-4"><label>Desde<input aria-label="Fecha inicial" className={campo} type="date" min={todayISOInMexico()} value={inicio} onChange={e=>cambiar(()=>setInicio(e.target.value))}/></label><label>Número de sesiones<input aria-label="Número de sesiones" className={campo} type="number" min={1} max={30} value={cantidad} onChange={e=>cambiar(()=>setCantidad(e.target.value))}/></label></div>
-      <div><p>Días de la materia que quieres utilizar</p><div className="flex flex-wrap gap-3">{[...new Set(mismaMateria.map(c=>c.dia_semana))].sort().map(d=><label key={d}><input type="checkbox" checked={diasElegidos.includes(d)} onChange={()=>cambiar(()=>setDiasElegidos(a=>a.includes(d)?a.filter(x=>x!==d):[...a,d]))}/> {dias[d]}</label>)}</div></div>
-      <button type="button" className="btn-blue px-4 py-2" disabled={!carga||!inicio||!diasElegidos.length||cantidad<1||cantidad>30} onClick={()=>cambiar(()=>setSesiones(proponerSesiones(mismaMateria.filter(c=>diasElegidos.includes(c.dia_semana)),inicio,Number(cantidad))))}>Proponer fechas de mi horario</button>
-      {!!sesiones.length&&<div className="space-y-3"><h3 className="font-semibold text-white">Revisa cada fecha antes de reservar</h3>{sesiones.map((s,i)=><div key={i} className="rounded-xl border border-white/15 p-3"><p className="text-sm font-semibold">Sesión {i+1}</p><div className="mt-2 grid gap-2 sm:grid-cols-3"><input aria-label={`Fecha sesión ${i+1}`} className={campo} type="date" min={todayISOInMexico()} value={s.fecha} onChange={e=>editar(i,{fecha:e.target.value})}/><input aria-label={`Inicio sesión ${i+1}`} className={campo} type="time" disabled={!s.fuera_horario} value={s.hora_inicio} onChange={e=>editar(i,{hora_inicio:e.target.value})}/><input aria-label={`Fin sesión ${i+1}`} className={campo} type="time" disabled={!s.fuera_horario} value={s.hora_fin} onChange={e=>editar(i,{hora_fin:e.target.value})}/></div><label className="mt-2 block text-sm"><input type="checkbox" checked={s.fuera_horario} onChange={e=>editar(i,{fuera_horario:e.target.checked})}/> Programar esta sesión fuera de mi horario habitual</label><p className="text-xs text-slate-400">Se comprobarán laboratorio, docente, grupo y calendario. Para cambiar a otro bloque habitual, modifica los días y vuelve a proponer fechas.</p></div>)}</div>}
-      {!origen&&<div><p className="font-semibold">Materiales por sesión</p><p className="text-xs">Se solicitarán estas cantidades en cada fecha; el responsable confirmará la entrega de cada sesión.</p><MaterialesPracticaSelector laboratorioId={labId} materiales={materiales} onChange={m=>cambiar(()=>setMateriales(m))}/></div>}
-      {!!conflictos.length&&<div role="alert" className="rounded-xl border border-amber-500 p-3">No se confirmó ninguna sesión.{conflictos.map((c,i)=><p key={i}>Sesión {c.sesion} · {c.fecha}: {c.mensaje}</p>)}</div>}
-      {validado&&<p role="status" className="text-emerald-400">Las {sesiones.length} sesiones están disponibles. Al confirmar se volverá a revisar la disponibilidad.</p>}
-      <div className="flex flex-wrap gap-3"><button className="btn-blue px-4 py-2" type="button" disabled={!sesiones.length||ocupado} onClick={()=>enviar(validado)}>{ocupado?'Comprobando…':validado?`Confirmar ${sesiones.length} sesiones`:'Verificar disponibilidad'}</button><button type="button" className="btn-ghost px-4 py-2" onClick={onClose}>Cancelar</button></div>
-    </fieldset>}
-    {error&&<p className="mt-3 text-red-400" role="alert">{error}</p>}
-  </section></div>;
+  const puedeCapturar = !cargando && !labsError && proposito && (!academica || (!cargaError && carga));
+
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <section role="dialog" aria-modal="true" aria-labelledby="programar-practica-titulo" className="glass max-h-[92vh] w-full max-w-3xl overflow-auto p-6 text-slate-300">
+      <div className="flex items-start justify-between gap-3"><div><h2 id="programar-practica-titulo" className="text-xl font-bold text-white">{origen ? 'Agregar sesiones de continuación' : 'Solicitar laboratorio'}</h2><p className="mt-1 text-sm">Elige para qué necesitas el laboratorio. Puedes reservar una o varias fechas.</p></div><button className={boton} disabled={ocupado} onClick={onClose} aria-label="Cerrar solicitud">Cerrar</button></div>
+      <fieldset disabled={ocupado} className="mt-4 space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Propósito de la reservación">
+          {[['ACADEMICA', 'Para una clase o práctica académica', 'Se vincula con materia y grupo de tu carga docente.'], ['INDIVIDUAL', 'Investigación o trabajo individual', 'Registra objetivo y participantes sin generar asistencia académica.']].map(([valor, nombre, ayuda]) => <label key={valor} className={`cursor-pointer rounded-xl border p-3 ${proposito === valor ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/15'}`}><input type="radio" name="proposito" value={valor} disabled={Boolean(origen)} checked={proposito === valor} onChange={() => elegirProposito(valor)}/> <b className="text-sm">{nombre}</b><span className="mt-1 block text-xs">{ayuda}</span></label>)}
+        </div>
+        {cargando && <p role="status">Consultando laboratorios y carga docente…</p>}
+        {!cargando && labsError && <div role="alert"><p>No se pudieron consultar los laboratorios. No significa que no haya laboratorios disponibles.</p><button className={boton} onClick={() => setRevision(r => r + 1)}>Reintentar consulta</button></div>}
+        {!cargando && academica && (cargaError ? <div role="alert"><p>No se pudo consultar tu carga docente. Reintenta antes de programar una clase.</p><button className={boton} onClick={() => setRevision(r => r + 1)}>Reintentar carga docente</button></div> : !cargas.length ? <div role="status" className="rounded-xl border border-amber-400 p-4"><p>No tienes materias activas con grupo en tu carga docente. Configura tu horario para solicitar una clase o práctica académica.</p><a className="mt-2 inline-block font-semibold underline" href="/docente/horario">Configurar mi horario docente</a><p className="mt-2 text-xs">Si necesitas el espacio para un estudio propio, elige Investigación o trabajo individual.</p></div> : <label className="block">Materia y grupo<select aria-label="Materia y grupo" className={campo} value={cargaId} onChange={e => cambiar(() => { const c = cargas.find(x => String(x.id) === e.target.value); setCargaId(e.target.value); setSesiones([]); setDiasElegidos(c ? [...new Set(cargas.filter(x => x.grupo_academico_id === c.grupo_academico_id && x.materia_id === c.materia_id && x.actividad_nombre === c.actividad_nombre).map(x => x.dia_semana))] : []); })}><option value="">Seleccionar materia</option>{cargas.filter((c, i, a) => a.findIndex(x => x.grupo_academico_id === c.grupo_academico_id && x.materia_id === c.materia_id && x.actividad_nombre === c.actividad_nombre) === i || (origen && c.id === origen.carga_docente_id)).map(c => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.carrera}</option>)}</select></label>)}
+        {puedeCapturar && <>
+          <label className="block">Laboratorio<select aria-label="Laboratorio de la práctica" className={campo} disabled={Boolean(origen)} value={labId} onChange={e => cambiar(() => { setLabId(e.target.value); setMateriales([]); if (!['QUIMICA', 'AGROINDUSTRIA'].includes(labs.find(l => String(l.id) === e.target.value)?.categoria?.toUpperCase())) setIncluyePractica(false); })}><option value="">Seleccionar laboratorio</option>{labs.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</select></label>
+          <label className="block">Nombre de la actividad<input aria-label="Título de la práctica" className={campo} disabled={Boolean(origen)} maxLength={180} value={titulo} onChange={e => cambiar(() => setTitulo(e.target.value))}/></label>
+          {!origen && <label className="block">Objetivo{!academica ? ' del estudio o trabajo (obligatorio)' : ''}<textarea aria-label="Objetivo de la actividad" className={campo} value={objetivo} onChange={e => cambiar(() => setObjetivo(e.target.value))}/></label>}
+          {!academica && <label className="block">Participantes (opcional)<textarea aria-label="Participantes" className={campo} maxLength={1000} disabled={Boolean(origen)} value={participantes} onChange={e => cambiar(() => setParticipantes(e.target.value))}/><span className="text-xs">Si trabajas individualmente puedes dejarlo vacío. Este registro no es una lista académica de alumnos.</span></label>}
+          <label className="block"><input type="checkbox" disabled={Boolean(origen) || !permitePractica} checked={incluyePractica} onChange={e => cambiar(() => { setIncluyePractica(e.target.checked); setMateriales([]); })}/> Incluye práctica con materiales y seguimiento</label>
+          <p className="text-xs">{incluyePractica ? 'Cada fecha requerirá preparación y entrega de materiales por el responsable.' : 'Se solicita el espacio y se registra una bitácora por sesión, sin solicitud de materiales.'}</p>
+          <div className="grid gap-3 sm:grid-cols-2"><label>Desde<input aria-label="Fecha inicial" className={campo} type="date" min={todayISOInMexico()} value={inicio} onChange={e => cambiar(() => setInicio(e.target.value))}/></label><label>Número de sesiones<input aria-label="Número de sesiones" className={campo} type="number" min={1} max={30} value={cantidad} onChange={e => cambiar(() => setCantidad(e.target.value))}/></label></div>
+          {academica ? <>
+            <div><p>Días de la materia que quieres utilizar</p><div className="flex flex-wrap gap-3">{[...new Set(mismaMateria.map(c => c.dia_semana))].sort().map(d => <label key={d}><input type="checkbox" checked={diasElegidos.includes(d)} onChange={() => cambiar(() => setDiasElegidos(a => a.includes(d) ? a.filter(x => x !== d) : [...a, d]))}/> {dias[d]}</label>)}</div></div>
+            <button className={boton} disabled={!inicio || !diasElegidos.length || cantidad < 1 || cantidad > 30} onClick={() => cambiar(() => setSesiones(proponerSesiones(mismaMateria.filter(c => diasElegidos.includes(c.dia_semana)), inicio, Number(cantidad))))}>Proponer fechas de mi horario</button>
+          </> : <>
+            <div className="grid gap-3 sm:grid-cols-3"><label>Hora inicio<input aria-label="Hora inicial individual" className={campo} type="time" value={horaInicio} onChange={e => cambiar(() => setHoraInicio(e.target.value))}/></label><label>Hora fin<input aria-label="Hora final individual" className={campo} type="time" value={horaFin} onChange={e => cambiar(() => setHoraFin(e.target.value))}/></label><label>Repetir cada (días)<input aria-label="Intervalo de sesiones" className={campo} type="number" min={1} max={120} value={intervalo} onChange={e => cambiar(() => setIntervalo(e.target.value))}/></label></div>
+            <button className={boton} disabled={!inicio || cantidad < 1 || cantidad > 30 || intervalo < 1 || intervalo > 120 || !horaFin || horaFin <= horaInicio} onClick={() => cambiar(() => setSesiones(proponerFechasIndividuales(inicio, Number(cantidad), Number(intervalo), horaInicio, horaFin)))}>Proponer fechas individuales</button>
+          </>}
+          {!!sesiones.length && <div className="space-y-3"><h3 className="font-semibold text-white">Revisa cada fecha antes de reservar</h3>{sesiones.map((s, i) => <div key={i} className="rounded-xl border border-white/15 p-3"><p className="text-sm font-semibold">Sesión {i + 1}</p><div className="mt-2 grid gap-2 sm:grid-cols-3"><input aria-label={`Fecha sesión ${i + 1}`} className={campo} type="date" min={todayISOInMexico()} value={s.fecha} onChange={e => editar(i, { fecha: e.target.value })}/><input aria-label={`Inicio sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_inicio} onChange={e => editar(i, { hora_inicio: e.target.value })}/><input aria-label={`Fin sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_fin} onChange={e => editar(i, { hora_fin: e.target.value })}/></div>{academica && <label className="mt-2 block text-sm"><input type="checkbox" checked={s.fuera_horario} onChange={e => editar(i, { fuera_horario: e.target.checked })}/> Programar esta sesión fuera de mi horario habitual</label>}</div>)}</div>}
+          {incluyePractica && !origen && <div><p className="font-semibold">Materiales por sesión</p><p className="text-xs">Se solicitarán estas cantidades en cada fecha.</p><MaterialesPracticaSelector laboratorioId={labId} materiales={materiales} onChange={m => cambiar(() => setMateriales(m))}/></div>}
+          {!!conflictos.length && <div role="alert" className="rounded-xl border border-amber-500 p-3">No se confirmó ninguna sesión.{conflictos.map((c, i) => <p key={i}>Sesión {c.sesion} · {c.fecha}: {c.mensaje}</p>)}</div>}
+          {validado && <p role="status" className="text-emerald-400">Las {sesiones.length} sesiones están disponibles. Al confirmar se volverá a revisar la disponibilidad.</p>}
+          <button className="btn-blue px-4 py-2" disabled={!sesiones.length || ocupado || !lab} onClick={() => enviar(validado)}>{ocupado ? 'Comprobando…' : validado ? `Confirmar ${sesiones.length} sesiones` : 'Verificar disponibilidad'}</button>
+        </>}
+      </fieldset>
+      {error && <p className="mt-3 text-red-400" role="alert">{error}</p>}
+    </section>
+  </div>;
 }

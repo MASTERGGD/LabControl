@@ -216,9 +216,9 @@ def verificar_eventos(
             minutos = (inicio - local).total_seconds() / 60
             referencia = f"Práctica #{practica.id} · {practica.fecha_sesion.isoformat()}"
             if -15 <= minutos <= 30 and not _ya_notificado(current_user.id, 'PRACTICA_PROXIMA', referencia, horas=24):
-                crear_notificacion(db, current_user.id, 'PRACTICA_PROXIMA', 'Tu práctica está por comenzar',
+                crear_notificacion(db, current_user.id, 'PRACTICA_PROXIMA', 'Tu actividad de laboratorio está por comenzar',
                     f"{referencia}: {practica.titulo} · {practica.reservacion.materia}. "
-                    + ('Materiales preparados. Abre la práctica para pasar lista.' if practica.estado == 'PREPARADA' else 'La entrega de materiales está pendiente; consulta el estado con el responsable.'),
+                    + (('Abre la sesión para registrar tu bitácora de trabajo.' if practica.proposito == 'INDIVIDUAL' else 'Abre la sesión para registrar la asistencia del grupo.') if practica.estado == 'PREPARADA' else 'La entrega de materiales está pendiente; consulta el estado con el responsable.'),
                     f'/docente/practicas-laboratorio?practica_id={practica.id}', enviar_email=False)
                 generadas += 1
 

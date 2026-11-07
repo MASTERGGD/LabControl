@@ -394,7 +394,7 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
   },
   {
-    label: 'Seguimiento de prácticas', path: '/docente/practicas-laboratorio', roles: ['DOCENTE'], inGroup: true,
+    label: 'Sesiones y prácticas', path: '/docente/practicas-laboratorio', roles: ['DOCENTE'], inGroup: true,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3h6m-5 0v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3m-6 11h8"/></svg>,
   },
   {
@@ -596,7 +596,7 @@ const BREADCRUMB_MAP = {
   '/docente/buscar-docente':  [{ label: 'Consultar horarios' }],
   '/docente/seguimiento':     [{ label: 'Seguimiento de grupos' }],
   '/docente/laboratorio':     [{ label: 'Solicitar laboratorio' }],
-  '/docente/practicas-laboratorio': [{ label: 'Seguimiento de prácticas' }],
+  '/docente/practicas-laboratorio': [{ label: 'Sesiones y prácticas' }],
   '/docente/historial':       [{ label: 'Historial de Sesiones' }],
   '/docente/historial-clases': [{ label: 'Historial de clases' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],

@@ -1044,6 +1044,9 @@ def crear_reservacion(
     if tipo_actividad not in TIPOS_ACTIVIDAD:
         raise HTTPException(422, f"Tipo de actividad no válido. Opciones: {sorted(TIPOS_ACTIVIDAD)}")
     es_no_academica = tipo_actividad in TIPOS_NO_ACADEMICOS
+    lab_solicitado = db.get(Laboratorio, data.laboratorio_id)
+    if current_user.rol == RolUsuario.DOCENTE and not es_no_academica and lab_solicitado and (lab_solicitado.categoria or '').upper() in {'QUIMICA', 'AGROINDUSTRIA'}:
+        raise HTTPException(422, 'Utiliza Solicitar laboratorio para elegir uso académico con tu carga docente o investigación individual. No se permiten solicitudes académicas sin vinculación por el formulario anterior.')
     if es_no_academica and not data.fecha_actividad:
         raise HTTPException(422, "Las actividades institucionales requieren una fecha específica")
 
@@ -1235,6 +1238,14 @@ def editar_reservacion(
     # El docente solo puede editar sus propias reservaciones
     if current_user.rol == RolUsuario.DOCENTE and r.docente_id != current_user.id:
         raise HTTPException(status_code=403, detail="No puedes editar una reservación que no es tuya")
+
+    if current_user.rol == RolUsuario.DOCENTE and r.laboratorio and (r.laboratorio.categoria or '').upper() in {'QUIMICA', 'AGROINDUSTRIA'}:
+        cambios = data.model_dump(exclude_none=True)
+        if any(valor != getattr(r, campo) for campo, valor in cambios.items() if campo != 'observaciones'):
+            raise HTTPException(422, 'Para cambiar la materia, grupo o propósito cancela la solicitud y registra otra con el flujo unificado.')
+        if 'observaciones' in cambios:
+            r.observaciones = cambios['observaciones']; db.commit(); db.refresh(r)
+        return _serializar_reservacion(r, db)
 
     for campo, valor in data.model_dump(exclude_none=True).items():
         setattr(r, campo, valor)

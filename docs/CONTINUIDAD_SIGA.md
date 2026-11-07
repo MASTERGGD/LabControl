@@ -40,3 +40,12 @@ La confirmación valida todas las fechas y guarda en una transacción; los confl
 Cada fecha requiere su preparación y mantiene materiales, incidentes y asistencia propios. Una sesión dentro del horario vincula su asistencia con `ClaseDocente`; las extraordinarias conservan su asistencia en la práctica y se consultan desde la agenda y el historial sin alterar el horario semanal. La clase vinculada se cierra desde la práctica para registrar materiales y avance. La última sesión cerrada no implica finalizar el conjunto: el docente decide continuar o finalizar. No cancelar automáticamente una sesión preparada con materiales entregados.
 
 Los avisos de próximas prácticas se generan al verificar notificaciones mientras la aplicación está abierta; no son un envío externo garantizado con SIGA cerrado. Revisar `CHANGELOG.md` para el estado real de publicación y las comprobaciones realizadas.
+
+
+## Propósito de las solicitudes en Química y Agroindustria (7 de noviembre de 2026)
+
+Los accesos docentes del panel y la cuadrícula comparten `ProgramarPractica`. Primero se elige uso académico o individual. El académico exige carga propia activa con grupo; el individual exige objetivo y no se vincula a una carga ni genera asistencia académica. `incluye_practica` distingue una solicitud de espacio de una práctica que requiere preparación de materiales. Las sesiones sin materiales quedan listas para su ventana de inicio; las demás requieren preparación por el responsable. Se conserva el flujo técnico de otros laboratorios.
+
+La migración aditiva `f7a8b9c0d1e2` agrega propósito, indicador de práctica y participantes a cada sesión. El propósito nulo de una sesión anterior sin carga significa SIN_VINCULACION; nunca inferir investigación a partir de la ausencia de carga. Su vinculación es explícita, conserva los datos anteriores y valida correspondencia y conflictos. No reclasificar ni cancelar reservaciones reales para verificar la publicación.
+
+El modo Docente no hereda privilegios del rol adicional de responsable para evitar requisitos académicos. El inicio mediante la reservación reconoce su seguimiento propio y no debe permitir abrir una segunda sesión que omita la preparación o bitácora. Las fallas al consultar carga deben distinguirse de una respuesta vacía confirmada. Los avisos continúan dependiendo de que SIGA esté abierto; la revisión CORS no garantiza disponibilidad durante una interrupción del servicio.

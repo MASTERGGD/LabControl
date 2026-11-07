@@ -14,9 +14,17 @@ export function proponerSesiones(cargas, inicio = todayISOInMexico(), cantidad =
 }
 
 export function puedeIniciarPractica(p, ahora = new Date()) {
+  if (p.proposito === 'SIN_VINCULACION') return false;
   if (p.estado !== 'PREPARADA' || p.fecha !== todayISOInMexico(ahora)) return false;
   if (p.reservacion_estado && !['PROGRAMADA','EN_CURSO'].includes(p.reservacion_estado)) return false;
   const inicio = new Date(`${p.fecha}T${p.hora_inicio}:00-06:00`).getTime();
   const fin = new Date(`${p.fecha}T${p.hora_fin}:00-06:00`).getTime();
   return ahora.getTime() >= inicio - 15*60000 && ahora.getTime() <= fin + 15*60000;
+}
+export function proponerFechasIndividuales(inicio, cantidad, intervalo, hora_inicio, hora_fin) {
+  const fecha = new Date(`${inicio}T12:00:00`);
+  return Array.from({length:cantidad}, (_, i) => {
+    const dia = new Date(fecha); dia.setDate(dia.getDate()+i*intervalo);
+    return {fecha:`${dia.getFullYear()}-${String(dia.getMonth()+1).padStart(2,'0')}-${String(dia.getDate()).padStart(2,'0')}`,carga_id:null,fuera_horario:true,hora_inicio,hora_fin};
+  });
 }

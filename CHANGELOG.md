@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Solicitud académica o individual de laboratorio — 2026-11-07
+
+### Problema y comportamiento resultante
+En Química y Agroindustria coexistían la programación vinculada a carga y un formulario anterior que permitía solicitar una práctica usando solamente el catálogo. Además, el formulario dejaba llenar datos sin materias y confundía fallos de consulta con una carga vacía. Ambos accesos docentes usan ahora una solicitud que primero exige elegir propósito: clase/práctica académica o investigación/trabajo individual. El uso académico requiere materia y grupo activos de la propia carga; sin carga confirmada solo se muestra el requisito y un acceso al horario. Un fallo de consulta muestra reintento y no afirma ausencia de materias. El rol adicional de responsable no sustituye esos requisitos en modo Docente.
+
+El uso individual solicita título y objetivo, admite participantes opcionales y una o varias fechas editables, sin exigir carga ni crear ClaseDocente o asistencia de alumnos. En ambos usos se puede pedir solo el espacio o activar una práctica con materiales y preparación por fecha. Se conserva la comprobación atómica de laboratorio, docente, grupo cuando corresponde, bloqueos, calendario y continuidad. La agenda e historial distinguen el propósito; las sesiones individuales registran resultados y bitácora. Los accesos desde reservaciones con seguimiento dirigen a su actividad y el inicio alternativo no permite saltarse sus controles. Se preserva el flujo técnico existente de los demás laboratorios.
+
+El servidor rechaza las solicitudes docentes académicas de estos laboratorios mediante el formulario anterior y evita cambiar su identidad mediante una edición. Los registros anteriores sin carga se conservan como sin vinculación académica; pueden vincularse explícitamente a una carga coincidente, comprobando los conflictos, o cancelarse mediante el flujo existente. No se convierten automáticamente en investigación ni se borran registros. La migración aditiva f7a8b9c0d1e2 deja propósito y participantes nulos en registros anteriores.
+
+### Validación y estado
+37 suites y 146 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. 37 pruebas backend dirigidas aprobadas; se verifican uso individual sin carga/asistencia académica, solo espacio académico, objetivo obligatorio, conflictos sin guardados parciales, roles, bloqueo de la vía anterior, vinculación explícita, inicio alternativo y migración conservando datos. Comprobación ampliada previa: 52 aprobadas y un fallo de cancelación administrativa sin motivo; se reprodujo ese mismo fallo en una copia aislada de ced4736, sin esta mejora. No se presenta como corregido.
+
+Preflight y rechazo anónimo conservan CORS en la aplicación real. No se atribuye la captura previa de Network Error a una causa nueva ni se afirma corregir toda interrupción de red; la interfaz distingue el fallo y permite reintentar. Confirmados los volúmenes persistentes de archivos y PostgreSQL y una única cabeza Alembic. Preparado localmente; pendiente publicación, verificación de migración y revisión visual autenticada. Pruebas con datos ficticios y base aislada; sin cambios a las reservaciones reales del usuario. Cambios ajenos conservados y excluidos.
+
+---
+
 ## [7d7b6ac] — Prácticas por sesiones vinculadas a la materia — 2026-11-07
 
 ### Problema y comportamiento resultante
