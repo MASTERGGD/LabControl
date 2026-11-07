@@ -4,6 +4,18 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Jerarquía visual y contexto del historial de laboratorio — 2026-11-07
+
+### Problema y comportamiento resultante
+Las canceladas tenían la misma superficie que las actividades vigentes, el periodo local iniciaba en todos los periodos y el pie no indicaba el rango de registros. Las tarjetas canceladas usan ahora una superficie gris suave adaptada al tema, conservando texto y controles sin opacidad. La consulta hereda el periodo seleccionado en la barra superior y muestra explícitamente el periodo aplicado o Consulta histórica: todos los periodos. El docente o responsable puede elegir otro periodo o todos; Limpiar restaura el periodo global. Un cambio de contexto actualiza el periodo local y reinicia la página. La consulta explícita evita que el interceptor HTTP vuelva a imponer el periodo global al elegir una consulta histórica.
+
+El pie muestra el rango real de registros de la página completa y conserva Anterior/Siguiente cuando hay varias páginas; no confunde las tarjetas visibles en pantalla con el tamaño de página. Un detalle abierto mediante enlace no aumenta ese rango. Se mantienen los permisos y los datos históricos.
+
+### Validación y estado
+38 suites y 158 pruebas frontend aprobadas; compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Regresiones verifican periodo heredado, selección de todos sin contexto automático, cambio global, paginación y superficie cancelada sin opacidad. Sin cambios backend ni migraciones. Pendiente: publicación y verificación pública; revisión visual autenticada con datos reales no realizada. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Contadores y filtros coherentes en sesiones e historial — 2026-11-07
 
 ### Problema y comportamiento resultante

@@ -3,6 +3,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import PracticasLaboratorio from './PracticasLaboratorio';
 import api from '../../hooks/useApi';
+let mockPeriodo = { clave: 'SEP-DIC-2099' };
+jest.mock('../../context/PeriodoContext', () => ({ usePeriodo: () => ({ periodo: mockPeriodo }) }));
 let mockUsuario = { id: 1, rol: 'DOCENTE' };
 jest.mock('../../hooks/useApi', () => ({ get: jest.fn(), post: jest.fn(), put: jest.fn() }));
 jest.mock('../../context/AuthContext', () => ({ useAuth: () => ({ usuario: mockUsuario }) }));
@@ -16,6 +18,7 @@ const cambiar = async (element, value) => act(async () => {
 });
 beforeEach(() => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
+  mockPeriodo = { clave: 'SEP-DIC-2099' };
   mockUsuario = { id:1, rol:'DOCENTE' };
   container=document.createElement('div'); document.body.appendChild(container); root=createRoot(container);
   api.get.mockImplementation(async url => {
@@ -122,4 +125,31 @@ test('carga y error muestran contadores no disponibles en lugar de ceros confirm
  let rechazar;const original=api.get.getMockImplementation();api.get.mockImplementation(url=>url.includes('/seguimiento?')?new Promise((_,reject)=>{rechazar=reject;}):original(url));
  await render();expect(container.textContent).toContain('Activas (—)');expect(container.textContent).toContain('Historial (—)');expect(container.textContent).not.toContain('0 resultados');
  await act(async()=>rechazar(new Error('Sin red')));expect(container.textContent).toContain('Historial (—)');expect(container.textContent).not.toContain('No hay actividades');expect(container.textContent).not.toContain('0 resultados');
+});
+
+
+test('periodo heredado permite consulta histórica y vuelve al global al cambiarlo', async () => {
+  await render();
+  const form = container.querySelector('[aria-label="Filtros de prácticas"]');
+  expect(form.querySelector('select').value).toBe('SEP-DIC-2099');
+  await cambiar(form.querySelector('select'), '');
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles:true, cancelable:true })));
+  expect(container.textContent).toContain('Consulta histórica: todos los periodos');
+  expect(api.get.mock.calls.filter(([url]) => url.includes('/seguimiento?')).at(-1)[1]).toEqual({ params: { sin_contexto_periodo: true } });
+  mockPeriodo = { clave: 'ENE-ABR-2100' };
+  await render();
+  expect(form.querySelector('select').value).toBe('ENE-ABR-2100');
+  const url = api.get.mock.calls.filter(([url]) => url.includes('/seguimiento?')).at(-1)[0];
+  expect(new URLSearchParams(url.split('?')[1]).get('pagina')).toBe('1');
+  expect(new URLSearchParams(url.split('?')[1]).get('periodo')).toBe('ENE-ABR-2100');
+});
+
+test('canceladas legibles y rango de filas de la página', async () => {
+  await render();
+  await click('Siguiente');
+  expect(container.textContent).toContain('Mostrando 11–11 de 11 registros');
+  await click('Historial');
+  expect(container.querySelector('article').style.background).toBe('var(--surface-panel-soft)');
+  expect(container.querySelector('article').style.opacity).toBe('');
+  expect(container.textContent).toContain('Mostrando 1–1 de 1 registros');
 });

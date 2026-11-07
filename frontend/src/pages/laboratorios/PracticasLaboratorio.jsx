@@ -4,6 +4,7 @@ import { getApiErrorMessage } from '../../utils/apiError';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
+import { usePeriodo } from '../../context/PeriodoContext';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
 import { formatDateInMexico, todayISOInMexico } from '../../utils/timezone';
@@ -15,6 +16,7 @@ const btn = 'rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50';
 const blankMaterial = () => ({ insumo_id: '', descripcion: '', cantidad_solicitada: '', unidad: 'PIEZA', nota: '' });
 const fechaLocal = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
+const TAMANO_PAGINA = 10;
 const filtrosVacios = { buscar: '', periodo: '', estado: '', desde: '', hasta: '' };
 const coloresEstado = {
   SOLICITADA: 'bg-amber-100 text-amber-900', PREPARADA: 'bg-blue-100 text-blue-900',
@@ -23,6 +25,8 @@ const coloresEstado = {
 
 function PracticasLaboratorio() {
   const { usuario } = useAuth();
+  const { periodo } = usePeriodo();
+  const periodoGlobal = periodo?.clave || '';
   const [ahora, setAhora] = useState(() => new Date());
   useEffect(() => { const timer = setInterval(() => setAhora(new Date()), 30000); return () => clearInterval(timer); }, []);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -37,7 +41,7 @@ function PracticasLaboratorio() {
   const [finalizar, setFinalizar] = useState(false);
   const location = useLocation();
   const alertaInsumos = searchParams.get('alerta') || '';
-  const filtrosIniciales = { ...filtrosVacios, estado: searchParams.get('estado') === 'SOLICITADA' ? 'SOLICITADA' : '' };
+  const filtrosIniciales = { ...filtrosVacios, periodo: periodoGlobal, estado: searchParams.get('estado') === 'SOLICITADA' ? 'SOLICITADA' : '' };
   const esDocente = usuario?.rol === 'DOCENTE';
   const puedePreparar = ['SUPER_ADMIN', 'LAB_ADMIN', 'RESPONSABLE_LAB'].includes(usuario?.rol);
   const [laboratorios, setLaboratorios] = useState([]);
@@ -50,6 +54,11 @@ function PracticasLaboratorio() {
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const [consulta, setConsulta] = useState(filtrosIniciales);
   const [pagina, setPagina] = useState(1);
+  useEffect(() => {
+    setFiltros(actual => ({ ...actual, periodo: periodoGlobal }));
+    setConsulta(actual => ({ ...actual, periodo: periodoGlobal }));
+    setPagina(1); setDetalleAbierto(null);
+  }, [periodoGlobal]);
   const [revision, setRevision] = useState(0);
   const [cargandoSeguimiento, setCargandoSeguimiento] = useState(true);
   const [seguimientoDisponible, setSeguimientoDisponible] = useState(false);
@@ -106,10 +115,10 @@ function PracticasLaboratorio() {
     let vigente = true;
     if (!esDocente && !laboratorioId) { setPracticas([]); setSeguimientoDisponible(false); setCargandoSeguimiento(false); return undefined; }
     setCargandoSeguimiento(true); setSeguimientoDisponible(false); setError(''); setPracticas([]);
-    const params = new URLSearchParams({ vista, pagina: String(pagina), tamano: '10' });
+    const params = new URLSearchParams({ vista, pagina: String(pagina), tamano: String(TAMANO_PAGINA) });
     if (laboratorioId) params.set('laboratorio_id', laboratorioId);
     Object.entries(consulta).forEach(([key, value]) => { if (value) params.set(key, value); });
-    api.get(`/practicas-laboratorio/seguimiento?${params}`)
+    api.get(`/practicas-laboratorio/seguimiento?${params}`, { params: { sin_contexto_periodo: true } })
       .then(async ({ data }) => {
         let items = data.items || [];
         if (practicaSolicitada) {
@@ -134,7 +143,7 @@ function PracticasLaboratorio() {
     e.preventDefault(); quitarDetalleDeEnlace(); setConsulta({ ...filtros }); setPagina(1); setDetalleAbierto(null);
   };
   const limpiarFiltros = () => {
-    setFiltros({ ...filtrosVacios }); setConsulta({ ...filtrosVacios }); setPagina(1); setDetalleAbierto(null);
+    setFiltros({ ...filtrosVacios, periodo: periodoGlobal }); setConsulta({ ...filtrosVacios, periodo: periodoGlobal }); setPagina(1); setDetalleAbierto(null);
     setSearchParams(actual => { const params = new URLSearchParams(actual); params.delete('practica_id'); params.delete('estado'); return params; });
   };
   const filtrosPendientes = Object.keys(filtrosVacios).some(key => filtros[key] !== consulta[key]);
@@ -345,6 +354,7 @@ function PracticasLaboratorio() {
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Sesiones y seguimiento</h2><button className={`${btn} border`} disabled={cargandoSeguimiento} onClick={actualizar}>{cargandoSeguimiento ? 'Actualizando…' : 'Actualizar'}</button></div>
         <div className="flex gap-2" aria-label="Vistas del seguimiento">{[['ACTIVAS', 'Activas', seguimiento.totales.activas], ['HISTORIAL', 'Historial', seguimiento.totales.historial]].map(([key, label, cantidad]) => <button key={key} type="button" aria-pressed={vista === key} className={`${btn} border ${vista === key ? 'bg-emerald-700 text-white' : ''}`} onClick={() => cambiarVista(key)}>{label} ({seguimientoDisponible && !cargandoSeguimiento ? cantidad : '—'})</button>)}</div>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{vista === 'ACTIVAS' ? 'Solicitadas, preparadas y en curso. Las finalizadas y canceladas se conservan en Historial.' : 'Prácticas finalizadas y canceladas, conservadas para consulta.'}</p>
+        <p className="text-sm" aria-label="Periodo consultado">{consulta.periodo ? `Consultando ${consulta.periodo}` : 'Consulta histórica: todos los periodos'}</p>
         <form aria-label="Filtros de prácticas" className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-3" style={{ borderColor: 'var(--surface-border)' }} onSubmit={aplicarFiltros}>
           <label className="text-xs">Buscar práctica, materia o grupo<input className={`${field} mt-1`} value={filtros.buscar} maxLength={120} onChange={e => setFiltros(f => ({ ...f, buscar: e.target.value }))} /></label>
           <label className="text-xs">Periodo<select className={`${field} mt-1`} value={filtros.periodo} onChange={e => setFiltros(f => ({ ...f, periodo: e.target.value }))}><option value="">Todos los periodos</option>{filtros.periodo && !seguimiento.periodos.includes(filtros.periodo) && <option value={filtros.periodo}>{filtros.periodo}</option>}{seguimiento.periodos.map(periodo => <option key={periodo}>{periodo}</option>)}</select></label>
@@ -357,7 +367,7 @@ function PracticasLaboratorio() {
 
         {cargandoSeguimiento && <p role="status">Cargando prácticas…</p>}
         {!cargandoSeguimiento && seguimientoDisponible && !practicas.length && <div className={`${card} space-y-2 text-sm`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}><p>{hayFiltrosAplicados ? 'No hay actividades con estos filtros.' : 'No hay actividades en esta vista.'}</p><p role="status">0 resultados</p>{hayFiltrosAplicados && <button className="font-semibold text-blue-700 underline" onClick={limpiarFiltros}>Limpiar filtros</button>}</div>}
-        {practicas.map(p => <article key={p.id} className="rounded-xl border p-4 space-y-3" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
+        {practicas.map(p => <article key={p.id} className="rounded-xl border p-4 space-y-3" style={{ background: p.estado === 'CANCELADA' ? 'var(--surface-panel-soft)' : 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
           <div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${coloresEstado[p.estado] || coloresEstado.CERRADA}`}>{p.estado === 'CERRADA' ? 'FINALIZADA' : p.estado === 'PREPARADA' && p.incluye_practica === false ? 'RESERVADA' : p.estado.replace('_', ' ')}</span><h3 className="mt-2 text-base font-bold" style={{ color: 'var(--text-primary)' }}>{p.titulo}</h3><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{p.laboratorio_nombre} · {p.materia} {p.proposito === 'INDIVIDUAL' ? '· Trabajo individual' : `· Grupo ${p.grupo}`} · {p.fecha ? formatDateInMexico(p.fecha, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fecha de reservación'} {p.hora_inicio && `· ${p.hora_inicio}–${p.hora_fin}`}</p></div>
             {!esDocente && <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Docente: {p.docente_nombre}</span>}</div>
           <button type="button" className="text-sm font-semibold text-blue-700 underline" aria-expanded={detalleAbierto === p.id} onClick={() => setDetalleAbierto(detalleAbierto === p.id ? null : p.id)}>{detalleAbierto === p.id ? 'Ocultar detalle' : 'Ver detalle'}</button>
@@ -403,7 +413,7 @@ function PracticasLaboratorio() {
           {p.estado === 'CERRADA' && <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700"><b>Informe:</b> {p.resultados || 'Sin resultados registrados'}<br/><b>Conclusiones:</b> {p.conclusiones || 'Sin conclusiones registradas'}</div>}
           </div>}
         </article>)}
-        {seguimientoDisponible && !cargandoSeguimiento && seguimiento.total > 0 && <nav className="flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Paginación de prácticas"><span role="status">{seguimiento.total} {seguimiento.total === 1 ? 'resultado' : 'resultados'}{seguimiento.paginas > 1 ? ` · Página ${seguimiento.pagina} de ${seguimiento.paginas}` : ''}</span>{seguimiento.paginas > 1 && <div className="flex gap-2"><button className={`${btn} border`} disabled={seguimiento.pagina <= 1} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina - 1); setDetalleAbierto(null); }}>Anterior</button><button className={`${btn} border`} disabled={seguimiento.pagina >= seguimiento.paginas} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina + 1); setDetalleAbierto(null); }}>Siguiente</button></div>}</nav>}
+        {seguimientoDisponible && !cargandoSeguimiento && seguimiento.total > 0 && <nav className="flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Paginación de prácticas"><span role="status">Mostrando {(seguimiento.pagina - 1) * TAMANO_PAGINA + 1}–{Math.min(seguimiento.total, (seguimiento.pagina - 1) * TAMANO_PAGINA + (seguimiento.items?.length || 0))} de {seguimiento.total} registros{seguimiento.paginas > 1 ? ` · Página ${seguimiento.pagina} de ${seguimiento.paginas}` : ''}</span>{seguimiento.paginas > 1 && <div className="flex gap-2"><button className={`${btn} border`} disabled={seguimiento.pagina <= 1} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina - 1); setDetalleAbierto(null); }}>Anterior</button><button className={`${btn} border`} disabled={seguimiento.pagina >= seguimiento.paginas} onClick={() => { quitarDetalleDeEnlace(); setPagina(seguimiento.pagina + 1); setDetalleAbierto(null); }}>Siguiente</button></div>}</nav>}
 
       </section>
     </div>
