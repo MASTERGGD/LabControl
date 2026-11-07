@@ -17,8 +17,8 @@ const input = async (element, value) => act(async () => {
   Object.getOwnPropertyDescriptor(proto, 'value').set.call(element, value);
   element.dispatchEvent(new Event(element.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
 });
-const render = async categoria => {
-  await act(async () => root.render(<ModalReservar slot={slot} slots={[slot]} cuatrimestre="2026-3" laboratorio_id={2} laboratorio={{ categoria }} onClose={cerrar} onGuardado={guardar} />));
+const render = async (categoria, horario = slot) => {
+  await act(async () => root.render(<ModalReservar slot={horario} slots={[horario]} cuatrimestre="2026-3" laboratorio_id={2} laboratorio={{ categoria }} onClose={cerrar} onGuardado={guardar} />));
 };
 const submit = async () => act(async () => container.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 beforeEach(() => {
@@ -87,5 +87,62 @@ test('la captura exige nombre, fecha y cantidades válidas antes de continuar', 
   await submit();
   expect(container.textContent).toContain('Completa descripción, cantidad y unidad');
   expect(container.querySelector('h2').textContent).toBe('Datos de la práctica');
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+const checkboxPractica = () => [...container.querySelectorAll('input[type="checkbox"]')].find(el => el.parentElement.textContent.includes('incluye una práctica'));
+const reservarSoloFecha = async () => act(async () => [...container.querySelectorAll('input[type="checkbox"]')].find(el => el.parentElement.textContent.includes('Reservar solo en una fecha')).click());
+
+test('sábado en horario de miércoles avisa inmediatamente y bloquea práctica y reserva; corregir conserva materia y grupo', async () => {
+  await render('QUIMICA', { ...slot, dia_semana: 2 });
+  await click('Elegir materia');
+  await reservarSoloFecha();
+  expect(checkboxPractica().disabled).toBe(true);
+  const fecha = container.querySelector('[aria-label="Fecha de la sesión"]');
+  expect(fecha.step).toBe('7');
+  expect(new Date(`${fecha.min}T12:00:00Z`).getUTCDay()).toBe(3);
+  await input(fecha, '2099-11-07');
+  expect(fecha.getAttribute('aria-invalid')).toBe('true');
+  expect(container.querySelector('[role="alert"]').textContent).toContain('Este horario corresponde al miércoles');
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(true);
+  expect(checkboxPractica().disabled).toBe(true);
+  await submit();
+  expect(api.post).not.toHaveBeenCalled();
+  await input(fecha, '2099-11-04');
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(fecha.validationMessage).toBe('');
+  expect(container.textContent).toContain('miércoles, 4 de noviembre de 2099');
+  expect(checkboxPractica().disabled).toBe(false);
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(false);
+  await submit();
+  expect(api.post).toHaveBeenCalledWith('/horarios/reservaciones', expect.objectContaining({ materia: 'Química', grupo: 'A', fecha_actividad: '2099-11-04' }));
+});
+
+test('corregir fecha de práctica muestra aviso inmediato sin perder lo escrito', async () => {
+  await render('AGROINDUSTRIA', { ...slot, dia_semana: 2 });
+  await act(async () => checkboxPractica().click());
+  await input(container.querySelector('[aria-label="Nombre de la práctica"]'), 'Ensayo conservado');
+  const fecha = container.querySelector('[aria-label="Fecha de esta práctica"]');
+  await input(fecha, '2099-11-07');
+  expect(container.querySelector('[role="alert"]').textContent).toContain('miércoles');
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(true);
+  await input(fecha, '2099-11-04');
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(false);
+  expect(container.querySelector('[aria-label="Nombre de la práctica"]').value).toBe('Ensayo conservado');
+  await submit();
+  expect(container.textContent).toContain('Práctica: Ensayo conservado');
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+test('la fecha equivocada también bloquea reservar en cómputo y actividad institucional', async () => {
+  await render('COMPUTO', { ...slot, dia_semana: 2 });
+  await reservarSoloFecha();
+  await input(container.querySelector('[aria-label="Fecha de la sesión"]'), '2099-11-07');
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(true);
+  await input(container.querySelector('select'), 'CAPACITACION');
+  await input(container.querySelector('[aria-label="Fecha específica"]'), '2099-11-07');
+  expect(container.querySelector('[role="alert"]').textContent).toContain('miércoles');
+  expect(container.querySelector('button[type="submit"]').disabled).toBe(true);
+  await submit();
   expect(api.post).not.toHaveBeenCalled();
 });

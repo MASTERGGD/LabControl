@@ -1,3 +1,5 @@
+import FechaHorario from '../../components/FechaHorario';
+import { validarFechaHorario } from '../../utils/fechaHorario';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
@@ -397,6 +399,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
   const [error, setError]   = useState('');
   const [soloUnaFecha, setSoloUnaFecha] = useState(false);
   const [fechaActividad, setFechaActividad] = useState('');
+  const errorFecha = soloUnaFecha ? validarFechaHorario(fechaActividad, slot.dia_semana) : '';
 
   const seleccionarMateria = (m) => {
     setMateriaQuery(m.label || m.nombre || '');
@@ -416,6 +419,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (errorFecha) { setError(errorFecha); return; }
     if (!materiaInfo) { setError('Selecciona una materia del catálogo académico.'); return; }
     if (soloUnaFecha && !fechaActividad) { setError('Selecciona la fecha de la sesión.'); return; }
     setSaving(true); setError('');
@@ -469,7 +473,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
         <form onSubmit={handleSubmit} className="p-5 md:p-6 space-y-4 max-h-[88vh] overflow-y-auto">
           <div className="rounded-xl border border-slate-700 p-3">
             <label className="flex items-start gap-2 text-sm text-slate-300"><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setFechaActividad(''); }} className="mt-1"/><span><b>Reservar para una sola fecha</b><span className="mt-0.5 block text-xs text-slate-500">El horario se aparta solo para la fecha indicada; no se repite cada semana del cuatrimestre.</span></span></label>
-            {soloUnaFecha && <label className="mt-3 block text-sm text-slate-300">Fecha de la sesión *<input required type="date" min={new Date().toISOString().slice(0, 10)} value={fechaActividad} onChange={e => setFechaActividad(e.target.value)} className="input-dark mt-1 w-full"/></label>}
+            {soloUnaFecha && <FechaHorario value={fechaActividad} onChange={fecha => { setFechaActividad(fecha); setError(''); }} diaSemana={slot.dia_semana} />}
           </div>
           {/* Materia */}
           <div>
@@ -607,7 +611,7 @@ function ModalReservar({ slot, cuatrimestre, laboratorio_id, laboratorio, onClos
           {error && <p className="text-sm text-red-400 bg-red-950/50 border border-red-800/50 rounded-xl px-3 py-2">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1 py-2.5 text-sm">Cancelar</button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || Boolean(errorFecha) || (soloUnaFecha && !fechaActividad)}
               className="flex-1 py-2.5 text-sm font-semibold rounded-xl text-white disabled:opacity-50 transition-all"
               style={{ background:'#007A53', boxShadow:'none' }}>
               {saving ? 'Reservando…' : 'Reservar'}

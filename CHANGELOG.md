@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Validación inmediata de fecha del horario — 2026-11-06
+
+### Problema y comportamiento resultante
+Era posible elegir una fecha de otro día de la semana y llenar la reservación y la práctica antes de conocer el error. Se comparte un campo de fecha entre la reservación docente, actividades institucionales, fecha de práctica y reservación administrativa. El calendario nativo utiliza un mínimo correspondiente a la próxima fecha del horario y pasos de siete días; la escritura manual se valida de inmediato con un aviso junto al campo. Se muestra además la fecha completa con día y mes.
+
+Una fecha incorrecta bloquea Reservar y abrir/editar la práctica; una fecha de práctica incorrecta bloquea su continuación. Corregirla conserva los datos capturados. Se valida de nuevo al enviar y se conserva la validación del backend. Los cálculos de fecha evitan desplazamientos de día por zona horaria y usan el día actual de Ciudad de México. La validación de días lectivos y autorizaciones institucionales sigue en el servidor; esta mejora restringe el día del horario y fechas pasadas.
+
+### Validación y publicación
+28 suites y 107 pruebas frontend aprobadas. Cinco pruebas nuevas verifican miércoles frente a sábado, bloqueo inmediato, conservación de materia/grupo/práctica, cómputo y actividad institucional, mínimos semanales y cambios de mes/año. Compilación aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. Sin cambios de backend, esquema ni datos; cambios ajenos del árbol conservados y excluidos.
+
+Estado: preparado y validado localmente; pendiente verificar despliegue y acceso público. Pruebas con datos ficticios, sin reservaciones reales. La presentación del calendario nativo depende del navegador; min/step y la validación inmediata del campo se complementan.
+
+---
+
 ## [6d054fc] — Materiales de práctica desde existencias — 2026-11-06
 
 ### Problema y comportamiento resultante

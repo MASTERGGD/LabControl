@@ -10,6 +10,8 @@ import AdminLayout from '../../components/AdminLayout';
 import { useTheme } from '../../context/ThemeContext';
 import { dateToLocalISO, weekdayIndexInMexico } from '../../utils/timezone';
 import { getApiErrorMessage } from '../../utils/apiError';
+import FechaHorario from '../../components/FechaHorario';
+import { validarFechaHorario } from '../../utils/fechaHorario';
 import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
 
@@ -391,6 +393,12 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
     && reservasPuntualesBloque.some(r => r.fecha_actividad === form.fecha_actividad);
   const faltaElegirFechaUnica = reservasPuntualesBloque.length > 0 && !soloUnaFecha && !esInstitucional;
 
+  const requiereFechaReserva = esInstitucional || soloUnaFecha;
+  const errorFechaReserva = requiereFechaReserva ? validarFechaHorario(form.fecha_actividad, slot.dia_semana) : '';
+  const faltaFechaReserva = requiereFechaReserva && !form.fecha_actividad;
+  const fechaReservaBloqueada = faltaFechaReserva || Boolean(errorFechaReserva) || fechaPuntualEnConflicto;
+  const errorFechaPractica = !soloUnaFecha ? validarFechaHorario(fechaPractica, slot.dia_semana) : errorFechaReserva;
+
   const seleccionarMateria = (m) => {
     setMateriaQuery(m.label || m.nombre || '');
     setMateriaInfo(m);
@@ -440,6 +448,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
     : CHECKS_REQ.some(c => checks[c.key]) || notaReq.trim();
 
   const abrirPractica = () => {
+    if (fechaReservaBloqueada) { setError(errorFechaReserva || "Selecciona una fecha válida y disponible antes de capturar la práctica."); return; }
     setPracticaAnterior({ tituloPractica, objetivoPractica, procedimientoPractica, fechaPractica, materialesPractica, seguridadPractica });
     setError('');
     setEditandoPractica(true);
@@ -460,7 +469,8 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
     if (!tituloPractica.trim()) return 'Escribe el nombre de la práctica.';
     if (!soloUnaFecha && !fechaPractica) return 'Selecciona la fecha en que se realizará la práctica.';
     const fecha = soloUnaFecha ? form.fecha_actividad : fechaPractica;
-    if (fecha && (fecha < dateToLocalISO(new Date()) || new Date(fecha + 'T00:00:00').getDay() !== (slot.dia_semana + 1) % 7)) return 'Elige una fecha vigente que coincida con el día del horario reservado.';
+    const errorFecha = validarFechaHorario(fecha, slot.dia_semana);
+    if (errorFecha) return errorFecha;
     if (materialesPracticaConDatos.some(item => !item.descripcion.trim() || !Number.isFinite(Number(item.cantidad_solicitada)) || Number(item.cantidad_solicitada) <= 0 || !item.unidad.trim())) return 'Completa descripción, cantidad y unidad de cada material solicitado.';
     return '';
   };
@@ -475,6 +485,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (errorFechaReserva) { setError(errorFechaReserva); return; }
     if (requiereFlujoPractica && incluyePractica) {
       const mensaje = validarPractica();
       if (mensaje) { setError(mensaje); return; }
@@ -593,7 +604,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
         <form onSubmit={editandoPractica ? guardarPractica : handleSubmit} className="p-5 md:p-6 space-y-4 overflow-y-auto min-h-0">
           {editandoPractica && <p className="text-sm opacity-80">Completa la preparación de la práctica. Al continuar regresarás a tu reservación; el horario se apartará al pulsar Reservar.</p>}
               {editandoPractica && <div className="space-y-3">
-                {!soloUnaFecha && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de esta práctica *<input required type="date" min={dateToLocalISO(new Date())} value={fechaPractica} onChange={e => setFechaPractica(e.target.value)} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe coincidir con el día del horario semanal.</span></label>}
+                {!soloUnaFecha && <FechaHorario etiqueta="Fecha de esta práctica" value={fechaPractica} onChange={fecha => { setFechaPractica(fecha); setError(''); }} diaSemana={slot.dia_semana} ayuda="Debe coincidir con el horario semanal." />}
                 <input className="input-dark w-full" aria-label="Nombre de la práctica" autoFocus required placeholder="Nombre de la práctica *" value={tituloPractica} onChange={e => setTituloPractica(e.target.value)} />
                 <textarea rows={2} value={objetivoPractica} onChange={e => setObjetivoPractica(e.target.value)} aria-label="Objetivo de la práctica" placeholder="Objetivo de la práctica (opcional)" className="input-dark w-full resize-y" />
                 <textarea rows={3} value={procedimientoPractica} onChange={e => setProcedimientoPractica(e.target.value)} aria-label="Procedimiento y consideraciones de seguridad" placeholder="Procedimiento y consideraciones de seguridad (opcional)" className="input-dark w-full resize-y" />
@@ -612,7 +623,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
             </select>
             {requiereFlujoPractica && form.tipo_actividad === 'CLASE' && <p className="mt-1 text-xs" style={{ color: isDay ? '#64748b' : '#94a3b8' }}>Si la clase incluye una práctica, márcalo abajo. SIGA enviará la solicitud al responsable y la agregará a tu seguimiento.</p>}
           </div>
-          {esInstitucional && <label className="block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha específica *<input required type="date" value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span>{reservasPuntualesBloque.length > 0 && <span className="mt-1 block text-xs" style={{ color: isDay ? '#92400e' : '#fde68a' }}>Este bloque ya tiene sesión(es) el {resumenFechasPuntuales(reservasPuntualesBloque)}; elige otra fecha.</span>}{fechaPuntualEnConflicto && <span className="mt-1 block text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>La fecha seleccionada ya está apartada.</span>}</label>}
+          {esInstitucional && <div><FechaHorario etiqueta="Fecha específica" value={form.fecha_actividad} onChange={fecha => { setForm(f => ({ ...f, fecha_actividad: fecha })); setError(''); }} diaSemana={slot.dia_semana} /><span className="mt-1 block text-xs opacity-70">Si es un día no lectivo, la solicitud quedará pendiente de autorización.</span>{reservasPuntualesBloque.length > 0 && <span className="mt-1 block text-xs" style={{ color: isDay ? '#92400e' : '#fde68a' }}>Este bloque ya tiene sesión(es) el {resumenFechasPuntuales(reservasPuntualesBloque)}; elige otra fecha.</span>}{fechaPuntualEnConflicto && <span className="mt-1 block text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>La fecha seleccionada ya está apartada.</span>}</div>}
           {!esInstitucional && <div className="rounded-xl border p-3" style={{ borderColor: isDay ? '#cbd5e1' : 'rgba(148,163,184,.25)' }}>
             <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}><input type="checkbox" checked={soloUnaFecha} onChange={e => { setSoloUnaFecha(e.target.checked); setForm(f => ({ ...f, fecha_actividad: '' })); }} className="mt-1"/><span><b>Reservar solo en una fecha</b><span className="mt-0.5 block text-xs opacity-75">Márcalo para una sesión puntual. Déjalo desmarcado si la clase se repetirá cada semana del cuatrimestre.</span></span></label>
             {reservasPuntualesBloque.length > 0 && <div className="mt-3 rounded-lg border px-3 py-2 text-xs" style={{ background: isDay ? '#fffbeb' : 'rgba(120,53,15,.22)', borderColor: isDay ? '#fcd34d' : 'rgba(245,158,11,.4)', color: isDay ? '#92400e' : '#fde68a' }}>
@@ -621,7 +632,7 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
                 : <>Este bloque está apartado el <b>{resumenFechasPuntuales(reservasPuntualesBloque)}</b> para {reservasPuntualesBloque[0]?.materia || 'otra sesión'}. Para evitar traslapes, la nueva solicitud debe ser para una sola fecha. Marca la casilla y elige otra fecha.</>}
               <span className="mt-1 block opacity-80">{detalleReservasPuntuales(reservasPuntualesBloque)}</span>
             </div>}
-            {soloUnaFecha && <label className="mt-3 block text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>Fecha de la sesión *<input required type="date" min={dateToLocalISO(new Date())} value={form.fecha_actividad} onChange={e => { setForm({ ...form, fecha_actividad: e.target.value }); setError(''); }} className="input-dark mt-1 w-full"/><span className="mt-1 block text-xs opacity-70">Debe corresponder al día del horario y a una fecha lectiva.</span></label>}
+            {soloUnaFecha && <FechaHorario value={form.fecha_actividad} onChange={fecha => { setForm(f => ({ ...f, fecha_actividad: fecha })); setError(''); }} diaSemana={slot.dia_semana} ayuda="La fecha también debe ser lectiva." />}
             {fechaPuntualEnConflicto && <p className="mt-2 text-xs font-semibold" style={{ color: isDay ? '#b91c1c' : '#fca5a5' }}>Esa fecha ya está apartada. Selecciona otra fecha.</p>}
           </div>}
           <div>
@@ -747,12 +758,12 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
           >
             {requiereFlujoPractica ? <>
               <label className="flex items-start gap-2 text-sm" style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
-                <input type="checkbox" checked={incluyePractica} onChange={e => { if (e.target.checked) abrirPractica(); else setIncluyePractica(false); }} className="mt-1" />
+                <input type="checkbox" checked={incluyePractica} disabled={fechaReservaBloqueada} onChange={e => { if (e.target.checked) abrirPractica(); else setIncluyePractica(false); }} className="mt-1" />
                 <span><b>Esta clase incluye una práctica de laboratorio</b><span className="mt-0.5 block text-xs opacity-75">Al enviar la reserva, SIGA creará la solicitud para el responsable y la mostrará en tu seguimiento. No tendrás que volver a capturarla.</span></span>
               </label>
               {incluyePractica && <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/40 p-3">
                 <div><p className="font-semibold">Práctica: {tituloPractica}</p><p className="text-xs opacity-75">{soloUnaFecha ? form.fecha_actividad : fechaPractica} · {materialesPracticaConDatos.length} materiales solicitados</p></div>
-                <button type="button" className="btn-ghost px-3 py-2" onClick={abrirPractica}>Editar práctica</button>
+                <button type="button" className="btn-ghost px-3 py-2 disabled:opacity-50" disabled={fechaReservaBloqueada} onClick={abrirPractica}>Editar práctica</button>
               </div>}
             </> : <>
             <p className={`text-xs uppercase tracking-wide font-semibold ${isDay ? 'text-slate-700' : 'text-slate-400'}`}>Requerimientos para la clase <span className="normal-case font-normal">(opcional)</span></p>
@@ -845,9 +856,9 @@ export function ModalReservar({ slot, slots, cuatrimestre, laboratorio_id, labor
                 color: isDay ? '#334155' : '#e5e7eb',
                 border: `1px solid ${isDay ? '#e2e8f0' : 'transparent'}`,
               }}>Cancelar</button>
-            <button type="submit" disabled={!editandoPractica && (saving || faltaElegirFechaUnica || fechaPuntualEnConflicto)}
+            <button type="submit" disabled={editandoPractica ? Boolean(errorFechaPractica) : (saving || faltaElegirFechaUnica || fechaReservaBloqueada)}
               className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg py-2 text-sm font-semibold">
-              {editandoPractica ? 'Guardar práctica y continuar' : saving ? 'Reservando…' : faltaElegirFechaUnica ? 'Elige una fecha única' : fechaPuntualEnConflicto ? 'Fecha ya reservada' : '✓ Reservar'}
+              {editandoPractica ? 'Guardar práctica y continuar' : errorFechaReserva ? 'Revisa la fecha' : faltaFechaReserva ? 'Selecciona una fecha' : saving ? 'Reservando…' : faltaElegirFechaUnica ? 'Elige una fecha única' : fechaPuntualEnConflicto ? 'Fecha ya reservada' : '✓ Reservar'}
             </button>
           </div>
         </form>
