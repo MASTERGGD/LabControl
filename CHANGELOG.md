@@ -4,6 +4,20 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## Preparado — Seguimiento de prácticas con historial y paginación — 2026-11-06
+
+### Problema y comportamiento resultante
+El seguimiento mezclaba solicitadas y canceladas en tarjetas extensas; el listado anterior se limitaba a las últimas 200 prácticas. Se incorpora una consulta paginada en servidor y una vista inicial Activas (solicitadas, preparadas, en curso), separada de Historial (finalizadas y canceladas). No se eliminan ni reclasifican registros anteriores.
+
+Cada fila muestra título, materia, grupo, fecha y estado con color diferenciado; Ver detalle despliega objetivos, materiales y las acciones existentes de preparación, asistencia, incidentes y reporte. Se agregan búsqueda por práctica/materia/grupo, filtros de periodo, estado y rango de fechas, limpieza de filtros, contadores y páginas de diez prácticas. Los filtros se aplican explícitamente para evitar consultas por cada tecla. El aviso de próxima práctica y las reservaciones que ya tienen seguimiento se calculan independientemente de la página seleccionada. Se conserva la consulta anterior por compatibilidad y se mantienen los permisos por docente/laboratorio.
+
+### Validación y publicación
+29 suites y 110 pruebas frontend aprobadas; 13 pruebas backend dirigidas aprobadas. Cuatro pruebas nuevas backend cubren paginación, historial de 205 registros, filtros y aislamiento de usuarios/laboratorios. Tres pruebas nuevas frontend cubren filas compactas, detalle, historial, filtros, páginas y preparación de materiales por el responsable. Compilación aprobada con los avisos existentes de tamaño del paquete e importación mixta de offlineStore. Sin migraciones ni modificación de datos históricos; cambios ajenos conservados y excluidos.
+
+Estado: preparado y validado localmente; publicación pendiente de verificar. Las comprobaciones funcionales utilizan datos ficticios en base aislada.
+
+---
+
 ## [419eedd] — Error al guardar prácticas y CORS — 2026-11-06
 
 ### Problema y causa verificada

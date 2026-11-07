@@ -1,9 +1,9 @@
 import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -322,6 +322,50 @@ def resumen_laboratorio(laboratorio_id: int, db: Session = Depends(get_db), user
         "cantidad_consumida": round(sum(m.cantidad_consumida for p in practicas for m in p.materiales), 3),
         "mermas": round(sum(m.cantidad_merma for p in practicas for m in p.materiales), 3),
     }
+
+
+@router.get("/seguimiento")
+def seguimiento_practicas(
+    laboratorio_id: Optional[int] = None,
+    vista: str = Query("ACTIVAS", pattern="^(ACTIVAS|HISTORIAL)$"),
+    estado: Optional[str] = Query(None, pattern="^(SOLICITADA|PREPARADA|EN_CURSO|CERRADA|CANCELADA)$"),
+    buscar: str = Query("", max_length=120), periodo: Optional[str] = None,
+    desde: Optional[datetime.date] = None, hasta: Optional[datetime.date] = None,
+    pagina: int = Query(1, ge=1), tamano: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db), user: Usuario = Depends(get_current_user),
+):
+    if user.rol not in DOCENTES:
+        raise HTTPException(403, "Sin permiso para consultar prácticas.")
+    if desde and hasta and desde > hasta:
+        raise HTTPException(422, "La fecha inicial no puede ser posterior a la final.")
+    base = db.query(PracticaLaboratorio).join(Reservacion)
+    if user.rol == RolUsuario.DOCENTE:
+        base = base.filter(Reservacion.docente_id == user.id)
+    elif user.rol != RolUsuario.SUPER_ADMIN:
+        base = base.filter(Reservacion.laboratorio_id == user.laboratorio_id)
+    if laboratorio_id:
+        base = base.filter(Reservacion.laboratorio_id == laboratorio_id)
+    activas = base.filter(PracticaLaboratorio.estado.in_(["SOLICITADA", "PREPARADA", "EN_CURSO"]))
+    historial = base.filter(PracticaLaboratorio.estado.in_(["CERRADA", "CANCELADA"]))
+    periodos = [x[0] for x in base.with_entities(Reservacion.cuatrimestre).distinct().order_by(Reservacion.cuatrimestre.desc()).all() if x[0]]
+    usadas = [x[0] for x in base.with_entities(PracticaLaboratorio.reservacion_id).distinct().all()]
+    proxima = activas.filter(PracticaLaboratorio.fecha_sesion >= now_mx().date()).order_by(PracticaLaboratorio.fecha_sesion, PracticaLaboratorio.id).first()
+    q = activas if vista == "ACTIVAS" else historial
+    if estado: q = q.filter(PracticaLaboratorio.estado == estado)
+    if periodo: q = q.filter(Reservacion.cuatrimestre == periodo)
+    if desde: q = q.filter(PracticaLaboratorio.fecha_sesion >= desde)
+    if hasta: q = q.filter(PracticaLaboratorio.fecha_sesion <= hasta)
+    if buscar.strip():
+        texto = f"%{buscar.strip()}%"
+        q = q.filter(or_(PracticaLaboratorio.titulo.ilike(texto), Reservacion.materia.ilike(texto), Reservacion.grupo.ilike(texto)))
+    total = q.count()
+    paginas = max(1, (total + tamano - 1) // tamano)
+    pagina = min(pagina, paginas)
+    orden = PracticaLaboratorio.fecha_sesion.asc() if vista == "ACTIVAS" else PracticaLaboratorio.fecha_sesion.desc()
+    items = q.order_by(orden, PracticaLaboratorio.id.desc()).offset((pagina - 1) * tamano).limit(tamano).all()
+    return {"items": [_serialize(p, db) for p in items], "total": total, "pagina": pagina, "paginas": paginas,
+        "totales": {"activas": activas.count(), "historial": historial.count()}, "periodos": periodos,
+        "reservaciones_con_practica": usadas, "proxima": _serialize(proxima, db) if proxima else None}
 
 
 @router.get("")

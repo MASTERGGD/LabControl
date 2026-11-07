@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
+import { formatDateInMexico } from '../../utils/timezone';
 import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 
 const card = 'rounded-2xl border p-5';
@@ -9,6 +10,12 @@ const field = 'input-dark w-full';
 const btn = 'rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50';
 const blankMaterial = () => ({ insumo_id: '', descripcion: '', cantidad_solicitada: '', unidad: 'PIEZA', nota: '' });
 const fechaLocal = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+const filtrosVacios = { buscar: '', periodo: '', estado: '', desde: '', hasta: '' };
+const coloresEstado = {
+  SOLICITADA: 'bg-amber-100 text-amber-900', PREPARADA: 'bg-blue-100 text-blue-900',
+  EN_CURSO: 'bg-emerald-100 text-emerald-900', CERRADA: 'bg-slate-100 text-slate-700', CANCELADA: 'bg-gray-200 text-gray-700',
+};
 
 function PracticasLaboratorio() {
   const { usuario } = useAuth();
@@ -18,6 +25,14 @@ function PracticasLaboratorio() {
   const [laboratorioId, setLaboratorioId] = useState(usuario?.laboratorio_id ? String(usuario.laboratorio_id) : '');
   const [insumos, setInsumos] = useState([]);
   const [practicas, setPracticas] = useState([]);
+  const [vista, setVista] = useState('ACTIVAS');
+  const [filtros, setFiltros] = useState(filtrosVacios);
+  const [consulta, setConsulta] = useState(filtrosVacios);
+  const [pagina, setPagina] = useState(1);
+  const [revision, setRevision] = useState(0);
+  const [cargandoSeguimiento, setCargandoSeguimiento] = useState(false);
+  const [detalleAbierto, setDetalleAbierto] = useState(null);
+  const [seguimiento, setSeguimiento] = useState({ total: 0, pagina: 1, paginas: 1, totales: { activas: 0, historial: 0 }, periodos: [], reservaciones_con_practica: [], proxima: null });
   const [reservaciones, setReservaciones] = useState([]);
   const [seleccion, setSeleccion] = useState('');
   const [form, setForm] = useState({ plantilla_id: '', fecha_sesion: '', titulo: '', objetivo: '', procedimiento: '', notas_seguridad: '', materiales: [blankMaterial()] });
@@ -37,15 +52,9 @@ function PracticasLaboratorio() {
   const [residuoForm, setResiduoForm] = useState({ descripcion: '', clasificacion: 'QUIMICO', cantidad: '', unidad: 'g', destino: '' });
 
   const cargar = useCallback(async () => {
-    if (!laboratorioId && !esDocente) return;
     setCargando(true); setError('');
     try {
-      const params = esDocente ? '' : `?laboratorio_id=${laboratorioId}`;
-      const [p, labs] = await Promise.all([
-        api.get(`/practicas-laboratorio${params}`),
-        api.get('/laboratorios?solo_activos=true'),
-      ]);
-      setPracticas(Array.isArray(p.data) ? p.data : []);
+      const labs = await api.get('/laboratorios?solo_activos=true');
       setLaboratorios((labs.data || []).filter(l => ['QUIMICA', 'AGROINDUSTRIA'].includes((l.categoria || '').toUpperCase())));
       const labActual = esDocente ? null : laboratorioId;
       if (labActual) {
@@ -71,6 +80,27 @@ function PracticasLaboratorio() {
   useEffect(() => { cargar(); }, [cargar]);
   useEffect(() => { if (usuario?.laboratorio_id && !laboratorioId) setLaboratorioId(String(usuario.laboratorio_id)); }, [usuario, laboratorioId]);
 
+  useEffect(() => {
+    let vigente = true;
+    if (!esDocente && !laboratorioId) { setPracticas([]); return undefined; }
+    setCargandoSeguimiento(true); setError(''); setPracticas([]);
+    const params = new URLSearchParams({ vista, pagina: String(pagina), tamano: '10' });
+    if (laboratorioId) params.set('laboratorio_id', laboratorioId);
+    Object.entries(consulta).forEach(([key, value]) => { if (value) params.set(key, value); });
+    api.get(`/practicas-laboratorio/seguimiento?${params}`)
+      .then(({ data }) => { if (vigente) { setPracticas(data.items || []); setSeguimiento(data); } })
+      .catch(e => { if (vigente) setError(e.response?.data?.detail || 'No se pudo cargar el seguimiento de prácticas.'); })
+      .finally(() => { if (vigente) setCargandoSeguimiento(false); });
+    return () => { vigente = false; };
+  }, [esDocente, laboratorioId, vista, consulta, pagina, revision]);
+
+  const cambiarVista = nueva => {
+    setVista(nueva); setPagina(1); setDetalleAbierto(null);
+    const nuevos = { ...filtros, estado: '' };
+    setFiltros(nuevos); setConsulta(nuevos);
+  };
+  const actualizar = () => { cargar(); setRevision(v => v + 1); };
+
   const bloquesReservacion = useMemo(() => {
     const bloques = new Map();
     for (const reservacion of reservaciones) {
@@ -91,7 +121,7 @@ function PracticasLaboratorio() {
     });
   }, [reservaciones]);
   const reservacionesDisponibles = useMemo(() => {
-    const usadas = new Set(practicas.map(p => p.reservacion_id));
+    const usadas = new Set(seguimiento.reservaciones_con_practica);
     const labsAcademicos = new Set(laboratorios.map(l => Number(l.id)));
     return bloquesReservacion.filter(bloque => {
       const r = bloque.principal;
@@ -99,12 +129,11 @@ function PracticasLaboratorio() {
         labsAcademicos.has(Number(r.laboratorio_id)) &&
         (esDocente || !laboratorioId || Number(r.laboratorio_id) === Number(laboratorioId));
     });
-  }, [bloquesReservacion, practicas, esDocente, laboratorioId, laboratorios]);
+  }, [bloquesReservacion, seguimiento.reservaciones_con_practica, esDocente, laboratorioId, laboratorios]);
   const reservacionSeleccionada = reservaciones.find(r => Number(r.id) === Number(seleccion));
   const hoyLocal = fechaLocal(new Date());
   const mananaLocal = fechaLocal(new Date(Date.now() + 24 * 60 * 60 * 1000));
-  const proximaPractica = [...practicas].filter(p => !['CERRADA', 'CANCELADA'].includes(p.estado) && p.fecha >= hoyLocal)
-    .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)) || String(a.hora_inicio).localeCompare(String(b.hora_inicio)))[0];
+  const proximaPractica = seguimiento.proxima;
 
   useEffect(() => {
     const labId = esDocente ? reservacionSeleccionada?.laboratorio_id : laboratorioId;
@@ -120,7 +149,7 @@ function PracticasLaboratorio() {
 
   const run = async (operation, success = 'Cambios guardados.') => {
     setError(''); setMensaje('');
-    try { await operation(); setMensaje(success); await cargar(); return true; }
+    try { await operation(); setMensaje(success); await cargar(); setRevision(v => v + 1); return true; }
     catch (e) { setError(e.response?.data?.detail || 'No se pudo completar la operación.'); }
     return false;
   };
@@ -206,7 +235,7 @@ function PracticasLaboratorio() {
           <h1 className="mt-1 text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Prácticas de laboratorio</h1>
           <p className="mt-2 max-w-3xl text-sm" style={{ color: 'var(--text-secondary)' }}>Las solicitudes se generan al reservar una clase con práctica. Aquí consulta la preparación del laboratorio y completa asistencia, incidencias y reporte.</p>
         </div>
-        {puedePreparar && <select className={`${field} max-w-sm`} value={laboratorioId} onChange={e => setLaboratorioId(e.target.value)}>
+        {puedePreparar && <select className={`${field} max-w-sm`} value={laboratorioId} onChange={e => { setLaboratorioId(e.target.value); setPagina(1); setDetalleAbierto(null); }}>
           <option value="">Selecciona laboratorio</option>{laboratorios.map(l => <option key={l.id} value={l.id}>{l.nombre} · {l.categoria}</option>)}
         </select>}
       </header>
@@ -216,7 +245,7 @@ function PracticasLaboratorio() {
 
       {esDocente && <div className={`${card} space-y-3`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
         <div><h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Seguimiento de prácticas</h2><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Al reservar, SIGA crea aquí la solicitud y la envía al responsable. No vuelvas a capturarla.</p></div>
-        {practicas.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm" style={{ color: 'var(--text-secondary)', borderColor: 'var(--surface-border)' }}>Aún no tienes prácticas solicitadas. Para iniciar una, abre <b>Solicitar laboratorio</b>, marca que la clase incluye una práctica y completa sus datos en el mismo formulario.</p>}
+        {seguimiento.totales.activas + seguimiento.totales.historial === 0 && !cargandoSeguimiento && <p className="rounded-xl border border-dashed p-4 text-sm" style={{ color: 'var(--text-secondary)', borderColor: 'var(--surface-border)' }}>Aún no tienes prácticas solicitadas. Para iniciar una, abre <b>Solicitar laboratorio</b>, marca que la clase incluye una práctica y completa sus datos en el mismo formulario.</p>}
         <details className="rounded-xl border p-3" style={{ borderColor: 'var(--surface-border)' }}>
           <summary className="cursor-pointer text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>Registrar seguimiento de una reservación anterior</summary>
           <form onSubmit={crear} className="mt-4 space-y-4">
@@ -267,11 +296,25 @@ function PracticasLaboratorio() {
         </div>)}</div>
       </section>}
 
-      <section className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Sesiones y seguimiento</h2><button className={`${btn} border`} onClick={cargar}>{cargando ? 'Actualizando…' : 'Actualizar'}</button></div>
-        {!practicas.length && <div className={`${card} text-sm`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>Aún no hay prácticas asociadas a las reservaciones de este laboratorio.</div>}
-        {practicas.map(p => <article key={p.id} className={`${card} space-y-4`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">{p.estado}</span><h3 className="mt-2 text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{p.titulo}</h3><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{p.laboratorio_nombre} · {p.materia} · Grupo {p.grupo} · {p.fecha || 'Fecha de reservación'} {p.hora_inicio && `· ${p.hora_inicio}–${p.hora_fin}`}</p></div>
+      <section className="space-y-3" aria-label="Seguimiento de prácticas">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Sesiones y seguimiento</h2><button className={`${btn} border`} disabled={cargandoSeguimiento} onClick={actualizar}>{cargandoSeguimiento ? 'Actualizando…' : 'Actualizar'}</button></div>
+        <div className="flex gap-2" aria-label="Vistas del seguimiento">{[['ACTIVAS', 'Activas', seguimiento.totales.activas], ['HISTORIAL', 'Historial', seguimiento.totales.historial]].map(([key, label, cantidad]) => <button key={key} type="button" aria-pressed={vista === key} className={`${btn} border ${vista === key ? 'bg-emerald-700 text-white' : ''}`} onClick={() => cambiarVista(key)}>{label} ({cantidad})</button>)}</div>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{vista === 'ACTIVAS' ? 'Solicitadas, preparadas y en curso. Las finalizadas y canceladas se conservan en Historial.' : 'Prácticas finalizadas y canceladas, conservadas para consulta.'}</p>
+        <form aria-label="Filtros de prácticas" className="grid gap-3 rounded-xl border p-3 sm:grid-cols-2 lg:grid-cols-3" style={{ borderColor: 'var(--surface-border)' }} onSubmit={e => { e.preventDefault(); setConsulta({ ...filtros }); setPagina(1); setDetalleAbierto(null); }}>
+          <label className="text-xs">Buscar práctica, materia o grupo<input className={`${field} mt-1`} value={filtros.buscar} maxLength={120} onChange={e => setFiltros(f => ({ ...f, buscar: e.target.value }))} /></label>
+          <label className="text-xs">Periodo<select className={`${field} mt-1`} value={filtros.periodo} onChange={e => setFiltros(f => ({ ...f, periodo: e.target.value }))}><option value="">Todos los periodos</option>{seguimiento.periodos.map(periodo => <option key={periodo}>{periodo}</option>)}</select></label>
+          <label className="text-xs">Estado<select className={`${field} mt-1`} value={filtros.estado} onChange={e => setFiltros(f => ({ ...f, estado: e.target.value }))}><option value="">Todos los estados</option>{(vista === 'ACTIVAS' ? [['SOLICITADA','Solicitada'],['PREPARADA','Preparada'],['EN_CURSO','En curso']] : [['CERRADA','Finalizada'],['CANCELADA','Cancelada']]).map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}</select></label>
+          <label className="text-xs">Desde<input className={`${field} mt-1`} type="date" value={filtros.desde} onChange={e => setFiltros(f => ({ ...f, desde: e.target.value }))} /></label>
+          <label className="text-xs">Hasta<input className={`${field} mt-1`} type="date" min={filtros.desde || undefined} value={filtros.hasta} onChange={e => setFiltros(f => ({ ...f, hasta: e.target.value }))} /></label>
+          <div className="flex items-end gap-2"><button type="submit" className={`${btn} bg-emerald-700 text-white`}>Aplicar filtros</button><button type="button" className={`${btn} border`} onClick={() => { setFiltros(filtrosVacios); setConsulta(filtrosVacios); setPagina(1); setDetalleAbierto(null); }}>Limpiar</button></div>
+        </form>
+        {cargandoSeguimiento && <p role="status">Cargando prácticas…</p>}
+        {!cargandoSeguimiento && !practicas.length && <div className={`${card} text-sm`} style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)', color: 'var(--text-secondary)' }}>No hay prácticas en esta vista con los filtros seleccionados.</div>}
+        {practicas.map(p => <article key={p.id} className="rounded-xl border p-4 space-y-3" style={{ background: 'var(--surface-panel)', borderColor: 'var(--surface-border)' }}>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${coloresEstado[p.estado] || coloresEstado.CERRADA}`}>{p.estado === 'CERRADA' ? 'FINALIZADA' : p.estado.replace('_', ' ')}</span><h3 className="mt-2 text-base font-bold" style={{ color: 'var(--text-primary)' }}>{p.titulo}</h3><p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{p.laboratorio_nombre} · {p.materia} · Grupo {p.grupo} · {p.fecha ? formatDateInMexico(p.fecha, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Fecha de reservación'} {p.hora_inicio && `· ${p.hora_inicio}–${p.hora_fin}`}</p></div>
             {!esDocente && <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Docente: {p.docente_nombre}</span>}</div>
+          <button type="button" className="text-sm font-semibold text-blue-700 underline" aria-expanded={detalleAbierto === p.id} onClick={() => setDetalleAbierto(detalleAbierto === p.id ? null : p.id)}>{detalleAbierto === p.id ? 'Ocultar detalle' : 'Ver detalle'}</button>
+          {detalleAbierto === p.id && <div className="space-y-4 border-t pt-4" style={{ borderColor: 'var(--surface-border)' }}>
           {p.objetivo && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}><b>Objetivo:</b> {p.objetivo}</p>}
           {(p.procedimiento || p.notas_seguridad) && <details><summary className="cursor-pointer text-sm font-semibold">Procedimiento y seguridad</summary>{p.procedimiento && <p className="mt-2 whitespace-pre-wrap text-sm" style={{ color: 'var(--text-secondary)' }}>{p.procedimiento}</p>}{p.notas_seguridad && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold text-amber-700">Precauciones: {p.notas_seguridad}</p>}</details>}
           {!!p.materiales.length && <div className="space-y-2"><h4 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Material solicitado</h4>{p.materiales.map(m => <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-sm" style={{ borderColor: 'var(--surface-border)' }}><span style={{ color: 'var(--text-primary)' }}>{m.descripcion}: solicita {m.cantidad_solicitada} {m.unidad}{m.existencia != null ? ` · existencia actual ${m.existencia}` : ''}{m.nota && <small className="block whitespace-pre-wrap opacity-80">{m.nota}</small>}</span>
@@ -305,7 +348,9 @@ function PracticasLaboratorio() {
           {puedePreparar && p.estado === 'CERRADA' && <button className={`${btn} border border-blue-300 text-blue-700`} onClick={() => run(() => api.post(`/practicas-laboratorio/guias/desde-practica/${p.id}`, {}), 'Guía guardada para reutilizar en futuras sesiones.')}>Guardar como guía de práctica</button>}
           {esDocente && p.estado === 'PREPARADA' && <button className={`${btn} bg-blue-700 text-white`} onClick={() => iniciar(p)}>Iniciar práctica y cargar lista</button>}
           {p.estado === 'CERRADA' && <div className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700"><b>Informe:</b> {p.resultados || 'Sin resultados registrados'}<br/><b>Conclusiones:</b> {p.conclusiones || 'Sin conclusiones registradas'}</div>}
+          </div>}
         </article>)}
+        <nav className="flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Paginación de prácticas"><span role="status">{seguimiento.total} resultados · Página {seguimiento.pagina} de {seguimiento.paginas}</span><div className="flex gap-2"><button className={`${btn} border`} disabled={cargandoSeguimiento || seguimiento.pagina <= 1} onClick={() => { setPagina(seguimiento.pagina - 1); setDetalleAbierto(null); }}>Anterior</button><button className={`${btn} border`} disabled={cargandoSeguimiento || seguimiento.pagina >= seguimiento.paginas} onClick={() => { setPagina(seguimiento.pagina + 1); setDetalleAbierto(null); }}>Siguiente</button></div></nav>
       </section>
     </div>
   </AdminLayout>;
