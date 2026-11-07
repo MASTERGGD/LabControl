@@ -4,7 +4,7 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## Preparado — Materiales de práctica desde existencias — 2026-11-06
+## [6d054fc] — Materiales de práctica desde existencias — 2026-11-06
 
 ### Problema y comportamiento resultante
 La captura de materiales no permitía buscar ni distinguir un catálogo vacío de una consulta fallida; tampoco ofrecía los equipos del inventario patrimonial. Se agrega un catálogo docente del laboratorio seleccionado con insumos activos y bienes activos validados, sin datos privados patrimoniales.
@@ -16,7 +16,7 @@ La captura libre permanece como pendiente de confirmación. Los equipos se ident
 ### Validación y publicación
 27 suites y 102 pruebas frontend aprobadas, incluidas búsquedas, filtros, faltantes acumulados, recuperación de errores y envío de referencia del equipo. Siete pruebas nuevas backend aprobadas: aislamiento por laboratorio, permisos/autenticación, exclusión de datos privados, caducidad, mantenimiento, préstamos y consulta sin descuentos. Compilación frontend aprobada con los avisos existentes de tamaño de paquete e importación mixta de offlineStore. Sin migraciones ni modificación de datos reales. Cambios previos de otros módulos conservados y excluidos de esta entrega.
 
-Estado: preparado y validado; pendiente comprobar publicación en Railway y disponibilidad web/API. La validación funcional utiliza datos ficticios en base aislada; no se crean solicitudes reales.
+Publicado el 6 de noviembre de 2026, verificado a las 20:03 de Ciudad de México (7 de noviembre, 02:03 UTC). GitHub recibió `6d054fc`; Railway confirmó SUCCESS para frontend (`077b5d27-090b-483f-89ae-82cbc9f77e71`) y backend (`5efc0034-69fb-46b6-abf9-e742d0dd7e0d`) con ese commit. Web y paquete JavaScript HTTP 200; paquete con búsqueda, filtro y actualización de existencias. API HTTP 200 y healthy; el nuevo catálogo rechaza acceso anónimo con HTTP 401. La validación funcional utiliza datos ficticios en base aislada; no se crean solicitudes reales. Pendiente: revisión visual autenticada con el inventario real del laboratorio.
 
 ---
 
