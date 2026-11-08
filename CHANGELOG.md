@@ -4,6 +4,18 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Acceso unificado al bloqueo desde el turno de Química — 2026-11-08
+
+### Problema y comportamiento resultante
+El superadministrador conservaba el acceso al modal semanal antiguo de bloqueo y el responsable abría únicamente Editar horario, aunque ya existía la gestión por fechas en otro apartado. Química y Agroindustria ahora comparten un selector de acciones sobre el turno libre: Editar horario semanal o Bloquear disponibilidad, para superadministrador y personal del laboratorio asignado. Administrar y Bloquear son acciones visibles y accesibles desde botones de la celda; el detalle de una reservación también ofrece el mismo bloqueo para el responsable.
+
+Bloquear abre y enfoca la gestión por fechas existente, precargando horas y la próxima fecha del día del turno. Permite ajustar fecha/rango y conserva el motivo al seleccionar otro turno; no realiza una mutación hasta la confirmación explícita. Los accesos químicos ya no muestran el modal semanal antiguo. El modo docente y responsables de otro laboratorio no reciben estos controles. Cambiar de laboratorio limpia modales y selecciones. Las validaciones backend, cancelaciones y conflictos existentes se mantienen.
+
+### Validación y estado
+42 suites y 187 pruebas frontend aprobadas; compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Nuevas regresiones cubren roles SUPER_ADMIN, LAB_ADMIN y RESPONSABLE_LAB, turnos libres y reservados, carga de horas/fecha, apertura del formulario sin mutaciones, conservación del motivo y foco y aislamiento del laboratorio asignado. Sin cambios backend ni migraciones. Pendiente: publicación, comprobación pública y revisión visual autenticada. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Conflictos de bloqueo limitados al periodo de la reserva — 2026-11-08
 
 ### Problema y comportamiento resultante

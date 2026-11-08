@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../hooks/useApi';
 import { getApiErrorMessage } from '../utils/apiError';
 import { todayISOInMexico } from '../utils/timezone';
 
-export default function GestionDisponibilidadLaboratorio({ laboratorioId, onActualizado }) {
+export default function GestionDisponibilidadLaboratorio({ laboratorioId, onActualizado, turnoSeleccionado }) {
   const hoy=todayISOInMexico();
   const [agenda,setAgenda]=useState({practicas:[],bloqueos:[]});
   const [form,setForm]=useState({desde:hoy,hasta:hoy,hora_inicio:'08:00',hora_fin:'09:00',motivo:''});
@@ -16,6 +16,18 @@ export default function GestionDisponibilidadLaboratorio({ laboratorioId, onActu
   const [ocupado,setOcupado]=useState(false);
   const [revision,setRevision]=useState(0);
   const [disponible,setDisponible]=useState(false);
+  const contenedor=useRef(null);
+  const fechaInicial=useRef(null);
+  useEffect(()=>{
+    if(!turnoSeleccionado || Number(turnoSeleccionado.laboratorio_id)!==Number(laboratorioId))return;
+    const fecha=new Date(`${hoy}T12:00:00Z`);
+    fecha.setUTCDate(fecha.getUTCDate()+(Number(turnoSeleccionado.dia_semana)-((fecha.getUTCDay()+6)%7)+7)%7);
+    const dia=fecha.toISOString().slice(0,10);
+    setForm(f=>({...f,desde:dia,hasta:dia,hora_inicio:turnoSeleccionado.hora_inicio,hora_fin:turnoSeleccionado.hora_fin}));
+    if(contenedor.current)contenedor.current.open=true;
+    contenedor.current?.scrollIntoView?.({behavior:'smooth',block:'start'});
+    fechaInicial.current?.focus();
+  },[turnoSeleccionado,laboratorioId,hoy]);
   useEffect(()=>{
     let activo=true;setDisponible(false);setError('');setConflictos([]);setSeleccion('');setAgenda({practicas:[],bloqueos:[]});
     api.get(`/horarios/gestion/agenda?laboratorio_id=${laboratorioId}`,{params:{sin_contexto_periodo:true}})
@@ -31,14 +43,15 @@ export default function GestionDisponibilidadLaboratorio({ laboratorioId, onActu
   const elegida=agenda.practicas.find(p=>String(p.id)===seleccion);
   const objetivos=elegida?agenda.practicas.filter(p=>p.id===elegida.id||(alcance==='SIGUIENTES'&&p.raiz===elegida.raiz&&p.fecha>=elegida.fecha)):[];
   const editar=e=>setForm(f=>({...f,[e.target.name]:e.target.value}));
-  return <details className="rounded-xl border p-4 mb-5" style={{background:'var(--surface-panel)',borderColor:'var(--surface-border)'}}>
+  return <details ref={contenedor} className="rounded-xl border p-4 mb-5" style={{background:'var(--surface-panel)',borderColor:'var(--surface-border)'}}>
     <summary className="font-semibold cursor-pointer">Administrar disponibilidad y reservaciones</summary>
     <div className="space-y-5 mt-4">
       <p className="text-sm">Bloquea fechas concretas sin cambiar el horario semanal. Las reservaciones existentes se revisan antes de crear el bloqueo.</p>
       {error&&<p role="alert">{error}</p>}{mensaje&&<p role="status">{mensaje}</p>}{!disponible&&!error&&<p role="status">Consultando disponibilidad…</p>}
       <form aria-label="Bloquear disponibilidad" className="space-y-3" onSubmit={e=>{e.preventDefault();actuar(()=>api.post('/horarios/gestion/bloqueos',{...form,laboratorio_id:Number(laboratorioId)}),'Disponibilidad bloqueada.');}}>
         <h3 className="font-bold">Bloquear disponibilidad</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">{[['desde','Desde','date'],['hasta','Hasta','date'],['hora_inicio','Hora de inicio','time'],['hora_fin','Hora final','time']].map(([name,label,type])=><label key={name} className="text-sm">{label}<input required className="input-dark w-full" type={type} name={name} value={form[name]} min={type==='date'?hoy:undefined} onChange={editar}/></label>)}</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">{[['desde','Desde','date'],['hasta','Hasta','date'],['hora_inicio','Hora de inicio','time'],['hora_fin','Hora final','time']].map(([name,label,type])=><label key={name} className="text-sm">{label}<input ref={name==='desde'?fechaInicial:undefined} required className="input-dark w-full" type={type} name={name} value={form[name]} min={type==='date'?hoy:undefined} onChange={editar}/></label>)}</div>
+        {turnoSeleccionado&&<p className="text-sm">Horario tomado del turno seleccionado. Confirma o ajusta las fechas antes de bloquear.</p>}
         <label className="block text-sm">Motivo del bloqueo<textarea required minLength={5} maxLength={300} name="motivo" className="input-dark w-full" value={form.motivo} onChange={editar}/></label>
         <p className="text-xs">Las horas se aplican a cada día del rango, en horario de Ciudad de México. Si afecta una reserva, el bloqueo no se guardará.</p>
         <button disabled={ocupado||!disponible} className="rounded-lg bg-emerald-700 text-white px-4 py-2 disabled:opacity-50">{ocupado?'Procesando…':'Revisar y bloquear'}</button>

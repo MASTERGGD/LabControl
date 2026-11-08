@@ -6,6 +6,7 @@ import TimeGrid from '../../components/TimeGrid';
 import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
 import GestionDisponibilidadLaboratorio from '../../components/GestionDisponibilidadLaboratorio';
+import AccionesTurnoLaboratorio from '../../components/AccionesTurnoLaboratorio';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -640,7 +641,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
 }
 
 // ─── Drawer detalle de reservación (panel lateral) ───────────────────────────
-function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, onBloquear }) {
+function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, puedeBloquear, onBloquear }) {
   const r = slot.reservacion;
   const [cancelando, setCancelando]       = useState(false);
   const [motivoCancelacion,setMotivoCancelacion]=useState('');
@@ -934,7 +935,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
 
           {/* Acciones */}
           <div className="space-y-2 pb-4">
-            {esSuperAdmin && (
+            {(esSuperAdmin || puedeBloquear) && (
               <button onClick={onBloquear}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all
                            bg-violet-600/20 hover:bg-violet-600 text-violet-400 hover:text-white border border-violet-500/30 hover:border-violet-500">
@@ -1059,6 +1060,8 @@ export default function Horarios() {
   const [modalUtecan, setModalUtecan]   = useState(false);
   const [slotEditar, setSlotEditar]     = useState(null);
   const [slotDetalle, setSlotDetalle]   = useState(null);   // reservado
+  const [slotAcciones, setSlotAcciones] = useState(null);
+  const [solicitudBloqueo, setSolicitudBloqueo] = useState(null);
   const [slotBloquear, setSlotBloquear] = useState(null);   // abrir modal bloquear
   const [slotBloqueo, setSlotBloqueo]   = useState(null);   // ver detalle bloqueo
   // Drag-select state
@@ -1068,6 +1071,13 @@ export default function Horarios() {
 
 
   const laboratorioValido = labs.some(lab => Number(lab.id) === Number(labSeleccionado));
+  const esQuimica = ['QUIMICA','AGROINDUSTRIA'].includes((labs.find(l=>String(l.id)===String(labSeleccionado))?.categoria||'').toUpperCase());
+  const puedeGestionarQuimica = laboratorioValido && esQuimica && (esSuperAdmin || (['LAB_ADMIN','RESPONSABLE_LAB'].includes(usuario?.rol) && Number(usuario?.laboratorio_id)===Number(labSeleccionado)));
+  useEffect(()=>{setSlotAcciones(null);setSolicitudBloqueo(null);setSlotDetalle(null);setSlotEditar(null);setSlotBloquear(null);setSlotBloqueo(null);},[labSeleccionado]);
+  const abrirBloqueoDisponibilidad = slot => {
+    setIsDragging(false);setSelectedCells(new Set());setSlotAcciones(null);
+    setSolicitudBloqueo({...slot,laboratorio_id:Number(labSeleccionado)});
+  };
   const [errorLabs, setErrorLabs] = useState('');
   const [cargandoLabs, setCargandoLabs] = useState(true);
 
@@ -1101,7 +1111,7 @@ export default function Horarios() {
   useEffect(() => {
     const onMouseUp = () => {
       // Capa 1: Super admin nunca usa arrastre para crear — su click abre modal de bloqueo
-      if (isDragging && selectedCells.size > 0 && !esSuperAdmin) {
+      if (isDragging && selectedCells.size > 0 && !esSuperAdmin && !puedeGestionarQuimica) {
         // Extract hour range from selected cells
         const keys = Array.from(selectedCells);
         const horas = [...new Set(keys.map(k => k.split('|')[0]))].sort();
@@ -1122,7 +1132,7 @@ export default function Horarios() {
     };
     document.addEventListener('mouseup', onMouseUp);
     return () => document.removeEventListener('mouseup', onMouseUp);
-  }, [isDragging, selectedCells, esSuperAdmin]); // horaFinMap se captura en renderCell, no aquí
+  }, [isDragging, selectedCells, esSuperAdmin, puedeGestionarQuimica]); // horaFinMap se captura en renderCell, no aquí
 
 
   // Construir grid: { "08:00": { 0: horario|null, 1: horario|null, ... } }
@@ -1229,7 +1239,7 @@ export default function Horarios() {
         </div>
       </div>
 
-      {laboratorioValido && ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB'].includes(usuario?.rol) && ['QUIMICA','AGROINDUSTRIA'].includes((labs.find(l=>String(l.id)===String(labSeleccionado))?.categoria||'').toUpperCase()) && <GestionDisponibilidadLaboratorio key={labSeleccionado} laboratorioId={labSeleccionado} onActualizado={cargarHorarios}/>}
+      {puedeGestionarQuimica && <GestionDisponibilidadLaboratorio key={labSeleccionado} laboratorioId={labSeleccionado} turnoSeleccionado={solicitudBloqueo} onActualizado={cargarHorarios}/>}
       {/* Grid semanal */}
       {cargandoLabs || loading ? (
         <div className="flex items-center justify-center py-16">
@@ -1306,7 +1316,7 @@ export default function Horarios() {
                   onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
                   onMouseDown={e => {
                     // Super admin usa click para bloquear, no para arrastre de creación
-                    if (esInactivo || esBloqueado || esReservado || esSuperAdmin) return;
+                    if (esInactivo || esBloqueado || esReservado || esSuperAdmin || puedeGestionarQuimica) return;
                     e.preventDefault();
                     setIsDragging(true);
                     setDragStartKey(cellKey);
@@ -1323,6 +1333,7 @@ export default function Horarios() {
                     if (esBloqueado) { abrirBloqueo(event); return; }
                     if (isDragging) return;
                     if (esReservado) { setSlotDetalle(slot); return; }
+                    if (puedeGestionarQuimica) {setSlotAcciones(slot);return;}
                     setSlotEditar(slot);
                   }}>
 
@@ -1356,22 +1367,22 @@ export default function Horarios() {
                         {slot.hora_inicio}–{slot.hora_fin}
                       </span>
                       <div className="flex items-center justify-between mt-auto">
-                        {esSuperAdmin ? (
-                          <div className="hidden group-hover:flex items-center gap-1">
-                            <span className="inline-flex items-center gap-1 text-xs transition-opacity"
+                        {(esSuperAdmin || puedeGestionarQuimica) ? (
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={ev=>{ev.stopPropagation();if(puedeGestionarQuimica)setSlotAcciones(slot);else setSlotEditar(slot);}} className="inline-flex items-center gap-1 text-xs transition-opacity"
                               style={{ color: isDay ? '#64748b' : '#94a3b8' }}>
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/>
                               </svg>
-                              Editar
-                            </span>
+                              {puedeGestionarQuimica ? 'Administrar' : 'Editar'}
+                            </button>
                             <button
                               type="button"
                               onClick={(ev) => {
                                 ev.stopPropagation();
                                 setIsDragging(false);
                                 setSelectedCells(new Set());
-                                setSlotBloquear(slot);
+                                if(puedeGestionarQuimica) abrirBloqueoDisponibilidad(slot); else setSlotBloquear(slot);
                               }}
                               className="inline-flex items-center gap-1 text-xs rounded-md px-1.5 py-0.5 transition-colors"
                               style={{
@@ -1476,12 +1487,14 @@ export default function Horarios() {
         <DrawerDetalleReservacion
           slot={slotDetalle}
           esSuperAdmin={esSuperAdmin}
+          puedeBloquear={puedeGestionarQuimica}
           onClose={() => setSlotDetalle(null)}
           onCancelada={() => { setSlotDetalle(null); cargarHorarios(); }}
-          onBloquear={() => { setSlotBloquear(slotDetalle); setSlotDetalle(null); }}
+          onBloquear={() => { if(puedeGestionarQuimica) abrirBloqueoDisponibilidad(slotDetalle); else setSlotBloquear(slotDetalle); setSlotDetalle(null); }}
         />
       )}
-      {slotBloquear && (
+      {slotAcciones && puedeGestionarQuimica && <AccionesTurnoLaboratorio turno={slotAcciones} onClose={()=>setSlotAcciones(null)} onEditar={()=>{setSlotEditar(slotAcciones);setSlotAcciones(null);}} onBloquear={()=>abrirBloqueoDisponibilidad(slotAcciones)}/>}
+      {slotBloquear && !esQuimica && (
         <ModalBloquear
           slot={slotBloquear}
           onClose={() => setSlotBloquear(null)}

@@ -40,3 +40,43 @@ test.each(['RESPONSABLE_LAB','DOCENTE'])('gestión de Química respeta modo %s',
  expect(container.textContent.includes('Administrar disponibilidad y reservaciones')).toBe(rol==='RESPONSABLE_LAB');
  if(rol==='RESPONSABLE_LAB') expect(container.textContent.indexOf('Horarios')).toBeLessThan(container.textContent.indexOf('Administrar disponibilidad y reservaciones'));
 });
+
+
+test.each(['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB'])('turno de Química ofrece bloqueo por fechas para %s',async rol=>{
+ mockUsuario={rol,laboratorio_id:rol==='SUPER_ADMIN'?null:4};
+ api.get.mockImplementation(url=>Promise.resolve({data:url.startsWith('/laboratorios')?[{id:4,nombre:'Química ficticia',categoria:'QUIMICA'}]:url.includes('/gestion/agenda')?{practicas:[],bloqueos:[]}:[{id:10,dia_semana:0,hora_inicio:'10:15',hora_fin:'11:00',activo:true,reservado:false,bloqueado:false}]}));
+ await render();await act(async()=>button('Administrar').click());
+ expect(container.querySelector('[aria-label="Administrar turno de laboratorio"]')).not.toBeNull();
+ expect(button('Editar horario semanal')).toBeDefined();
+ await act(async()=>button('Bloquear disponibilidad').click());
+ expect(container.querySelector('[role="dialog"]')).toBeNull();
+ const form=container.querySelector('[aria-label="Bloquear disponibilidad"]');
+ expect(form.closest('details').open).toBe(true);
+ expect(form.querySelector('[name="hora_inicio"]').value).toBe('10:15');
+ expect(form.querySelector('[name="hora_fin"]').value).toBe('11:00');
+ expect(new Date(form.querySelector('[name="desde"]').value+'T12:00:00Z').getUTCDay()).toBe(1);
+ expect(container.textContent).not.toContain('Bloquear turno institucional');
+ expect(api.post).not.toHaveBeenCalled();
+});
+
+test('el responsable no administra un laboratorio distinto del asignado',async()=>{
+ mockUsuario={rol:'RESPONSABLE_LAB',laboratorio_id:8};
+ api.get.mockImplementation(url=>Promise.resolve({data:url.startsWith('/laboratorios')?[{id:4,nombre:'Química ficticia',categoria:'QUIMICA'}]:[]}));
+ await render();expect(container.textContent).not.toContain('Administrar disponibilidad y reservaciones');
+ expect(button('Administrar')).toBeUndefined();
+});
+
+
+test.each(['SUPER_ADMIN','RESPONSABLE_LAB'])('reserva ocupada abre el bloqueo por fechas para %s',async rol=>{
+ mockUsuario={rol,laboratorio_id:4};
+ api.get.mockImplementation(url=>Promise.resolve({data:url.startsWith('/laboratorios')?[{id:4,nombre:'Química ficticia',categoria:'QUIMICA'}]:url.includes('/gestion/agenda')?{practicas:[],bloqueos:[]}:[{id:10,dia_semana:0,hora_inicio:'10:15',hora_fin:'11:00',activo:true,reservado:true,bloqueado:false,reservacion:{id:12,estado:'PROGRAMADA',materia:'Materia ficticia',grupo:'A',docente_nombre:'Docente ficticio'}}]}));
+ await render();
+ const celda=[...container.querySelectorAll('.group')].find(e=>e.textContent.includes('Materia ficticia'));
+ await act(async()=>celda.click());
+ const bloquear=[...container.querySelectorAll('button')].find(b=>b.textContent.includes('Bloquear este turno'));
+ expect(bloquear).toBeDefined();await act(async()=>bloquear.click());
+ const f=container.querySelector('[aria-label="Bloquear disponibilidad"]');
+ expect(f.closest('details').open).toBe(true);
+ expect(f.querySelector('[name="hora_inicio"]').value).toBe('10:15');
+ expect(api.post).not.toHaveBeenCalled();
+});

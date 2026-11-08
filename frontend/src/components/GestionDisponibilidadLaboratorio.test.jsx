@@ -34,3 +34,17 @@ test('falla de consulta no afirma ausencia de bloqueos',async()=>{
   expect(container.textContent).not.toContain('No hay bloqueos por fecha registrados');
   expect(container.querySelector('[aria-label="Bloquear disponibilidad"] button').disabled).toBe(true);
 });
+
+
+test('seleccionar otro turno vuelve a abrir el formulario sin borrar motivo',async()=>{
+ const turno={laboratorio_id:4,dia_semana:2,hora_inicio:'10:15',hora_fin:'11:00'};
+ await act(async()=>root.render(<Gestion laboratorioId={4} turnoSeleccionado={turno}/>));
+ let f=container.querySelector('[aria-label="Bloquear disponibilidad"]');
+ await cambiar(f.querySelector('textarea'),'Mantenimiento de balanzas');
+ await act(async()=>root.render(<Gestion laboratorioId={4} turnoSeleccionado={{...turno,hora_inicio:'12:00',hora_fin:'13:00'}}/>));
+ f=container.querySelector('[aria-label="Bloquear disponibilidad"]');
+ expect(f.querySelector('[name="hora_inicio"]').value).toBe('12:00');
+ expect(f.querySelector('textarea').value).toBe('Mantenimiento de balanzas');
+ expect(document.activeElement).toBe(f.querySelector('[name="desde"]'));
+ expect(api.post).not.toHaveBeenCalled();
+});
