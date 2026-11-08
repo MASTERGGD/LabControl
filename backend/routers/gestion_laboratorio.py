@@ -1,4 +1,6 @@
 import datetime as dt
+import calendar
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_
@@ -75,8 +77,15 @@ def conflictos(db, data):
     ).options(joinedload(Reservacion.horario),joinedload(Reservacion.docente)).all()
     resultado=[]
     for r in reservas:
-        fecha=r.fecha_actividad or data.desde+dt.timedelta(days=(r.horario.dia_semana-data.desde.weekday())%7)
-        while fecha<=data.hasta:
+        inicio,fin=data.desde,data.hasta
+        if not r.fecha_actividad:
+            clave=r.periodo.clave if r.periodo else r.cuatrimestre
+            periodo=re.fullmatch(r'(ENEABR|MAYAGO|SEPDIC)(\d{4})',re.sub(r'[^A-Z0-9]','',(clave or '').upper()))
+            if periodo and 1 <= int(periodo.group(2)) <= 9999:
+                mes={'ENEABR':1,'MAYAGO':5,'SEPDIC':9}[periodo.group(1)];anio=int(periodo.group(2))
+                inicio=max(inicio,dt.date(anio,mes,1));fin=min(fin,dt.date(anio,mes+3,calendar.monthrange(anio,mes+3)[1]))
+        fecha=r.fecha_actividad or inicio+dt.timedelta(days=(r.horario.dia_semana-inicio.weekday())%7)
+        while fecha<=fin:
             vinculos=[PracticaLaboratorio.reservacion_id==r.id]
             if r.bloque_reserva_id: vinculos.append(Reservacion.bloque_reserva_id==r.bloque_reserva_id)
             if r.carga_docente_id: vinculos.append(Reservacion.carga_docente_id==r.carga_docente_id)

@@ -110,6 +110,16 @@ def test_bloqueo_legacy_no_omite_revision_quimica(db,gestion):
     assert db.query(BloqueoSlot).count()==0 and sesiones[0].estado=='SOLICITADA'
 
 
+def test_reserva_semanal_de_periodo_anterior_no_impide_bloqueo_actual(db,gestion):
+    c,lab,user,sesiones,slot=gestion
+    db.add(Reservacion(laboratorio_id=lab.id,horario_id=slot.id,docente_id=sesiones[0].reservacion.docente_id,
+        creado_por=user.id,materia='Histórica ficticia',grupo='A',cuatrimestre='SEP-DIC 2098',estado='PROGRAMADA'))
+    db.commit()
+    fecha=sesiones[-1].fecha_sesion+dt.timedelta(days=7)
+    r=c.post('/horarios/gestion/bloqueos',json=body(lab,fecha))
+    assert r.status_code==201,r.text
+
+
 @pytest.mark.parametrize('cambios',[{'hora_fin':'07:00'},{'desde':'2000-01-01'},{'motivo':'     '},{'hora_inicio':'8:00'}])
 def test_bloqueos_invalidos(gestion,cambios):
     c,lab,_,sesiones,_=gestion

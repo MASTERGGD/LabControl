@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Conflictos de bloqueo limitados al periodo de la reserva — 2026-11-08
+
+### Problema y comportamiento resultante
+En la revisión de publicación se identificó que una reserva semanal aún activa de un cuatrimestre anterior podía aparecer como conflicto en fechas nuevas. El análisis de conflictos ahora limita las ocurrencias semanales a las fechas del periodo formal vinculado o la clave heredada reconocible ENE-ABR, MAY-AGO o SEP-DIC. Las reservas puntuales conservan su fecha explícita; claves no reconocibles se revisan conservadoramente. No se modifica ni cancela ningún registro histórico.
+
+### Validación y estado
+12 pruebas de gestión aprobadas, incluida la nueva regresión de reserva histórica; en conjunto la entrega tiene 60 pruebas backend dirigidas aprobadas y 180 pruebas frontend aprobadas. La entrega principal 5f519ae ya fue recibida por GitHub y Railway aplicó la migración 91b8ac4e72f0, confirmada en los logs del backend. Pendiente: publicar este ajuste y verificar el commit final activo y salud pública. Sin migraciones adicionales.
+
+---
+
 ## [Preparado, sin publicar] — Bloqueos por fecha y cancelaciones del responsable de laboratorio — 2026-11-08
 
 ### Problema y comportamiento resultante
