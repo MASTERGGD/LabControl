@@ -480,6 +480,8 @@ def _estado_laboratorio(db: Session, data: CargaInput, current_user: Usuario, ca
             Reservacion.estado.in_(["PROGRAMADA", "EN_DISPUTA", "EN_CURSO"]),
         ).first()
         respuesta["slots"].append({"id": slot.id, "hora_inicio": slot.hora_inicio, "hora_fin": slot.hora_fin})
+        from services.disponibilidad_laboratorio import bloqueo_recurrente
+        bloqueo = bloqueo or bloqueo_recurrente(db,data.laboratorio_id,slot.dia_semana,slot.hora_inicio,slot.hora_fin)
         if bloqueo:
             respuesta["estado"] = "BLOQUEADO"
             respuesta["ocupaciones"].append({"hora": f"{slot.hora_inicio}–{slot.hora_fin}", "motivo": bloqueo.motivo})

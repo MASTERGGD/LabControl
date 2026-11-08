@@ -34,6 +34,8 @@ def _normalizar_periodo(valor: str | None) -> str:
 
 
 router = APIRouter(prefix="/horarios", tags=["Horarios y Reservaciones"])
+from routers.gestion_laboratorio import router as gestion_router
+router.include_router(gestion_router)
 
 # Días de la semana
 DIAS = {0: "Lunes", 1: "Martes", 2: "Miércoles", 3: "Jueves", 4: "Viernes", 5: "Sábado"}
@@ -1110,6 +1112,12 @@ def crear_reservacion(
     if not horario:
         raise HTTPException(status_code=404, detail="Horario no encontrado o inactivo")
 
+    from services.disponibilidad_laboratorio import validar_disponibilidad, bloqueo_recurrente
+    if data.fecha_actividad:
+        validar_disponibilidad(db,data.laboratorio_id,data.fecha_actividad,horario.hora_inicio,horario.hora_fin)
+    elif bloqueo_recurrente(db,data.laboratorio_id,horario.dia_semana,horario.hora_inicio,horario.hora_fin):
+        raise HTTPException(409,'Hay bloqueos por fecha en este horario. Elige sesiones puntuales en fechas disponibles.')
+
     if data.fecha_actividad and data.fecha_actividad.weekday() != horario.dia_semana:
         raise HTTPException(422, f"La fecha seleccionada no corresponde a {DIAS.get(horario.dia_semana)}")
     if data.fecha_actividad and data.fecha_actividad < datetime.date.today():
@@ -1332,6 +1340,10 @@ def cancelar_reservacion(
             SolicitudConflicto.reservacion_id == reserva.id,
             SolicitudConflicto.estado == "PENDIENTE"
         ).update({"estado": "RECHAZADA", "resolucion_notas": "Reservación cancelada; solicitudes pendientes cerradas"})
+    if current_user.id != r.docente_id:
+        from models.notificacion import Notificacion
+        db.add(Notificacion(usuario_id=r.docente_id,tipo='RESERVACION',titulo='Reservación cancelada',
+            mensaje=f'{r.materia}. Motivo: {motivo}',url='/docente/horario'))
     # Persistir la cancelación antes de la bitácora, que es de mejor esfuerzo.
     db.commit()
     docente = db.query(Usuario).filter(Usuario.id == r.docente_id).first()
@@ -1809,6 +1821,10 @@ def bloquear_slot(
     if not h:
         raise HTTPException(status_code=404, detail="Horario no encontrado")
 
+    assert_lab_write(h.laboratorio_id, current_user)
+    lab = db.get(Laboratorio,h.laboratorio_id)
+    if (lab.categoria or '').upper() in {'QUIMICA','AGROINDUSTRIA'}:
+        raise HTTPException(422,'Usa Bloquear disponibilidad por fechas para revisar las prácticas afectadas.')
     db.query(BloqueoSlot).filter(
         BloqueoSlot.horario_id == horario_id,
         BloqueoSlot.activo == True,
@@ -1847,6 +1863,9 @@ def desbloquear_slot(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(require_roles(RolUsuario.SUPER_ADMIN, RolUsuario.LAB_ADMIN))
 ):
+    h=db.get(HorarioDisponible,horario_id)
+    if not h: raise HTTPException(404,'Horario no encontrado')
+    assert_lab_write(h.laboratorio_id,current_user)
     updated = db.query(BloqueoSlot).filter(
         BloqueoSlot.horario_id == horario_id,
         BloqueoSlot.activo == True,

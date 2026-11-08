@@ -5,6 +5,7 @@ import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/Cuat
 import TimeGrid from '../../components/TimeGrid';
 import SelectDark from '../../components/SelectDark';
 import api from '../../hooks/useApi';
+import GestionDisponibilidadLaboratorio from '../../components/GestionDisponibilidadLaboratorio';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -642,6 +643,7 @@ function ModalBloquear({ slot, onClose, onBloqueado }) {
 function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, onBloquear }) {
   const r = slot.reservacion;
   const [cancelando, setCancelando]       = useState(false);
+  const [motivoCancelacion,setMotivoCancelacion]=useState('');
   const [confirmar, setConfirmar]         = useState(false);
   const [error, setError]                 = useState('');
   const [estadoCumplimiento, setEstadoCumplimiento] = useState('IMPARTIDA');
@@ -657,7 +659,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
   const handleCancelar = async () => {
     setCancelando(true); setError('');
     try {
-      await api.delete(`/horarios/reservaciones/${r.id}`);
+      await api.delete(`/horarios/reservaciones/${r.id}`,{data:{motivo:motivoCancelacion.trim()}});
       onCancelada();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Error al cancelar'));
@@ -953,7 +955,7 @@ function DrawerDetalleReservacion({ slot, onClose, onCancelada, esSuperAdmin, on
                 </p>
                 <div className="flex gap-2">
                   <button onClick={() => setConfirmar(false)} className="btn-ghost flex-1 py-2 text-xs">No, volver</button>
-                  <button onClick={handleCancelar} disabled={cancelando}
+                  <label className="block text-sm">Motivo<input className="input-dark w-full" value={motivoCancelacion} onChange={e=>setMotivoCancelacion(e.target.value)}/></label><button onClick={handleCancelar} disabled={cancelando||motivoCancelacion.trim().length<5}
                     className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl py-2 text-xs font-semibold transition-all">
                     {cancelando ? 'Cancelando…' : 'Sí, cancelar'}
                   </button>
@@ -1227,6 +1229,7 @@ export default function Horarios() {
         </div>
       </div>
 
+      {laboratorioValido && ['SUPER_ADMIN','LAB_ADMIN','RESPONSABLE_LAB'].includes(usuario?.rol) && ['QUIMICA','AGROINDUSTRIA'].includes((labs.find(l=>String(l.id)===String(labSeleccionado))?.categoria||'').toUpperCase()) && <GestionDisponibilidadLaboratorio key={labSeleccionado} laboratorioId={labSeleccionado} onActualizado={cargarHorarios}/>}
       {/* Grid semanal */}
       {cargandoLabs || loading ? (
         <div className="flex items-center justify-center py-16">

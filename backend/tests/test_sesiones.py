@@ -346,6 +346,16 @@ class TestSesiones:
         self, client, db, admin_user, docente_user, lab, monkeypatch,
     ):
         fecha = datetime.date(2026, 8, 24)
+        # La creación de reserva y su inicio deben compartir el reloj del escenario.
+        import types
+        import routers.horarios as horarios_router
+        class FechaEscenario(datetime.date):
+            @classmethod
+            def today(cls):
+                return fecha
+        reloj = types.SimpleNamespace(**{k: v for k, v in vars(datetime).items() if not k.startswith('__')})
+        reloj.date = FechaEscenario
+        monkeypatch.setattr(horarios_router, 'datetime', reloj)
         ahora = datetime.datetime(2026, 8, 24, 10, 30, tzinfo=ZoneInfo("America/Mexico_City"))
         monkeypatch.setattr(sesiones_router, "now_mx", lambda: ahora)
         periodo = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=True)

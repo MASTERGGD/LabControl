@@ -4,12 +4,13 @@ import Horarios from './Horarios';
 import api from '../../hooks/useApi';
 jest.mock('../../hooks/useApi',()=>({get:jest.fn(),post:jest.fn()}));
 jest.mock('../../components/AdminLayout',()=>({children})=><div>{children}</div>);
-jest.mock('../../context/AuthContext',()=>({useAuth:()=>({usuario:{rol:'ADMIN'}})}));
+let mockUsuario={rol:'ADMIN'};
+jest.mock('../../context/AuthContext',()=>({useAuth:()=>({usuario:mockUsuario})}));
 jest.mock('../../context/ThemeContext',()=>({useTheme:()=>({themeKey:'day'})}));
 jest.mock('../../components/CuatrimestreSelect',()=>({__esModule:true,default:()=>null,getCuatrimestreActual:()=> 'SEP-DIC-2026'}));
 jest.mock('../../components/SelectDark',()=>()=>null);
 let root,container;
-beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);window.history.replaceState({},'', '/');});
+beforeEach(()=>{mockUsuario={rol:'ADMIN'};global.IS_REACT_ACT_ENVIRONMENT=true;container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);window.history.replaceState({},'', '/');});
 afterEach(()=>{act(()=>root.unmount());container.remove();});
 const render=()=>act(async()=>root.render(<Horarios/>));
 const button=text=>[...container.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
@@ -29,4 +30,13 @@ test('la carga masiva conserva la pantalla ante validación 422',async()=>{
  await render();await act(async()=>button('Crear con carga masiva').click());
  await act(async()=>container.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
  expect(container.textContent).toContain('laboratorio_id: Campo requerido');expect(container.textContent).toContain('Carga masiva de horarios');
+});
+
+
+test.each(['RESPONSABLE_LAB','DOCENTE'])('gestión de Química respeta modo %s',async rol=>{
+ mockUsuario={rol,laboratorio_id:4};
+ api.get.mockImplementation(url=>Promise.resolve({data:url.startsWith('/laboratorios')?[{id:4,nombre:'Química ficticia',categoria:'QUIMICA'}]:url.includes('/gestion/agenda')?{practicas:[],bloqueos:[]}:[]}));
+ await render();
+ expect(container.textContent.includes('Administrar disponibilidad y reservaciones')).toBe(rol==='RESPONSABLE_LAB');
+ if(rol==='RESPONSABLE_LAB') expect(container.textContent.indexOf('Horarios')).toBeLessThan(container.textContent.indexOf('Administrar disponibilidad y reservaciones'));
 });

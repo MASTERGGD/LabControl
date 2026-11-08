@@ -4,6 +4,22 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Bloqueos por fecha y cancelaciones del responsable de laboratorio — 2026-11-08
+
+### Problema y comportamiento resultante
+El responsable de Química no tenía acceso equivalente a una gestión por fechas y el bloqueo semanal antiguo podía cancelar una reserva sin revisar su práctica. Horarios y Reservaciones incorporan Administrar disponibilidad y reservaciones para el responsable de Química y Agroindustria, con fecha o rango (hasta 366 días), horas diarias y motivo obligatorio. La tabla nueva conserva laboratorio, autor, fecha, motivo y desactivación. Los conflictos muestran docente, actividad, fecha y reserva; no se crea un bloqueo ni se cancela automáticamente. Las reservas recurrentes sin seguimiento deben gestionarse explícitamente como reserva completa; la interfaz advierte su alcance.
+
+Se puede cancelar una sesión o esta y las siguientes de la misma actividad, mostrando las fechas antes de confirmar y exigiendo motivo. La validación completa precede a cualquier modificación: se rechazan sesiones iniciadas, cerradas o con materiales entregados, bloques inconsistentes y sesiones de otro laboratorio. Se liberan las reservas puntuales y se mantienen las semanales para otras fechas. Notificación interna al docente, actualización de agenda/historial por estado y auditoría con motivo/actor/alcance. Habilitar un bloqueo no restaura cancelaciones.
+
+Los permisos se basan en el rol efectivo y laboratorio asignado; el modo docente no hereda administración. Se comprueban bloqueos al programar prácticas, reservar e iniciar sesiones; la comprobación de horario docente identifica coincidencias semanales y recomienda fechas puntuales. El bloqueo semanal antiguo rechaza Química y Agroindustria y se añade verificación de laboratorio al bloqueo/desbloqueo antiguo. El drawer de Horarios ahora envía el motivo requerido por cancelación; las cancelaciones administrativas generales notifican al docente. Sin eliminación de historiales, materiales o asistencias.
+
+### Validación y estado
+42 suites y 180 pruebas frontend aprobadas; Vite aprobado con avisos existentes de tamaño e importación mixta de offlineStore. 59 pruebas backend dirigidas aprobadas entre gestión, programación, sesiones y consulta de horarios. Incluyen conflictos sin cambios parciales, permisos y modo docente, alcance de cancelaciones, materiales, notificaciones, reserva semanal preservada, coincidencia de fechas/horas y prevención de inicio. Una prueba histórica de capacitación fallaba por congelar solo el reloj de inicio; se congeló también la fecha de creación de reserva del mismo escenario y su suite de 13 casos aprobó.
+
+Migración aditiva 91b8ac4e72f0 verificada con upgrade/downgrade en SQLite aislado, SQL PostgreSQL offline y una única cabeza Alembic. Volúmenes persistentes de backend y PostgreSQL comprobados activos. Pendiente: publicación, migración efectiva y comprobación pública; revisión visual autenticada con datos reales. No se modificaron reservaciones reales para verificar. Cambios ajenos excluidos.
+
+---
+
 ## [Preparado, sin publicar] — Resumen operativo del laboratorio en tres tarjetas — 2026-11-07
 
 ### Problema y comportamiento resultante

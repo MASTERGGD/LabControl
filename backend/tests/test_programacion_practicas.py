@@ -7,6 +7,7 @@ from dependencies import get_current_user
 from models.catalogo import PeriodoEscolar, GrupoAcademico, CatalogoAlumno, InscripcionAlumno
 from models.docencia import CargaDocente, ClaseDocente, AsistenciaDocente
 from models.horario import HorarioDisponible, Reservacion, BloqueoSlot
+from models.horario import BloqueoLaboratorio
 from models.practica_laboratorio import PracticaLaboratorio
 from models.notificacion import Notificacion
 from models.usuario import Usuario
@@ -415,3 +416,23 @@ def test_agenda_no_oculta_una_sesion_en_curso_de_fecha_anterior(plan,db):
     agenda=client.get('/practicas-laboratorio/agenda-docente').json()
     assert raiz.id in {p['id'] for p in agenda}
     assert next(p for p in agenda if p['id']==raiz.id)['estado']=='EN_CURSO'
+
+
+def test_bloqueo_por_fecha_impide_programar_solo_la_fecha_afectada(plan,db):
+    client,payload,_,_=plan
+    db.add(BloqueoLaboratorio(laboratorio_id=payload['laboratorio_id'],desde=dt.date(2026,11,11),hasta=dt.date(2026,11,11),hora_inicio='08:00',hora_fin='10:00',motivo='Mantenimiento',creado_por_id=1));db.commit()
+    r=client.post('/practicas-laboratorio/programacion/validar',json=payload)
+    assert r.status_code==200 and not r.json()['disponible']
+    assert any('Mantenimiento' in x['mensaje'] for x in r.json()['conflictos'])
+    payload['sesiones']=[x for x in payload['sesiones'] if x['fecha']!='2026-11-11']
+    assert client.post('/practicas-laboratorio/programacion/validar',json=payload).json()['disponible']
+
+
+def test_bloqueo_por_fecha_impide_iniciar_una_practica_preparada(plan,db):
+    from services.programacion_practicas import ventana_inicio
+    client,payload,cargas,_=plan
+    p=client.post('/practicas-laboratorio/programacion',json=payload).json()['sesiones'][0]
+    obj=db.get(PracticaLaboratorio,p['id']);obj.estado='PREPARADA';db.commit()
+    assert ventana_inicio(obj)
+    db.add(BloqueoLaboratorio(laboratorio_id=payload['laboratorio_id'],desde=obj.fecha_sesion,hasta=obj.fecha_sesion,hora_inicio='08:00',hora_fin='10:00',motivo='Mantenimiento',creado_por_id=cargas[0].docente_id));db.commit()
+    assert not ventana_inicio(obj)

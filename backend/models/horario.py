@@ -79,6 +79,22 @@ class BloqueoSlot(Base):
     creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
 
 
+class BloqueoLaboratorio(Base):
+    __tablename__ = 'bloqueos_laboratorio'
+    id = Column(Integer, primary_key=True)
+    laboratorio_id = Column(Integer, ForeignKey('laboratorios.id'), nullable=False, index=True)
+    desde = Column(Date, nullable=False)
+    hasta = Column(Date, nullable=False)
+    hora_inicio = Column(String(5), nullable=False)
+    hora_fin = Column(String(5), nullable=False)
+    motivo = Column(String(300), nullable=False)
+    creado_por_id = Column(Integer, ForeignKey('usuarios.id'), nullable=False)
+    creado_en = Column(DateTime, nullable=False, default=_utcnow)
+    activo = Column(Boolean, nullable=False, default=True)
+    desactivado_por_id = Column(Integer, ForeignKey('usuarios.id'), nullable=True)
+    desactivado_en = Column(DateTime, nullable=True)
+
+
 class SolicitudConflicto(Base):
     """
     Docente B solicita un slot ya ocupado por Docente A.

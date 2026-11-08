@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../hooks/useApi';
+import GestionDisponibilidadLaboratorio from '../../components/GestionDisponibilidadLaboratorio';
 import CuatrimestreSelect, { getCuatrimestreActual } from '../../components/CuatrimestreSelect';
 import AutocompleteInput, { formatApiError } from '../../components/AutocompleteInput';
 import SelectDark from '../../components/SelectDark';
@@ -1634,6 +1635,7 @@ export default function Reservaciones() {
           </div>
         </div>
 
+        {esPersonalLaboratorio && labId && ['QUIMICA','AGROINDUSTRIA'].includes((laboratorios.find(l=>String(l.id)===String(labId))?.categoria||'').toUpperCase()) && <GestionDisponibilidadLaboratorio key={labId} laboratorioId={labId} onActualizado={recargar}/>}
         {esAdmin && (
           <BandejaRequerimientos
             laboratorioId={labId}

@@ -400,6 +400,10 @@ async def abrir_sesion(
     if not lab:
         raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
 
+    from services.disponibilidad_laboratorio import validar_disponibilidad
+    db.query(Laboratorio).filter(Laboratorio.id==data.laboratorio_id).with_for_update().first()
+    validar_disponibilidad(db,data.laboratorio_id,ahora_mx.date(),hora_mx,'24:00' if hora_mx=='23:59' else (ahora_mx+datetime.timedelta(minutes=1)).strftime('%H:%M'))
+
     # No puede haber otra sesión abierta en el mismo lab
     otra = db.query(SesionClase).filter(
         SesionClase.laboratorio_id == data.laboratorio_id,

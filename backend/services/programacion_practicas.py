@@ -79,6 +79,8 @@ def ventana_inicio(p, ahora=None):
     if any(x.estado not in {'PROGRAMADA', 'EN_CURSO'} or not x.horario.activo for x in reservas): return False
     db = object_session(p)
     if db:
+        from services.disponibilidad_laboratorio import bloqueo_en
+        if any(bloqueo_en(db,r.laboratorio_id,p.fecha_sesion,x.horario.hora_inicio,x.horario.hora_fin) for x in reservas): return False
         if db.query(BloqueoSlot).filter(BloqueoSlot.horario_id.in_([x.horario_id for x in reservas]), BloqueoSlot.activo == True).first(): return False
         cal = estado_fecha_academica(db, r.periodo_id, p.fecha_sesion)
         if not cal['requiere_asistencia'] or not cal['permite_iniciar_clase']: return False
@@ -170,6 +172,10 @@ def validar_programacion(data, db, user, bloquear=False, excluir_reservas=None):
             cursor = h.hora_fin
         if not slots or not contiguos or cursor != sesion.hora_fin:
             error('El laboratorio no tiene disponibilidad configurada que cubra todo ese horario.'); continue
+        from services.disponibilidad_laboratorio import bloqueo_en
+        bloqueo_fecha=bloqueo_en(db,data.laboratorio_id,sesion.fecha,sesion.hora_inicio,sesion.hora_fin)
+        if bloqueo_fecha:
+            error(f'El laboratorio no está disponible: {bloqueo_fecha.motivo}'); continue
         if db.query(BloqueoSlot).filter(BloqueoSlot.horario_id.in_([h.id for h in slots]), BloqueoSlot.activo == True).first():
             error('El laboratorio tiene un bloqueo institucional.'); continue
         reservas = db.query(Reservacion).join(HorarioDisponible).filter(Reservacion.estado.in_(ACTIVAS),
