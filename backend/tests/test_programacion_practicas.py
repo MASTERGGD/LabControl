@@ -87,6 +87,15 @@ def test_ocupacion_distingue_fechas_puntuales_bloqueos_y_clase_semanal(plan, db)
     assert resumen['fin_periodo'] == '2026-12-31'
     assert 'privad' not in response.text
 
+    segundo = db.query(HorarioDisponible).filter_by(dia_semana=2, hora_inicio='09:00').one()
+    db.add(Reservacion(**{**datos, 'horario_id': segundo.id}, periodo_id=carga.periodo_id,
+                       estado='PROGRAMADA', fecha_actividad=dt.date(2026, 12, 9)))
+    db.commit()
+    ampliado = client.get(url, params={'hora_fin': '10:00'})
+    assert ampliado.status_code == 200, ampliado.text
+    assert ampliado.json()['fechas'][4] == {'fecha': '2026-12-09', 'estado': 'OCUPADO'}
+    assert client.get(url, params={'hora_fin': '17:00'}).status_code == 422
+
     semanal = Reservacion(**datos, periodo_id=carga.periodo_id, carga_docente_id=carga.id, estado='PROGRAMADA')
     db.add(semanal)
     db.commit()
@@ -224,6 +233,7 @@ def test_ultima_sesion_deja_pendiente_continuacion_visible(plan,db):
     assert r.status_code==200 and r.json()['plan_estado']=='PENDIENTE_CONTINUACION',r.text
     hist=client.get('/docencia/historial');assert hist.status_code==200,hist.text
     assert hist.json()[0]['practicas'][0]['practica_id']==p_id
+    assert hist.json()[0]['practicas'][0]['laboratorio_impartido']==p.reservacion.laboratorio.nombre
     agenda=client.get('/practicas-laboratorio/agenda-docente').json()
     assert agenda[0]['plan_estado']=='PENDIENTE_CONTINUACION'
 

@@ -4,7 +4,19 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Clase semanal, clase puntual y práctica en laboratorio — 2026-11-08
+## [Preparado, sin publicar] — Tramos consecutivos y lugar de la práctica en el historial — 2026-11-08
+
+### Problema y comportamiento resultante
+El horario de Química y Agroindustria solo permitía consultar un bloque por vez. Al seleccionar el bloque de inicio, el docente puede extender la hora de fin por bloques consecutivos y solicitar todo el tramo como una sola sesión. La consulta verifica el rango completo por fecha y la confirmación conserva la validación atómica de la programación. Un receso o un hueco detiene la extensión.
+
+Si la materia y el tramo coinciden con el horario oficial, el formulario indica que la sesión se vinculará con la clase y su asistencia. El Historial de clases muestra el laboratorio de una práctica académica vinculada que ya inició o cerró. Las clases de aula conservan su espacio habitual y las prácticas fuera de horario conservan su seguimiento independiente.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas, incluida la extensión del tramo, la exclusión de un receso y la precarga completa. 31 pruebas backend de programación aprobadas, incluida la ocupación del segundo bloque, el rechazo de huecos y el laboratorio en el historial vinculado. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [4bb2131] — Clase semanal, clase puntual y práctica en laboratorio — 2026-11-08
 
 ### Problema y comportamiento resultante
 La solicitud por fecha agrupaba clase y práctica y mostraba toda la carga docente sin distinguir el bloque elegido. El detalle de disponibilidad de Química y Agroindustria separa Solicitar para esta fecha de Configurar una clase semanal. El segundo acceso lleva a Mi horario docente, donde se configura y reserva el bloque oficial con la validación recurrente existente.
@@ -12,7 +24,7 @@ La solicitud por fecha agrupaba clase y práctica y mostraba toda la carga docen
 La solicitud por fecha distingue Clase puntual, Práctica con materiales e Investigación o trabajo individual. La clase puntual omite el objetivo y la captura de materiales y usa el nombre de la materia cuando no se indica tema. Para un turno seleccionado se ofrecen primero las materias que coinciden con el día y las horas completos. Las demás se habilitan mediante una acción explícita y se identifican como fuera de horario. La solicitud académica desde disponibilidad conserva la fecha y las horas elegidas. Los accesos generales mantienen la propuesta de varias fechas y la confirmación conserva la validación existente.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas. Las pruebas cubren el acceso a la configuración semanal, la precarga, el filtro por turno, la elección explícita fuera de horario y las solicitudes académicas con y sin materiales. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas. Las pruebas cubren el acceso a la configuración semanal, la precarga, el filtro por turno, la elección explícita fuera de horario y las solicitudes académicas con y sin materiales. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió 4bb2131 y Railway confirmó SUCCESS para frontend (4a0346aa-0bfc-4bcd-8857-f4641d3f2af8) y backend (ffceac2a-1c05-424b-b174-5e571398bd64). Web y JavaScript HTTP 200 con las acciones y opciones nuevas. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

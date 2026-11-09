@@ -14,22 +14,23 @@ const formato = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeri
 const fechaTexto = fecha => formato.format(new Date(`${fecha}T12:00:00Z`));
 const rango = slot => `${slot.hora_inicio} a ${slot.hora_fin}`;
 
-function useOcupacion(id, espera = 0) {
+function useOcupacion(id, espera = 0, fin = '') {
+  const consulta = id ? `${id}${fin ? `?hora_fin=${encodeURIComponent(fin)}` : ''}` : null;
   const [resultado, setResultado] = useState(null);
   useEffect(() => {
-    if (!id) return;
+    if (!consulta) return;
     let vigente = true;
     const timer = setTimeout(async () => {
       try {
-        const { data } = await api.get(`/practicas-laboratorio/programacion/ocupacion/${id}`);
-        if (vigente) setResultado({ id, data });
+        const { data } = await api.get(`/practicas-laboratorio/programacion/ocupacion/${consulta}`);
+        if (vigente) setResultado({ consulta, data });
       } catch (e) {
-        if (vigente) setResultado({ id, error: getApiErrorMessage(e, 'No se pudo consultar la ocupación.') });
+        if (vigente) setResultado({ consulta, error: getApiErrorMessage(e, 'No se pudo consultar la ocupación.') });
       }
     }, espera);
     return () => { vigente = false; clearTimeout(timer); };
-  }, [id, espera]);
-  return id && resultado?.id === id ? resultado : null;
+  }, [consulta, espera]);
+  return consulta && resultado?.consulta === consulta ? resultado : null;
 }
 
 function Resumen({ resultado, breve = false }) {
@@ -77,8 +78,20 @@ export function OcupacionHorarioBoton({ slot, onClick, vistaPrevia = false, chil
 export function OcupacionHorarioModal({ slot, slots, onClose, onSolicitar, accionReserva, onGestionar }) {
   const tituloId = useId();
   const [seleccion, setSeleccion] = useState(slot);
+  const [finElegido, setFinElegido] = useState('');
   const [intento, setIntento] = useState(0);
   const alternativas = slots.filter(s => s.dia_semana === slot.dia_semana);
+  const fines = [seleccion.hora_fin];
+  for (let siguiente = alternativas.find(s => s.hora_inicio === fines.at(-1) && s.hora_fin > s.hora_inicio);
+    siguiente; siguiente = alternativas.find(s => s.hora_inicio === fines.at(-1) && s.hora_fin > s.hora_inicio)) {
+    fines.push(siguiente.hora_fin);
+  }
+  const fin = fines.includes(finElegido) ? finElegido : seleccion.hora_fin;
+  const tramo = { ...seleccion, hora_fin: fin };
+  const elegirInicio = id => {
+    setSeleccion(alternativas.find(s => String(s.horario_id) === id));
+    setFinElegido('');
+  };
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby={tituloId} className="glass max-h-[90vh] w-full max-w-xl space-y-4 overflow-auto p-5">
@@ -86,27 +99,34 @@ export function OcupacionHorarioModal({ slot, slots, onClose, onSolicitar, accio
         <h2 id={tituloId} className="text-lg font-bold">Disponibilidad del laboratorio</h2>
         <button type="button" autoFocus className="rounded border px-3 py-1" onClick={onClose}>Cerrar</button>
       </div>
-      <p>{slot.dia_nombre} · {rango(seleccion)}</p>
+      <p>{slot.dia_nombre} · {rango(tramo)}</p>
       <div className="rounded-xl border border-slate-500/30 p-3 text-sm">
         <a href="/docente/horario" className="font-semibold underline">Configurar una clase semanal</a>
         <p className="mt-1">Para reservar un bloque recurrente del cuatrimestre, agrega o edita la clase en Mi horario docente.</p>
       </div>
       {accionReserva && seleccion.horario_id === slot.horario_id && <button type="button"
         className="rounded border px-3 py-1 text-sm" onClick={onGestionar}>{accionReserva}</button>}
-      {alternativas.length > 1 && <label className="block">Ver otros horarios del mismo día
+      {alternativas.length > 1 && <label className="block">Bloque de inicio
         <select className="input-dark w-full" value={seleccion.horario_id}
-          onChange={e => setSeleccion(alternativas.find(s => String(s.horario_id) === e.target.value))}>
+          onChange={e => elegirInicio(e.target.value)}>
           {alternativas.map(s => <option key={s.horario_id} value={s.horario_id}>{rango(s)}</option>)}
         </select>
       </label>}
-      <Fechas key={`${seleccion.horario_id}-${intento}`} slot={seleccion} onReintentar={() => setIntento(i => i + 1)} onSolicitar={onSolicitar}/>
+      {fines.length > 1 && <label className="block">Hora de fin de la sesión
+        <select className="input-dark w-full" value={fin} onChange={e => setFinElegido(e.target.value)}>
+          {fines.map(hora => <option key={hora} value={hora}>{hora}</option>)}
+        </select>
+        <span className="mt-1 block text-xs">Puedes unir bloques consecutivos en una sola sesión. SIGA revisa todo el tramo para cada fecha.</span>
+      </label>}
+      <Fechas key={`${seleccion.horario_id}-${fin}-${intento}`} slot={tramo} finExtendido={fin !== seleccion.hora_fin ? fin : ''}
+        onReintentar={() => setIntento(i => i + 1)} onSolicitar={onSolicitar}/>
       <p className="text-xs">Al verificar la solicitud, SIGA revisa también el horario del docente y, cuando corresponda, el del grupo.</p>
     </section>
   </div>;
 }
 
-function Fechas({ slot, onReintentar, onSolicitar }) {
-  const resultado = useOcupacion(slot.horario_id);
+function Fechas({ slot, finExtendido, onReintentar, onSolicitar }) {
+  const resultado = useOcupacion(slot.horario_id, 0, finExtendido);
   return <>
     <div role="status"><Resumen resultado={resultado}/></div>
     {resultado?.error && <button type="button" className="rounded border px-3 py-1" onClick={onReintentar}>Reintentar consulta</button>}

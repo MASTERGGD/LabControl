@@ -2,7 +2,7 @@
 import calendar
 import datetime as dt
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, object_session
@@ -109,8 +109,30 @@ def _reserva_del_periodo(reserva, periodo):
     return reserva.periodo_id == periodo.id or _normalizar_periodo(reserva.cuatrimestre) == _normalizar_periodo(periodo.clave)
 
 
+def _slots_contiguos(db, laboratorio_id, periodo, dia, inicio, fin):
+    from routers.horarios import _normalizar_periodo
+
+    candidatos = db.query(HorarioDisponible).filter(
+        HorarioDisponible.laboratorio_id == laboratorio_id,
+        HorarioDisponible.activo == True, HorarioDisponible.dia_semana == dia,
+        HorarioDisponible.hora_inicio >= inicio, HorarioDisponible.hora_fin <= fin,
+    ).order_by(HorarioDisponible.hora_inicio).all()
+    slots = [h for h in candidatos if _normalizar_periodo(h.cuatrimestre) == _normalizar_periodo(periodo.clave)]
+    cursor = inicio
+    for h in slots:
+        if h.hora_inicio != cursor:
+            return []
+        cursor = h.hora_fin
+    return slots if cursor == fin else []
+
+
 @router.get('/programacion/ocupacion/{horario_id}')
-def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+def ocupacion_programacion(
+    horario_id: int,
+    hora_fin: str | None = Query(None, pattern=r'^([01]\d|2[0-3]):[0-5]\d$'),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
     from routers.docencia import _periodo_actual, _validar_periodo_actual
     from routers.horarios import _normalizar_periodo
     from services.disponibilidad_laboratorio import bloqueo_en
@@ -125,6 +147,10 @@ def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user:
     if not periodo or _normalizar_periodo(horario.cuatrimestre) != _normalizar_periodo(periodo.clave):
         raise HTTPException(409, 'Selecciona el cuatrimestre vigente para consultar fechas.')
     _validar_periodo_actual(db, periodo.id)
+    fin = hora_fin or horario.hora_fin
+    slots = _slots_contiguos(db, lab.id, periodo, horario.dia_semana, horario.hora_inicio, fin) if hora_fin else [horario]
+    if fin < horario.hora_fin or not slots or slots[0].id != horario.id:
+        raise HTTPException(422, 'Elige una hora de fin cubierta por bloques consecutivos del laboratorio.')
 
     ahora = now_mx()
     hoy = ahora.date()
@@ -133,7 +159,7 @@ def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user:
     fecha = hoy + dt.timedelta(days=(horario.dia_semana - hoy.weekday()) % 7)
     if fecha == hoy and ahora.strftime('%H:%M') > horario.hora_inicio:
         fecha += dt.timedelta(days=7)
-    reservas = _reservas_solapadas(db, periodo, horario.dia_semana, horario.hora_inicio, horario.hora_fin).filter(
+    reservas = _reservas_solapadas(db, periodo, horario.dia_semana, horario.hora_inicio, fin).filter(
         Reservacion.laboratorio_id == lab.id,
         or_(Reservacion.fecha_actividad == None, Reservacion.fecha_actividad.between(fecha, fin_periodo)),
     ).all()
@@ -141,11 +167,13 @@ def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user:
     recurrente = any(r.fecha_actividad is None for r in reservas)
     clase_semanal = any(r.fecha_actividad is None and r.carga_docente_id is not None for r in reservas)
     puntuales = {r.fecha_actividad for r in reservas if r.fecha_actividad is not None}
-    bloqueo_semanal = db.query(BloqueoSlot).filter_by(horario_id=horario.id, activo=True).first()
+    bloqueo_semanal = db.query(BloqueoSlot).filter(
+        BloqueoSlot.horario_id.in_([h.id for h in slots]), BloqueoSlot.activo == True,
+    ).first()
     fechas = []
     while fecha <= fin_periodo:
         calendario = estado_fecha_academica(db, periodo.id, fecha)
-        if bloqueo_semanal or bloqueo_en(db, lab.id, fecha, horario.hora_inicio, horario.hora_fin):
+        if bloqueo_semanal or bloqueo_en(db, lab.id, fecha, horario.hora_inicio, fin):
             estado = 'BLOQUEADO'
         elif not calendario['permite_iniciar_clase'] or not calendario['requiere_asistencia']:
             estado = 'NO_LECTIVO'
@@ -162,7 +190,6 @@ def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user:
 
 def validar_programacion(data, db, user, bloquear=False, excluir_reservas=None):
     from routers.docencia import _periodo_actual, _validar_periodo_actual
-    from routers.horarios import _normalizar_periodo
     if user.rol != RolUsuario.DOCENTE:
         raise HTTPException(403, 'Solicita el laboratorio desde tu función Docente.')
     labq = db.query(Laboratorio).filter(Laboratorio.id == data.laboratorio_id, Laboratorio.activo == True)
@@ -228,15 +255,8 @@ def validar_programacion(data, db, user, bloquear=False, excluir_reservas=None):
         cal = estado_fecha_academica(db, periodo.id, sesion.fecha)
         if not cal['permite_iniciar_clase'] or not cal['requiere_asistencia']:
             error(f"El calendario no permite la sesión: {cal['motivo'] or 'día no lectivo'}."); continue
-        slots = db.query(HorarioDisponible).filter(HorarioDisponible.laboratorio_id == lab.id,
-            HorarioDisponible.activo == True, HorarioDisponible.dia_semana == sesion.fecha.weekday(),
-            HorarioDisponible.hora_inicio >= sesion.hora_inicio, HorarioDisponible.hora_fin <= sesion.hora_fin).order_by(HorarioDisponible.hora_inicio).all()
-        slots = [h for h in slots if _normalizar_periodo(h.cuatrimestre) == _normalizar_periodo(periodo.clave)]
-        cursor, contiguos = sesion.hora_inicio, True
-        for h in slots:
-            if h.hora_inicio != cursor: contiguos = False; break
-            cursor = h.hora_fin
-        if not slots or not contiguos or cursor != sesion.hora_fin:
+        slots = _slots_contiguos(db, lab.id, periodo, sesion.fecha.weekday(), sesion.hora_inicio, sesion.hora_fin)
+        if not slots:
             error('El laboratorio no tiene disponibilidad configurada que cubra todo ese horario.'); continue
         from services.disponibilidad_laboratorio import bloqueo_en
         bloqueo_fecha=bloqueo_en(db,data.laboratorio_id,sesion.fecha,sesion.hora_inicio,sesion.hora_fin)

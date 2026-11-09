@@ -60,6 +60,10 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
   const actividades = clase.bitacora?.actividades_realizadas?.trim();
   const trabajoAsignado = clase.bitacora?.tarea_asignada?.trim();
   const temaPendiente = clase.bitacora?.tema_pendiente?.trim();
+  const sesionLaboratorio = clase.practicas?.find(p => p.laboratorio_impartido);
+  const espacio = sesionLaboratorio
+    ? `${sesionLaboratorio.incluye_practica ? 'Práctica' : 'Clase'} · ${sesionLaboratorio.laboratorio_impartido}`
+    : clase.carga.espacio_nombre || 'Sin espacio';
   const exportarPdf = async () => {
     const { data, headers } = await api.get(`/docencia/clases/${clase.id}/exportar.pdf`, { responseType: 'blob' });
     const enlace = document.createElement('a');
@@ -72,7 +76,7 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
     <article className={`border-b border-white/10 transition last:border-b-0 ${abierta ? 'bg-white/[0.035]' : 'hover:bg-white/[0.025]'}`}>
       <button type="button" onClick={onToggle} aria-expanded={abierta} className="grid w-full gap-3 px-4 py-3 text-left md:grid-cols-[140px_minmax(190px,0.9fr)_minmax(260px,1.35fr)_110px_180px_28px] md:items-center">
         <div><p className="text-sm font-semibold text-white">{fechaLarga(clase.fecha)}</p><p className="mt-0.5 font-mono text-[11px] text-slate-500">{clase.carga.hora_inicio}–{clase.carga.hora_fin}</p></div>
-        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{clase.carga.actividad_nombre}</p><p className="truncate text-xs text-slate-500">{clase.carga.grupo || (r.total ? `Grupo no vinculado · ${r.total} alumnos en lista` : 'Sin referencia de grupo')} · {clase.carga.espacio_nombre || 'Sin espacio'}</p></div>
+        <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{clase.carga.actividad_nombre}</p><p className="text-xs text-slate-500">{clase.carga.grupo || (r.total ? `Grupo no vinculado · ${r.total} alumnos en lista` : 'Sin referencia de grupo')} · {espacio}</p></div>
         <p className="truncate text-sm text-slate-300"><span className="md:hidden text-slate-500">Tema: </span>{clase.bitacora?.tema_impartido || (clase.practicas?.length ? `Práctica: ${clase.practicas[0].practica_titulo}` : 'Sin tema registrado')}</p>
         <div><b className={`text-sm ${porcentaje != null && porcentaje < 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{porcentaje == null ? '—' : `${porcentaje}%`}</b><p className="text-[10px] text-slate-500">{r.total || 0} alumnos</p></div>
         <div className="flex flex-wrap gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${requiereRevision ? 'bg-amber-500/15 text-amber-300' : est.clase}`}>{requiereRevision ? 'Impartida, pero el tema indica que no hubo clase' : est.texto}</span>{grupoNoVinculado && <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${grupoSinReferencia ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}>{grupoSinReferencia ? 'Sin referencia de grupo' : 'Grupo histórico no vinculado'}</span>}{tieneIncidencia && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-300">Nota</span>}{!!correcciones.length && <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-bold text-blue-400">{correcciones.length} corrección{correcciones.length === 1 ? '' : 'es'}</span>}</div>

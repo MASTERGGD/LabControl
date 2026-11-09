@@ -92,6 +92,7 @@ test('la clase puntual filtra materias, permite elegir fuera de horario y conser
  expect(container.querySelector('[aria-label="Fin sesión 1"]').disabled).toBe(true);
  expect(container.querySelector('[aria-label="Número de sesiones"]')).toBeNull();
  api.post.mockResolvedValue({data:{disponible:true,conflictos:[]}});
+ expect(container.textContent).toContain('compartirá su registro de asistencia');
  await click('Verificar disponibilidad');
  expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({
    titulo:'Manejo de Postcosecha', incluye_practica:false, sesiones:[expect.objectContaining({carga_id:2,fuera_horario:false})],

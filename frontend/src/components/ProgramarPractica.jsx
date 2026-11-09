@@ -157,6 +157,9 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
             Elegir otra materia para una sesión fuera de horario
           </button>}
           {fechaElegida && fechas[0]?.fuera_horario && <p className="text-sm font-semibold">Esta sesión será fuera de tu horario habitual. Tu clase semanal conserva su día y hora.</p>}
+          {fechaElegida && fechas.length > 0 && !fechas[0].fuera_horario && <p className="text-sm font-semibold">
+            La sesión se vinculará con tu clase de ese día y compartirá su registro de asistencia.
+          </p>}
         </div>)}
         {puedeCapturar && <>
           <label className="block">Laboratorio<select aria-label="Laboratorio de la práctica" className={campo} disabled={Boolean(origen)} value={labId} onChange={e => cambiar(() => { setLabId(e.target.value); setMateriales([]); if (!['QUIMICA', 'AGROINDUSTRIA'].includes(labs.find(l => String(l.id) === e.target.value)?.categoria?.toUpperCase())) setIncluyePractica(false); })}><option value="">Seleccionar laboratorio</option>{labs.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</select></label>

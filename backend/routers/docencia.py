@@ -763,7 +763,11 @@ def _serializar_clase(clase: ClaseDocente):
         frase in tema_normalizado for frase in ("no se impart", "no impartida", "no hubo clase")
     )
     return {
-        "practicas": [accion_practica(p) for p in practicas_clase],
+        "practicas": [
+            {**accion_practica(p), "laboratorio_impartido": p.reservacion.laboratorio.nombre
+             if p.iniciada_en and p.estado in {"EN_CURSO", "CERRADA"} and p.reservacion.laboratorio else None}
+            for p in practicas_clase
+        ],
         "id": clase.id,
         "fecha": clase.fecha.isoformat(),
         "estado": clase.estado,
