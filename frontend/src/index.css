@@ -115,6 +115,13 @@ body.theme-day {
 .themed-date-input { color-scheme: dark; }
 body.theme-day .themed-date-input { color-scheme: light; }
 
+.role-mode-select { color-scheme: dark; }
+body.theme-day .role-mode-select { color-scheme: light; }
+.role-mode-select option {
+  background-color: var(--dropdown-bg);
+  color: var(--dropdown-text-selected);
+}
+
 .theme-title { color: var(--text-primary); }
 .theme-text { color: var(--text-secondary); }
 .theme-muted { color: var(--text-muted); }

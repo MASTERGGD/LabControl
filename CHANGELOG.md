@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Contraste del selector de modo — 2026-11-09
+
+### Problema y comportamiento resultante
+El menú de Modo podía mostrar texto claro sobre fondo blanco en el tema nocturno. El selector nativo ahora sigue el tema activo y usa los colores de fondo y texto del menú de SIGA para las opciones de Docente y de gestión del laboratorio.
+
+### Validación y estado
+Compilación Vite aprobada con avisos de tamaño e importación mixta de offlineStore. El CSS compilado incluye ambos esquemas y las paletas de las opciones ofrecen un contraste de 13.35:1 en modo nocturno y 17.74:1 en modo diurno. Jest no pudo iniciar por un error de permisos al resolver el directorio temporal. Pendientes la revisión visual autenticada y la publicación.
+
+---
+
 ## [Preparado, sin publicar] — Formato de fechas y pie fijo en disponibilidad docente — 2026-11-08
 
 ### Problema y comportamiento resultante

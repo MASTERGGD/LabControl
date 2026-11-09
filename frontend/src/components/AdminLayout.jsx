@@ -1285,7 +1285,7 @@ export default function AdminLayout({ children }) {
             {usuario?.roles_disponibles?.length > 1 && (
               <label className="hidden xl:flex items-center gap-1.5 rounded-xl border px-2 py-1" style={{borderColor:'var(--topbar-border)', background:'var(--topbar-bg)'}} title="Cambiar la función activa sin cerrar sesión">
                 <span className="hidden text-[10px] font-bold uppercase tracking-wide text-slate-500 xl:block">Modo</span>
-                <select value={usuario.rol} disabled={cambiandoFuncion} onChange={e => handleCambiarFuncion(e.target.value)} className="bg-transparent text-xs font-semibold outline-none" style={{color:'var(--main-text)'}} aria-label="Función activa">
+                <select value={usuario.rol} disabled={cambiandoFuncion} onChange={e => handleCambiarFuncion(e.target.value)} className="role-mode-select bg-transparent text-xs font-semibold outline-none" style={{color:'var(--main-text)'}} aria-label="Función activa">
                   {usuario.roles_disponibles.map(rol => <option key={rol} value={rol}>{getRolLabel(rol)}</option>)}
                 </select>
               </label>
