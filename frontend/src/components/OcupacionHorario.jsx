@@ -87,6 +87,10 @@ export function OcupacionHorarioModal({ slot, slots, onClose, onSolicitar, accio
         <button type="button" autoFocus className="rounded border px-3 py-1" onClick={onClose}>Cerrar</button>
       </div>
       <p>{slot.dia_nombre} · {rango(seleccion)}</p>
+      <div className="rounded-xl border border-slate-500/30 p-3 text-sm">
+        <a href="/docente/horario" className="font-semibold underline">Configurar una clase semanal</a>
+        <p className="mt-1">Para reservar un bloque recurrente del cuatrimestre, agrega o edita la clase en Mi horario docente.</p>
+      </div>
       {accionReserva && seleccion.horario_id === slot.horario_id && <button type="button"
         className="rounded border px-3 py-1 text-sm" onClick={onGestionar}>{accionReserva}</button>}
       {alternativas.length > 1 && <label className="block">Ver otros horarios del mismo día
@@ -111,8 +115,8 @@ function Fechas({ slot, onReintentar, onSolicitar }) {
         <span className="capitalize">{fechaTexto(f.fecha)}</span>
         <span>{estados[f.estado]}</span>
         {f.estado === 'DISPONIBLE' && <button type="button" className="btn-blue px-3 py-1"
-          aria-label={`Solicitar laboratorio el ${fechaTexto(f.fecha)}`}
-          onClick={() => onSolicitar({ ...slot, fecha: f.fecha })}>Solicitar laboratorio</button>}
+          aria-label={`Solicitar para esta fecha: ${fechaTexto(f.fecha)}`}
+          onClick={() => onSolicitar({ ...slot, fecha: f.fecha })}>Solicitar para esta fecha</button>}
       </li>)}
     </ul>}
   </>;

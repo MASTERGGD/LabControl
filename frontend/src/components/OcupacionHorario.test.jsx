@@ -26,7 +26,8 @@ test('distingue la clase semanal y permite solicitar una fecha libre en otro hor
     await act(async () => root.render(<OcupacionHorarioModal slot={slot} slots={[slot, alternativa]} onSolicitar={solicitar} onClose={() => {}}/>));
     await act(async () => jest.runOnlyPendingTimers());
     expect(host.textContent).toContain('Ocupado por una clase semanal');
-    expect(host.textContent).not.toContain('Solicitar laboratorio');
+    expect(host.textContent).not.toContain('Solicitar para esta fecha');
+    expect(host.querySelector('a').getAttribute('href')).toBe('/docente/horario');
     await act(async () => {
       const select = host.querySelector('select');
       select.value = '2';
@@ -35,7 +36,7 @@ test('distingue la clase semanal y permite solicitar una fecha libre en otro hor
     await act(async () => jest.runOnlyPendingTimers());
     expect(host.textContent).toContain('Próxima fecha libre');
     expect(api.get).toHaveBeenLastCalledWith('/practicas-laboratorio/programacion/ocupacion/2');
-    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Solicitar laboratorio').click());
+    await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Solicitar para esta fecha').click());
     expect(solicitar).toHaveBeenCalledWith({ ...alternativa, fecha: '2026-11-18' });
   } finally {
     await act(async () => root.unmount());

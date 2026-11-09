@@ -10,11 +10,12 @@ const click=text=>act(async()=>[...container.querySelectorAll('button')].find(b=
 const input=(label,value)=>act(async()=>{const el=container.querySelector(`[aria-label="${label}"]`);Object.getOwnPropertyDescriptor(el.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new Event(el.tagName==='SELECT'?'change':'input',{bubbles:true}));});
 beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;container=document.createElement('div');document.body.appendChild(container);root=createRoot(container);guardar=jest.fn();cerrar=jest.fn();api.get.mockImplementation(url=>Promise.resolve({data:url==='/docencia/horario'?cargas:url.startsWith('/laboratorios')?[{id:2,nombre:'Química',categoria:'QUIMICA'}]:[]}));});
 afterEach(()=>{act(()=>root.unmount());container.remove();});
-const preparar=async()=>{await act(async()=>root.render(<ProgramarPractica onGuardado={guardar} onClose={cerrar}/>));await act(async()=>container.querySelector('input[value="ACADEMICA"]').click());await input('Materia y grupo','1');await input('Laboratorio de la práctica','2');await input('Título de la práctica','Conservación de frutos');await input('Fecha inicial','2026-11-09');await click('Proponer fechas de mi horario');};
+const preparar=async()=>{await act(async()=>root.render(<ProgramarPractica onGuardado={guardar} onClose={cerrar}/>));await act(async()=>container.querySelector('input[value="PRACTICA"]').click());await input('Materia y grupo','1');await input('Laboratorio de la práctica','2');await input('Título de la práctica','Conservación de frutos');await input('Fecha inicial','2026-11-09');await click('Proponer fechas de mi horario');};
 test('propone tres bloques y verifica antes de confirmar todas las sesiones',async()=>{
  api.post.mockResolvedValueOnce({data:{disponible:true,conflictos:[]}}).mockResolvedValueOnce({data:{practica_id:8}});
  await preparar();expect(container.querySelectorAll('input[type="date"]')).toHaveLength(4);
  await click('Verificar disponibilidad');expect(guardar).not.toHaveBeenCalled();
+ expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({proposito:'ACADEMICA',incluye_practica:true}));
  expect(api.post.mock.calls[0][1].sesiones.map(s=>s.fecha)).toEqual(['2026-11-09','2026-11-11','2026-11-13']);
  await click('Confirmar 3 sesiones');expect(api.post.mock.calls[1][0]).toBe('/practicas-laboratorio/programacion');expect(guardar).toHaveBeenCalled();expect(cerrar).toHaveBeenCalled();
 });
@@ -78,14 +79,28 @@ test('fallo de consulta no se presenta como ausencia de materias y permite reint
  expect(container.querySelector('[aria-label="Materia y grupo"]')).not.toBeNull();
 });
 
-test('una fecha elegida desde el horario precarga la sesión académica o individual', async () => {
+test('la clase puntual filtra materias, permite elegir fuera de horario y conserva la fecha seleccionada', async () => {
  const slot = { fecha: '2026-11-18', dia_semana: 2, hora_inicio: '08:00', hora_fin: '10:00' };
+ api.get.mockResolvedValueOnce({data:[...cargas,{...cargas[0],id:4,materia_id:8,actividad_nombre:'Química aplicada'}]});
  await act(async () => root.render(<ProgramarPractica laboratorioInicialId={2} slotInicial={slot} onClose={cerrar}/>));
  await act(async () => container.querySelector('input[value="ACADEMICA"]').click());
+ expect(container.querySelector('option[value="4"]')).toBeNull();
  await input('Materia y grupo', '1');
  expect(container.querySelector('[aria-label="Fecha sesión 1"]').value).toBe(slot.fecha);
+ expect(container.querySelector('[aria-label="Fecha sesión 1"]').readOnly).toBe(true);
  expect(container.querySelector('[aria-label="Fin sesión 1"]').value).toBe(slot.hora_fin);
  expect(container.querySelector('[aria-label="Fin sesión 1"]').disabled).toBe(true);
+ expect(container.querySelector('[aria-label="Número de sesiones"]')).toBeNull();
+ api.post.mockResolvedValue({data:{disponible:true,conflictos:[]}});
+ await click('Verificar disponibilidad');
+ expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({
+   titulo:'Manejo de Postcosecha', incluye_practica:false, sesiones:[expect.objectContaining({carga_id:2,fuera_horario:false})],
+ }));
+ await click('Elegir otra materia para una sesión fuera de horario');
+ await input('Materia y grupo', '4');
+ expect(container.textContent).toContain('Esta sesión será fuera de tu horario habitual');
+ await click('Verificar disponibilidad');
+ expect(api.post.mock.calls[1][1].sesiones).toEqual([expect.objectContaining({fecha:slot.fecha,carga_id:4,fuera_horario:true})]);
  await act(async () => container.querySelector('input[value="INDIVIDUAL"]').click());
  expect(container.querySelector('[aria-label="Fecha sesión 1"]').value).toBe(slot.fecha);
  expect(container.querySelector('[aria-label="Fin sesión 1"]').value).toBe(slot.hora_fin);

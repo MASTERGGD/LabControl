@@ -4,13 +4,25 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Una entrada para consultar y solicitar laboratorio — 2026-11-08
+## [Preparado, sin publicar] — Clase semanal, clase puntual y práctica en laboratorio — 2026-11-08
+
+### Problema y comportamiento resultante
+La solicitud por fecha agrupaba clase y práctica y mostraba toda la carga docente sin distinguir el bloque elegido. El detalle de disponibilidad de Química y Agroindustria separa Solicitar para esta fecha de Configurar una clase semanal. El segundo acceso lleva a Mi horario docente, donde se configura y reserva el bloque oficial con la validación recurrente existente.
+
+La solicitud por fecha distingue Clase puntual, Práctica con materiales e Investigación o trabajo individual. La clase puntual omite el objetivo y la captura de materiales y usa el nombre de la materia cuando no se indica tema. Para un turno seleccionado se ofrecen primero las materias que coinciden con el día y las horas completos. Las demás se habilitan mediante una acción explícita y se identifican como fuera de horario. La solicitud académica desde disponibilidad conserva la fecha y las horas elegidas. Los accesos generales mantienen la propuesta de varias fechas y la confirmación conserva la validación existente.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas. Las pruebas cubren el acceso a la configuración semanal, la precarga, el filtro por turno, la elección explícita fuera de horario y las solicitudes académicas con y sin materiales. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [9895305] — Una entrada para consultar y solicitar laboratorio — 2026-11-08
 
 ### Problema y comportamiento resultante
 La cuadrícula docente de Química y Agroindustria presentaba una tarjeta Disponible y un enlace Ver fechas con rutas distintas. En escritorio y móvil, el bloque completo ahora abre Ver disponibilidad. El aviso breve de escritorio destaca la próxima fecha libre o la ocupación semanal sin repetir el listado. El detalle permite elegir una fecha libre con Solicitar laboratorio y precarga el formulario. Los accesos a reservas y solicitudes existentes quedan dentro del detalle del bloque original.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas, incluida la elección de una fecha libre desde la disponibilidad. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas, incluida la elección de una fecha libre desde la disponibilidad. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió 9895305 y Railway confirmó SUCCESS para el frontend (704095a7-2c63-4d8b-89f3-72f780c319a9) y el backend (d115c334-2d08-488b-82d0-93f099b29425). Web y JavaScript HTTP 200 con la acción unificada y la solicitud por fecha. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 
