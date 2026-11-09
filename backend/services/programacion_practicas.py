@@ -1,4 +1,5 @@
 """Programación atómica de sesiones y contexto compartido de prácticas."""
+import calendar
 import datetime as dt
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
@@ -94,6 +95,71 @@ def proposito_sesion(p):
     return p.proposito or ('ACADEMICA' if p.reservacion.carga_docente_id else 'SIN_VINCULACION')
 
 
+def _reservas_solapadas(db, periodo, dia, inicio, fin):
+    return db.query(Reservacion).join(HorarioDisponible).filter(
+        Reservacion.estado.in_(ACTIVAS),
+        or_(Reservacion.periodo_id == periodo.id, Reservacion.periodo_id == None),
+        or_(Reservacion.fecha_actividad != None, HorarioDisponible.dia_semana == dia),
+        HorarioDisponible.hora_inicio < fin, HorarioDisponible.hora_fin > inicio,
+    )
+
+
+def _reserva_del_periodo(reserva, periodo):
+    from routers.horarios import _normalizar_periodo
+    return reserva.periodo_id == periodo.id or _normalizar_periodo(reserva.cuatrimestre) == _normalizar_periodo(periodo.clave)
+
+
+@router.get('/programacion/ocupacion/{horario_id}')
+def ocupacion_programacion(horario_id: int, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    from routers.docencia import _periodo_actual, _validar_periodo_actual
+    from routers.horarios import _normalizar_periodo
+    from services.disponibilidad_laboratorio import bloqueo_en
+
+    if user.rol != RolUsuario.DOCENTE:
+        raise HTTPException(403, 'Consulta este horario desde tu función Docente.')
+    horario = db.get(HorarioDisponible, horario_id)
+    lab = db.get(Laboratorio, horario.laboratorio_id) if horario and horario.activo else None
+    if not lab or not lab.activo or (lab.categoria or '').upper() not in {'QUIMICA', 'AGROINDUSTRIA'}:
+        raise HTTPException(404, 'Este horario de laboratorio ya no está disponible.')
+    periodo = _periodo_actual(db)
+    if not periodo or _normalizar_periodo(horario.cuatrimestre) != _normalizar_periodo(periodo.clave):
+        raise HTTPException(409, 'Selecciona el cuatrimestre vigente para consultar fechas.')
+    _validar_periodo_actual(db, periodo.id)
+
+    ahora = now_mx()
+    hoy = ahora.date()
+    mes_fin = ((hoy.month - 1) // 4 + 1) * 4
+    fin_periodo = dt.date(hoy.year, mes_fin, calendar.monthrange(hoy.year, mes_fin)[1])
+    fecha = hoy + dt.timedelta(days=(horario.dia_semana - hoy.weekday()) % 7)
+    if fecha == hoy and ahora.strftime('%H:%M') > horario.hora_inicio:
+        fecha += dt.timedelta(days=7)
+    reservas = _reservas_solapadas(db, periodo, horario.dia_semana, horario.hora_inicio, horario.hora_fin).filter(
+        Reservacion.laboratorio_id == lab.id,
+        or_(Reservacion.fecha_actividad == None, Reservacion.fecha_actividad.between(fecha, fin_periodo)),
+    ).all()
+    reservas = [r for r in reservas if _reserva_del_periodo(r, periodo)]
+    recurrente = any(r.fecha_actividad is None for r in reservas)
+    clase_semanal = any(r.fecha_actividad is None and r.carga_docente_id is not None for r in reservas)
+    puntuales = {r.fecha_actividad for r in reservas if r.fecha_actividad is not None}
+    bloqueo_semanal = db.query(BloqueoSlot).filter_by(horario_id=horario.id, activo=True).first()
+    fechas = []
+    while fecha <= fin_periodo:
+        calendario = estado_fecha_academica(db, periodo.id, fecha)
+        if bloqueo_semanal or bloqueo_en(db, lab.id, fecha, horario.hora_inicio, horario.hora_fin):
+            estado = 'BLOQUEADO'
+        elif not calendario['permite_iniciar_clase'] or not calendario['requiere_asistencia']:
+            estado = 'NO_LECTIVO'
+        elif recurrente:
+            estado = 'SEMANAL'
+        elif fecha in puntuales:
+            estado = 'OCUPADO'
+        else:
+            estado = 'DISPONIBLE'
+        fechas.append({'fecha': fecha, 'estado': estado})
+        fecha += dt.timedelta(days=7)
+    return {'fechas': fechas, 'reserva_semanal': recurrente, 'clase_semanal': clase_semanal, 'fin_periodo': fin_periodo}
+
+
 def validar_programacion(data, db, user, bloquear=False, excluir_reservas=None):
     from routers.docencia import _periodo_actual, _validar_periodo_actual
     from routers.horarios import _normalizar_periodo
@@ -178,11 +244,10 @@ def validar_programacion(data, db, user, bloquear=False, excluir_reservas=None):
             error(f'El laboratorio no está disponible: {bloqueo_fecha.motivo}'); continue
         if db.query(BloqueoSlot).filter(BloqueoSlot.horario_id.in_([h.id for h in slots]), BloqueoSlot.activo == True).first():
             error('El laboratorio tiene un bloqueo institucional.'); continue
-        reservas = db.query(Reservacion).join(HorarioDisponible).filter(Reservacion.estado.in_(ACTIVAS),
-            or_(Reservacion.periodo_id == periodo.id, Reservacion.periodo_id == None),
-            or_(Reservacion.fecha_actividad == sesion.fecha, (Reservacion.fecha_actividad == None) & (HorarioDisponible.dia_semana == sesion.fecha.weekday())),
-            HorarioDisponible.hora_inicio < sesion.hora_fin, HorarioDisponible.hora_fin > sesion.hora_inicio).all()
-        reservas = [r for r in reservas if r.id not in (excluir_reservas or set()) and (r.periodo_id == periodo.id or _normalizar_periodo(r.cuatrimestre) == _normalizar_periodo(periodo.clave))]
+        reservas = _reservas_solapadas(db, periodo, sesion.fecha.weekday(), sesion.hora_inicio, sesion.hora_fin).filter(
+            or_(Reservacion.fecha_actividad == sesion.fecha, Reservacion.fecha_actividad == None),
+        ).all()
+        reservas = [r for r in reservas if r.id not in (excluir_reservas or set()) and _reserva_del_periodo(r, periodo)]
         reutilizables = [r for r in reservas if c and r.laboratorio_id == lab.id and r.docente_id == user.id
             and r.carga_docente_id == c.id and r.estado == 'PROGRAMADA' and r.horario_id in {h.id for h in slots}]
         reutilizar_ids = {r.id for r in reutilizables}

@@ -4,13 +4,25 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Captura de sesiones por fecha y horario — 2026-11-08
+## [Preparado, sin publicar] — Ocupación por fecha en el horario docente — 2026-11-08
+
+### Problema y comportamiento resultante
+El docente debía comprobar fechas una por una para encontrar un bloque libre. En Química y Agroindustria, la acción Ver fechas muestra el resumen al pasar el mouse o enfocar el botón en escritorio y abre el detalle al pulsarlo en escritorio o móvil. El detalle distingue reservas puntuales, reservas semanales, bloqueos y días no lectivos hasta el cierre del cuatrimestre. Destaca la primera fecha libre y permite consultar otros horarios del mismo día. La consulta de ocupación devuelve fechas y estados sin nombres, materias ni motivos de terceros.
+
+Solicitar este horario precarga el laboratorio, la fecha y las horas para uso individual o académico. En este último se enlaza la carga elegida y se indica si el bloque queda fuera del horario habitual. Se conserva la validación de disponibilidad antes de confirmar.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas, incluidas la selección de un bloque alternativo y la precarga académica e individual. 43 pruebas backend de programación y gestión aprobadas, incluida la distinción entre fechas puntuales, bloqueo, clase semanal y periodo anterior. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [6509e8e] — Captura de sesiones por fecha y horario — 2026-11-08
 
 ### Problema y comportamiento resultante
 El total de sesiones y el intervalo de repetición complicaban la selección de fechas concretas. Para uso individual, el docente captura fecha, hora de inicio y hora de fin de cada sesión. Cada fila nueva copia las horas de la anterior y deja la fecha por elegir. El total se calcula a partir de la lista y se pueden quitar filas. Cualquier edición descarta la verificación anterior y se requieren fechas y horas completas para verificar. Para uso académico, se conserva la propuesta a partir del horario de la materia y se descarta la propuesta anterior al cambiar sus criterios.
 
 ### Validación y estado
-42 suites y 187 pruebas frontend aprobadas. La prueba del flujo individual comprueba tres fechas concretas, copia de horas, horario distinto por sesión, bloqueo de verificación con una fila incompleta y retiro de una fecha tras verificar. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la revisión visual autenticada y la publicación.
+42 suites y 187 pruebas frontend aprobadas. La prueba del flujo individual comprueba tres fechas concretas, copia de horas, horario distinto por sesión, bloqueo de verificación con una fila incompleta y retiro de una fecha tras verificar. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió 6509e8e y Railway confirmó SUCCESS para el frontend (9cfcaa51-7b05-42e2-b98a-92b240c8095b) y el backend (c7f75f05-d296-4877-84d3-04ab266d86a8) del mismo commit. La web y el paquete JavaScript respondieron HTTP 200 con las acciones Agregar otra sesión y Quitar sesión presentes. La API respondió HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

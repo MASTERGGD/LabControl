@@ -16,6 +16,7 @@ import FechaHorario from '../../components/FechaHorario';
 import { validarFechaHorario } from '../../utils/fechaHorario';
 import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
+import { OcupacionHorarioBoton, OcupacionHorarioModal } from '../../components/OcupacionHorario';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -1557,7 +1558,7 @@ const GRAD_DOC = {
   BLOQUEADO:   'linear-gradient(135deg, rgba(88,28,135,0.30) 0%, rgba(109,40,217,0.15) 100%)',
 };
 
-function GridSemanal({ slots, onSlotClick }) {
+function GridSemanal({ slots, onSlotClick, onVerFechas }) {
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const horas = [...new Set(slots.map(s => s.hora_inicio))].sort();
@@ -1629,7 +1630,7 @@ function GridSemanal({ slots, onSlotClick }) {
         <button
           onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
           style={{
-            width: '100%', height: esSegundoEnGrupo ? 'calc(100% - 4px)' : '100%',
+            width: '100%', height: onVerFechas ? undefined : esSegundoEnGrupo ? 'calc(100% - 4px)' : '100%',
             background: grad,
             border: `1px solid ${borderColor}`,
             borderRadius: '8px',
@@ -1734,6 +1735,7 @@ function GridSemanal({ slots, onSlotClick }) {
             </>
           )}
         </button>
+        {onVerFechas && <OcupacionHorarioBoton slot={slot} onClick={onVerFechas} vistaPrevia/>}
       </div>
     );
   };
@@ -1759,7 +1761,7 @@ function GridSemanal({ slots, onSlotClick }) {
 
 // ─── Vista móvil: un día a la vez con tabs ────────────────────────────────────
 
-function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
+function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia }) {
   const dias = [...new Set(slots.map(s => s.dia_semana))].sort();
   const gruposConsecutivos = detectarGruposConsecutivos(slots);
 
@@ -1865,7 +1867,8 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
           const esLibre = slot.estado_vista === 'LIBRE';
 
           return (
-            <button key={clave} onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
+            <div key={clave}>
+            <button onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
               style={{
                 width: '100%', textAlign: 'left',
                 background: c.bg, border: `1px solid ${c.border}`,
@@ -1968,6 +1971,8 @@ function GridMobile({ slots, onSlotClick, isDay = false, initialDia }) {
                 </p>
               )}
             </button>
+            {onVerFechas && <OcupacionHorarioBoton slot={slot} onClick={onVerFechas}/>}
+            </div>
           );
         })}
       </div>
@@ -2438,6 +2443,10 @@ export default function SesionClase() {
   };
 
   const cerrar = () => setModalSlot(null);
+  const laboratorio = laboratorios.find(l => String(l.id) === String(labId));
+  const verFechas = usuario?.rol === 'DOCENTE' && esLaboratorioDePracticas(laboratorio)
+    ? slot => setModalSlot({ tipo: 'ocupacion', slot })
+    : undefined;
 
   return (
     <AdminLayout>
@@ -2617,16 +2626,20 @@ export default function SesionClase() {
         <>
           {!esMobil && <div className="mb-3"><Leyenda /></div>}
           {esMobil
-            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} isDay={isDay} initialDia={diaSolicitado} />
-            : <GridSemanal slots={slots} onSlotClick={handleSlotClick} />
+            ? <GridMobile slots={slots} onSlotClick={handleSlotClick} onVerFechas={verFechas} isDay={isDay} initialDia={diaSolicitado} />
+            : <GridSemanal slots={slots} onSlotClick={handleSlotClick} onVerFechas={verFechas} />
           }
         </>
       )}
 
       {/* Modales */}
+      {modalSlot?.tipo === 'ocupacion' && (
+        <OcupacionHorarioModal slot={modalSlot.slot} slots={slots} onClose={cerrar}
+          onSolicitar={slot => setModalSlot({ tipo: 'reservar', slot })}/>
+      )}
       {modalSlot?.tipo === 'reservar' && (
         <ModalReservar slot={modalSlot.slot} slots={slots} cuatrimestre={cuatrimestre} laboratorio_id={labId}
-          laboratorio={laboratorios.find(l => String(l.id) === String(labId))}
+          laboratorio={laboratorio}
           onClose={cerrar} onGuardado={recargar} />
       )}
       {modalSlot?.tipo === 'mi_reserva' && (

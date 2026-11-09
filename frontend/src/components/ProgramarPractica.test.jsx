@@ -77,3 +77,17 @@ test('fallo de consulta no se presenta como ausencia de materias y permite reint
  api.get.mockResolvedValue({data:cargas});await click('Reintentar carga docente');
  expect(container.querySelector('[aria-label="Materia y grupo"]')).not.toBeNull();
 });
+
+test('una fecha elegida desde el horario precarga la sesión académica o individual', async () => {
+ const slot = { fecha: '2026-11-18', dia_semana: 2, hora_inicio: '08:00', hora_fin: '10:00' };
+ await act(async () => root.render(<ProgramarPractica laboratorioInicialId={2} slotInicial={slot} onClose={cerrar}/>));
+ await act(async () => container.querySelector('input[value="ACADEMICA"]').click());
+ await input('Materia y grupo', '1');
+ expect(container.querySelector('[aria-label="Fecha sesión 1"]').value).toBe(slot.fecha);
+ expect(container.querySelector('[aria-label="Fin sesión 1"]').value).toBe(slot.hora_fin);
+ expect(container.querySelector('[aria-label="Fin sesión 1"]').disabled).toBe(true);
+ await act(async () => container.querySelector('input[value="INDIVIDUAL"]').click());
+ expect(container.querySelector('[aria-label="Fecha sesión 1"]').value).toBe(slot.fecha);
+ expect(container.querySelector('[aria-label="Fin sesión 1"]').value).toBe(slot.hora_fin);
+ expect(container.querySelector('[aria-label="Fin sesión 1"]').disabled).toBe(false);
+});

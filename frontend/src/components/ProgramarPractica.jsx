@@ -33,8 +33,8 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
   const [labId, setLabId] = useState(String(origen?.laboratorio_id || laboratorioInicialId || ''));
   const [titulo, setTitulo] = useState(origen?.titulo || '');
   const [objetivo, setObjetivo] = useState(origen?.objetivo || '');
-  const [cantidad, setCantidad] = useState(3);
-  const [inicio, setInicio] = useState(todayISOInMexico());
+  const [cantidad, setCantidad] = useState(slotInicial?.fecha ? 1 : 3);
+  const [inicio, setInicio] = useState(slotInicial?.fecha || todayISOInMexico());
   const [diasElegidos, setDiasElegidos] = useState([]);
   const [fechas, setSesiones] = useState(() => origen?.proposito === 'INDIVIDUAL'
     ? [sesionIndividual(todayISOInMexico(), slotInicial)]
@@ -78,8 +78,27 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
   const editar = (i, cambios) => cambiar(() => setSesiones(fechas.map((s, j) => i === j ? { ...s, ...cambios } : s)));
   const elegirProposito = valor => cambiar(() => {
     setProposito(valor);
-    setSesiones(valor === 'INDIVIDUAL' ? [sesionIndividual(todayISOInMexico(), slotInicial)] : []);
-    setCargaId(''); setDiasElegidos([]); setMateriales([]); setIncluyePractica(false); setCantidad(3);
+    setSesiones(valor === 'INDIVIDUAL' ? [sesionIndividual(slotInicial?.fecha || todayISOInMexico(), slotInicial)] : []);
+    setCargaId(''); setDiasElegidos([]); setMateriales([]); setIncluyePractica(false);
+    setCantidad(slotInicial?.fecha ? 1 : 3);
+  });
+  const elegirCarga = id => cambiar(() => {
+    const elegida = cargas.find(c => String(c.id) === id);
+    const bloques = elegida ? cargas.filter(c => c.grupo_academico_id === elegida.grupo_academico_id
+      && c.materia_id === elegida.materia_id && c.actividad_nombre === elegida.actividad_nombre) : [];
+    setCargaId(id);
+    setDiasElegidos([...new Set(bloques.map(c => c.dia_semana))]);
+    if (elegida && slotInicial?.fecha) {
+      const coincide = bloques.find(c => c.dia_semana === slotInicial.dia_semana
+        && c.hora_inicio === slotInicial.hora_inicio && c.hora_fin === slotInicial.hora_fin);
+      setSesiones([{
+        ...sesionIndividual(slotInicial.fecha, slotInicial),
+        carga_id: (coincide || elegida).id,
+        fuera_horario: !coincide,
+      }]);
+    } else {
+      setSesiones([]);
+    }
   });
   const payload = () => ({
     laboratorio_id: Number(labId), titulo, objetivo, proposito, incluye_practica: incluyePractica, participantes: academica ? null : participantes || null,
@@ -111,7 +130,7 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
         </div>
         {cargando && <p role="status">Consultando laboratorios y carga docente…</p>}
         {!cargando && labsError && <div role="alert"><p>No se pudieron consultar los laboratorios. No significa que no haya laboratorios disponibles.</p><button className={boton} onClick={() => setRevision(r => r + 1)}>Reintentar consulta</button></div>}
-        {!cargando && academica && (cargaError ? <div role="alert"><p>No se pudo consultar tu carga docente. Reintenta antes de programar una clase.</p><button className={boton} onClick={() => setRevision(r => r + 1)}>Reintentar carga docente</button></div> : !cargas.length ? <div role="status" className="rounded-xl border border-amber-400 p-4"><p>No tienes materias activas con grupo en tu carga docente. Configura tu horario para solicitar una clase o práctica académica.</p><a className="mt-2 inline-block font-semibold underline" href="/docente/horario">Configurar mi horario docente</a><p className="mt-2 text-xs">Si necesitas el espacio para un estudio propio, elige Investigación o trabajo individual.</p></div> : <label className="block">Materia y grupo<select aria-label="Materia y grupo" className={campo} value={cargaId} onChange={e => cambiar(() => { const c = cargas.find(x => String(x.id) === e.target.value); setCargaId(e.target.value); setSesiones([]); setDiasElegidos(c ? [...new Set(cargas.filter(x => x.grupo_academico_id === c.grupo_academico_id && x.materia_id === c.materia_id && x.actividad_nombre === c.actividad_nombre).map(x => x.dia_semana))] : []); })}><option value="">Seleccionar materia</option>{cargas.filter((c, i, a) => a.findIndex(x => x.grupo_academico_id === c.grupo_academico_id && x.materia_id === c.materia_id && x.actividad_nombre === c.actividad_nombre) === i || (origen && c.id === origen.carga_docente_id)).map(c => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.carrera}</option>)}</select></label>)}
+        {!cargando && academica && (cargaError ? <div role="alert"><p>No se pudo consultar tu carga docente. Reintenta antes de programar una clase.</p><button className={boton} onClick={() => setRevision(r => r + 1)}>Reintentar carga docente</button></div> : !cargas.length ? <div role="status" className="rounded-xl border border-amber-400 p-4"><p>No tienes materias activas con grupo en tu carga docente. Configura tu horario para solicitar una clase o práctica académica.</p><a className="mt-2 inline-block font-semibold underline" href="/docente/horario">Configurar mi horario docente</a><p className="mt-2 text-xs">Si necesitas el espacio para un estudio propio, elige Investigación o trabajo individual.</p></div> : <label className="block">Materia y grupo<select aria-label="Materia y grupo" className={campo} value={cargaId} onChange={e => elegirCarga(e.target.value)}><option value="">Seleccionar materia</option>{cargas.filter((c, i, a) => a.findIndex(x => x.grupo_academico_id === c.grupo_academico_id && x.materia_id === c.materia_id && x.actividad_nombre === c.actividad_nombre) === i || (origen && c.id === origen.carga_docente_id)).map(c => <option key={c.id} value={c.id}>{c.actividad_nombre} · {c.grupo} · {c.carrera}</option>)}</select></label>)}
         {puedeCapturar && <>
           <label className="block">Laboratorio<select aria-label="Laboratorio de la práctica" className={campo} disabled={Boolean(origen)} value={labId} onChange={e => cambiar(() => { setLabId(e.target.value); setMateriales([]); if (!['QUIMICA', 'AGROINDUSTRIA'].includes(labs.find(l => String(l.id) === e.target.value)?.categoria?.toUpperCase())) setIncluyePractica(false); })}><option value="">Seleccionar laboratorio</option>{labs.map(l => <option key={l.id} value={l.id}>{l.nombre}</option>)}</select></label>
           <label className="block">Nombre de la actividad<input aria-label="Título de la práctica" className={campo} disabled={Boolean(origen)} maxLength={180} value={titulo} onChange={e => cambiar(() => setTitulo(e.target.value))}/></label>

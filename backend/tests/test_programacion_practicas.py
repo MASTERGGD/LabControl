@@ -55,6 +55,46 @@ def plan(db, lab, docente_user, monkeypatch):
             for fecha,c in zip(['2026-11-09','2026-11-11','2026-11-13'],cargas)]},cargas,alumno
 
 
+def test_ocupacion_distingue_fechas_puntuales_bloqueos_y_clase_semanal(plan, db):
+    client, payload, cargas, _ = plan
+    carga = cargas[1]
+    slot = db.query(HorarioDisponible).filter_by(dia_semana=2, hora_inicio='08:00').one()
+    datos = dict(horario_id=slot.id, laboratorio_id=payload['laboratorio_id'], docente_id=carga.docente_id,
+                 creado_por=carga.docente_id, materia='Materia privada', grupo='A', cuatrimestre=slot.cuatrimestre)
+    db.add_all([Reservacion(**datos, periodo_id=carga.periodo_id, estado='PROGRAMADA', fecha_actividad=dt.date(2026, 11, dia))
+                for dia in (11, 18, 25)])
+    periodo_anterior = PeriodoEscolar(clave='MAY-AGO 2026', es_actual=False, activo=True)
+    db.add(periodo_anterior)
+    db.flush()
+    db.add(Reservacion(**datos, periodo_id=periodo_anterior.id, estado='PROGRAMADA'))
+    db.add(BloqueoLaboratorio(laboratorio_id=payload['laboratorio_id'], desde=dt.date(2026, 12, 2),
+                              hasta=dt.date(2026, 12, 2), hora_inicio='08:00', hora_fin='09:00',
+                              motivo='Motivo privado', creado_por_id=carga.docente_id, activo=True))
+    db.commit()
+
+    url = f'/practicas-laboratorio/programacion/ocupacion/{slot.id}'
+    response = client.get(url)
+    assert response.status_code == 200, response.text
+    resumen = response.json()
+    assert not resumen['reserva_semanal']
+    assert resumen['fechas'][:5] == [
+        {'fecha': '2026-11-11', 'estado': 'OCUPADO'},
+        {'fecha': '2026-11-18', 'estado': 'OCUPADO'},
+        {'fecha': '2026-11-25', 'estado': 'OCUPADO'},
+        {'fecha': '2026-12-02', 'estado': 'BLOQUEADO'},
+        {'fecha': '2026-12-09', 'estado': 'DISPONIBLE'},
+    ]
+    assert resumen['fin_periodo'] == '2026-12-31'
+    assert 'privad' not in response.text
+
+    semanal = Reservacion(**datos, periodo_id=carga.periodo_id, carga_docente_id=carga.id, estado='PROGRAMADA')
+    db.add(semanal)
+    db.commit()
+    resumen = client.get(url).json()
+    assert resumen['reserva_semanal'] and resumen['clase_semanal']
+    assert {f['estado'] for f in resumen['fechas']} == {'SEMANAL', 'BLOQUEADO'}
+
+
 def test_tres_sesiones_atomicas_vinculadas_con_materiales_por_fecha(plan,db):
     client,payload,cargas,_=plan
     payload['materiales']=[{'descripcion':'Frutos de prueba','cantidad_solicitada':3}]
