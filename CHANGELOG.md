@@ -4,7 +4,17 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Tramos consecutivos y lugar de la práctica en el historial — 2026-11-08
+## [Preparado, sin publicar] — Horas y duración claras al consultar disponibilidad — 2026-11-08
+
+### Problema y comportamiento resultante
+El selector de inicio mostraba un rango que podía confundirse con la duración total. La disponibilidad docente presenta Hora de inicio y Hora de fin juntas, con una sola hora por opción. Un resumen junto a las fechas muestra el día, el tramo completo, la duración y que se trata de una sesión. El acceso a configurar una clase semanal se traslada al pie. La consulta conserva la validación del tramo completo y la precarga de sus horas al solicitar.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas. La prueba de disponibilidad verifica las horas de inicio individuales, el resumen al extender el fin y el acceso semanal en el pie. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [fcd6343] — Tramos consecutivos y lugar de la práctica en el historial — 2026-11-08
 
 ### Problema y comportamiento resultante
 El horario de Química y Agroindustria solo permitía consultar un bloque por vez. Al seleccionar el bloque de inicio, el docente puede extender la hora de fin por bloques consecutivos y solicitar todo el tramo como una sola sesión. La consulta verifica el rango completo por fecha y la confirmación conserva la validación atómica de la programación. Un receso o un hueco detiene la extensión.
@@ -12,7 +22,7 @@ El horario de Química y Agroindustria solo permitía consultar un bloque por ve
 Si la materia y el tramo coinciden con el horario oficial, el formulario indica que la sesión se vinculará con la clase y su asistencia. El Historial de clases muestra el laboratorio de una práctica académica vinculada que ya inició o cerró. Las clases de aula conservan su espacio habitual y las prácticas fuera de horario conservan su seguimiento independiente.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas, incluida la extensión del tramo, la exclusión de un receso y la precarga completa. 31 pruebas backend de programación aprobadas, incluida la ocupación del segundo bloque, el rechazo de huecos y el laboratorio en el historial vinculado. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas, incluida la extensión del tramo, la exclusión de un receso y la precarga completa. 31 pruebas backend de programación aprobadas, incluida la ocupación del segundo bloque, el rechazo de huecos y el laboratorio en el historial vinculado. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió fcd6343 y Railway confirmó SUCCESS para frontend (d87dcec5-f0a1-46fe-a986-8a0901101a59) y backend (bb8794c1-3ac4-4f9c-bb8e-248808657162). Web y JavaScript HTTP 200 con el selector de tramo, el aviso de asistencia y la presentación del laboratorio en el historial. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

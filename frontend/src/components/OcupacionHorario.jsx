@@ -13,6 +13,19 @@ const estados = {
 const formato = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 const fechaTexto = fecha => formato.format(new Date(`${fecha}T12:00:00Z`));
 const rango = slot => `${slot.hora_inicio} a ${slot.hora_fin}`;
+const minutosDelDia = hora => {
+  const [horas, minutos] = hora.split(':').map(Number);
+  return horas * 60 + minutos;
+};
+function duracion(inicio, fin) {
+  const total = minutosDelDia(fin) - minutosDelDia(inicio);
+  const horas = Math.floor(total / 60);
+  const minutos = total % 60;
+  return [
+    horas ? `${horas} ${horas === 1 ? 'hora' : 'horas'}` : '',
+    minutos ? `${minutos} min` : '',
+  ].filter(Boolean).join(' ');
+}
 
 function useOcupacion(id, espera = 0, fin = '') {
   const consulta = id ? `${id}${fin ? `?hora_fin=${encodeURIComponent(fin)}` : ''}` : null;
@@ -99,28 +112,31 @@ export function OcupacionHorarioModal({ slot, slots, onClose, onSolicitar, accio
         <h2 id={tituloId} className="text-lg font-bold">Disponibilidad del laboratorio</h2>
         <button type="button" autoFocus className="rounded border px-3 py-1" onClick={onClose}>Cerrar</button>
       </div>
-      <p>{slot.dia_nombre} · {rango(tramo)}</p>
-      <div className="rounded-xl border border-slate-500/30 p-3 text-sm">
-        <a href="/docente/horario" className="font-semibold underline">Configurar una clase semanal</a>
-        <p className="mt-1">Para reservar un bloque recurrente del cuatrimestre, agrega o edita la clase en Mi horario docente.</p>
-      </div>
       {accionReserva && seleccion.horario_id === slot.horario_id && <button type="button"
         className="rounded border px-3 py-1 text-sm" onClick={onGestionar}>{accionReserva}</button>}
-      {alternativas.length > 1 && <label className="block">Bloque de inicio
-        <select className="input-dark w-full" value={seleccion.horario_id}
-          onChange={e => elegirInicio(e.target.value)}>
-          {alternativas.map(s => <option key={s.horario_id} value={s.horario_id}>{rango(s)}</option>)}
-        </select>
-      </label>}
-      {fines.length > 1 && <label className="block">Hora de fin de la sesión
-        <select className="input-dark w-full" value={fin} onChange={e => setFinElegido(e.target.value)}>
-          {fines.map(hora => <option key={hora} value={hora}>{hora}</option>)}
-        </select>
-        <span className="mt-1 block text-xs">Puedes unir bloques consecutivos en una sola sesión. SIGA revisa todo el tramo para cada fecha.</span>
-      </label>}
+      <div className="grid grid-cols-2 gap-3">
+        <label>Hora de inicio
+          <select className="input-dark w-full" value={seleccion.horario_id} disabled={alternativas.length <= 1}
+            onChange={e => elegirInicio(e.target.value)}>
+            {(alternativas.length ? alternativas : [seleccion]).map(s => <option key={s.horario_id} value={s.horario_id}>{s.hora_inicio}</option>)}
+          </select>
+        </label>
+        <label>Hora de fin
+          <select className="input-dark w-full" value={fin} disabled={fines.length === 1} onChange={e => setFinElegido(e.target.value)}>
+            {fines.map(hora => <option key={hora} value={hora}>{hora}</option>)}
+          </select>
+        </label>
+      </div>
+      <p aria-live="polite" className="rounded-xl border border-slate-500/30 p-3 text-sm font-semibold">
+        {slot.dia_nombre} · {rango(tramo)} · {duracion(tramo.hora_inicio, fin)} · 1 sesión
+      </p>
       <Fechas key={`${seleccion.horario_id}-${fin}-${intento}`} slot={tramo} finExtendido={fin !== seleccion.hora_fin ? fin : ''}
         onReintentar={() => setIntento(i => i + 1)} onSolicitar={onSolicitar}/>
       <p className="text-xs">Al verificar la solicitud, SIGA revisa también el horario del docente y, cuando corresponda, el del grupo.</p>
+      <footer className="border-t border-slate-500/30 pt-3 text-sm">
+        <a href="/docente/horario" className="font-semibold underline">Configurar una clase semanal</a>
+        <p className="mt-1 text-xs">Reserva un horario recurrente del cuatrimestre desde Mi horario docente.</p>
+      </footer>
     </section>
   </div>;
 }

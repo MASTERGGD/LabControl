@@ -33,6 +33,9 @@ test('distingue la clase semanal y permite solicitar una fecha libre en otro hor
     expect(host.textContent).toContain('Ocupado por una clase semanal');
     expect(host.textContent).not.toContain('Solicitar para esta fecha');
     expect(host.querySelector('a').getAttribute('href')).toBe('/docente/horario');
+    expect(host.querySelector('footer a').textContent).toBe('Configurar una clase semanal');
+    expect([...host.querySelector('select').options].map(o => o.textContent)).toEqual(['13:00', '14:00', '15:30']);
+    expect(host.textContent).toContain('Miércoles · 13:00 a 14:00 · 1 hora · 1 sesión');
     expect([...host.querySelectorAll('select')[1].options].map(o => o.value)).toEqual(['14:00', '15:00']);
     await act(async () => {
       const select = host.querySelectorAll('select')[1];
@@ -40,6 +43,7 @@ test('distingue la clase semanal y permite solicitar una fecha libre en otro hor
       select.dispatchEvent(new Event('change', { bubbles: true }));
     });
     await act(async () => jest.runOnlyPendingTimers());
+    expect(host.textContent).toContain('Miércoles · 13:00 a 15:00 · 2 horas · 1 sesión');
     expect(api.get).toHaveBeenLastCalledWith('/practicas-laboratorio/programacion/ocupacion/1?hora_fin=15%3A00');
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'Solicitar para esta fecha').click());
     expect(solicitar).toHaveBeenCalledWith({ ...slot, hora_fin:'15:00', fecha:'2026-11-18' });
