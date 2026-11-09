@@ -12,7 +12,7 @@ const categoriaLabel = c => c ? c.replace(/_/g, ' ').toLowerCase().replace(/(?:^
 const capacidadUnidad = c => esLabComputo(c) ? 'equipos' : 'personas/puestos';
 
 // ─── Ring Progress Chart ───────────────────────────────────────────────────────
-// SVG donut que cambia de color según disponibilidad
+// SVG donut que cambia de color según la proporción de PCs activas
 function RingChart({ activas, total, size = 72 }) {
   const r       = (size - 10) / 2;           // radio interior del stroke
   const cx      = size / 2;
@@ -22,12 +22,11 @@ function RingChart({ activas, total, size = 72 }) {
   const dash    = pct * circum;
   const gap     = circum - dash;
 
-  // Color dinámico según disponibilidad
   const color =
-    total === 0              ? '#475569'     // gris — sin PCs
-    : pct >= 0.70            ? '#10b981'     // esmeralda — mucha disponibilidad
-    : pct >= 0.40            ? '#f59e0b'     // ámbar — disponibilidad media
-    :                          '#ef4444';    // rojo — casi lleno / lleno
+    total === 0              ? '#475569'
+    : pct >= 0.70            ? '#10b981'
+    : pct >= 0.40            ? '#f59e0b'
+    :                          '#ef4444';
 
   const textColor =
     total === 0              ? '#94a3b8'
@@ -65,26 +64,13 @@ function RingChart({ activas, total, size = 72 }) {
   );
 }
 
-// ─── Badge de estado dinámico ─────────────────────────────────────────────────
-function StatusBadge({ activas, total }) {
-  if (total === 0)
-    return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-700 text-slate-400 border border-white/5">Sin PCs</span>;
-
-  const pct = activas / total;
-  if (pct >= 0.70)
-    return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">● Disponible</span>;
-  if (pct >= 0.40)
-    return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">● Parcial</span>;
-  if (pct > 0)
-    return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30">● Ocupado</span>;
-  return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-700/20 text-red-400 border border-red-700/30">● Lleno</span>;
-}
-
 // ─── Tarjeta de Laboratorio ───────────────────────────────────────────────────
-function CapacityBadge({ capacidad }) {
+function StatusBadge({ activo }) {
   return (
-    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30">
-      {capacidad || 0} puestos
+    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+      activo ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-white/5 theme-muted border-white/10'
+    }`}>
+      {activo ? 'Activo' : 'Inactivo'}
     </span>
   );
 }
@@ -111,7 +97,7 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
   const esComputo = esLabComputo(lab.categoria);
   const pct = esComputo && lab.total_computadoras > 0 ? lab.computadoras_activas / lab.total_computadoras : 0;
 
-  // Color de glow para el hover basado en disponibilidad
+  // Color de glow para el hover según la proporción de PCs activas
   const glowColor =
     !esComputo                 ? 'rgba(37,99,235,0.22)'
     : lab.total_computadoras === 0 ? 'rgba(100,116,139,0.3)'
@@ -138,9 +124,7 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
     >
       {/* Badge estado — esquina superior derecha */}
       <div className="absolute top-3.5 right-3.5">
-        {esComputo
-          ? <StatusBadge activas={lab.computadoras_activas} total={lab.total_computadoras} />
-          : <CapacityBadge capacidad={lab.capacidad} />}
+        <StatusBadge activo={lab.activo} />
       </div>
 
       {/* Cuerpo principal: ring + info */}
@@ -174,45 +158,37 @@ function LaboratoryCard({ lab, onVerPCs, onEditar, onDesactivar, onActivar, canM
             <p className="text-xs mt-1 italic" style={{ color: '#64748b' }}>Sin ubicación</p>
           )}
 
-          {/* Barra de progreso lineal */}
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] text-slate-500">{esComputo ? 'PCs activas' : 'Capacidad registrada'}</span>
-              <span className="text-[10px] text-slate-400 font-medium">
-                {esComputo ? (
-                  <>
-                    {lab.computadoras_activas} / {lab.total_computadoras}
-                    {lab.total_computadoras > 0 && (
-                      <span className="text-slate-600"> ({Math.round(pct * 100)}%)</span>
-                    )}
-                  </>
-                ) : `${lab.capacidad || 0} ${capacidadUnidad(lab.categoria)}`}
-              </span>
+          {esComputo && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] theme-muted">PCs activas</span>
+                <span className="text-[10px] theme-muted font-medium">
+                  {lab.computadoras_activas} / {lab.total_computadoras}
+                  {lab.total_computadoras > 0 && ` (${Math.round(pct * 100)}%)`}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.07)'}}>
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.round(pct * 100)}%`,
+                    background:
+                      pct >= 0.70 ? 'linear-gradient(90deg,#059669,#10b981)'
+                      : pct >= 0.40 ? 'linear-gradient(90deg,#d97706,#f59e0b)'
+                      : 'linear-gradient(90deg,#dc2626,#ef4444)',
+                    boxShadow:
+                      pct >= 0.70 ? '0 0 6px #10b98166'
+                      : pct >= 0.40 ? '0 0 6px #f59e0b66'
+                      : '0 0 6px #ef444466',
+                  }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{background:'rgba(255,255,255,0.07)'}}>
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: esComputo ? `${Math.round(pct * 100)}%` : '100%',
-                  background:
-                    !esComputo ? 'linear-gradient(90deg,#2563eb,#38bdf8)'
-                    : pct >= 0.70 ? 'linear-gradient(90deg,#059669,#10b981)'
-                    : pct >= 0.40 ? 'linear-gradient(90deg,#d97706,#f59e0b)'
-                    : 'linear-gradient(90deg,#dc2626,#ef4444)',
-                  boxShadow:
-                    !esComputo ? '0 0 6px #38bdf866'
-                    : pct >= 0.70 ? '0 0 6px #10b98166'
-                    : pct >= 0.40 ? '0 0 6px #f59e0b66'
-                    : '0 0 6px #ef444466',
-                }}
-              />
-            </div>
-          </div>
+          )}
 
           {/* Capacidad */}
-          <p className="text-[10px] text-slate-600 mt-1.5">
-            Capacidad: {lab.capacidad} {capacidadUnidad(lab.categoria)}
-            {!lab.activo && <span className="ml-2 text-slate-500">(Inactivo)</span>}
+          <p className="text-[10px] theme-muted mt-1.5">
+            Capacidad registrada: {lab.capacidad || 0} {capacidadUnidad(lab.categoria)}
           </p>
         </div>
       </div>
@@ -460,14 +436,14 @@ export default function Laboratorios() {
   const cargarLabs = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const { data } = await api.get(`/laboratorios?solo_activos=${soloActivos}`);
+      const { data } = await api.get('/laboratorios?solo_activos=false');
       const labsVisibles = esResponsable
         ? data.filter(lab => Number(lab.id) === Number(usuario?.laboratorio_id))
         : data;
       setLabs(labsVisibles);
     } catch { setError('No se pudieron cargar los laboratorios'); }
     finally  { setLoading(false); }
-  }, [esResponsable, soloActivos, usuario?.laboratorio_id]);
+  }, [esResponsable, usuario?.laboratorio_id]);
 
   useEffect(() => { cargarLabs(); }, [cargarLabs]);
 
@@ -500,10 +476,9 @@ export default function Laboratorios() {
   };
 
   // Resumen rápido
-  const labsComputo = labs.filter(l => esLabComputo(l.categoria));
-  const totPCs     = labsComputo.reduce((s, l) => s + l.total_computadoras, 0);
-  const activasPCs = labsComputo.reduce((s, l) => s + l.computadoras_activas, 0);
-  const gruposLabs = Object.entries(labs.reduce((acc, lab) => {
+  const labsActivos = labs.filter(lab => lab.activo);
+  const labsVisibles = soloActivos ? labsActivos : labs;
+  const gruposLabs = Object.entries(labsVisibles.reduce((acc, lab) => {
     const key = lab.categoria || 'SIN_CLASIFICAR';
     acc[key] = acc[key] || [];
     acc[key].push(lab);
@@ -538,12 +513,12 @@ export default function Laboratorios() {
       </div>
 
       {/* ── Resumen ── */}
-      {labs.length > 0 && !loading && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+      {!loading && !error && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           {[
-            { icon:'🏢', label:'Laboratorios', value: labs.length },
-            { icon:'🖥️', label:'PCs activas',  value: activasPCs },
-            { icon:'📊', label:'Disponibilidad', value: totPCs > 0 ? `${Math.round(activasPCs/totPCs*100)}%` : '—' },
+            { icon:'🏢', label:'Laboratorios registrados', value: labs.length },
+            { icon:'✓', label:'Activos', value: labsActivos.length },
+            { icon:'⏸', label:'Inactivos', value: labs.length - labsActivos.length },
           ].map(({icon,label,value}) => (
             <div key={label} className="glass-sm rounded-xl px-4 py-3 flex items-center gap-3">
               <span className="text-xl">{icon}</span>
@@ -558,13 +533,13 @@ export default function Laboratorios() {
 
       {/* ── Filtro ── */}
       <div className="flex items-center gap-3 my-4">
-        <label className="flex items-center gap-2 text-sm cursor-pointer select-none" style={{ color: '#cbd5e1' }}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none theme-text">
           <input type="checkbox" checked={soloActivos} onChange={e => setSoloActivos(e.target.checked)}
             className="w-4 h-4 rounded accent-emerald-500" />
           Solo activos
         </label>
         <span className="text-slate-600">|</span>
-        <span className="text-sm" style={{ color: '#94a3b8' }}>{labs.length} laboratorio{labs.length !== 1 ? 's' : ''}</span>
+        <span className="text-sm theme-muted">{labsVisibles.length} de {labs.length} laboratorios</span>
       </div>
 
       {/* ── Error ── */}
@@ -577,19 +552,21 @@ export default function Laboratorios() {
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
         </div>
-      ) : labs.length === 0 ? (
+      ) : error ? null : labsVisibles.length === 0 ? (
         <div className="text-center py-20 text-slate-500">
           <svg className="w-14 h-14 mx-auto mb-4 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           </svg>
           <p className="font-medium">
-            {esResponsable ? 'No tienes un laboratorio asignado' : 'No hay laboratorios registrados'}
+            {soloActivos && labs.length > 0
+              ? 'No hay laboratorios activos'
+              : esResponsable ? 'No tienes un laboratorio asignado' : 'No hay laboratorios registrados'}
           </p>
-          {esResponsable && (
+          {esResponsable && labs.length === 0 && (
             <p className="text-sm mt-2">Solicita a un administrador que revise tu asignación.</p>
           )}
-          {puedeAdministrar && (
+          {puedeAdministrar && labs.length === 0 && (
             <button onClick={() => setModalCrear(true)}
               className="mt-3 text-blue-400 hover:text-blue-300 text-sm underline transition-colors">
               Crear el primero →
@@ -600,11 +577,17 @@ export default function Laboratorios() {
         <div className="space-y-7">
           {gruposLabs.map(([categoria, labsGrupo]) => (
             <section key={categoria}>
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3">
                 <h2 className="text-sm font-semibold text-white">{categoriaLabel(categoria)}</h2>
                 <span className="text-xs text-slate-500 px-2 py-0.5 rounded-full bg-white/5">
                   {labsGrupo.length} laboratorio{labsGrupo.length !== 1 ? 's' : ''}
                 </span>
+                {esLabComputo(categoria) && (
+                  <span className="text-xs theme-muted">
+                    {labsGrupo.reduce((total, lab) => total + lab.computadoras_activas, 0)} de{' '}
+                    {labsGrupo.reduce((total, lab) => total + lab.total_computadoras, 0)} PCs activas
+                  </span>
+                )}
                 <div className="h-px bg-white/10 flex-1" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Resumen general de laboratorios por estado — 2026-11-09
+
+### Problema y comportamiento resultante
+El resumen mezclaba el total de laboratorios con el porcentaje de PCs activas de Cómputo bajo la etiqueta Disponibilidad. La vista muestra laboratorios registrados, activos e inactivos dentro del alcance de acceso del usuario. Solo activos filtra el listado sin alterar los totales. Cada tarjeta muestra el estado del laboratorio. Cómputo conserva el recuento de PCs activas sobre las registradas y las demás categorías muestran la capacidad registrada de cada laboratorio.
+
+### Validación y estado
+44 suites y 191 pruebas frontend aprobadas, incluida la separación de métricas entre Cómputo y Química y la estabilidad de los totales al filtrar. Compilación Vite aprobada con avisos de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Contraste del selector de modo — 2026-11-09
 
 ### Problema y comportamiento resultante
