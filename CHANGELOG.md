@@ -4,13 +4,23 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Horas y duración claras al consultar disponibilidad — 2026-11-08
+## [Preparado, sin publicar] — Sesión sin reservación solo en Cómputo — 2026-11-08
+
+### Problema y comportamiento resultante
+El horario docente ofrecía iniciar una sesión libre al consultar cualquier laboratorio, lo que sugería que la acción también aplicaba a Química y Agroindustria. Iniciar sesión sin reservación aparece únicamente al seleccionar un laboratorio de categoría Cómputo. El formulario muestra ese laboratorio y usa su identificador al abrir la sesión.
+
+### Validación y estado
+43 suites y 190 pruebas frontend aprobadas. La nueva prueba comprueba la visibilidad en Química, Agroindustria y Cómputo, y el envío al laboratorio de Cómputo elegido. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [2a4f655] — Horas y duración claras al consultar disponibilidad — 2026-11-08
 
 ### Problema y comportamiento resultante
 El selector de inicio mostraba un rango que podía confundirse con la duración total. La disponibilidad docente presenta Hora de inicio y Hora de fin juntas, con una sola hora por opción. Un resumen junto a las fechas muestra el día, el tramo completo, la duración y que se trata de una sesión. El acceso a configurar una clase semanal se traslada al pie. La consulta conserva la validación del tramo completo y la precarga de sus horas al solicitar.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas. La prueba de disponibilidad verifica las horas de inicio individuales, el resumen al extender el fin y el acceso semanal en el pie. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas. La prueba de disponibilidad verifica las horas de inicio individuales, el resumen al extender el fin y el acceso semanal en el pie. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió 2a4f655 y Railway confirmó SUCCESS para frontend (58623cb4-d125-4892-9831-134642c690ba) y backend (1af85263-5c18-4dd6-b808-8cbe867f8642). Web y JavaScript HTTP 200 con los nuevos selectores y el resumen. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

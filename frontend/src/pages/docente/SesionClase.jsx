@@ -1351,11 +1351,11 @@ function ModalYoSolicite({ slot, onClose, onRetirado }) {
 
 const DURACIONES_LIBRE = [30, 60, 90, 120];
 
-function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
+function ModalSesionLibre({ laboratorio, onClose, onSesionIniciada }) {
   const navigate  = useNavigate();
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
-  const [labId,      setLabId]      = useState(labs[0]?.id ?? '');
+  const labId = laboratorio.id;
   const [observacion, setObservacion] = useState('');
   const [duracion,   setDuracion]   = useState(60);
   const [saving,     setSaving]     = useState(false);
@@ -1431,12 +1431,8 @@ function ModalSesionLibre({ labs, onClose, onSesionIniciada }) {
 
           {/* Laboratorio */}
           <div>
-            <label className="block text-sm text-slate-400 mb-1.5">Laboratorio *</label>
-            <SelectDark
-              value={labId}
-              onChange={setLabId}
-              options={labs.map(l => ({ value: l.id, label: l.nombre }))}
-            />
+            <p className="text-sm text-slate-400">Laboratorio</p>
+            <p className="font-semibold">{laboratorio.nombre}</p>
           </div>
 
           {/* Nota opcional */}
@@ -2349,7 +2345,7 @@ export default function SesionClase() {
   const [sesionActiva, setSesionActiva]       = useState(null);
   const [ocupacionActual, setOcupacionActual] = useState(null);
   const [modalSlot, setModalSlot]             = useState(null);
-  const [modalLibre, setModalLibre]           = useState(false);
+  const [modalLibre, setModalLibre]           = useState(null);
   const [solicRecibidas, setSolicRecibidas]   = useState([]);
   const [accionando, setAccionando]           = useState(null); // reservacion_id en proceso
   const [errorLaboratorios, setErrorLaboratorios] = useState('');
@@ -2443,6 +2439,7 @@ export default function SesionClase() {
 
   const cerrar = () => setModalSlot(null);
   const laboratorio = laboratorios.find(l => String(l.id) === String(labId));
+  const permiteSesionLibre = laboratorio?.categoria?.toUpperCase() === 'COMPUTO';
   const verFechas = usuario?.rol === 'DOCENTE' && esLaboratorioDePracticas(laboratorio)
     ? slot => setModalSlot({ tipo: 'ocupacion', slot })
     : undefined;
@@ -2533,15 +2530,15 @@ export default function SesionClase() {
               : esMobil ? 'Toca un turno para ver las acciones disponibles.' : 'Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.'}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button onClick={() => setModalLibre(true)}
+        {permiteSesionLibre && (
+          <button onClick={() => setModalLibre(laboratorio.id)}
             className="flex items-center gap-2 input-dark px-3 py-2 text-sm font-medium transition-colors shrink-0 rounded-lg">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
             </svg>
-            {esMobil ? 'Registrar sin reserva' : 'Sesión sin reservación'}
+            Iniciar sesión sin reservación
           </button>
-        </div>
+        )}
       </div>
 
       <div className="mb-4"><AgendaPracticasDocente /></div>
@@ -2675,10 +2672,10 @@ export default function SesionClase() {
           onSesionIniciada={setSesionActiva}
         />
       )}
-      {modalLibre && (
+      {permiteSesionLibre && modalLibre === laboratorio.id && (
         <ModalSesionLibre
-          labs={laboratorios}
-          onClose={() => setModalLibre(false)}
+          laboratorio={laboratorio}
+          onClose={() => setModalLibre(null)}
           onSesionIniciada={setSesionActiva}
         />
       )}
