@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Captura de sesiones por fecha y horario — 2026-11-08
+
+### Problema y comportamiento resultante
+El total de sesiones y el intervalo de repetición complicaban la selección de fechas concretas. Para uso individual, el docente captura fecha, hora de inicio y hora de fin de cada sesión. Cada fila nueva copia las horas de la anterior y deja la fecha por elegir. El total se calcula a partir de la lista y se pueden quitar filas. Cualquier edición descarta la verificación anterior y se requieren fechas y horas completas para verificar. Para uso académico, se conserva la propuesta a partir del horario de la materia y se descarta la propuesta anterior al cambiar sus criterios.
+
+### Validación y estado
+42 suites y 187 pruebas frontend aprobadas. La prueba del flujo individual comprueba tres fechas concretas, copia de horas, horario distinto por sesión, bloqueo de verificación con una fila incompleta y retiro de una fecha tras verificar. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la revisión visual autenticada y la publicación.
+
+---
+
 ## [Preparado, sin publicar] — Acceso unificado al bloqueo desde el turno de Química — 2026-11-08
 
 ### Problema y comportamiento resultante

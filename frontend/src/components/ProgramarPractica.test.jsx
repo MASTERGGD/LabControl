@@ -41,9 +41,31 @@ test('sin carga académica bloquea captura y permite cambiar a uso individual',a
  expect(container.querySelector('[aria-label="Materia y grupo"]')).toBeNull();
  await input('Laboratorio de la práctica','2');await input('Título de la práctica','Conservación de muestras');
  await act(async()=>{const el=container.querySelector('[aria-label="Objetivo de la actividad"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'Evaluar conservación de frutos');el.dispatchEvent(new Event('input',{bubbles:true}));});
- await input('Fecha inicial','2026-11-09');await click('Proponer fechas individuales');
+ await input('Fecha sesión 1','2026-11-11');
+ expect(container.querySelector('[aria-label="Intervalo de sesiones"]')).toBeNull();
+ expect(container.querySelector('[aria-label="Número de sesiones"]')).toBeNull();
+ await input('Fin sesión 1','10:00');
  api.post.mockResolvedValue({data:{disponible:true,conflictos:[]}});await click('Verificar disponibilidad');
  expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({proposito:'INDIVIDUAL',incluye_practica:false,sesiones:[expect.objectContaining({carga_id:null})]}));
+ await click('Agregar otra sesión');
+ expect(container.querySelector('[aria-label="Fecha sesión 2"]').value).toBe('');
+ expect(container.querySelector('[aria-label="Fin sesión 2"]').value).toBe('10:00');
+ await click('Verificar disponibilidad');
+ expect(api.post).toHaveBeenCalledTimes(1);
+ await input('Fecha sesión 2','2026-11-12');
+ await click('Agregar otra sesión');
+ await input('Fecha sesión 3','2026-11-13');
+ await input('Inicio sesión 3','09:00');
+ await click('Verificar disponibilidad');
+ expect(api.post.mock.calls[1][1].sesiones).toEqual([
+   expect.objectContaining({fecha:'2026-11-11',hora_inicio:'08:00',hora_fin:'10:00'}),
+   expect.objectContaining({fecha:'2026-11-12',hora_inicio:'08:00',hora_fin:'10:00'}),
+   expect.objectContaining({fecha:'2026-11-13',hora_inicio:'09:00',hora_fin:'10:00'}),
+ ]);
+ await act(async()=>container.querySelector('[aria-label="Quitar sesión 2"]').click());
+ expect(container.textContent).not.toContain('Confirmar 3 sesiones');
+ await click('Verificar disponibilidad');
+ expect(api.post.mock.calls[2][1].sesiones.map(s=>s.fecha)).toEqual(['2026-11-11','2026-11-13']);
 });
 
 test('fallo de consulta no se presenta como ausencia de materias y permite reintentar',async()=>{

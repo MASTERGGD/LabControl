@@ -2,11 +2,22 @@ import React, { useEffect, useState } from 'react';
 import api from '../hooks/useApi';
 import { getApiErrorMessage } from '../utils/apiError';
 import { todayISOInMexico } from '../utils/timezone';
-import { proponerSesiones, proponerFechasIndividuales } from '../utils/programarPractica';
+import { proponerSesiones } from '../utils/programarPractica';
 import MaterialesPracticaSelector from './MaterialesPracticaSelector';
 const dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const campo = 'input-dark w-full';
 const boton = 'rounded-xl border px-4 py-2 text-sm font-semibold disabled:opacity-40';
+const maxSesiones = 30;
+
+function sesionIndividual(fecha, horario) {
+  return {
+    fecha,
+    hora_inicio: horario?.hora_inicio || '08:00',
+    hora_fin: horario?.hora_fin || '09:00',
+    carga_id: null,
+    fuera_horario: true,
+  };
+}
 
 export default function ProgramarPractica({ origen, onGuardado, onClose, laboratorioInicialId, slotInicial }) {
   const [cargas, setCargas] = useState([]);
@@ -24,11 +35,10 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
   const [objetivo, setObjetivo] = useState(origen?.objetivo || '');
   const [cantidad, setCantidad] = useState(3);
   const [inicio, setInicio] = useState(todayISOInMexico());
-  const [intervalo, setIntervalo] = useState(7);
-  const [horaInicio, setHoraInicio] = useState(slotInicial?.hora_inicio || '08:00');
-  const [horaFin, setHoraFin] = useState(slotInicial?.hora_fin || '09:00');
   const [diasElegidos, setDiasElegidos] = useState([]);
-  const [sesiones, setSesiones] = useState([]);
+  const [fechas, setSesiones] = useState(() => origen?.proposito === 'INDIVIDUAL'
+    ? [sesionIndividual(todayISOInMexico(), slotInicial)]
+    : []);
   const [materiales, setMateriales] = useState([]);
   const [error, setError] = useState('');
   const [conflictos, setConflictos] = useState([]);
@@ -61,15 +71,23 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
   const lab = labs.find(l => String(l.id) === labId);
   const permitePractica = ['QUIMICA', 'AGROINDUSTRIA'].includes(lab?.categoria?.toUpperCase());
   const cambiar = fn => { fn(); setValidado(false); setConflictos([]); setError(''); };
-  const editar = (i, cambios) => cambiar(() => setSesiones(actual => actual.map((s, j) => i === j ? { ...s, ...cambios } : s)));
-  const elegirProposito = valor => cambiar(() => { setProposito(valor); setSesiones([]); setCargaId(''); setDiasElegidos([]); setMateriales([]); setIncluyePractica(false); setCantidad(valor === 'INDIVIDUAL' ? 1 : 3); });
+  const cambiarFechas = fn => cambiar(() => { fn(); setSesiones([]); });
+  const total = Number(cantidad);
+  const cantidadValida = Number.isInteger(total) && total >= 1 && total <= maxSesiones;
+  const fechasCompletas = fechas.length > 0 && fechas.every(s => s.fecha && s.hora_inicio && s.hora_fin > s.hora_inicio);
+  const editar = (i, cambios) => cambiar(() => setSesiones(fechas.map((s, j) => i === j ? { ...s, ...cambios } : s)));
+  const elegirProposito = valor => cambiar(() => {
+    setProposito(valor);
+    setSesiones(valor === 'INDIVIDUAL' ? [sesionIndividual(todayISOInMexico(), slotInicial)] : []);
+    setCargaId(''); setDiasElegidos([]); setMateriales([]); setIncluyePractica(false); setCantidad(3);
+  });
   const payload = () => ({
     laboratorio_id: Number(labId), titulo, objetivo, proposito, incluye_practica: incluyePractica, participantes: academica ? null : participantes || null,
-    practica_origen_id: origen?.practica_origen_id || origen?.id || null, sesiones,
+    practica_origen_id: origen?.practica_origen_id || origen?.id || null, sesiones: fechas,
     materiales: incluyePractica ? materiales.filter(m => m.descripcion?.trim()).map(m => ({ descripcion: m.descripcion, insumo_id: m.insumo_id ? Number(m.insumo_id) : null, cantidad_solicitada: Number(m.cantidad_solicitada), unidad: m.unidad || 'PIEZA', nota: m.nota || null })) : [],
   });
   const enviar = async confirmar => {
-    if (!sesiones.length || (academica && !carga) || !lab || titulo.trim().length < 2 || (!academica && objetivo.trim().length < 4)) {
+    if (!fechasCompletas || (academica && !carga) || !lab || titulo.trim().length < 2 || (!academica && objetivo.trim().length < 4)) {
       setError('Completa el propósito, los datos de la actividad y sus fechas antes de verificar.'); return;
     }
     setOcupado(true); setError(''); setConflictos([]);
@@ -101,19 +119,30 @@ export default function ProgramarPractica({ origen, onGuardado, onClose, laborat
           {!academica && <label className="block">Participantes (opcional)<textarea aria-label="Participantes" className={campo} maxLength={1000} disabled={Boolean(origen)} value={participantes} onChange={e => cambiar(() => setParticipantes(e.target.value))}/><span className="text-xs">Si trabajas individualmente puedes dejarlo vacío. Este registro no es una lista académica de alumnos.</span></label>}
           <label className="block"><input type="checkbox" disabled={Boolean(origen) || !permitePractica} checked={incluyePractica} onChange={e => cambiar(() => { setIncluyePractica(e.target.checked); setMateriales([]); })}/> Incluye práctica con materiales y seguimiento</label>
           <p className="text-xs">{incluyePractica ? 'Cada fecha requerirá preparación y entrega de materiales por el responsable.' : 'Se solicita el espacio y se registra una bitácora por sesión, sin solicitud de materiales.'}</p>
-          <div className="grid gap-3 sm:grid-cols-2"><label>Desde<input aria-label="Fecha inicial" className={campo} type="date" min={todayISOInMexico()} value={inicio} onChange={e => cambiar(() => setInicio(e.target.value))}/></label><label>Número de sesiones<input aria-label="Número de sesiones" className={campo} type="number" min={1} max={30} value={cantidad} onChange={e => cambiar(() => setCantidad(e.target.value))}/></label></div>
           {academica ? <>
-            <div><p>Días de la materia que quieres utilizar</p><div className="flex flex-wrap gap-3">{[...new Set(mismaMateria.map(c => c.dia_semana))].sort().map(d => <label key={d}><input type="checkbox" checked={diasElegidos.includes(d)} onChange={() => cambiar(() => setDiasElegidos(a => a.includes(d) ? a.filter(x => x !== d) : [...a, d]))}/> {dias[d]}</label>)}</div></div>
-            <button className={boton} disabled={!inicio || !diasElegidos.length || cantidad < 1 || cantidad > 30} onClick={() => cambiar(() => setSesiones(proponerSesiones(mismaMateria.filter(c => diasElegidos.includes(c.dia_semana)), inicio, Number(cantidad))))}>Proponer fechas de mi horario</button>
-          </> : <>
-            <div className="grid gap-3 sm:grid-cols-3"><label>Hora inicio<input aria-label="Hora inicial individual" className={campo} type="time" value={horaInicio} onChange={e => cambiar(() => setHoraInicio(e.target.value))}/></label><label>Hora fin<input aria-label="Hora final individual" className={campo} type="time" value={horaFin} onChange={e => cambiar(() => setHoraFin(e.target.value))}/></label><label>Repetir cada (días)<input aria-label="Intervalo de sesiones" className={campo} type="number" min={1} max={120} value={intervalo} onChange={e => cambiar(() => setIntervalo(e.target.value))}/></label></div>
-            <button className={boton} disabled={!inicio || cantidad < 1 || cantidad > 30 || intervalo < 1 || intervalo > 120 || !horaFin || horaFin <= horaInicio} onClick={() => cambiar(() => setSesiones(proponerFechasIndividuales(inicio, Number(cantidad), Number(intervalo), horaInicio, horaFin)))}>Proponer fechas individuales</button>
-          </>}
-          {!!sesiones.length && <div className="space-y-3"><h3 className="font-semibold text-white">Revisa cada fecha antes de reservar</h3>{sesiones.map((s, i) => <div key={i} className="rounded-xl border border-white/15 p-3"><p className="text-sm font-semibold">Sesión {i + 1}</p><div className="mt-2 grid gap-2 sm:grid-cols-3"><input aria-label={`Fecha sesión ${i + 1}`} className={campo} type="date" min={todayISOInMexico()} value={s.fecha} onChange={e => editar(i, { fecha: e.target.value })}/><input aria-label={`Inicio sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_inicio} onChange={e => editar(i, { hora_inicio: e.target.value })}/><input aria-label={`Fin sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_fin} onChange={e => editar(i, { hora_fin: e.target.value })}/></div>{academica && <label className="mt-2 block text-sm"><input type="checkbox" checked={s.fuera_horario} onChange={e => editar(i, { fuera_horario: e.target.checked })}/> Programar esta sesión fuera de mi horario habitual</label>}</div>)}</div>}
+            <div className="grid gap-3 sm:grid-cols-2"><label>Buscar fechas desde<input aria-label="Fecha inicial" className={campo} type="date" min={todayISOInMexico()} value={inicio} onChange={e => cambiarFechas(() => setInicio(e.target.value))}/></label><label>Total de sesiones<input aria-label="Número de sesiones" className={campo} type="number" min={1} max={maxSesiones} value={cantidad} onChange={e => cambiarFechas(() => setCantidad(e.target.value))}/><span className="text-xs">La primera sesión cuenta dentro del total.</span></label></div>
+            <div><p>Días de la materia que quieres utilizar</p><div className="flex flex-wrap gap-3">{[...new Set(mismaMateria.map(c => c.dia_semana))].sort().map(d => <label key={d}><input type="checkbox" checked={diasElegidos.includes(d)} onChange={() => cambiarFechas(() => setDiasElegidos(a => a.includes(d) ? a.filter(x => x !== d) : [...a, d]))}/> {dias[d]}</label>)}</div></div>
+            <button className={boton} disabled={!inicio || !diasElegidos.length || !cantidadValida} onClick={() => cambiar(() => setSesiones(proponerSesiones(mismaMateria.filter(c => diasElegidos.includes(c.dia_semana)), inicio, Number(cantidad))))}>Proponer fechas de mi horario</button>
+          </> : <p className="text-sm">Elige la fecha y el horario de cada sesión. Al agregar otra, se copian las horas de la anterior y puedes cambiarlas.</p>}
+          {!!fechas.length && <div className="space-y-3">
+            <h3 className="font-semibold text-white">{fechas.length === 1 ? '1 sesión prevista' : `${fechas.length} sesiones previstas`}</h3>
+            {fechas.map((s, i) => <div key={i} className="rounded-xl border border-white/15 p-3">
+              <p className="text-sm font-semibold">Sesión {i + 1}</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <label>Fecha<input aria-label={`Fecha sesión ${i + 1}`} className={campo} type="date" min={todayISOInMexico()} value={s.fecha} onChange={e => editar(i, { fecha: e.target.value })}/></label>
+                <label>Hora de inicio<input aria-label={`Inicio sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_inicio} onChange={e => editar(i, { hora_inicio: e.target.value })}/></label>
+                <label>Hora de fin<input aria-label={`Fin sesión ${i + 1}`} className={campo} type="time" disabled={academica && !s.fuera_horario} value={s.hora_fin} onChange={e => editar(i, { hora_fin: e.target.value })}/></label>
+              </div>
+              {academica && <label className="mt-2 block text-sm"><input type="checkbox" checked={s.fuera_horario} onChange={e => editar(i, { fuera_horario: e.target.checked })}/> Programar esta sesión fuera de mi horario habitual</label>}
+              {!academica && fechas.length > 1 && <button className={`${boton} mt-2`} aria-label={`Quitar sesión ${i + 1}`} onClick={() => cambiar(() => setSesiones(fechas.filter((_, j) => j !== i)))}>Quitar sesión</button>}
+            </div>)}
+          </div>}
+          {!academica && <button className={boton} disabled={fechas.length >= maxSesiones || !fechasCompletas} onClick={() => cambiar(() => setSesiones([...fechas, sesionIndividual('', fechas.at(-1))]))}>Agregar otra sesión</button>}
+          {!!fechas.length && !fechasCompletas && <p className="text-xs">Completa la fecha y las horas de cada sesión. La hora de fin debe ser posterior a la de inicio.</p>}
           {incluyePractica && !origen && <div><p className="font-semibold">Materiales por sesión</p><p className="text-xs">Se solicitarán estas cantidades en cada fecha.</p><MaterialesPracticaSelector laboratorioId={labId} materiales={materiales} onChange={m => cambiar(() => setMateriales(m))}/></div>}
           {!!conflictos.length && <div role="alert" className="rounded-xl border border-amber-500 p-3">No se confirmó ninguna sesión.{conflictos.map((c, i) => <p key={i}>Sesión {c.sesion} · {c.fecha}: {c.mensaje}</p>)}</div>}
-          {validado && <p role="status" className="text-emerald-400">Las {sesiones.length} sesiones están disponibles. Al confirmar se volverá a revisar la disponibilidad.</p>}
-          <button className="btn-blue px-4 py-2" disabled={!sesiones.length || ocupado || !lab} onClick={() => enviar(validado)}>{ocupado ? 'Comprobando…' : validado ? `Confirmar ${sesiones.length} sesiones` : 'Verificar disponibilidad'}</button>
+          {validado && <p role="status" className="text-emerald-400">{fechas.length === 1 ? "La sesión está disponible." : `Las ${fechas.length} sesiones están disponibles.`} Al confirmar se volverá a revisar la disponibilidad.</p>}
+          <button className="btn-blue px-4 py-2" disabled={!fechasCompletas || ocupado || !lab} onClick={() => enviar(validado)}>{ocupado ? 'Comprobando…' : validado ? `Confirmar ${fechas.length} ${fechas.length === 1 ? "sesión" : "sesiones"}` : 'Verificar disponibilidad'}</button>
         </>}
       </fieldset>
       {error && <p className="mt-3 text-red-400" role="alert">{error}</p>}
