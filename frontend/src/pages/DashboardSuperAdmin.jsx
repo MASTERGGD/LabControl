@@ -69,7 +69,7 @@ export default function DashboardSuperAdmin() {
   const navigate = useNavigate();
   const [labs, setLabs] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
-  const [operacion, setOperacion] = useState(null);
+  const [departamentosActivos, setDepartamentosActivos] = useState(null);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(true);
 
@@ -79,13 +79,11 @@ export default function DashboardSuperAdmin() {
     Promise.all([
       api.get('/laboratorios?solo_activos=false'),
       api.get('/usuarios'),
-      api.get('/reportes/dashboard'),
     ])
-      .then(([labsRes, usuariosRes, dashboardRes]) => {
+      .then(([labsRes, usuariosRes]) => {
         if (!activo) return;
         setLabs(Array.isArray(labsRes.data) ? labsRes.data : []);
         setUsuarios(Array.isArray(usuariosRes.data) ? usuariosRes.data : []);
-        setOperacion(dashboardRes.data || null);
         setError('');
       })
       .catch(() => {
@@ -93,6 +91,14 @@ export default function DashboardSuperAdmin() {
       })
       .finally(() => {
         if (activo) setCargando(false);
+      });
+
+    api.get('/departamentos?activo=true')
+      .then(({ data }) => {
+        if (activo && Array.isArray(data)) setDepartamentosActivos(data.length);
+      })
+      .catch(() => {
+        if (activo) setDepartamentosActivos(null);
       });
     return () => { activo = false; };
   }, []);
@@ -114,10 +120,6 @@ export default function DashboardSuperAdmin() {
     };
   }, [labs, usuarios]);
 
-  const totalPcs = labs
-    .filter(lab => esLabComputo(lab.categoria))
-    .reduce((sum, lab) => sum + (lab.total_computadoras || 0), 0);
-  const alertas = operacion?.alertas?.total ?? 0;
   const fecha = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -144,12 +146,14 @@ export default function DashboardSuperAdmin() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${departamentosActivos === null ? 'xl:grid-cols-4' : 'xl:grid-cols-5'}`}>
           <CardKpi label="Laboratorios activos" value={cargando ? '...' : resumen.labsActivos} sub={`${resumen.labsInactivos} inactivos`} color="#2563eb" />
           <CardKpi label="Usuarios activos" value={cargando ? '...' : resumen.usuariosActivos} sub={`${resumen.usuariosInactivos} inactivos`} color="#7c3aed" />
           <CardKpi label="Administradores lab" value={cargando ? '...' : resumen.adminsLab} sub="Responsables asignados" color="#a855f7" />
           <CardKpi label="Docentes" value={cargando ? '...' : resumen.docentes} sub="Con acceso académico" color="#10b981" />
-          <CardKpi label="Equipos registrados" value={cargando ? '...' : totalPcs} sub={`${alertas} alertas operativas`} color={alertas > 0 ? '#ef4444' : '#38bdf8'} />
+          {departamentosActivos !== null && (
+            <CardKpi label="Departamentos activos" value={departamentosActivos} sub="Estructura institucional" color="#0891b2" />
+          )}
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

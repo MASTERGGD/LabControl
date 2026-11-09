@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Indicador institucional en el inicio del superadmin — 2026-11-09
+
+### Problema y comportamiento resultante
+El inicio mostraba el total de PCs de Cómputo como Equipos registrados junto con alertas operativas. La tarjeta Departamentos activos usa el catálogo institucional filtrado por estado. Si el catálogo no responde correctamente, el inicio conserva los otros cuatro indicadores y el mapa rápido. El mapa muestra las PCs o los puestos de cada laboratorio según su categoría.
+
+### Validación y estado
+45 suites y 194 pruebas frontend aprobadas. Las pruebas cubren un conteo positivo, un cero confirmado, una consulta fallida y el mapa por categoría. Compilación Vite aprobada con avisos de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Resumen general de laboratorios por estado — 2026-11-09
 
 ### Problema y comportamiento resultante
