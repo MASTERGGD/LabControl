@@ -4,13 +4,23 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Sesión sin reservación solo en Cómputo — 2026-11-08
+## [Preparado, sin publicar] — Formato de fechas y pie fijo en disponibilidad docente — 2026-11-08
+
+### Problema y comportamiento resultante
+Las filas de fechas ponían mayúsculas en cada palabra y el acceso a la clase semanal quedaba al final del contenido desplazable. Las filas ahora muestran el día con mayúscula inicial y el resto de la fecha en minúsculas, como Miércoles, 11 de noviembre. El enlace Configurar una clase semanal queda en un pie compacto fuera del área de desplazamiento. El encabezado con Cerrar también permanece visible y el contenido puede desplazarse sin cubrir la última fecha.
+
+### Validación y estado
+43 suites y 190 pruebas frontend aprobadas. La prueba de disponibilidad verifica la fecha en español y que el enlace quede fuera del área desplazable. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [7dba09b] — Sesión sin reservación solo en Cómputo — 2026-11-08
 
 ### Problema y comportamiento resultante
 El horario docente ofrecía iniciar una sesión libre al consultar cualquier laboratorio, lo que sugería que la acción también aplicaba a Química y Agroindustria. Iniciar sesión sin reservación aparece únicamente al seleccionar un laboratorio de categoría Cómputo. El formulario muestra ese laboratorio y usa su identificador al abrir la sesión.
 
 ### Validación y estado
-43 suites y 190 pruebas frontend aprobadas. La nueva prueba comprueba la visibilidad en Química, Agroindustria y Cómputo, y el envío al laboratorio de Cómputo elegido. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 190 pruebas frontend aprobadas. La nueva prueba comprueba la visibilidad en Química, Agroindustria y Cómputo, y el envío al laboratorio de Cómputo elegido. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió 7dba09b y Railway confirmó SUCCESS para frontend (a70ecb60-1db6-4c40-98a9-b8da7d53fa99) y backend (283fcedb-875e-4930-9dd3-99ca6cba590d). Web y JavaScript HTTP 200 con el texto nuevo y Ver disponibilidad. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

@@ -12,6 +12,7 @@ const estados = {
 };
 const formato = new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 const fechaTexto = fecha => formato.format(new Date(`${fecha}T12:00:00Z`));
+const fechaFila = fecha => fechaTexto(fecha).replace(/^./u, letra => letra.toLocaleUpperCase('es-MX'));
 const rango = slot => `${slot.hora_inicio} a ${slot.hora_fin}`;
 const minutosDelDia = hora => {
   const [horas, minutos] = hora.split(':').map(Number);
@@ -107,35 +108,36 @@ export function OcupacionHorarioModal({ slot, slots, onClose, onSolicitar, accio
   };
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
-    <section role="dialog" aria-modal="true" aria-labelledby={tituloId} className="glass max-h-[90vh] w-full max-w-xl space-y-4 overflow-auto p-5">
-      <div className="flex items-start justify-between gap-3">
+    <section role="dialog" aria-modal="true" aria-labelledby={tituloId} className="glass flex max-h-[90dvh] w-full max-w-xl flex-col">
+      <header className="flex shrink-0 items-start justify-between gap-3 px-5 pt-5 pb-3">
         <h2 id={tituloId} className="text-lg font-bold">Disponibilidad del laboratorio</h2>
         <button type="button" autoFocus className="rounded border px-3 py-1" onClick={onClose}>Cerrar</button>
+      </header>
+      <div className="min-h-0 space-y-4 overflow-y-auto px-5 pb-4">
+        {accionReserva && seleccion.horario_id === slot.horario_id && <button type="button"
+          className="rounded border px-3 py-1 text-sm" onClick={onGestionar}>{accionReserva}</button>}
+        <div className="grid grid-cols-2 gap-3">
+          <label>Hora de inicio
+            <select className="input-dark w-full" value={seleccion.horario_id} disabled={alternativas.length <= 1}
+              onChange={e => elegirInicio(e.target.value)}>
+              {(alternativas.length ? alternativas : [seleccion]).map(s => <option key={s.horario_id} value={s.horario_id}>{s.hora_inicio}</option>)}
+            </select>
+          </label>
+          <label>Hora de fin
+            <select className="input-dark w-full" value={fin} disabled={fines.length === 1} onChange={e => setFinElegido(e.target.value)}>
+              {fines.map(hora => <option key={hora} value={hora}>{hora}</option>)}
+            </select>
+          </label>
+        </div>
+        <p aria-live="polite" className="rounded-xl border border-slate-500/30 p-3 text-sm font-semibold">
+          {slot.dia_nombre} · {rango(tramo)} · {duracion(tramo.hora_inicio, fin)} · 1 sesión
+        </p>
+        <Fechas key={`${seleccion.horario_id}-${fin}-${intento}`} slot={tramo} finExtendido={fin !== seleccion.hora_fin ? fin : ''}
+          onReintentar={() => setIntento(i => i + 1)} onSolicitar={onSolicitar}/>
+        <p className="text-xs">Al verificar la solicitud, SIGA revisa también el horario del docente y, cuando corresponda, el del grupo.</p>
       </div>
-      {accionReserva && seleccion.horario_id === slot.horario_id && <button type="button"
-        className="rounded border px-3 py-1 text-sm" onClick={onGestionar}>{accionReserva}</button>}
-      <div className="grid grid-cols-2 gap-3">
-        <label>Hora de inicio
-          <select className="input-dark w-full" value={seleccion.horario_id} disabled={alternativas.length <= 1}
-            onChange={e => elegirInicio(e.target.value)}>
-            {(alternativas.length ? alternativas : [seleccion]).map(s => <option key={s.horario_id} value={s.horario_id}>{s.hora_inicio}</option>)}
-          </select>
-        </label>
-        <label>Hora de fin
-          <select className="input-dark w-full" value={fin} disabled={fines.length === 1} onChange={e => setFinElegido(e.target.value)}>
-            {fines.map(hora => <option key={hora} value={hora}>{hora}</option>)}
-          </select>
-        </label>
-      </div>
-      <p aria-live="polite" className="rounded-xl border border-slate-500/30 p-3 text-sm font-semibold">
-        {slot.dia_nombre} · {rango(tramo)} · {duracion(tramo.hora_inicio, fin)} · 1 sesión
-      </p>
-      <Fechas key={`${seleccion.horario_id}-${fin}-${intento}`} slot={tramo} finExtendido={fin !== seleccion.hora_fin ? fin : ''}
-        onReintentar={() => setIntento(i => i + 1)} onSolicitar={onSolicitar}/>
-      <p className="text-xs">Al verificar la solicitud, SIGA revisa también el horario del docente y, cuando corresponda, el del grupo.</p>
-      <footer className="border-t border-slate-500/30 pt-3 text-sm">
+      <footer className="shrink-0 border-t border-slate-500/30 px-5 py-3 text-sm">
         <a href="/docente/horario" className="font-semibold underline">Configurar una clase semanal</a>
-        <p className="mt-1 text-xs">Reserva un horario recurrente del cuatrimestre desde Mi horario docente.</p>
       </footer>
     </section>
   </div>;
@@ -148,7 +150,7 @@ function Fechas({ slot, finExtendido, onReintentar, onSolicitar }) {
     {resultado?.error && <button type="button" className="rounded border px-3 py-1" onClick={onReintentar}>Reintentar consulta</button>}
     {!!resultado?.data?.fechas.length && <ul className="divide-y divide-slate-500/30">
       {resultado.data.fechas.map(f => <li key={f.fecha} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-        <span className="capitalize">{fechaTexto(f.fecha)}</span>
+        <span>{fechaFila(f.fecha)}</span>
         <span>{estados[f.estado]}</span>
         {f.estado === 'DISPONIBLE' && <button type="button" className="btn-blue px-3 py-1"
           aria-label={`Solicitar para esta fecha: ${fechaTexto(f.fecha)}`}

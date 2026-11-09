@@ -34,6 +34,9 @@ test('distingue la clase semanal y permite solicitar una fecha libre en otro hor
     expect(host.textContent).not.toContain('Solicitar para esta fecha');
     expect(host.querySelector('a').getAttribute('href')).toBe('/docente/horario');
     expect(host.querySelector('footer a').textContent).toBe('Configurar una clase semanal');
+    const lista = host.querySelector('.overflow-y-auto');
+    expect(lista.contains(host.querySelector('footer'))).toBe(false);
+    expect(lista.querySelector('li span').textContent).toBe('Miércoles, 11 de noviembre');
     expect([...host.querySelector('select').options].map(o => o.textContent)).toEqual(['13:00', '14:00', '15:30']);
     expect(host.textContent).toContain('Miércoles · 13:00 a 14:00 · 1 hora · 1 sesión');
     expect([...host.querySelectorAll('select')[1].options].map(o => o.value)).toEqual(['14:00', '15:00']);
