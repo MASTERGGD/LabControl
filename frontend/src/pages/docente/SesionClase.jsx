@@ -1628,6 +1628,7 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
           </div>
         )}
         <button
+          className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
           onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
           style={{
             width: '100%', height: onVerFechas ? undefined : esSegundoEnGrupo ? 'calc(100% - 4px)' : '100%',
@@ -1639,7 +1640,6 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
             cursor: isClickable ? 'pointer' : 'default',
             transition: 'filter 0.15s, box-shadow 0.15s',
             boxShadow: slot.estado_vista === 'MIO' ? '0 2px 10px rgba(79,70,229,0.25)' : 'none',
-            outline: 'none',
           }}
           onMouseEnter={e => { if (isClickable) e.currentTarget.style.filter = 'brightness(1.15)'; }}
           onMouseLeave={e => { e.currentTarget.style.filter = 'none'; }}
@@ -1698,11 +1698,11 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
               </div>
 
               {slot.reservacion && <span style={{ display: 'inline-flex', width: 'fit-content', fontSize: '9px', marginTop: '3px', color: '#bfdbfe', background: 'rgba(30,64,175,0.35)', borderRadius: '4px', padding: '2px 5px', fontWeight: 700 }}>
-                ↻ Recurrente · cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
+                Cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
               </span>}
 
               {/* Badges de acción */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '5px' }}>
+              {['MIO', 'YO_SOLICITE'].includes(slot.estado_vista) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '5px' }}>
                 {slot.estado_vista === 'MIO' && slot.solicitudes_n > 0 && (
                   <span style={{ fontSize: '10px', background: 'rgba(180,83,9,0.5)', color: '#fcd34d', borderRadius: '999px', padding: '1px 6px', fontWeight: 600 }}>
                     ⚠️ {slot.solicitudes_n}
@@ -1723,15 +1723,12 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
                     ↑ continúa
                   </span>
                 )}
-                {slot.estado_vista === 'OCUPADO' && (
-                  <span style={{ fontSize: '10px', color: `${txtColor}66`, padding: '1px 2px' }}>↗</span>
-                )}
                 {slot.estado_vista === 'YO_SOLICITE' && (
                   <span style={{ fontSize: '10px', background: 'rgba(124,45,18,0.6)', color: '#fdba74', borderRadius: '999px', padding: '1px 6px', fontWeight: 600 }}>
                     Pendiente
                   </span>
                 )}
-              </div>
+              </div>}
             </>
           )}
         </button>
@@ -1868,7 +1865,8 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
 
           return (
             <div key={clave}>
-            <button onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
+            <button className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+              onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
               style={{
                 width: '100%', textAlign: 'left',
                 background: c.bg, border: `1px solid ${c.border}`,
@@ -1907,9 +1905,6 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
                     <span style={{ fontSize: '11px', ...badge.reserve, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
                       {slot.reservaciones_puntuales?.length ? '+ Otra fecha' : '+ Reservar'}
                     </span>
-                  )}
-                  {slot.estado_vista === 'OCUPADO' && (
-                    <span style={{ fontSize: '11px', color: c.meta, opacity: isDay ? 1 : 0.6 }}>↗</span>
                   )}
                   {slot.estado_vista === 'YO_SOLICITE' && (
                     <span style={{ fontSize: '11px', background: 'rgba(124,45,18,0.7)', color: '#fdba74', borderRadius: '999px', padding: '2px 8px' }}>Pendiente</span>
@@ -1956,7 +1951,7 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
               ) : null}
 
               {slot.reservacion && <p style={{ margin: '4px 0 0', fontSize: '11px', color: c.meta, fontWeight: 700 }}>
-                ↻ Recurrente · cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
+                Cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
               </p>}
               {!!slot.reservaciones_puntuales?.length && <p style={{ margin: '4px 0 0', fontSize: '11px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>
                 🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}

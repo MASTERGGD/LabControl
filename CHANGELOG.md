@@ -4,7 +4,17 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Ocupación por fecha en el horario docente — 2026-11-08
+## [Preparado, sin publicar] — Tarjetas del horario docente más compactas — 2026-11-08
+
+### Problema y comportamiento resultante
+La flecha de las tarjetas ocupadas no indicaba una acción concreta y añadía una línea en escritorio. Se retira en escritorio y móvil, se elimina el espacio de las insignias vacías y se abrevia la frecuencia a Cada día de la semana correspondiente. Se conservan el detalle al pulsar, el botón Ver fechas y los indicadores operativos. El foco de teclado se distingue con un contorno visible.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [db92620] — Ocupación por fecha en el horario docente — 2026-11-08
 
 ### Problema y comportamiento resultante
 El docente debía comprobar fechas una por una para encontrar un bloque libre. En Química y Agroindustria, la acción Ver fechas muestra el resumen al pasar el mouse o enfocar el botón en escritorio y abre el detalle al pulsarlo en escritorio o móvil. El detalle distingue reservas puntuales, reservas semanales, bloqueos y días no lectivos hasta el cierre del cuatrimestre. Destaca la primera fecha libre y permite consultar otros horarios del mismo día. La consulta de ocupación devuelve fechas y estados sin nombres, materias ni motivos de terceros.
@@ -12,7 +22,7 @@ El docente debía comprobar fechas una por una para encontrar un bloque libre. E
 Solicitar este horario precarga el laboratorio, la fecha y las horas para uso individual o académico. En este último se enlaza la carga elegida y se indica si el bloque queda fuera del horario habitual. Se conserva la validación de disponibilidad antes de confirmar.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas, incluidas la selección de un bloque alternativo y la precarga académica e individual. 43 pruebas backend de programación y gestión aprobadas, incluida la distinción entre fechas puntuales, bloqueo, clase semanal y periodo anterior. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas, incluidas la selección de un bloque alternativo y la precarga académica e individual. 43 pruebas backend de programación y gestión aprobadas, incluida la distinción entre fechas puntuales, bloqueo, clase semanal y periodo anterior. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió db92620 y Railway confirmó SUCCESS para el frontend (dce16ebd-1a4f-4e43-a042-a6a6e97aff26) y el backend (855c26ec-bc4b-4976-81c3-490e0151282f) del mismo commit. Web y JavaScript HTTP 200 con el resumen y el aviso de clase semanal presentes. API HTTP 200 y healthy, con HTTP 401 en la ruta de ocupación sin sesión. Pendiente la revisión visual autenticada.
 
 ---
 
