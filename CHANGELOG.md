@@ -4,13 +4,23 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado, sin publicar] — Tarjetas del horario docente más compactas — 2026-11-08
+## [Preparado, sin publicar] — Una entrada para consultar y solicitar laboratorio — 2026-11-08
+
+### Problema y comportamiento resultante
+La cuadrícula docente de Química y Agroindustria presentaba una tarjeta Disponible y un enlace Ver fechas con rutas distintas. En escritorio y móvil, el bloque completo ahora abre Ver disponibilidad. El aviso breve de escritorio destaca la próxima fecha libre o la ocupación semanal sin repetir el listado. El detalle permite elegir una fecha libre con Solicitar laboratorio y precarga el formulario. Los accesos a reservas y solicitudes existentes quedan dentro del detalle del bloque original.
+
+### Validación y estado
+43 suites y 189 pruebas frontend aprobadas, incluida la elección de una fecha libre desde la disponibilidad. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
+## [eb6ee63] — Tarjetas del horario docente más compactas — 2026-11-08
 
 ### Problema y comportamiento resultante
 La flecha de las tarjetas ocupadas no indicaba una acción concreta y añadía una línea en escritorio. Se retira en escritorio y móvil, se elimina el espacio de las insignias vacías y se abrevia la frecuencia a Cada día de la semana correspondiente. Se conservan el detalle al pulsar, el botón Ver fechas y los indicadores operativos. El foco de teclado se distingue con un contorno visible.
 
 ### Validación y estado
-43 suites y 189 pruebas frontend aprobadas. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+43 suites y 189 pruebas frontend aprobadas. Compilación Vite aprobada con los avisos existentes de tamaño e importación mixta de offlineStore. Publicado y comprobado el 8 de noviembre de 2026, hora de Ciudad de México. GitHub recibió eb6ee63 y Railway confirmó SUCCESS para el frontend (da55bda8-d860-4bb7-a48d-03e9f8c92372) y el backend (553fd644-b363-41c4-a2a5-fc0e4daf4b93). La web y el JavaScript públicos respondieron HTTP 200. El paquete contiene las etiquetas cortas y Ver fechas, y se comprobó la retirada de la flecha de las tarjetas. API HTTP 200 y healthy. Pendiente la revisión visual autenticada.
 
 ---
 

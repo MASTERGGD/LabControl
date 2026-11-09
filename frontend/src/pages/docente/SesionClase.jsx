@@ -1559,6 +1559,7 @@ const GRAD_DOC = {
 };
 
 function GridSemanal({ slots, onSlotClick, onVerFechas }) {
+  const Boton = onVerFechas ? OcupacionHorarioBoton : 'button';
   const { themeKey } = useTheme();
   const isDay = themeKey === 'day';
   const horas = [...new Set(slots.map(s => s.hora_inicio))].sort();
@@ -1614,7 +1615,8 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
     // Texto principal de materia en celdas OCUPADO: blanco para máximo contraste
     const materiaColor = slot.estado_vista === 'OCUPADO' ? '#ffffff' : txtColor;
 
-    const isClickable = ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
+    const isClickable = Boolean(onVerFechas) || ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
+    const turno = { ...slot, _grupo: grupo };
 
     return (
       <div style={{ height: '100%', minHeight: '40px' }}>
@@ -1627,11 +1629,12 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
             <div style={{ width: '2px', height: '100%', background: 'rgba(99,102,241,0.45)' }} />
           </div>
         )}
-        <button
+        <Boton
+          {...(onVerFechas ? { slot, vistaPrevia: true } : {})}
           className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
-          onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
+          onClick={() => isClickable && (onVerFechas || onSlotClick)(turno)}
           style={{
-            width: '100%', height: onVerFechas ? undefined : esSegundoEnGrupo ? 'calc(100% - 4px)' : '100%',
+            width: '100%', height: esSegundoEnGrupo ? 'calc(100% - 4px)' : '100%',
             background: grad,
             border: `1px solid ${borderColor}`,
             borderRadius: '8px',
@@ -1658,7 +1661,7 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
             </>
           ) : slot.estado_vista === 'LIBRE' ? (
             <>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>{slot.reservaciones_puntuales?.length ? '+ Disponible en otras fechas' : '+ Disponible'}</span>
+              {!onVerFechas && <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>{slot.reservaciones_puntuales?.length ? '+ Disponible en otras fechas' : '+ Disponible'}</span>}
               {!!slot.reservaciones_puntuales?.length && <span style={{ display: 'block', fontSize: '9px', marginTop: '3px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}</span>}
             </>
           ) : slot.estado_vista === 'BLOQUEADO' ? (
@@ -1702,7 +1705,7 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
               </span>}
 
               {/* Badges de acción */}
-              {['MIO', 'YO_SOLICITE'].includes(slot.estado_vista) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '5px' }}>
+              {!onVerFechas && ['MIO', 'YO_SOLICITE'].includes(slot.estado_vista) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '5px' }}>
                 {slot.estado_vista === 'MIO' && slot.solicitudes_n > 0 && (
                   <span style={{ fontSize: '10px', background: 'rgba(180,83,9,0.5)', color: '#fcd34d', borderRadius: '999px', padding: '1px 6px', fontWeight: 600 }}>
                     ⚠️ {slot.solicitudes_n}
@@ -1731,8 +1734,8 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
               </div>}
             </>
           )}
-        </button>
-        {onVerFechas && <OcupacionHorarioBoton slot={slot} onClick={onVerFechas} vistaPrevia/>}
+          {onVerFechas && <span className="block text-xs font-semibold underline" style={{ color: txtColor }}>Ver disponibilidad</span>}
+        </Boton>
       </div>
     );
   };
@@ -1759,6 +1762,7 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
 // ─── Vista móvil: un día a la vez con tabs ────────────────────────────────────
 
 function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia }) {
+  const Boton = onVerFechas ? OcupacionHorarioBoton : 'button';
   const dias = [...new Set(slots.map(s => s.dia_semana))].sort();
   const gruposConsecutivos = detectarGruposConsecutivos(slots);
 
@@ -1860,13 +1864,14 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
           const c     = COLOR[slot.estado_vista] || COLOR.LIBRE;
           const clave = `${slot.dia_semana}-${slot.hora_inicio}`;
           const grupo = gruposConsecutivos[clave];
-          const isClickable = ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
+          const isClickable = Boolean(onVerFechas) || ['LIBRE','MIO','OCUPADO','EN_DISPUTA'].includes(slot.estado_vista);
+          const turno = { ...slot, _grupo: grupo };
           const esLibre = slot.estado_vista === 'LIBRE';
 
           return (
-            <div key={clave}>
-            <button className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
-              onClick={() => isClickable && onSlotClick({ ...slot, _grupo: grupo })}
+            <Boton key={clave} {...(onVerFechas ? { slot } : {})}
+              className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+              onClick={() => isClickable && (onVerFechas || onSlotClick)(turno)}
               style={{
                 width: '100%', textAlign: 'left',
                 background: c.bg, border: `1px solid ${c.border}`,
@@ -1893,7 +1898,7 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
                       ⚠️ {slot.solicitudes_n}
                     </span>
                   )}
-                  {slot.estado_vista === 'MIO' && (grupo ? grupo.esInicio : true) && (
+                  {!onVerFechas && slot.estado_vista === 'MIO' && (grupo ? grupo.esInicio : true) && (
                     <span style={{ fontSize: '11px', ...badge.action, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
                       ▶ Iniciar
                     </span>
@@ -1901,7 +1906,7 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
                   {slot.estado_vista === 'MIO' && grupo && !grupo.esInicio && (
                     <span style={{ fontSize: '11px', color: c.meta, fontWeight: isDay ? 700 : 400 }}>↑ continúa</span>
                   )}
-                  {slot.estado_vista === 'LIBRE' && (
+                  {!onVerFechas && slot.estado_vista === 'LIBRE' && (
                     <span style={{ fontSize: '11px', ...badge.reserve, borderRadius: '999px', padding: '2px 10px', fontWeight: 700 }}>
                       {slot.reservaciones_puntuales?.length ? '+ Otra fecha' : '+ Reservar'}
                     </span>
@@ -1965,9 +1970,8 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
                   🕐 Clase de {grupo.total} períodos · hasta {grupo.horaFinGrupo} ({grupo.duracionMin} min)
                 </p>
               )}
-            </button>
-            {onVerFechas && <OcupacionHorarioBoton slot={slot} onClick={onVerFechas}/>}
-            </div>
+              {onVerFechas && <span className="block text-xs font-semibold underline" style={{ color: c.txt }}>Ver disponibilidad</span>}
+            </Boton>
           );
         })}
       </div>
@@ -2442,6 +2446,14 @@ export default function SesionClase() {
   const verFechas = usuario?.rol === 'DOCENTE' && esLaboratorioDePracticas(laboratorio)
     ? slot => setModalSlot({ tipo: 'ocupacion', slot })
     : undefined;
+  const slotOcupacion = modalSlot?.tipo === 'ocupacion' ? modalSlot.slot : null;
+  const accionReserva = slotOcupacion && ({
+    MIO: 'Ver mi reserva',
+    EN_DISPUTA: 'Ver reserva en disputa',
+    YO_SOLICITE: 'Ver mi solicitud',
+    OCUPADO: 'Solicitar turno ocupado',
+    LIBRE: slotOcupacion.reservaciones_puntuales?.length ? 'Ver reservas por fecha' : undefined,
+  })[slotOcupacion.estado_vista];
 
   return (
     <AdminLayout>
@@ -2517,7 +2529,8 @@ export default function SesionClase() {
             {esMobil ? 'Mi horario' : 'Mi horario semanal'}
           </h1>
           <p className={`${esMobil ? 'text-xs' : 'text-sm'} mt-1`} style={{ color: isDay ? '#334155' : '#cbd5e1' }}>
-            {esMobil ? 'Toca un turno para ver las acciones disponibles.' : 'Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.'}
+            {verFechas ? 'Abre un turno para consultar las fechas disponibles y elegir cuándo solicitar el laboratorio.'
+              : esMobil ? 'Toca un turno para ver las acciones disponibles.' : 'Selecciona un turno para reservarlo, iniciarlo o solicitar uno ocupado.'}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -2628,8 +2641,9 @@ export default function SesionClase() {
       )}
 
       {/* Modales */}
-      {modalSlot?.tipo === 'ocupacion' && (
-        <OcupacionHorarioModal slot={modalSlot.slot} slots={slots} onClose={cerrar}
+      {slotOcupacion && (
+        <OcupacionHorarioModal slot={slotOcupacion} slots={slots} onClose={cerrar}
+          accionReserva={accionReserva} onGestionar={() => handleSlotClick(slotOcupacion)}
           onSolicitar={slot => setModalSlot({ tipo: 'reservar', slot })}/>
       )}
       {modalSlot?.tipo === 'reservar' && (
