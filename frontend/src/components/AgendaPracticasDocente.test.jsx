@@ -34,6 +34,19 @@ test('continuaciones pendientes se agrupan por práctica y no rescatan una cance
  await click('Decidir continuación o cierre');expect(mockNavigate).toHaveBeenCalledWith('/docente/practicas-laboratorio?practica_id=2');
 });
 
+test('el horario oculta la agenda vacía y muestra el detalle cuando hay una sesión próxima', async () => {
+  await render({ enHorarioDocente: true });
+  expect(container.querySelector('section')).toBeNull();
+
+  api.get.mockResolvedValue({ data: [actividad(1, '2026-11-18')] });
+  await act(async () => window.dispatchEvent(new Event('focus')));
+  expect(container.textContent).toContain('Próximas');
+  expect(container.textContent).toContain('08:00–09:00 · Lab ficticio');
+  expect(container.textContent).not.toMatch(/Solicitar laboratorio|Ver historial/);
+  await click('Ver actividad');
+  expect(mockNavigate).toHaveBeenCalledWith('/docente/practicas-laboratorio?practica_id=1');
+});
+
 test('error de consulta permite reintento sin afirmar que no hay actividades',async()=>{
  api.get.mockRejectedValueOnce(new Error('Sin red'));await render();expect(container.querySelector('[role="alert"]')).not.toBeNull();expect(container.textContent).not.toContain('No tienes sesiones');
  api.get.mockResolvedValueOnce({data:[actividad(1,'2026-11-09')]});await click('Reintentar agenda');expect(container.querySelector('[role="alert"]')).toBeNull();expect(container.textContent).toContain('Actividad 1');

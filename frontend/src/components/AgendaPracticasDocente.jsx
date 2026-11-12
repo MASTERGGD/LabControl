@@ -10,7 +10,7 @@ const titulo = p => `${p.proposito === 'INDIVIDUAL' ? 'Investigación / uso indi
 const fecha = value => new Date(`${value}T12:00:00`).toLocaleDateString('es-MX', { day:'numeric', month:'short' });
 const estado = p => p.estado === 'PREPARADA' && p.incluye_practica === false ? 'Reservada' : p.estado === 'SOLICITADA' ? 'Preparación pendiente' : p.estado === 'EN_CURSO' ? 'En curso' : 'Materiales preparados';
 
-export default function AgendaPracticasDocente({ historial = false, periodoId, soloExtra = false }) {
+export default function AgendaPracticasDocente({ historial = false, periodoId, soloExtra = false, enHorarioDocente = false }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [error, setError] = useState('');
@@ -73,16 +73,26 @@ export default function AgendaPracticasDocente({ historial = false, periodoId, s
 
   if (historial) return <nav className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 px-4 py-3 text-sm" aria-label="Historial de laboratorio"><span className="text-slate-400">Las actividades finalizadas y canceladas se conservan para consulta.</span><button className="btn-ghost px-3 py-1.5" onClick={irHistorial}>Ver historial de laboratorio</button></nav>;
 
+  if (enHorarioDocente && !visibles.length && !pendientes.length && !error && !mensaje) return null;
+
   return <section className="rounded-xl border border-white/10 px-4 py-3" aria-label="Agenda de prácticas">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-bold text-white">Mi agenda de laboratorio</h2><div className="flex flex-wrap gap-2"><button className="btn-ghost px-3 py-1.5 text-xs" onClick={irHistorial}>Ver historial</button><button className="btn-blue px-3 py-1.5 text-xs" onClick={() => setAbierto(true)}>Solicitar laboratorio</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h2 className="text-sm font-bold text-white">Mi agenda de laboratorio</h2>
+      {!enHorarioDocente && (
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-ghost px-3 py-1.5 text-xs" onClick={irHistorial}>Ver historial</button>
+          <button className="btn-blue px-3 py-1.5 text-xs" onClick={() => setAbierto(true)}>Solicitar laboratorio</button>
+        </div>
+      )}
+    </div>
     {mensaje && <p role="status" className="mt-2 text-sm text-emerald-500">{mensaje}</p>}
     {error && <div role="alert" className="mt-2 text-sm text-amber-500"><p>{error}</p><button className="mt-1 underline" onClick={() => setRevision(r => r + 1)}>Reintentar agenda</button></div>}
     {cargando && <p role="status" className="mt-2 text-sm text-slate-400">Consultando próximas actividades…</p>}
-    {!error && !cargando && !futuras.length && <p className="mt-1 text-sm text-slate-400">{soloExtra && activas.length ? 'Las actividades de hoy están en tu jornada docente.' : 'No tienes sesiones de laboratorio próximas.'}</p>}
+    {!enHorarioDocente && !error && !cargando && !futuras.length && <p className="mt-1 text-sm text-slate-400">{soloExtra && activas.length ? 'Las actividades de hoy están en tu jornada docente.' : 'No tienes sesiones de laboratorio próximas.'}</p>}
     {!!deHoy.length && <div className="mt-2"><h3 className="text-xs font-semibold text-emerald-500">Hoy y en curso</h3><ul>{deHoy.map(fila)}</ul></div>}
     {!!proximas.length && <div className="mt-2"><h3 className="text-xs font-semibold text-slate-400">Próximas</h3><ul>{proximas.map(fila)}</ul></div>}
     {!error && !cargando && !!activas.length && <button className="mt-2 text-xs font-semibold text-blue-500 underline" onClick={irCompleta}>Ver agenda completa · {activas.length} {activas.length === 1 ? 'activa' : 'activas'}</button>}
     {!!pendientes.length && <details className="mt-2 border-t border-white/10 pt-2"><summary className="cursor-pointer text-xs font-semibold text-amber-500">Decisiones pendientes · {pendientes.length} {pendientes.length === 1 ? 'práctica' : 'prácticas'} por continuar o finalizar</summary><ul className="mt-2 max-h-60 space-y-2 overflow-auto">{pendientes.map(p => <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{titulo(p)}</span><button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => navigate(p.practica_url)}>Decidir continuación o cierre</button></li>)}</ul></details>}
-    {abierto && <ProgramarPractica onClose={() => setAbierto(false)} onGuardado={() => setRevision(r => r + 1)}/>}
+    {!enHorarioDocente && abierto && <ProgramarPractica onClose={() => setAbierto(false)} onGuardado={() => setRevision(r => r + 1)}/>}
   </section>;
 }

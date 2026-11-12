@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Agenda de laboratorio en Mi horario docente — 2026-11-12
+
+### Problema y comportamiento resultante
+Mi horario docente duplicaba accesos para solicitar laboratorio y consultar el historial. El recuadro muestra las sesiones próximas o en curso y las decisiones de continuación. También presenta errores de consulta con reintento y el aviso temporal de cancelación. Se oculta cuando no hay contenido. El menú lateral ofrece los accesos para solicitar y consultar el historial.
+
+### Validación y estado
+45 suites y 195 pruebas frontend aprobadas. La regresión verifica que la agenda vacía se oculte y que una sesión próxima muestre su horario y abra su detalle. Compilación Vite aprobada con avisos existentes de tamaño e importación mixta de offlineStore. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Indicador institucional en el inicio del superadmin — 2026-11-09
 
 ### Problema y comportamiento resultante

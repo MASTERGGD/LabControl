@@ -918,7 +918,7 @@ export default function MiHorarioDocente() {
           </div>
         </div>
 
-        <AgendaPracticasDocente periodoId={periodoId || undefined}/>
+        <AgendaPracticasDocente enHorarioDocente periodoId={periodoId || undefined}/>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
         {cierre && cierre.estado !== 'ACTIVO' && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA')) && (
