@@ -124,32 +124,37 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
     <div className={`space-y-4 rounded-xl border p-4 ${superficie}`}>
       <div className="flex flex-col gap-3 lg:flex-row">
         <label className="flex-1"><span className="sr-only">Buscar alumno, matrícula, materia, docente o tutor</span><input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-full" placeholder="Buscar alumno, matrícula, materia, docente o tutor…" /></label>
-        <label className={`flex items-center gap-2 text-xs ${secundario}`}>Ordenar por<select value={orden} onChange={e => setOrden(e.target.value)} className="input-dark"><option value="PRIORIDAD">Mayor prioridad</option><option value="ANTIGUO">Más antiguo</option><option value="RECIENTE">Más reciente</option></select></label>
+      </div>
+
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)_minmax(0,0.7fr)]">
+        <div className="min-w-0">
+          <label className={`grid gap-1.5 text-xs ${secundario}`}>
+            Fecha de reporte
+            <input type="date" value={fechaReporte} onChange={e => elegirFecha(e.target.value)} className="input-dark min-w-0" />
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" aria-pressed={fechaReporte === hoy} onClick={() => elegirFecha(hoy)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${fechaReporte === hoy ? 'border-emerald-700 bg-emerald-700 text-white' : superficie}`}>Hoy</button>
+            {fechaReporte && <button type="button" onClick={() => elegirFecha('')} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${superficie}`}>Quitar fecha</button>}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <label htmlFor="docente-reporte-tutorial" className={`mb-1.5 block text-xs ${secundario}`}>Docente que reportó</label>
+          <div className="grid gap-2 xl:grid-cols-2">
+            <input type="search" aria-label="Buscar docente por nombre" placeholder="Buscar docente…" value={busquedaDocente} onChange={e => setBusquedaDocente(e.target.value)} className="input-dark w-full min-w-0" />
+            <select id="docente-reporte-tutorial" value={docenteActivo} onChange={e => {
+              setDocente(e.target.value);
+              setBusquedaDocente('');
+              if (e.target.value) setFiltro('TODOS');
+            }} className="input-dark w-full min-w-0">
+              <option value="">Todos los docentes</option>
+              {docentesVisibles.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+            </select>
+          </div>
+          {consultaDocente && !docentesVisibles.some(([, nombre]) => normalizar(nombre).includes(consultaDocente)) && <span role="status" className={`text-xs ${secundario}`}>No se encontraron docentes.</span>}
+        </div>
+        <label className={`grid min-w-0 gap-1.5 text-xs ${secundario}`}>Ordenar por<select value={orden} onChange={e => setOrden(e.target.value)} className="input-dark w-full min-w-0"><option value="PRIORIDAD">Mayor prioridad</option><option value="ANTIGUO">Más antiguo</option><option value="RECIENTE">Más reciente</option></select></label>
       </div>
       <div className="flex flex-wrap gap-2" aria-label="Filtrar casos">{filtros.map(([key, label]) => <button type="button" key={key} aria-pressed={filtro === key} onClick={() => setFiltro(key)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${filtro === key ? 'border-emerald-700 bg-emerald-700 text-white' : `${superficie} hover:border-emerald-500`}`}>{label} <span className="ml-1 opacity-75">{casos.filter(c => coincideFiltro(c, key)).length}</span></button>)}</div>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className={`flex flex-wrap items-center gap-2 text-xs ${secundario}`}>
-          Fecha de reporte
-          <input type="date" value={fechaReporte} onChange={e => elegirFecha(e.target.value)} className="input-dark" />
-        </label>
-        <button type="button" aria-pressed={fechaReporte === hoy} onClick={() => elegirFecha(hoy)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${fechaReporte === hoy ? 'border-emerald-700 bg-emerald-700 text-white' : superficie}`}>Hoy</button>
-        {fechaReporte && <button type="button" onClick={() => elegirFecha('')} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${superficie}`}>Quitar fecha</button>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input type="search" aria-label="Buscar docente por nombre" placeholder="Buscar docente por nombre…" value={busquedaDocente} onChange={e => setBusquedaDocente(e.target.value)} className="input-dark" />
-        <label className={`flex flex-wrap items-center gap-2 text-xs ${secundario}`}>
-          Docente que reportó
-          <select value={docenteActivo} onChange={e => {
-            setDocente(e.target.value);
-            setBusquedaDocente('');
-            if (e.target.value) setFiltro('TODOS');
-          }} className="input-dark max-w-full">
-            <option value="">Todos los docentes</option>
-            {docentesVisibles.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
-          </select>
-        </label>
-        {consultaDocente && !docentesVisibles.some(([, nombre]) => normalizar(nombre).includes(consultaDocente)) && <span role="status" className={`text-xs ${secundario}`}>No se encontraron docentes.</span>}
-      </div>
       <details className={`text-xs ${secundario}`}><summary className="cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600">Cómo se priorizan los casos</summary>
         <p className="mt-2 leading-5">En «Mayor prioridad»: primero los reportes con prioridad alta confirmada, luego los casos sin tutor y los que llevan 3 días o más sin acción tutorial. Dentro de cada nivel, aparecen primero los más antiguos.</p>
         <p className="mt-2 leading-5">Los reportes repetidos se destacan y tienen su propio filtro. Una lectura o un recordatorio no cuentan como seguimiento.</p>

@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Distribución de filtros del Panel de Tutoría — 2026-11-13
+
+### Problema y comportamiento resultante
+Fecha, docente y orden ocupaban zonas separadas. La búsqueda general queda arriba y los tres controles se alinean en una fila en escritorio. Los botones Hoy y Quitar fecha quedan junto al calendario. En pantallas estrechas los controles se apilan. Los estados quedan debajo.
+
+### Validación y estado
+Siete pruebas de Tutoría y compilación Vite aprobadas. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Filtro por docente en el Panel de Tutoría — 2026-11-13
 
 ### Problema y comportamiento resultante
