@@ -2283,7 +2283,7 @@ export default function TutoriaAdmin() {
 
       {/* â”€â”€ CANALIZACIONES â”€â”€ */}
       {tab === "reportes-tutor" && (
-        <BandejaTutorial reportes={reportesTutor} isDay={isDay} estados={ESTADO_REPORTE}
+        <BandejaTutorial reportes={reportesTutor} periodo={periodoPanel} isDay={isDay} estados={ESTADO_REPORTE}
           cargando={cargandoReportes} error={errorReportes} onReintentar={cargarReportesTutor}
           onVerReporte={reporte => setModal({ type: "detalle-reporte", reporte })} />
       )}

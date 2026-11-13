@@ -11,9 +11,12 @@ test('abre todos los reportes del alumno y conserva la acción sobre el reporte 
     id: index + 1, alumno_id: 8, alumno_nombre: 'Alumno de prueba', matricula: 'UTC008', estado: 'RECIBIDO',
     categoria: 'ACADEMICO', titulo: `Reporte ${index + 1}`, creado_en, tutor_destinatario: 'Tutor',
     reportado_por_id: index === 1 ? 21 : 20, reportado_por: index === 1 ? 'Marta López' : 'José Pérez',
+    grupo_reporte: index === 0
+      ? { clave: 'academico:10', nombre: '1° A · Informática', periodo: 'MAY-AGO 2026' }
+      : { clave: 'academico:20', nombre: '2° A · Informática', periodo: 'SEP-DIC 2026' },
   }));
   try {
-    act(() => root.render(<BandejaTutorial reportes={reportes} estados={{ RECIBIDO: { label: 'Visto por el tutor' } }} isDay onVerReporte={onVerReporte} />));
+    act(() => root.render(<BandejaTutorial reportes={reportes} periodo="SEP-DIC 2026" estados={{ RECIBIDO: { label: 'Visto por el tutor' } }} isDay onVerReporte={onVerReporte} />));
     expect(container.querySelectorAll('article')).toHaveLength(1);
     const abrir = [...container.querySelectorAll('button')].find(b => b.textContent.includes('Abrir expediente'));
     act(() => abrir.click());
@@ -33,6 +36,13 @@ test('abre todos los reportes del alumno y conserva la acción sobre el reporte 
       selector.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect([...container.querySelectorAll('button')].filter(b => b.textContent.includes('Ver detalle y acciones'))).toHaveLength(2);
+    const selectorGrupo = container.querySelector('select:has(option[value="academico:20"])');
+    expect([...selectorGrupo.options].map(option => option.textContent)).toEqual(['Todos los grupos', '2° A · Informática']);
+    act(() => {
+      selectorGrupo.value = 'academico:20';
+      selectorGrupo.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect([...container.querySelectorAll('button')].filter(b => b.textContent.includes('Ver detalle y acciones'))).toHaveLength(1);
     const calendario = container.querySelector('input[type="date"]');
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(calendario, '2026-09-02');

@@ -48,11 +48,12 @@ const presentacionEstado = (estado, isDay) => {
   return { label, ...paleta[tono] };
 };
 
-export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte, cargando, error, onReintentar }) {
+export default function BandejaTutorial({ reportes, periodo, isDay, estados, onVerReporte, cargando, error, onReintentar }) {
   const [filtro, setFiltro] = useState('PENDIENTES');
   const [busqueda, setBusqueda] = useState('');
   const [fechaReporte, setFechaReporte] = useState('');
   const [docente, setDocente] = useState('');
+  const [grupo, setGrupo] = useState('');
   const [busquedaDocente, setBusquedaDocente] = useState('');
   const [orden, setOrden] = useState('PRIORIDAD');
   const [abierto, setAbierto] = useState(null);
@@ -69,12 +70,21 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
   const docenteActivo = docentes.some(([id]) => id === docente) ? docente : '';
   const consultaDocente = normalizar(busquedaDocente.trim());
   const docentesVisibles = docentes.filter(([id, nombre]) => id === docenteActivo || normalizar(nombre).includes(consultaDocente));
-  const casos = useMemo(() => agruparCasos(fechaReporte || docenteActivo ? reportes.filter(reporte => {
+  const grupos = useMemo(() => {
+    const opciones = new Map();
+    for (const { grupo_reporte: origen } of reportes) {
+      if (origen && (!periodo || origen.periodo === periodo)) opciones.set(origen.clave, origen.nombre);
+    }
+    return [...opciones].sort((a, b) => a[1].localeCompare(b[1], 'es', { numeric: true }));
+  }, [reportes, periodo]);
+  const grupoActivo = grupos.some(([clave]) => clave === grupo) ? grupo : '';
+  const casos = useMemo(() => agruparCasos(fechaReporte || docenteActivo || grupoActivo ? reportes.filter(reporte => {
+    if (grupoActivo && reporte.grupo_reporte?.clave !== grupoActivo) return false;
     if (docenteActivo && claveDocente(reporte) !== docenteActivo) return false;
     if (!fechaReporte) return true;
     const creada = fecha(reporte.creado_en);
     return creada && diaInstitucional.format(creada) === fechaReporte;
-  }) : reportes), [reportes, fechaReporte, docenteActivo]);
+  }) : reportes), [reportes, fechaReporte, docenteActivo, grupoActivo]);
   const elegirFecha = valor => {
     setFechaReporte(valor);
     if (valor) setFiltro('TODOS');
@@ -126,7 +136,7 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
         <label className="flex-1"><span className="sr-only">Buscar alumno, matrícula, materia, docente o tutor</span><input type="search" value={busqueda} onChange={e => setBusqueda(e.target.value)} className="input-dark w-full" placeholder="Buscar alumno, matrícula, materia, docente o tutor…" /></label>
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.55fr)_minmax(0,0.7fr)]">
+      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,0.8fr)]">
         <div className="min-w-0">
           <label className={`grid gap-1.5 text-xs ${secundario}`}>
             Fecha de reporte
@@ -152,6 +162,16 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
           </div>
           {consultaDocente && !docentesVisibles.some(([, nombre]) => normalizar(nombre).includes(consultaDocente)) && <span role="status" className={`text-xs ${secundario}`}>No se encontraron docentes.</span>}
         </div>
+        <label className={`grid min-w-0 gap-1.5 text-xs ${secundario}`}>
+          Grupo
+          <select value={grupoActivo} onChange={e => {
+            setGrupo(e.target.value);
+            if (e.target.value) setFiltro('TODOS');
+          }} className="input-dark w-full min-w-0">
+            <option value="">Todos los grupos</option>
+            {grupos.map(([clave, nombre]) => <option key={clave} value={clave}>{nombre}</option>)}
+          </select>
+        </label>
         <label className={`grid min-w-0 gap-1.5 text-xs ${secundario}`}>Ordenar por<select value={orden} onChange={e => setOrden(e.target.value)} className="input-dark w-full min-w-0"><option value="PRIORIDAD">Mayor prioridad</option><option value="ANTIGUO">Más antiguo</option><option value="RECIENTE">Más reciente</option></select></label>
       </div>
       <div className="flex flex-wrap gap-2" aria-label="Filtrar casos">{filtros.map(([key, label]) => <button type="button" key={key} aria-pressed={filtro === key} onClick={() => setFiltro(key)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${filtro === key ? 'border-emerald-700 bg-emerald-700 text-white' : `${superficie} hover:border-emerald-500`}`}>{label} <span className="ml-1 opacity-75">{casos.filter(c => coincideFiltro(c, key)).length}</span></button>)}</div>
@@ -204,6 +224,6 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
         </div>}
       </article>;
     })}</div>
-    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFechaReporte(''); setDocente(''); setBusquedaDocente(''); setFiltro('TODOS'); setCategoriaFiltro('TODAS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
+    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFechaReporte(''); setGrupo(''); setDocente(''); setBusquedaDocente(''); setFiltro('TODOS'); setCategoriaFiltro('TODAS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
   </section>;
 }

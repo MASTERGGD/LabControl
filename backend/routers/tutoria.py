@@ -2603,6 +2603,20 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         db.query(CargaDocente).filter(CargaDocente.id == reporte.carga_docente_id).first()
         if reporte.carga_docente_id else None
     )
+    grupo_academico = carga.grupo_academico if carga else None
+    grupo_reporte = None
+    if grupo_academico:
+        grupo_reporte = {
+            "clave": f"academico:{grupo_academico.id}",
+            "nombre": f"{grupo_academico.cuatrimestre}° {grupo_academico.grupo} · {grupo_academico.carrera}",
+            "periodo": carga.periodo.clave if carga.periodo else None,
+        }
+    elif grupo and not reporte.reasignado_en:
+        grupo_reporte = {
+            "clave": f"tutoria:{grupo.id}",
+            "nombre": f"{grupo.grupo} · {grupo.carrera}",
+            "periodo": grupo.periodo,
+        }
     acciones_docente = db.query(AccionReporteTutor).filter(
         AccionReporteTutor.reporte_id == reporte.id
     ).order_by(AccionReporteTutor.creado_en.asc(), AccionReporteTutor.id.asc()).all()
@@ -2625,6 +2639,7 @@ def _ser_reporte_tutor(reporte: ReporteTutor, db: Session) -> dict:
         "tutor_destinatario_id": reporte.tutor_destinatario_id,
         "tutor_destinatario": tutor.nombre if tutor else None,
         "grupo_tutorado_id": reporte.grupo_tutorado_id,
+        "grupo_reporte": grupo_reporte,
         "grupo": grupo.grupo if grupo else (alumno.grupo if alumno else None),
         "carrera": grupo.carrera if grupo else (alumno.carrera if alumno else None),
         "periodo": grupo.periodo if grupo else None,

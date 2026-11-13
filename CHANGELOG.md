@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Filtro por grupo en el Panel de Tutoría — 2026-11-13
+
+### Problema y comportamiento resultante
+La bandeja no permitía consultar los reportes de un grupo. El selector Grupo muestra los grupos con reportes del periodo seleccionado y permite combinar grupo, fecha y docente. Al elegir grupo se incluyen inicialmente todos los estados. El origen se obtiene de la carga académica vinculada o del grupo tutorado registrado si no hubo reasignación. Los reportes cuyo grupo de origen no se puede verificar siguen disponibles en Todos los grupos.
+
+### Validación y estado
+Siete pruebas frontend de Tutoría y compilación Vite aprobadas. La regresión cubre el periodo y la combinación de los tres filtros. Pendientes la publicación, las pruebas locales del backend y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Distribución de filtros del Panel de Tutoría — 2026-11-13
 
 ### Problema y comportamiento resultante
