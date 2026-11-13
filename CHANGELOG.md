@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Fecha de reporte en el Panel de Tutoría — 2026-11-13
+
+### Problema y comportamiento resultante
+El orden por prioridad dificultaba consultar qué reportaron los docentes en un día concreto. El botón Hoy y el calendario filtran los reportes por fecha de registro en Ciudad de México antes de agruparlos por expediente. Elegir una fecha muestra todos los estados inicialmente y permite refinar la consulta. El detalle muestra la fecha exacta y Quitar fecha elimina el filtro.
+
+### Validación y estado
+Siete pruebas de Tutoría y compilación Vite aprobadas. La regresión comprueba el cambio de día entre UTC y Ciudad de México y la apertura del reporte filtrado. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Agenda de laboratorio en Mi horario docente — 2026-11-12
 
 ### Problema y comportamiento resultante

@@ -7,7 +7,7 @@ test('abre todos los reportes del alumno y conserva la acción sobre el reporte 
   const container = document.createElement('div');
   const root = createRoot(container);
   const onVerReporte = jest.fn();
-  const reportes = [1, 2].map(id => ({ id, alumno_id: 8, alumno_nombre: 'Alumno de prueba', matricula: 'UTC008', estado: 'RECIBIDO', categoria: 'ACADEMICO', titulo: `Reporte ${id}`, creado_en: '2026-09-01T12:00:00', tutor_destinatario: 'Tutor' }));
+  const reportes = ['2026-09-01T12:00:00', '2026-09-02T03:00:00', '2026-09-02T07:00:00'].map((creado_en, index) => ({ id: index + 1, alumno_id: 8, alumno_nombre: 'Alumno de prueba', matricula: 'UTC008', estado: 'RECIBIDO', categoria: 'ACADEMICO', titulo: `Reporte ${index + 1}`, creado_en, tutor_destinatario: 'Tutor' }));
   try {
     act(() => root.render(<BandejaTutorial reportes={reportes} estados={{ RECIBIDO: { label: 'Visto por el tutor' } }} isDay onVerReporte={onVerReporte} />));
     expect(container.querySelectorAll('article')).toHaveLength(1);
@@ -16,9 +16,16 @@ test('abre todos los reportes del alumno y conserva la acción sobre el reporte 
     expect(abrir.getAttribute('aria-expanded')).toBe('true');
     expect(container.textContent).toContain('Reporte 1');
     const acciones = [...container.querySelectorAll('button')].filter(b => b.textContent.includes('Ver detalle y acciones'));
-    expect(acciones).toHaveLength(2);
-    act(() => acciones[1].click());
-    expect(onVerReporte).toHaveBeenCalledWith(reportes[1]);
+    expect(acciones).toHaveLength(3);
+    const calendario = container.querySelector('input[type="date"]');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(calendario, '2026-09-02');
+      calendario.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const filtradas = [...container.querySelectorAll('button')].filter(b => b.textContent.includes('Ver detalle y acciones'));
+    expect(filtradas).toHaveLength(1);
+    act(() => filtradas[0].click());
+    expect(onVerReporte).toHaveBeenCalledWith(reportes[2]);
     act(() => [...container.querySelectorAll('button')].find(b => b.textContent.startsWith('Resueltos')).click());
     expect(container.querySelectorAll('article')).toHaveLength(0);
     expect(container.textContent).toContain('No hay casos para esta consulta');
