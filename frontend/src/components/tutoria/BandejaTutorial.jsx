@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { agruparCasos, filtrarCasos, coincideFiltro, fecha, antiguedad, eventosCaso, nombreAlumno } from './casosTutoriales';
+import { agruparCasos, filtrarCasos, coincideFiltro, fecha, antiguedad, eventosCaso, nombreAlumno, normalizar } from './casosTutoriales';
 
 const diaInstitucional = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Mexico_City' });
 const fechaVisible = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium' });
+const claveDocente = reporte => String(reporte.reportado_por_id ?? reporte.reportado_por ?? '');
 
 const filtros = [['TODOS', 'Todos'], ['PENDIENTES', 'Pendientes'], ['PRIORITARIOS', 'Prioritarios'], ['SIN_SEGUIMIENTO', 'Sin seguimiento'], ['REPETIDOS', 'Reportes repetidos'], ['SIN_TUTOR', 'Sin tutor'], ['EN_SEGUIMIENTO', 'En seguimiento'], ['RESUELTOS', 'Resueltos'], ['CIERRE_ADMIN', 'Cierre administrativo']];
 const categorias = { ACADEMICO: 'Académico', ASISTENCIA: 'Asistencia', CONDUCTA: 'Conducta', PERSONAL: 'Situación personal', OTRO: 'Otro' };
@@ -51,15 +52,29 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
   const [filtro, setFiltro] = useState('PENDIENTES');
   const [busqueda, setBusqueda] = useState('');
   const [fechaReporte, setFechaReporte] = useState('');
+  const [docente, setDocente] = useState('');
+  const [busquedaDocente, setBusquedaDocente] = useState('');
   const [orden, setOrden] = useState('PRIORIDAD');
   const [abierto, setAbierto] = useState(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState('TODAS');
   const [descripcionAbierta, setDescripcionAbierta] = useState(() => new Set());
   const hoy = diaInstitucional.format(new Date());
-  const casos = useMemo(() => agruparCasos(fechaReporte ? reportes.filter(reporte => {
+  const docentes = useMemo(() => {
+    const nombres = new Map();
+    reportes.forEach(reporte => {
+      if (reporte.reportado_por) nombres.set(claveDocente(reporte), reporte.reportado_por);
+    });
+    return [...nombres].sort((a, b) => a[1].localeCompare(b[1], 'es'));
+  }, [reportes]);
+  const docenteActivo = docentes.some(([id]) => id === docente) ? docente : '';
+  const consultaDocente = normalizar(busquedaDocente.trim());
+  const docentesVisibles = docentes.filter(([id, nombre]) => id === docenteActivo || normalizar(nombre).includes(consultaDocente));
+  const casos = useMemo(() => agruparCasos(fechaReporte || docenteActivo ? reportes.filter(reporte => {
+    if (docenteActivo && claveDocente(reporte) !== docenteActivo) return false;
+    if (!fechaReporte) return true;
     const creada = fecha(reporte.creado_en);
     return creada && diaInstitucional.format(creada) === fechaReporte;
-  }) : reportes), [reportes, fechaReporte]);
+  }) : reportes), [reportes, fechaReporte, docenteActivo]);
   const elegirFecha = valor => {
     setFechaReporte(valor);
     if (valor) setFiltro('TODOS');
@@ -120,6 +135,21 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
         <button type="button" aria-pressed={fechaReporte === hoy} onClick={() => elegirFecha(hoy)} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${fechaReporte === hoy ? 'border-emerald-700 bg-emerald-700 text-white' : superficie}`}>Hoy</button>
         {fechaReporte && <button type="button" onClick={() => elegirFecha('')} className={`rounded-full border px-3 py-1.5 text-xs font-medium ${superficie}`}>Quitar fecha</button>}
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="search" aria-label="Buscar docente por nombre" placeholder="Buscar docente por nombre…" value={busquedaDocente} onChange={e => setBusquedaDocente(e.target.value)} className="input-dark" />
+        <label className={`flex flex-wrap items-center gap-2 text-xs ${secundario}`}>
+          Docente que reportó
+          <select value={docenteActivo} onChange={e => {
+            setDocente(e.target.value);
+            setBusquedaDocente('');
+            if (e.target.value) setFiltro('TODOS');
+          }} className="input-dark max-w-full">
+            <option value="">Todos los docentes</option>
+            {docentesVisibles.map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+          </select>
+        </label>
+        {consultaDocente && !docentesVisibles.some(([, nombre]) => normalizar(nombre).includes(consultaDocente)) && <span role="status" className={`text-xs ${secundario}`}>No se encontraron docentes.</span>}
+      </div>
       <details className={`text-xs ${secundario}`}><summary className="cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-600">Cómo se priorizan los casos</summary>
         <p className="mt-2 leading-5">En «Mayor prioridad»: primero los reportes con prioridad alta confirmada, luego los casos sin tutor y los que llevan 3 días o más sin acción tutorial. Dentro de cada nivel, aparecen primero los más antiguos.</p>
         <p className="mt-2 leading-5">Los reportes repetidos se destacan y tienen su propio filtro. Una lectura o un recordatorio no cuentan como seguimiento.</p>
@@ -169,6 +199,6 @@ export default function BandejaTutorial({ reportes, isDay, estados, onVerReporte
         </div>}
       </article>;
     })}</div>
-    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFechaReporte(''); setFiltro('TODOS'); setCategoriaFiltro('TODAS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
+    {!visibles.length && !cargando && !error && <div className={`rounded-xl border p-10 text-center ${superficie}`}><h3 className="font-semibold">No hay casos para esta consulta</h3><p className={`mt-1 text-sm ${secundario}`}>Prueba con otro filtro o cambia la búsqueda.</p><button type="button" onClick={() => { setBusqueda(''); setFechaReporte(''); setDocente(''); setBusquedaDocente(''); setFiltro('TODOS'); setCategoriaFiltro('TODAS'); }} className="mt-4 text-sm font-semibold text-emerald-600">Ver todos los casos</button></div>}
   </section>;
 }

@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado, sin publicar] — Filtro por docente en el Panel de Tutoría — 2026-11-13
+
+### Problema y comportamiento resultante
+La búsqueda general podía mostrar expedientes con reportes de varios docentes. El selector Docente que reportó permite buscar por nombre y filtrar los reportes por autor, con o sin una fecha seleccionada. Todos los docentes quita el filtro de autor.
+
+### Validación y estado
+Siete pruebas de Tutoría y compilación Vite aprobadas. La regresión cubre la búsqueda sin acentos, la selección del docente y su combinación con la fecha. Pendientes la publicación y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Fecha de reporte en el Panel de Tutoría — 2026-11-13
 
 ### Problema y comportamiento resultante
