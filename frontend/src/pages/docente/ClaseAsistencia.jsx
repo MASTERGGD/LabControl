@@ -1,3 +1,4 @@
+import DecisionReposicion from './DecisionReposicion';
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
@@ -36,7 +37,7 @@ export default function ClaseAsistencia() {
   const [cerrando, setCerrando] = useState(false);
   const [modal, setModal] = useState(null);
   const [texto, setTexto] = useState('');
-  const [requiereReposicion, setRequiereReposicion] = useState(false);
+  const [requiereReposicion, setRequiereReposicion] = useState(null);
   const [asistenciaRevisada, setAsistenciaRevisada] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [detalleExtemporaneoAbierto, setDetalleExtemporaneoAbierto] = useState(false);
@@ -240,6 +241,7 @@ export default function ClaseAsistencia() {
   };
 
   const marcarNoImpartida = async () => {
+    if (requiereReposicion === null) return;
     if (texto.trim().length < 5) {
       setError('Escribe el motivo por el que no se impartió la clase.');
       return;
@@ -252,7 +254,7 @@ export default function ClaseAsistencia() {
       setClase(data);
       setModal(null);
       setTexto('');
-      setRequiereReposicion(false);
+      setRequiereReposicion(null);
       setMensaje('Clase registrada como no impartida. Ya no cuenta en la asistencia.');
       setError('');
     } catch (err) {
@@ -367,7 +369,7 @@ export default function ClaseAsistencia() {
             )}
             {['ABIERTA', 'CORRECCION'].includes(clase.estado) && <button disabled={cerrando} onClick={abrirCierre} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">{clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Cerrar asistencia'}</button>}
             {clase.estado === 'CERRADA' && !esClaseLocal && <button onClick={() => { setTexto(''); setModal('corregir'); }} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${isDay ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-white/15 text-slate-300 hover:border-white/25 hover:bg-white/5'}`}>Corregir asistencia</button>}
-            {['ABIERTA', 'CORRECCION', 'CERRADA'].includes(clase.estado) && !esClaseLocal && <button onClick={() => { setTexto(''); setRequiereReposicion(false); setModal('no-impartida'); }} className="rounded-xl border border-slate-500/30 px-4 py-2.5 text-sm font-semibold text-slate-400 hover:bg-white/5">Marcar no impartida</button>}
+            {['ABIERTA', 'CORRECCION', 'CERRADA'].includes(clase.estado) && !esClaseLocal && <button onClick={() => { setTexto(''); setRequiereReposicion(null); setModal('no-impartida'); }} className="rounded-xl border border-slate-500/30 px-4 py-2.5 text-sm font-semibold text-slate-400 hover:bg-white/5">Marcar no impartida</button>}
             {clase.estado === 'CERRADA' && <button onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-300">Ver seguimiento del grupo</button>}
           </div>
         </div>
@@ -517,7 +519,7 @@ export default function ClaseAsistencia() {
                 <>
                   <label className="mt-5 block text-sm font-medium text-slate-300">{modal === 'no-impartida' ? 'Motivo de la clase no impartida *' : 'Motivo de la corrección *'}</label>
                   <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-emerald-500" placeholder={modal === 'no-impartida' ? 'Ej. Suspensión institucional o falta de condiciones para impartir la clase.' : 'Ej. El alumno presentó su justificante después del cierre.'} />
-                  {modal === 'no-impartida' && <label className="mt-4 flex items-start gap-3 rounded-xl border border-white/10 p-3 text-sm text-slate-300"><input type="checkbox" checked={requiereReposicion} onChange={(e) => setRequiereReposicion(e.target.checked)} className="mt-0.5 accent-emerald-500"/><span><b>Requiere reposición</b><span className="mt-1 block text-xs font-normal text-slate-500">Quedará pendiente para programarla desde Mi horario docente.</span></span></label>}
+                  {modal === 'no-impartida' && <div className="mt-4"><DecisionReposicion value={requiereReposicion} onChange={setRequiereReposicion} /></div>}
                 </>
               ) : (
                 <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -557,7 +559,7 @@ export default function ClaseAsistencia() {
               )}
               <div className="mt-6 flex justify-end gap-3">
                 <button onClick={() => setModal(null)} className="rounded-xl bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-300">Cancelar</button>
-                <button disabled={cerrando || ((modal === 'corregir' || modal === 'no-impartida') ? texto.trim().length < 5 : (!bitacora.tema_impartido.trim() || (clase.estado !== 'CORRECCION' && !asistenciaRevisada)))} onClick={modal === 'corregir' ? corregir : modal === 'no-impartida' ? marcarNoImpartida : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
+                <button disabled={cerrando || (modal === 'no-impartida' && requiereReposicion === null) || ((modal === 'corregir' || modal === 'no-impartida') ? texto.trim().length < 5 : (!bitacora.tema_impartido.trim() || (clase.estado !== 'CORRECCION' && !asistenciaRevisada)))} onClick={modal === 'corregir' ? corregir : modal === 'no-impartida' ? marcarNoImpartida : cerrar} className={`rounded-xl px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${modal === 'corregir' || clase.estado === 'CORRECCION' ? 'bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-500'}`}>
                   {cerrando ? 'Guardando...' : modal === 'corregir' ? 'Habilitar corrección' : modal === 'no-impartida' ? 'Confirmar no impartida' : clase.estado === 'CORRECCION' ? 'Guardar corrección' : 'Finalizar y guardar'}
                 </button>
               </div>

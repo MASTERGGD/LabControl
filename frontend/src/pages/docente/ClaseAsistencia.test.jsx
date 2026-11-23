@@ -9,7 +9,7 @@ jest.mock('../../components/AdminLayout', () => ({ children }) => <div>{children
 jest.mock('../../components/ContextoAlumnoDocente', () => () => null);
 jest.mock('../../context/ThemeContext', () => ({ useTheme: () => ({ themeKey: 'day' }) }));
 jest.mock('../../context/AuthContext', () => ({ useAuth: () => ({ usuario: { id: 1 }, offlineAccess: false }) }));
-jest.mock('../../hooks/useApi', () => ({ get: jest.fn(), patch: jest.fn() }));
+jest.mock('../../hooks/useApi', () => ({ get: jest.fn(), patch: jest.fn(), post: jest.fn() }));
 jest.mock('../../utils/offlineStore', () => ({ getOfflineSnapshot: jest.fn(), saveOfflineSnapshot: jest.fn(), enqueueOfflineOperation: jest.fn() }));
 
 let root, container;
@@ -46,4 +46,33 @@ test('no encola de nuevo un cambio confirmado por el servidor si falla la caché
   expect(api.patch).toHaveBeenCalledWith('/docencia/clases/1/asistencia/7', { estado: 'FALTA', observacion: null });
   expect(enqueueOfflineOperation).not.toHaveBeenCalled();
   expect(container.textContent).not.toContain('Trabajando sin conexión');
+});
+
+test.each([true, false])('guarda una decision explicita de reposicion (%s)', async (requiereReposicion) => {
+  api.post.mockImplementation(async () => {
+    const { data } = await api.get.getMockImplementation()('/docencia/clases/1');
+    return { data: { ...data, estado: 'NO_IMPARTIDA', estado_reposicion: requiereReposicion ? 'PENDIENTE' : 'NO_REQUERIDA' } };
+  });
+  await act(async () => { root.render(<ClaseAsistencia />); });
+  const abrir = [...container.querySelectorAll('button')].find(b => b.textContent === 'Marcar no impartida');
+  await act(async () => { abrir.click(); });
+
+  const motivo = container.querySelector('textarea');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(motivo, 'Asistencia al desfile institucional');
+    motivo.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const radios = container.querySelectorAll('fieldset input[type="radio"]');
+  const guardar = [...container.querySelectorAll('button')].find(b => b.textContent === 'Confirmar no impartida');
+  expect(radios).toHaveLength(2);
+  expect([...radios].every(radio => !radio.checked)).toBe(true);
+  expect(guardar.disabled).toBe(true);
+
+  await act(async () => { radios[requiereReposicion ? 0 : 1].click(); });
+  expect(guardar.disabled).toBe(false);
+  await act(async () => { guardar.click(); });
+  expect(api.post).toHaveBeenCalledWith('/docencia/clases/1/no-impartida', {
+    motivo: 'Asistencia al desfile institucional',
+    requiere_reposicion: requiereReposicion,
+  });
 });

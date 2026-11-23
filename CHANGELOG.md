@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Reposición de clases no impartidas — 2026-11-23
+
+### Problema y comportamiento resultante
+Registrar una clase no impartida desde la agenda podía dejarla pendiente de reposición sin una decisión explícita. La agenda y la sesión preguntan si se repondrá la clase antes de guardar el motivo. Si la respuesta es negativa, se cierra sin reposición y queda en el historial. Si es afirmativa, se conserva la opción de programarla desde la agenda. Los pendientes existentes pueden cerrarse sin reposición desde su panel.
+
+### Validación y estado
+45 suites y 197 pruebas frontend aprobadas. La regresión comprueba que la sesión exige decidir y envía ambos resultados correctamente. Compilación Vite aprobada. Cambio preparado para publicación. Pendientes la verificación del despliegue y la revisión visual autenticada.
+
+---
+
 ## [Preparado, sin publicar] — Filtro por grupo en el Panel de Tutoría — 2026-11-13
 
 ### Problema y comportamiento resultante

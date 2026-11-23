@@ -1,3 +1,4 @@
+import DecisionReposicion from './DecisionReposicion';
 import AgendaPracticasDocente from '../../components/AgendaPracticasDocente';
 import { accionTutoria } from '../../utils/accionClaseDashboard';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
@@ -538,6 +539,7 @@ export default function MiHorarioDocente() {
   const [motivoExtemporaneo, setMotivoExtemporaneo] = useState('');
   const [motivoExtemporaneoTipo, setMotivoExtemporaneoTipo] = useState('');
   const [resolucionPendiente, setResolucionPendiente] = useState('IMPARTIDA');
+  const [requiereReposicion, setRequiereReposicion] = useState(null);
   const [programarAlDeclarar, setProgramarAlDeclarar] = useState(false);
   const [creandoExtemporanea, setCreandoExtemporanea] = useState(false);
   const [agendaAbierta, setAgendaAbierta] = useState(false);
@@ -736,6 +738,7 @@ export default function MiHorarioDocente() {
     setMotivoExtemporaneo('');
     setMotivoExtemporaneoTipo('');
     setResolucionPendiente('IMPARTIDA');
+    setRequiereReposicion(null);
     setProgramarAlDeclarar(false);
     setFormReposicion({ fecha_original: pendiente.fecha, fecha: '', hora_inicio: pendiente.hora_inicio, hora_fin: pendiente.hora_fin, motivo: '', tema: '' });
   };
@@ -788,6 +791,7 @@ export default function MiHorarioDocente() {
     if (resolucionPendiente === 'IMPARTIDA') return crearExtemporanea(e);
     e.preventDefault();
     if (!modalExtemporanea || motivoExtemporaneo.trim().length < 5) return;
+    if (resolucionPendiente === 'NO_IMPARTIDA' && requiereReposicion === null) return;
     setCreandoExtemporanea(true);
     try {
       const { data } = await api.post(
@@ -796,7 +800,7 @@ export default function MiHorarioDocente() {
           fecha: modalExtemporanea.fecha,
           motivo: motivoExtemporaneo.trim(),
           programar_reposicion: programarAlDeclarar,
-          requiere_reposicion: resolucionPendiente !== 'NO_CORRESPONDIA',
+          requiere_reposicion: resolucionPendiente === 'NO_IMPARTIDA' && requiereReposicion === true,
           fecha_reposicion: programarAlDeclarar ? formReposicion.fecha : null,
           hora_inicio: programarAlDeclarar ? formReposicion.hora_inicio : null,
           hora_fin: programarAlDeclarar ? formReposicion.hora_fin : null,
@@ -1336,7 +1340,7 @@ export default function MiHorarioDocente() {
                   Sí, se impartió
                 </label>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'NO_IMPARTIDA' ? 'border-amber-500/50 bg-amber-500/10 text-amber-200' : 'border-white/10 text-slate-300'}`}>
-                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => { setResolucionPendiente('NO_IMPARTIDA'); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
+                  <input type="radio" className="mr-2" checked={resolucionPendiente === 'NO_IMPARTIDA'} onChange={() => { setResolucionPendiente('NO_IMPARTIDA'); setRequiereReposicion(null); setMotivoExtemporaneoTipo(''); setMotivoExtemporaneo(''); }} />
                   No se impartió
                 </label>
                 <label className={`cursor-pointer rounded-xl border p-3 text-sm ${resolucionPendiente === 'NO_CORRESPONDIA' ? 'border-blue-500/50 bg-blue-500/10 text-blue-200' : 'border-white/10 text-slate-300'}`}>
@@ -1367,7 +1371,13 @@ export default function MiHorarioDocente() {
                   placeholder="Ej. Suspensión eléctrica en el edificio."
                 />
               </label>}
-              {resolucionPendiente === 'NO_IMPARTIDA' && <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-4">
+              {resolucionPendiente === 'NO_IMPARTIDA' && (
+                <DecisionReposicion value={requiereReposicion} onChange={(value) => {
+                  setRequiereReposicion(value);
+                  if (!value) setProgramarAlDeclarar(false);
+                }} />
+              )}
+              {resolucionPendiente === 'NO_IMPARTIDA' && requiereReposicion === true && <div className="space-y-3 rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-4">
                 <label className="flex items-start gap-3 text-sm text-slate-200">
                   <input type="checkbox" className="mt-1" checked={programarAlDeclarar} onChange={(e) => setProgramarAlDeclarar(e.target.checked)} />
                   <span><b>Programar la reposición ahora</b><span className="mt-1 block text-xs font-normal text-slate-400">Si aún no conoces la fecha, puedes dejarla pendiente y programarla después.</span></span>
@@ -1379,12 +1389,12 @@ export default function MiHorarioDocente() {
                   <label className="text-sm text-slate-300 sm:col-span-2">Tema pendiente<input maxLength={300} value={formReposicion.tema} onChange={(e) => setFormReposicion({ ...formReposicion, tema: e.target.value })} className="input-dark mt-1" /></label>
                 </div>}
               </div>}
-              <p className="text-xs text-slate-500">{resolucionPendiente === 'IMPARTIDA' ? 'Los alumnos iniciarán como presentes; marca las excepciones y cierra la asistencia.' : resolucionPendiente === 'NO_CORRESPONDIA' ? 'La clase quedará en el historial como no impartida y cerrada sin obligación de reposición.' : 'La sesión original quedará como NO IMPARTIDA y permanecerá en el historial.'}</p>
+              <p className="text-xs text-slate-500">{resolucionPendiente === 'IMPARTIDA' ? 'Los alumnos iniciarán como presentes; marca las excepciones y cierra la asistencia.' : (resolucionPendiente === 'NO_CORRESPONDIA' || requiereReposicion === false) ? 'La clase quedará en el historial como no impartida y cerrada sin obligación de reposición.' : 'La sesión original quedará como NO IMPARTIDA y permanecerá en el historial.'}</p>
               </div>
             </div>
             <footer className="flex gap-3 border-t border-white/10 px-5 py-4">
               <button type="button" disabled={creandoExtemporanea} onClick={() => setModalExtemporanea(null)} className="flex-1 rounded-xl bg-white/5 px-4 py-2.5 text-sm text-slate-300">Cancelar</button>
-              <button disabled={creandoExtemporanea || (resolucionPendiente === 'IMPARTIDA' ? !motivoExtemporaneoTipo || (motivoExtemporaneoTipo === 'OTRO' && motivoExtemporaneo.trim().length < 5) : motivoExtemporaneo.trim().length < 5)} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : extemporaneas.length > 1 ? (programarAlDeclarar ? 'Registrar reposición y siguiente →' : 'Resolver y siguiente →') : resolucionPendiente === 'NO_CORRESPONDIA' ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
+              <button disabled={creandoExtemporanea || (resolucionPendiente === 'NO_IMPARTIDA' && requiereReposicion === null) || (resolucionPendiente === 'IMPARTIDA' ? !motivoExtemporaneoTipo || (motivoExtemporaneoTipo === 'OTRO' && motivoExtemporaneo.trim().length < 5) : motivoExtemporaneo.trim().length < 5)} className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{creandoExtemporanea ? 'Guardando…' : resolucionPendiente === 'IMPARTIDA' ? 'Registrar asistencia' : extemporaneas.length > 1 ? (programarAlDeclarar ? 'Registrar reposición y siguiente →' : 'Resolver y siguiente →') : (resolucionPendiente === 'NO_CORRESPONDIA' || requiereReposicion === false) ? 'Cerrar sin reposición' : programarAlDeclarar ? 'Registrar y programar reposición' : 'Guardar como no impartida'}</button>
             </footer>
           </form>
         </div>
