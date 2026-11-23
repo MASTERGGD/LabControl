@@ -37,6 +37,7 @@ from routers import auditoria as auditoria_router
 from routers import adeudos as adeudos_router
 from routers import espacios as espacios_router
 from routers import comunicados as comunicados_router
+from routers import aviso_inicio as aviso_inicio_router
 from routers import departamentos as departamentos_router
 from routers import tutoria as tutoria_router
 from routers import calendario_academico as calendario_academico_router
@@ -214,6 +215,7 @@ app.include_router(auditoria_router.router)
 app.include_router(adeudos_router.router)
 app.include_router(espacios_router.router)
 app.include_router(comunicados_router.router)
+app.include_router(aviso_inicio_router.router)
 app.include_router(departamentos_router.router)
 app.include_router(tutoria_router.router)
 app.include_router(consultorio_router.router)

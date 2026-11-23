@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # -- Importar Base con todos los modelos registrados --------------------------
 from database import Base          # noqa: E402
 from models import (               # noqa: E402
-    catalogo, horario, inventario, laboratorio,
+    aviso_inicio, catalogo, horario, inventario, laboratorio,
     notificacion, password_reset, sesion, usuario, usuario_permiso, auditoria, adeudo, espacio, comunicado, departamento, calendario_academico, cierre_academico, promocion_academica, practica_laboratorio,
 )
 

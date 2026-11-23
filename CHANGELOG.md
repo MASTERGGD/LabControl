@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Aviso flotante en el inicio docente — 2026-11-23
+
+### Problema y comportamiento resultante
+SIGA necesitaba un recordatorio breve y temporal en el inicio docente. Desde Inicio plataforma, el superadministrador puede publicar, editar o retirar un aviso aparte de Comunicados, elegir un enlace interno y fijar el día de vencimiento en horario de Ciudad de México. El aviso aparece en la esquina inferior derecha del inicio docente. Al cerrarlo o abrir su enlace, el navegador recuerda el descarte por cuenta y versión. La migración aditiva da08d4151ba2 crea la tabla del aviso.
+
+### Validación y estado
+46 suites y 199 pruebas frontend aprobadas, además de la compilación Vite. Dos pruebas del backend verifican la migración en SQLite, los permisos, la edición, el retiro y el vencimiento. Cambio preparado para publicación. Pendiente verificar Railway y la vista autenticada.
+
+---
+
 ## [Preparado] — Reposición de clases no impartidas — 2026-11-23
 
 ### Problema y comportamiento resultante

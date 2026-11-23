@@ -978,7 +978,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 }
 
 // Layout principal
-export default function AdminLayout({ children }) {
+export default function AdminLayout({ children, avisoInicio }) {
   const { usuario, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1374,13 +1374,18 @@ export default function AdminLayout({ children }) {
       {/* Modales */}
       {modalPwd   && <ModalCambiarPassword onClose={() => setModalPwd(false)} />}
       {modalLibre && <ModalSesionLibre usuario={usuario} onClose={() => setModalLibre(false)} />}
-      {avisoSesiones && sessionInfo?.active_count > 1 && (
-        <div className="fixed bottom-5 right-5 z-[100] w-[min(380px,calc(100vw-2rem))] rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl" role="status">
-          <div className="flex items-start gap-3">
-            <svg className="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m0 3.75h.008M10.3 3.9 1.8 18a1.75 1.75 0 0 0 1.5 2.6h17.4a1.75 1.75 0 0 0 1.5-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-            <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Tu cuenta está abierta en otro lugar</p><p className="mt-1 text-xs opacity-80">Puedes revisar las sesiones activas desde el indicador “{sessionInfo.active_count} sesiones” de la barra superior.</p></div>
-            <button type="button" onClick={() => setAvisoSesiones(false)} className="rounded-lg p-1 hover:bg-amber-100" aria-label="Cerrar aviso">×</button>
-          </div>
+      {(avisoInicio || (avisoSesiones && sessionInfo?.active_count > 1)) && (
+        <div className="pointer-events-none fixed bottom-5 right-4 z-[100] grid w-[min(380px,calc(100vw-2rem))] gap-3 [&>*]:pointer-events-auto">
+          {avisoInicio}
+          {avisoSesiones && sessionInfo?.active_count > 1 && (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl" role="status">
+              <div className="flex items-start gap-3">
+                <svg className="mt-0.5 h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m0 3.75h.008M10.3 3.9 1.8 18a1.75 1.75 0 0 0 1.5 2.6h17.4a1.75 1.75 0 0 0 1.5-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                <div className="min-w-0 flex-1"><p className="text-sm font-semibold">Tu cuenta está abierta en otro lugar</p><p className="mt-1 text-xs opacity-80">Puedes revisar las sesiones activas desde el indicador “{sessionInfo.active_count} sesiones” de la barra superior.</p></div>
+                <button type="button" onClick={() => setAvisoSesiones(false)} className="rounded-lg p-1 hover:bg-amber-100" aria-label="Cerrar aviso">×</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

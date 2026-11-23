@@ -54,6 +54,7 @@ import ApartarEspacio from './pages/espacios/ApartarEspacio';
 import BandejaEspacios from './pages/espacios/BandejaEspacios';
 import MisSolicitudes from './pages/espacios/MisSolicitudes';
 import ComunicadosAdmin from './pages/admin/ComunicadosAdmin';
+import AvisoInicioAdmin from './pages/admin/AvisoInicioAdmin';
 import MisComunicados from './pages/comunicados/MisComunicados';
 import TutoriaAdmin from './pages/admin/TutoriaAdmin';
 import MisTutorados from './pages/docente/MisTutorados';
@@ -264,6 +265,12 @@ function AppRoutes() {
           </RutaProtegida>
         }
       />
+
+      <Route path="/admin/aviso-inicio" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']}>
+          <AvisoInicioAdmin />
+        </RutaProtegida>
+      }/>
 
       {/* Admin: Horarios y Reservaciones */}
       <Route path="/admin/horarios" element={
