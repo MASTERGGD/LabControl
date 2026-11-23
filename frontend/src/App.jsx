@@ -8,6 +8,8 @@ import PWAInstallBanner from './components/PWAInstallBanner';
 import AppUpdateNotice from './components/AppUpdateNotice';
 import { PWAInstallProvider } from './hooks/usePWAInstall';
 import { ROUTE_PERMISSIONS } from './config/permissions';
+import { rutaInicialUsuario } from './config/rutaInicialUsuario';
+import AvisoInicio from './components/AvisoInicioDocente';
 
 // Páginas
 import Login from './pages/Login';
@@ -128,28 +130,14 @@ function ConsultaDocente({ tipo, children }) {
   return offlineAccess || !enLinea ? <OfflineDocenteConsultas tipo={tipo} /> : children;
 }
 
-// ─── Mapa de rutas por rol ─────────────────────────────────────────────────────
-
-const RUTAS_POR_ROL = {
-  SUPER_ADMIN: '/admin',
-  LAB_ADMIN:   '/lab',
-  RESPONSABLE_LAB: '/admin/inventario',
-  ADMINISTRATIVO: '/administrativo',
-  SERVICIOS_ESCOLARES: '/servicios-escolares',
-  TUTORIA_ADMIN: '/admin/tutoria',
-  MEDICO:      '/medico/consultorio',
-  DOCENTE:     '/docente',
-  ALUMNO:      '/alumno/estudio-socioeconomico',
-};
-
-function tieneServiciosEscolares(usuario) {
-  return usuario?.rol === 'SERVICIOS_ESCOLARES'
-    || (usuario?.rol !== 'SUPER_ADMIN' && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE));
-}
-
-function rutaInicialUsuario(usuario) {
-  if (tieneServiciosEscolares(usuario)) return '/servicios-escolares';
-  return RUTAS_POR_ROL[usuario?.rol] || '/login';
+function InicioAlumno() {
+  const { usuario } = useAuth();
+  return <>
+    <AlumnoEstudioSocioeconomico />
+    <div className="pointer-events-none fixed bottom-5 right-4 z-[100] w-[min(380px,calc(100vw-2rem))] [&>*]:pointer-events-auto">
+      <AvisoInicio key={usuario.id} usuarioId={usuario.id} />
+    </div>
+  </>;
 }
 
 // ─── Redireccionador automático post-login ────────────────────────────────────
@@ -515,12 +503,12 @@ function AppRoutes() {
       {/* Alumno — estudio socioeconomico */}
       <Route path="/alumno" element={
         <RutaProtegida rolesPermitidos={['ALUMNO']}>
-          <AlumnoEstudioSocioeconomico />
+          <InicioAlumno />
         </RutaProtegida>
       }/>
       <Route path="/alumno/estudio-socioeconomico" element={
         <RutaProtegida rolesPermitidos={['ALUMNO']}>
-          <AlumnoEstudioSocioeconomico />
+          <InicioAlumno />
         </RutaProtegida>
       }/>
 

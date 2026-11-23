@@ -9,14 +9,13 @@ from sqlalchemy import delete, text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from dependencies import require_roles
+from dependencies import get_current_user, require_roles
 from models.aviso_inicio import AvisoInicio
-from models.usuario import RolUsuario
+from models.usuario import RolUsuario, Usuario
 
 router = APIRouter(prefix="/aviso-inicio", tags=["Aviso de inicio docente"])
 MX = ZoneInfo("America/Mexico_City")
 ADMIN = Depends(require_roles(RolUsuario.SUPER_ADMIN))
-DOCENTE = Depends(require_roles(RolUsuario.DOCENTE))
 
 
 class AvisoIn(BaseModel):
@@ -25,6 +24,7 @@ class AvisoIn(BaseModel):
     titulo: str = Field(min_length=1, max_length=100)
     mensaje: str = Field(min_length=1, max_length=400)
     destino: Literal["seguimiento", "horario", "historial"] | None = None
+    audiencia: Literal["DOCENTES", "TODOS"] = "DOCENTES"
     vigente_hasta: date = Field(lt=date.max)
 
 
@@ -38,19 +38,24 @@ def _serializar(aviso):
         "titulo": aviso.titulo,
         "mensaje": aviso.mensaje,
         "destino": aviso.destino,
+        "audiencia": aviso.audiencia,
         "vigente_hasta": aviso.vigente_hasta,
         "expira_en": datetime.combine(aviso.vigente_hasta + timedelta(days=1), time.min, MX),
         "activo": aviso.vigente_hasta >= _hoy(),
     }
 
 
-@router.get("/activo", dependencies=[DOCENTE])
-def activo(response: Response, db: Session = Depends(get_db)):
+@router.get("/activo")
+def activo(response: Response, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     response.headers["Cache-Control"] = "no-store"
     aviso = db.get(AvisoInicio, 1)
-    if aviso and aviso.vigente_hasta >= _hoy():
-        return _serializar(aviso)
-    return None
+    es_docente = usuario.rol == RolUsuario.DOCENTE
+    if not aviso or aviso.vigente_hasta < _hoy() or (aviso.audiencia != "TODOS" and not es_docente):
+        return None
+    data = _serializar(aviso)
+    if not es_docente:
+        data["destino"] = None
+    return data
 
 
 @router.get("/admin", dependencies=[ADMIN])
@@ -66,10 +71,11 @@ def publicar(data: AvisoIn, db: Session = Depends(get_db)):
     revision = str(uuid4())
     # PostgreSQL y SQLite permiten sustituir el aviso vigente en una operación atómica.
     db.execute(text("""
-        INSERT INTO aviso_inicio_docente (id, revision, titulo, mensaje, destino, vigente_hasta)
-        VALUES (1, :revision, :titulo, :mensaje, :destino, :vigente_hasta)
+        INSERT INTO aviso_inicio_docente (id, revision, titulo, mensaje, destino, vigente_hasta, audiencia)
+        VALUES (1, :revision, :titulo, :mensaje, :destino, :vigente_hasta, :audiencia)
         ON CONFLICT (id) DO UPDATE SET revision = excluded.revision, titulo = excluded.titulo,
-          mensaje = excluded.mensaje, destino = excluded.destino, vigente_hasta = excluded.vigente_hasta
+          mensaje = excluded.mensaje, destino = excluded.destino, vigente_hasta = excluded.vigente_hasta,
+          audiencia = excluded.audiencia
     """), {"revision": revision, **data.model_dump()})
     aviso = consultar(db)
     db.commit()

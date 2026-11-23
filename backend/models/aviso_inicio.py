@@ -11,4 +11,5 @@ class AvisoInicio(Base):
     titulo = Column(String(100), nullable=False)
     mensaje = Column(String(400), nullable=False)
     destino = Column(String(20), nullable=True)
+    audiencia = Column(String(10), nullable=False, server_default="DOCENTES")
     vigente_hasta = Column(Date, nullable=False)

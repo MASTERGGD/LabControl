@@ -62,7 +62,7 @@ export default function AvisoInicioDocente({ usuarioId }) {
   };
   const destino = DESTINOS_AVISO[aviso.destino];
   return (
-    <section aria-label="Aviso para docentes" className="max-h-[45vh] overflow-y-auto rounded-2xl border border-sky-300 bg-sky-50 p-4 text-sky-950 shadow-2xl">
+    <section aria-label="Aviso institucional" className="max-h-[45vh] overflow-y-auto rounded-2xl border border-sky-300 bg-sky-50 p-4 text-sky-950 shadow-2xl">
       <div className="flex items-start gap-3">
         <svg aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 3v4m8-4v4M4 10h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
@@ -74,7 +74,7 @@ export default function AvisoInicioDocente({ usuarioId }) {
           </div>
           {destino && <Link to={destino.ruta} onClick={descartar} className="mt-2 inline-block text-xs font-semibold text-sky-800 underline underline-offset-2">{destino.etiqueta}</Link>}
         </div>
-        <button type="button" aria-label="Cerrar aviso para docentes" onClick={descartar} className="shrink-0 rounded-lg px-2 py-0.5 hover:bg-sky-100">×</button>
+        <button type="button" aria-label="Cerrar aviso institucional" onClick={descartar} className="shrink-0 rounded-lg px-2 py-0.5 hover:bg-sky-100">×</button>
       </div>
     </section>
   );

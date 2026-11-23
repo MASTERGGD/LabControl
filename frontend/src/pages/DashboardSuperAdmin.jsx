@@ -16,7 +16,7 @@ const ACCESOS = [
   { titulo: 'Usuarios', texto: 'Roles y accesos del sistema', ruta: '/admin/usuarios', color: '#7c3aed' },
   { titulo: 'Departamentos', texto: 'Estructura institucional', ruta: '/admin/departamentos', color: '#0891b2' },
   { titulo: 'Comunicados', texto: 'Mensajes institucionales', ruta: '/admin/comunicados', color: '#059669' },
-  { titulo: 'Aviso de inicio docente', texto: 'Recordatorio temporal para docentes', ruta: '/admin/aviso-inicio', color: '#0369a1' },
+  { titulo: 'Aviso de inicio', texto: 'Recordatorio temporal para perfiles de SIGA', ruta: '/admin/aviso-inicio', color: '#0369a1' },
   { titulo: 'Espacios', texto: 'Salas y áreas compartidas', ruta: '/admin/espacios', color: '#d97706' },
   { titulo: 'Auditoría', texto: 'Bitácora de actividad', ruta: '/admin/auditoria', color: '#dc2626' },
 ];

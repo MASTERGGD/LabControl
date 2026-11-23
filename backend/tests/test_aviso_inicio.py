@@ -27,9 +27,10 @@ def reset_db():
 def avisos(monkeypatch):
     monkeypatch.setattr(aviso_inicio, "_hoy", lambda: date(2026, 11, 23))
     engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
-    migracion = Path(__file__).resolve().parents[1] / "alembic/versions/da08d4151ba2_aviso_inicio_docente.py"
+    versiones = Path(__file__).resolve().parents[1] / "alembic/versions"
     with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
-        run_path(str(migracion))["upgrade"]()
+        run_path(str(versiones / "da08d4151ba2_aviso_inicio_docente.py"))["upgrade"]()
+        run_path(str(versiones / "ab2d0f83c719_aviso_inicio_audiencia.py"))["upgrade"]()
 
     def db():
         with Session(engine) as session:
@@ -50,7 +51,7 @@ def test_publicar_editar_y_retirar_solo_como_superadministrador(avisos):
     payload = {"titulo": " Cierre del cuatrimestre ", "mensaje": "Revisa tus avances.",
                "destino": "seguimiento", "vigente_hasta": "2026-11-23"}
     assert client.get("/aviso-inicio/admin").json() is None
-    assert client.get("/aviso-inicio/activo").status_code == 403
+    assert client.get("/aviso-inicio/activo").json() is None
     assert client.put("/aviso-inicio/admin", json={**payload, "vigente_hasta": "2026-11-22"}).status_code == 422
     assert client.put("/aviso-inicio/admin", json={**payload, "destino": "https://example.com"}).status_code == 422
     guardado = client.put("/aviso-inicio/admin", json=payload)
@@ -60,6 +61,8 @@ def test_publicar_editar_y_retirar_solo_como_superadministrador(avisos):
     assert primero["expira_en"] == "2026-11-24T00:00:00-06:00"
     editado = client.put("/aviso-inicio/admin", json={**payload, "mensaje": "Revisa tus clases."}).json()
     assert editado["revision"] != primero["revision"]
+    assert editado["audiencia"] == "DOCENTES"
+    assert client.get("/aviso-inicio/activo").json() is None
     assert client.delete(f"/aviso-inicio/admin/{primero['revision']}").status_code == 409
 
     usuario.rol = RolUsuario.DOCENTE
@@ -85,3 +88,20 @@ def test_el_aviso_vence_al_terminar_la_fecha_indicada(avisos, monkeypatch):
     assert client.get("/aviso-inicio/admin").json()["activo"] is False
     usuario.rol = RolUsuario.DOCENTE
     assert client.get("/aviso-inicio/activo").json() is None
+
+
+def test_aviso_general_llega_a_tutoria_laboratorio_y_alumnos(avisos):
+    client, usuario = avisos
+    publicado = client.put("/aviso-inicio/admin", json={
+        "titulo": "Cierre del cuatrimestre", "mensaje": "Revisa la información de tu perfil.",
+        "vigente_hasta": "2026-11-23", "audiencia": "TODOS", "destino": "seguimiento",
+    })
+    assert publicado.status_code == 200
+    assert publicado.json()["audiencia"] == "TODOS"
+    for rol in (RolUsuario.TUTORIA_ADMIN, RolUsuario.LAB_ADMIN, RolUsuario.RESPONSABLE_LAB, RolUsuario.ALUMNO):
+        usuario.rol = rol
+        aviso = client.get("/aviso-inicio/activo").json()
+        assert aviso["revision"] == publicado.json()["revision"]
+        assert aviso["destino"] is None
+    usuario.rol = RolUsuario.DOCENTE
+    assert client.get("/aviso-inicio/activo").json()["destino"] == "seguimiento"

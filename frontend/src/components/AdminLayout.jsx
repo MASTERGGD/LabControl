@@ -9,26 +9,13 @@ import ThemeSwitcher from './ThemeSwitcher';
 import MobileRoleSwitcher from './MobileRoleSwitcher';
 import './MobileLayout.css';
 import OfflineStatus from './OfflineStatus';
+import AvisoInicio from './AvisoInicioDocente';
+import { rutaInicialUsuario } from '../config/rutaInicialUsuario';
 import { listOfflineOperations } from '../utils/offlineStore';
 import { useTheme } from '../context/ThemeContext';
 import { usePeriodo } from '../context/PeriodoContext';
 
 const PERM_SERVICIOS_ESCOLARES_MANAGE = 'servicios_escolares:manage';
-
-function tieneServiciosEscolares(usuario) {
-  return usuario?.rol === 'SERVICIOS_ESCOLARES'
-    || (usuario?.rol !== 'SUPER_ADMIN' && usuario?.permisos?.includes(PERM_SERVICIOS_ESCOLARES_MANAGE));
-}
-
-function getHomePath(usuario) {
-  if (tieneServiciosEscolares(usuario)) return '/servicios-escolares';
-  if (usuario?.rol === 'ADMINISTRATIVO') return '/administrativo';
-  if (usuario?.rol === 'TUTORIA_ADMIN') return '/admin/tutoria';
-  if (usuario?.rol === 'MEDICO') return '/medico/consultorio';
-  if (usuario?.rol === 'DOCENTE') return '/docente';
-  if (usuario?.rol === 'ALUMNO') return '/alumno/estudio-socioeconomico';
-  return usuario?.rol === 'SUPER_ADMIN' ? '/admin' : '/lab';
-}
 
 function BrandMark({ size = 'w-8 h-8', imageSize = 'w-[78%] h-[78%]' }) {
   return (
@@ -688,7 +675,7 @@ function Breadcrumb({ pathname }) {
 
 // Sidebar content (definido fuera de AdminLayout para evitar re-montaje)
 function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usuario, itemsVisibles, handleLogout, pendientesComunicados, pathname }) {
-  const homePath = getHomePath(usuario);
+  const homePath = rutaInicialUsuario(usuario);
   const navRef = useRef(null);
   const scrollKey = `labcontrol-sidebar-scroll-v1-${usuario?.rol || 'anon'}-${mobile ? 'mobile' : sidebarOpen ? 'open' : 'compact'}`;
   const saveSidebarScroll = useCallback(() => {
@@ -978,12 +965,13 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 }
 
 // Layout principal
-export default function AdminLayout({ children, avisoInicio }) {
+export default function AdminLayout({ children }) {
   const { usuario, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const tienePracticas = useAccesoPracticas(usuario, offlineAccess, location.pathname);
-  const homePath = getHomePath(usuario);
+  const homePath = rutaInicialUsuario(usuario);
+  const avisoInicio = usuario?.id && !offlineAccess && location.pathname.replace(/\/$/, '') === homePath;
   const { themeKey } = useTheme();
   const { periodos, periodo, periodoActual, esHistorico, esPreparacion, esCerrado, cargando: cargandoPeriodos, seleccionarPeriodo } = usePeriodo();
   const isDay = themeKey === 'day';
@@ -1089,7 +1077,7 @@ export default function AdminLayout({ children, avisoInicio }) {
     setCambiandoFuncion(true);
     try {
       const actualizado = await cambiarFuncion(rol);
-      navigate(getHomePath(actualizado), { replace: true });
+      navigate(rutaInicialUsuario(actualizado), { replace: true });
     } catch (err) {
       window.alert(err.response?.data?.detail || 'No se pudo cambiar la función activa.');
     } finally {
@@ -1376,7 +1364,7 @@ export default function AdminLayout({ children, avisoInicio }) {
       {modalLibre && <ModalSesionLibre usuario={usuario} onClose={() => setModalLibre(false)} />}
       {(avisoInicio || (avisoSesiones && sessionInfo?.active_count > 1)) && (
         <div className="pointer-events-none fixed bottom-5 right-4 z-[100] grid w-[min(380px,calc(100vw-2rem))] gap-3 [&>*]:pointer-events-auto">
-          {avisoInicio}
+          {avisoInicio && <AvisoInicio key={`${usuario.id}:${usuario.rol}`} usuarioId={usuario.id} />}
           {avisoSesiones && sessionInfo?.active_count > 1 && (
             <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-2xl" role="status">
               <div className="flex items-start gap-3">

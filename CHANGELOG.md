@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Destinatarios del aviso de inicio — 2026-11-23
+
+### Problema y comportamiento resultante
+Los recordatorios del cierre también son pertinentes para Tutoría, Laboratorios y otros perfiles. El superadministrador puede elegir Solo docentes o Todos los perfiles para el aviso flotante. SIGA lo muestra en el inicio del perfil activo. Los enlaces a pantallas docentes se muestran solo en modo Docente. La migración aditiva ab2d0f83c719 conserva los avisos anteriores como exclusivos para docentes.
+
+### Validación y estado
+199 pruebas frontend y compilación Vite aprobadas. Tres pruebas backend verifican permisos, vigencia y entrega a docentes, Tutoría, Laboratorios y Alumnos. Cambio preparado para publicación. Pendiente verificar Railway y la vista autenticada.
+
+---
+
 ## [Preparado] — Aviso flotante en el inicio docente — 2026-11-23
 
 ### Problema y comportamiento resultante

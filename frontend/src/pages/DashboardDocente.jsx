@@ -1,5 +1,4 @@
 import AgendaPracticasDocente from '../components/AgendaPracticasDocente';
-import AvisoInicioDocente from '../components/AvisoInicioDocente';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../components/AdminLayout';
@@ -557,7 +556,7 @@ export default function DashboardDocente() {
   });
 
   return (
-    <AdminLayout avisoInicio={usuario?.id && !offlineAccess ? <AvisoInicioDocente key={usuario.id} usuarioId={usuario.id} /> : null}>
+    <AdminLayout>
       <div className="siga-flip7-panel siga-flip7-panel--docente w-full max-w-[1920px] 2xl:mx-auto space-y-5">
 
         {modoLocal && !(offlineAccess && navigator.onLine) && <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${themeKey === 'day' ? 'border-amber-400 bg-amber-50 text-amber-950' : 'border-amber-400/60 bg-amber-950/35 text-amber-100'}`}><div><b>{navigator.onLine ? 'Trabajando con datos descargados' : 'Modo sin conexión'}</b><p className={`text-xs ${themeKey === 'day' ? 'text-amber-900' : 'text-amber-200'}`}>Información descargada el {paqueteOffline?.generado_en ? new Date(paqueteOffline.generado_en).toLocaleString('es-MX') : 'último acceso con internet'}</p></div><span className={`rounded-full px-3 py-1 text-xs font-semibold ${themeKey === 'day' ? 'bg-amber-200 text-amber-950' : 'bg-amber-800/50 text-amber-100'}`}>Los cambios quedarán en este dispositivo</span></div>}

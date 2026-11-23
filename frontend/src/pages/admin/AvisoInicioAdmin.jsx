@@ -5,7 +5,7 @@ import api from '../../hooks/useApi';
 import { getApiErrorMessage } from '../../utils/apiError';
 import { todayISOInMexico } from '../../utils/timezone';
 
-const VACIO = { titulo: '', mensaje: '', destino: '', vigente_hasta: '' };
+const VACIO = { titulo: '', mensaje: '', destino: '', audiencia: 'DOCENTES', vigente_hasta: '' };
 
 export default function AvisoInicioAdmin() {
   const [aviso, setAviso] = useState(null);
@@ -24,7 +24,8 @@ export default function AvisoInicioAdmin() {
       if (controller.signal.aborted) return;
       setAviso(data);
       setForm(data ? {
-        titulo: data.titulo, mensaje: data.mensaje, destino: data.destino || '', vigente_hasta: data.vigente_hasta,
+        titulo: data.titulo, mensaje: data.mensaje, destino: data.destino || '',
+        audiencia: data.audiencia || 'DOCENTES', vigente_hasta: data.vigente_hasta,
       } : VACIO);
       setDisponible(true);
     }).catch(err => {
@@ -50,7 +51,7 @@ export default function AvisoInicioAdmin() {
         ...form, titulo: form.titulo.trim(), mensaje: form.mensaje.trim(), destino: form.destino || null,
       });
       setAviso(data);
-      setMensaje('Aviso publicado en el inicio docente.');
+      setMensaje('Aviso publicado en el inicio de los perfiles seleccionados.');
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudo publicar el aviso.'));
     } finally {
@@ -65,7 +66,7 @@ export default function AvisoInicioAdmin() {
     try {
       await api.delete(`/aviso-inicio/admin/${aviso.revision}`);
       setAviso(null);
-      setMensaje('Aviso retirado del inicio docente.');
+      setMensaje('Aviso retirado.');
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudo retirar el aviso.'));
     } finally {
@@ -77,8 +78,8 @@ export default function AvisoInicioAdmin() {
     <AdminLayout>
       <div className="mx-auto max-w-3xl space-y-5">
         <header>
-          <h1 className="text-2xl font-bold text-white">Aviso de inicio docente</h1>
-          <p className="mt-1 text-sm text-slate-400">Publica un recordatorio temporal en la esquina inferior derecha del inicio docente.</p>
+          <h1 className="text-2xl font-bold text-white">Aviso de inicio</h1>
+          <p className="mt-1 text-sm text-slate-400">Publica un recordatorio temporal en el inicio de los perfiles seleccionados.</p>
         </header>
         {cargando && <p role="status" className="text-sm text-slate-400">Cargando aviso…</p>}
         {error && <p role="alert" className="rounded-xl border border-red-500/30 p-3 text-sm text-red-400">{error}</p>}
@@ -86,6 +87,12 @@ export default function AvisoInicioAdmin() {
         {disponible && (
           <form onSubmit={publicar} className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <p className="text-sm font-medium text-slate-300">{vigente ? 'Hay un aviso publicado.' : aviso ? 'El último aviso venció.' : 'Sin aviso publicado.'}</p>
+            <label className="block text-sm text-slate-300">Mostrar a
+              <select name="audiencia" className="input-dark mt-1" value={form.audiencia} onChange={cambiar}>
+                <option value="DOCENTES">Solo docentes</option>
+                <option value="TODOS">Todos los perfiles</option>
+              </select>
+            </label>
             <label className="block text-sm text-slate-300">Título
               <input required name="titulo" maxLength={100} className="input-dark mt-1" value={form.titulo} onChange={cambiar} placeholder="Próximo cierre del cuatrimestre" />
             </label>
@@ -97,7 +104,7 @@ export default function AvisoInicioAdmin() {
                 <input required type="date" name="vigente_hasta" min={hoy} className="input-dark mt-1" value={form.vigente_hasta} onChange={cambiar} />
                 <span className="mt-1 block text-xs text-slate-400">Incluye el día indicado, hora de Ciudad de México.</span>
               </label>
-              <label className="block text-sm text-slate-300">Enlace del aviso (opcional)
+              <label className="block text-sm text-slate-300">Enlace para docentes (opcional)
                 <select name="destino" className="input-dark mt-1" value={form.destino} onChange={cambiar}>
                   <option value="">Sin enlace</option>
                   {Object.entries(DESTINOS_AVISO).map(([clave, opcion]) => <option key={clave} value={clave}>{opcion.etiqueta}</option>)}
