@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Materia y grupo en apartados de laboratorio — 2026-11-23
+
+### Problema y comportamiento resultante
+En Solicitar laboratorio, una casilla disponible para otras fechas solo indicaba la fecha apartada. El horario docente muestra la fecha más próxima, materia o actividad, grupo cuando existe y el número de apartados adicionales. La consulta de sesiones de fecha única lista todos los apartados en orden y distingue el uso individual de las reservas sin datos de materia. Disponible en escritorio y móvil.
+
+### Validación y estado
+201 pruebas del frontend y compilación Vite aprobadas. Las pruebas cubren el orden, los grupos, el uso individual y la falta de datos. Cambio preparado para publicación. Pendiente verificar Railway y la vista docente autenticada.
+
+---
+
 ## [Preparado] — Destinatarios del aviso de inicio — 2026-11-23
 
 ### Problema y comportamiento resultante

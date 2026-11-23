@@ -16,6 +16,7 @@ import FechaHorario from '../../components/FechaHorario';
 import { validarFechaHorario } from '../../utils/fechaHorario';
 import MaterialesPracticaSelector from '../../components/MaterialesPracticaSelector';
 import ReservacionesPuntualesModal from '../../components/ReservacionesPuntualesModal';
+import ResumenReservaPuntual from '../../components/ResumenReservaPuntual';
 import { OcupacionHorarioBoton, OcupacionHorarioModal } from '../../components/OcupacionHorario';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -1658,7 +1659,7 @@ function GridSemanal({ slots, onSlotClick, onVerFechas }) {
           ) : slot.estado_vista === 'LIBRE' ? (
             <>
               {!onVerFechas && <span style={{ fontSize: '11px', fontWeight: 600, color: txtColor }}>{slot.reservaciones_puntuales?.length ? '+ Disponible en otras fechas' : '+ Disponible'}</span>}
-              {!!slot.reservaciones_puntuales?.length && <span style={{ display: 'block', fontSize: '9px', marginTop: '3px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}</span>}
+              <ResumenReservaPuntual reservas={slot.reservaciones_puntuales} isDay={isDay} compacto />
             </>
           ) : slot.estado_vista === 'BLOQUEADO' ? (
             <>
@@ -1954,9 +1955,7 @@ function GridMobile({ slots, onSlotClick, onVerFechas, isDay = false, initialDia
               {slot.reservacion && <p style={{ margin: '4px 0 0', fontSize: '11px', color: c.meta, fontWeight: 700 }}>
                 Cada {DIAS_LABEL[slot.dia_semana]?.toLocaleLowerCase('es-MX')}
               </p>}
-              {!!slot.reservaciones_puntuales?.length && <p style={{ margin: '4px 0 0', fontSize: '11px', color: isDay ? '#92400e' : '#fde68a', fontWeight: 700 }} title={`Apartado: ${detalleReservasPuntuales(slot.reservaciones_puntuales)}`}>
-                🗓 Apartado el {resumenFechasPuntuales(slot.reservaciones_puntuales)}
-              </p>}
+              <ResumenReservaPuntual reservas={slot.reservaciones_puntuales} isDay={isDay} />
 
               {/* Grupo ya se muestra como badge junto al nombre de materia */}
 

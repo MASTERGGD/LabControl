@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../hooks/useApi';
+import { datosReservaPuntual, ordenarReservasPuntuales } from './ResumenReservaPuntual';
 
 const fechaLabel = value => {
   if (!value) return 'Fecha por confirmar';
@@ -14,7 +15,7 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
   const [motivo, setMotivo] = useState('');
   const [cancelando, setCancelando] = useState(false);
   const [error, setError] = useState('');
-  const reservas = slot.reservaciones_puntuales || [];
+  const reservas = ordenarReservasPuntuales(slot.reservaciones_puntuales || []);
 
   const cancelar = async () => {
     if (!seleccionada || (esPersonalLaboratorio && motivo.trim().length < 5)) return;
@@ -45,29 +46,32 @@ export default function ReservacionesPuntualesModal({ slot, esPersonalLaboratori
           <button type="button" onClick={onClose} aria-label="Cerrar" className="text-2xl text-slate-400 hover:text-white">×</button>
         </header>
         <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5">
-          {reservas.map(reserva => (
-            <article key={reserva.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">{fechaLabel(reserva.fecha_actividad)}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-200">
-                Sesión completa · {reserva.hora_inicio_sesion || reserva.hora_inicio}–{reserva.hora_fin_sesion || reserva.hora_fin}
-              </p>
-              <p className="mt-1 font-semibold text-white">{reserva.materia}</p>
-              <p className="text-sm text-slate-300">Grupo {reserva.grupo}</p>
-              {reserva.bloque_reserva_id && (reserva.hora_inicio_sesion !== reserva.hora_inicio || reserva.hora_fin_sesion !== reserva.hora_fin) && (
-                <p className="mt-1 text-xs text-slate-400">Al cancelar se liberarán todos los bloques consecutivos de esta sesión.</p>
-              )}
-              {reserva.puede_cancelar ? (
-                <button type="button" onClick={() => { setSeleccionada(reserva); setMotivo(''); setError(''); }}
-                  className="mt-3 rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10">
-                  Cancelar esta sesión
-                </button>
-              ) : <p className="mt-3 text-xs text-slate-500">Reservada por otro docente</p>}
-            </article>
-          ))}
+          {reservas.map(reserva => {
+            const { materia, detalle } = datosReservaPuntual(reserva);
+            return (
+              <article key={reserva.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-teal-300">{fechaLabel(reserva.fecha_actividad)}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-200">
+                  Sesión completa · {reserva.hora_inicio_sesion || reserva.hora_inicio}–{reserva.hora_fin_sesion || reserva.hora_fin}
+                </p>
+                <p className="mt-1 font-semibold text-white">{materia}</p>
+                {detalle && <p className="text-sm text-slate-300">{detalle}</p>}
+                {reserva.bloque_reserva_id && (reserva.hora_inicio_sesion !== reserva.hora_inicio || reserva.hora_fin_sesion !== reserva.hora_fin) && (
+                  <p className="mt-1 text-xs text-slate-400">Al cancelar se liberarán todos los bloques consecutivos de esta sesión.</p>
+                )}
+                {reserva.puede_cancelar ? (
+                  <button type="button" onClick={() => { setSeleccionada(reserva); setMotivo(''); setError(''); }}
+                    className="mt-3 rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10">
+                    Cancelar esta sesión
+                  </button>
+                ) : <p className="mt-3 text-xs text-slate-500">Reservada por otro docente</p>}
+              </article>
+            );
+          })}
           {seleccionada && (
             <div className="space-y-3 rounded-xl border border-red-400/30 bg-red-500/5 p-4">
               <p className="text-sm text-slate-200">
-                ¿Cancelar la sesión completa de <strong>{seleccionada.materia}</strong> del {fechaLabel(seleccionada.fecha_actividad)}?
+                ¿Cancelar la sesión completa de <strong>{datosReservaPuntual(seleccionada).materia}</strong> del {fechaLabel(seleccionada.fecha_actividad)}?
                 <span className="mt-1 block text-xs text-slate-400">
                   Se liberará el horario de {seleccionada.hora_inicio_sesion || seleccionada.hora_inicio} a {seleccionada.hora_fin_sesion || seleccionada.hora_fin} en una sola acción.
                 </span>
