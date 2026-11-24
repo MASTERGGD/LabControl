@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Historial y tarjeta de avisos de inicio — 2026-11-24
+
+### Problema y comportamiento resultante
+Tras publicar, el aviso quedaba en el formulario y no se conservaban las versiones anteriores. La administración muestra la tarjeta del aviso activo con audiencia y vigencia, abre el formulario al editar y ofrece un historial paginado de mensajes, autores, vigencias y versiones. El historial distingue retiro, vencimiento, reemplazo y edición. Reutilizar un mensaje abre un borrador que exige nueva vigencia. La migración aditiva c91e8bd2314f conserva el aviso que exista en ese momento, con autor y fecha sin registrar cuando esos datos se desconocen.
+
+### Validación y estado
+206 pruebas del frontend, cinco pruebas dirigidas del backend y compilación Vite aprobadas. Se verificaron ediciones, retiro, vencimiento, permisos, migración y reutilización como borrador. Cambio preparado para publicación. Pendiente verificar Railway y la vista autenticada del superadministrador.
+
+---
+
 ## [Preparado] — Clases no impartidas en el historial docente — 2026-11-24
 
 ### Problema y comportamiento resultante

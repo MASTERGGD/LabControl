@@ -9,6 +9,7 @@ from alembic.operations import Operations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -31,6 +32,7 @@ def avisos(monkeypatch):
     with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
         run_path(str(versiones / "da08d4151ba2_aviso_inicio_docente.py"))["upgrade"]()
         run_path(str(versiones / "ab2d0f83c719_aviso_inicio_audiencia.py"))["upgrade"]()
+        run_path(str(versiones / "c91e8bd2314f_historial_avisos_inicio.py"))["upgrade"]()
 
     def db():
         with Session(engine) as session:
@@ -39,7 +41,7 @@ def avisos(monkeypatch):
     app = FastAPI()
     app.include_router(aviso_inicio.router)
     app.dependency_overrides[get_db] = db
-    usuario = SimpleNamespace(rol=RolUsuario.SUPER_ADMIN)
+    usuario = SimpleNamespace(rol=RolUsuario.SUPER_ADMIN, nombre="Superadministrador de prueba")
     app.dependency_overrides[get_current_user] = lambda: usuario
     with TestClient(app) as client:
         yield client, usuario
@@ -105,3 +107,47 @@ def test_aviso_general_llega_a_tutoria_laboratorio_y_alumnos(avisos):
         assert aviso["destino"] is None
     usuario.rol = RolUsuario.DOCENTE
     assert client.get("/aviso-inicio/activo").json()["destino"] == "seguimiento"
+
+
+def test_historial_conserva_ediciones_retiro_y_vencimiento(avisos, monkeypatch):
+    client, usuario = avisos
+    payload = {"titulo": "Cierre", "mensaje": "Texto inicial", "vigente_hasta": "2026-11-23"}
+    ruta = "/aviso-inicio/admin"
+    primero = client.put(ruta, json={**payload, "revision_actual": None}).json()
+    assert client.put(ruta, json={**payload, "revision_actual": None}).status_code == 409
+    edicion = client.put(ruta, json={
+        **payload, "mensaje": "Texto actualizado",
+        "revision_actual": primero["revision"], "revision_edicion": primero["revision"],
+    })
+    assert edicion.status_code == 200, edicion.text
+    assert client.delete(f"{ruta}/{edicion.json()['revision']}").status_code == 204
+    assert client.get(ruta).json() is None
+    versiones = client.get(f"{ruta}/historial").json()["avisos"][0]["versiones"]
+    assert [(v["version"], v["estado"], v["mensaje"]) for v in versiones] == [
+        (2, "RETIRADO", "Texto actualizado"), (1, "VERSION_ANTERIOR", "Texto inicial"),
+    ]
+    assert versiones[0]["publicado_por"] == usuario.nombre
+    assert versiones[0]["publicado_en"]
+
+    assert client.put(ruta, json=payload).status_code == 200
+    monkeypatch.setattr(aviso_inicio, "_hoy", lambda: date(2026, 11, 24))
+    assert "VENCIDO" in [item["versiones"][0]["estado"] for item in client.get(f"{ruta}/historial").json()["avisos"]]
+    usuario.rol = RolUsuario.DOCENTE
+    assert client.get(f"{ruta}/historial").status_code == 403
+
+
+def test_migracion_conserva_el_aviso_anterior_sin_inventar_autor_o_fecha():
+    versiones = Path(__file__).resolve().parents[1] / "alembic/versions"
+    engine = create_engine("sqlite://")
+    with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        run_path(str(versiones / "da08d4151ba2_aviso_inicio_docente.py"))["upgrade"]()
+        run_path(str(versiones / "ab2d0f83c719_aviso_inicio_audiencia.py"))["upgrade"]()
+        conn.execute(text("""
+            INSERT INTO aviso_inicio_docente (id, revision, titulo, mensaje, vigente_hasta)
+            VALUES (1, 'revision-preexistente', 'Aviso de prueba', 'Mensaje', '2026-11-24')
+        """))
+        run_path(str(versiones / "c91e8bd2314f_historial_avisos_inicio.py"))["upgrade"]()
+        assert conn.execute(text("SELECT revision, version, publicado_por, publicado_en FROM historial_avisos_inicio")).one() == (
+            "revision-preexistente", 1, None, None,
+        )
+    engine.dispose()

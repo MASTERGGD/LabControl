@@ -60,7 +60,12 @@ export default function AvisoInicioDocente({ usuarioId }) {
       // El aviso conserva el descarte en esta visita si no se permite almacenar.
     }
   };
+  return <TarjetaAvisoInicio aviso={aviso} onDescartar={descartar} />;
+}
+
+export function TarjetaAvisoInicio({ aviso, onDescartar }) {
   const destino = DESTINOS_AVISO[aviso.destino];
+  const estiloEnlace = 'mt-2 inline-block text-xs font-semibold text-sky-800 underline underline-offset-2';
   return (
     <section aria-label="Aviso institucional" className="max-h-[45vh] overflow-y-auto rounded-2xl border border-sky-300 bg-sky-50 p-4 text-sky-950 shadow-2xl">
       <div className="flex items-start gap-3">
@@ -68,13 +73,15 @@ export default function AvisoInicioDocente({ usuarioId }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M8 3v4m8-4v4M4 10h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
         </svg>
         <div className="min-w-0 flex-1 break-words">
-          <div role="status">
+          <div role={onDescartar ? 'status' : undefined}>
             <p className="text-sm font-semibold">{aviso.titulo}</p>
             <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-sky-900">{aviso.mensaje}</p>
           </div>
-          {destino && <Link to={destino.ruta} onClick={descartar} className="mt-2 inline-block text-xs font-semibold text-sky-800 underline underline-offset-2">{destino.etiqueta}</Link>}
+          {destino && (onDescartar
+            ? <Link to={destino.ruta} onClick={onDescartar} className={estiloEnlace}>{destino.etiqueta}</Link>
+            : <span className={estiloEnlace}>{destino.etiqueta}</span>)}
         </div>
-        <button type="button" aria-label="Cerrar aviso institucional" onClick={descartar} className="shrink-0 rounded-lg px-2 py-0.5 hover:bg-sky-100">×</button>
+        {onDescartar && <button type="button" aria-label="Cerrar aviso institucional" onClick={onDescartar} className="shrink-0 rounded-lg px-2 py-0.5 hover:bg-sky-100">×</button>}
       </div>
     </section>
   );
