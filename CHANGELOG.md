@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Clases no impartidas en el historial docente — 2026-11-24
+
+### Problema y comportamiento resultante
+El historial mostraba ausencia de tema, alumnos y avance en clases que no se impartieron, y podía repetir el motivo en una nota automática. Ahora la fila muestra el motivo y el estado de reposición, y el detalle presenta motivo, periodo y observaciones adicionales. Se conservan los datos académicos de las clases impartidas y el historial de correcciones. El filtro de clases sin tema excluye las no impartidas.
+
+### Validación y estado
+48 suites y 204 pruebas del frontend aprobadas, además de la compilación Vite. La regresión cubre notas duplicadas, reposición vinculada y las clases impartidas. Cambio preparado para publicación. Pendiente verificar Railway y la vista docente autenticada.
+
+---
+
 ## [Preparado] — Materia y grupo en apartados de laboratorio — 2026-11-23
 
 ### Problema y comportamiento resultante

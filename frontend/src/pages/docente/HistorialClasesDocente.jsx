@@ -28,6 +28,39 @@ const identidadAcademica = (valor) => String(valor || '')
   .toLocaleLowerCase('es-MX');
 const textoCantidad = (cantidad, singular, plural) => `${cantidad} ${cantidad === 1 ? singular : plural}`;
 
+const ESTADO_REPOSICION = {
+  NO_REQUERIDA: 'Sin reposición',
+  PENDIENTE: 'Reposición pendiente',
+  PROGRAMADA: 'Reposición programada',
+  EN_CURSO: 'Reposición en curso',
+  CANCELADA: 'Reposición cancelada',
+};
+
+function estadoReposicion(clase, reposicion) {
+  if (reposicion?.estado === 'CERRADA') return 'Clase repuesta';
+  if (reposicion?.estado === 'NO_IMPARTIDA') return 'Reposición no impartida';
+  return ESTADO_REPOSICION[reposicion?.estado_reposicion || clase.estado_reposicion] || 'Reposición sin definir';
+}
+
+function observacionClase(clase) {
+  if (clase.estado !== 'NO_IMPARTIDA') return clase.bitacora?.incidencias || clase.observacion_general;
+  const motivo = identidadAcademica(clase.motivo_no_impartida);
+  const incidencia = clase.bitacora?.incidencias?.trim();
+  const notas = identidadAcademica(incidencia) === motivo ? [] : [incidencia];
+  const prefijo = /^reposici[oó]n no requerida:\s*/iu;
+  for (const linea of (clase.observacion_general || '').split('\n').map(texto => texto.trim()).filter(Boolean)) {
+    const valor = identidadAcademica(linea);
+    if (valor === 'clase no impartida' || (motivo && (valor === motivo || valor === `clase no impartida: ${motivo}`))) continue;
+    if (prefijo.test(linea)) {
+      const justificacion = linea.replace(prefijo, '');
+      if (justificacion && identidadAcademica(justificacion) !== motivo) notas.push(`Motivo para no reponer: ${justificacion}`);
+    } else {
+      notas.push(linea);
+    }
+  }
+  return [...new Set(notas.filter(Boolean))].join('\n');
+}
+
 function Kpi({ valor, etiqueta, detalle, tono = 'text-white', onClick }) {
   const Tag = onClick ? 'button' : 'article';
   return <Tag type={onClick ? 'button' : undefined} onClick={onClick} className={`glass rounded-2xl p-4 text-left ${onClick ? 'hover:bg-white/[0.05]' : ''}`}><p className={`text-2xl font-bold ${tono}`}>{valor}</p><p className="mt-1 text-sm font-semibold text-slate-300">{etiqueta}</p><p className="mt-1 text-xs text-slate-500">{detalle}</p></Tag>;
@@ -48,13 +81,16 @@ function Paginacion({ pagina, total, porPagina, onChange }) {
   );
 }
 
-function FilaClase({ clase, abierta, onToggle, onDetalle }) {
+function FilaClase({ clase, reposicion, abierta, onToggle, onDetalle }) {
   const est = ESTADOS[clase.estado] || { texto: clase.estado, clase: 'bg-slate-500/15 text-slate-400' };
   const r = clase.resumen || {};
   const porcentaje = asistenciaClase(clase);
-  const tieneIncidencia = Boolean(clase.bitacora?.incidencias || clase.observacion_general);
+  const noImpartida = clase.estado === 'NO_IMPARTIDA';
+  const motivo = clase.motivo_no_impartida?.trim() || 'Sin motivo registrado';
+  const nota = observacionClase(clase);
+  const reposicionTexto = noImpartida ? estadoReposicion(clase, reposicion) : null;
   const requiereRevision = Boolean(clase.requiere_revision_clasificacion);
-  const grupoNoVinculado = !clase.carga.grupo;
+  const grupoNoVinculado = !noImpartida && !clase.carga.grupo;
   const grupoSinReferencia = grupoNoVinculado && !r.total;
   const correcciones = clase.correcciones_asistencia || [];
   const actividades = clase.bitacora?.actividades_realizadas?.trim();
@@ -77,21 +113,37 @@ function FilaClase({ clase, abierta, onToggle, onDetalle }) {
       <button type="button" onClick={onToggle} aria-expanded={abierta} className="grid w-full gap-3 px-4 py-3 text-left md:grid-cols-[140px_minmax(190px,0.9fr)_minmax(260px,1.35fr)_110px_180px_28px] md:items-center">
         <div><p className="text-sm font-semibold text-white">{fechaLarga(clase.fecha)}</p><p className="mt-0.5 font-mono text-[11px] text-slate-500">{clase.carga.hora_inicio}–{clase.carga.hora_fin}</p></div>
         <div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{clase.carga.actividad_nombre}</p><p className="text-xs text-slate-500">{clase.carga.grupo || (r.total ? `Grupo no vinculado · ${r.total} alumnos en lista` : 'Sin referencia de grupo')} · {espacio}</p></div>
-        <p className="truncate text-sm text-slate-300"><span className="md:hidden text-slate-500">Tema: </span>{clase.bitacora?.tema_impartido || (clase.practicas?.length ? `Práctica: ${clase.practicas[0].practica_titulo}` : 'Sin tema registrado')}</p>
-        <div><b className={`text-sm ${porcentaje != null && porcentaje < 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{porcentaje == null ? '—' : `${porcentaje}%`}</b><p className="text-[10px] text-slate-500">{r.total || 0} alumnos</p></div>
-        <div className="flex flex-wrap gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${requiereRevision ? 'bg-amber-500/15 text-amber-300' : est.clase}`}>{requiereRevision ? 'Impartida, pero el tema indica que no hubo clase' : est.texto}</span>{grupoNoVinculado && <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${grupoSinReferencia ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}>{grupoSinReferencia ? 'Sin referencia de grupo' : 'Grupo histórico no vinculado'}</span>}{tieneIncidencia && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-300">Nota</span>}{!!correcciones.length && <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-bold text-blue-400">{correcciones.length} corrección{correcciones.length === 1 ? '' : 'es'}</span>}</div>
+        {noImpartida ? (
+          <p className="min-w-0 truncate text-sm text-slate-300 md:col-span-2" title={motivo}>{motivo}</p>
+        ) : (
+          <>
+            <p className="truncate text-sm text-slate-300"><span className="md:hidden text-slate-500">Tema: </span>{clase.bitacora?.tema_impartido || (clase.practicas?.length ? `Práctica: ${clase.practicas[0].practica_titulo}` : 'Sin tema registrado')}</p>
+            <div><b className={`text-sm ${porcentaje != null && porcentaje < 80 ? 'text-amber-400' : 'text-emerald-400'}`}>{porcentaje == null ? '—' : `${porcentaje}%`}</b><p className="text-[10px] text-slate-500">{r.total || 0} alumnos</p></div>
+          </>
+        )}
+        <div className="flex flex-wrap gap-1"><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${requiereRevision ? 'bg-amber-500/15 text-amber-300' : est.clase}`}>{requiereRevision ? 'Impartida, pero el tema indica que no hubo clase' : est.texto}</span>{grupoNoVinculado && <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${grupoSinReferencia ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}>{grupoSinReferencia ? 'Sin referencia de grupo' : 'Grupo histórico no vinculado'}</span>}{reposicionTexto && <span className="rounded-full bg-slate-500/15 px-2 py-1 text-[10px] font-bold text-slate-300">{reposicionTexto}</span>}{nota && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-300">Nota</span>}{!!correcciones.length && <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[10px] font-bold text-blue-400">{correcciones.length} corrección{correcciones.length === 1 ? '' : 'es'}</span>}</div>
         <svg className={`h-4 w-4 text-slate-500 transition ${abierta ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg>
       </button>
       {abierta && (
         <div className="border-t border-white/10 px-4 py-4 md:pl-[162px]">
+          {noImpartida ? (
+            <dl className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 text-sm sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <dt className="font-semibold text-slate-500">Motivo de la clase no impartida</dt>
+                <dd className="mt-1 whitespace-pre-wrap break-words font-medium text-slate-200">{motivo}</dd>
+              </div>
+              <div><dt className="text-slate-500">Reposición</dt><dd className="font-medium text-slate-200">{reposicionTexto}</dd></div>
+              <div><dt className="text-slate-500">Periodo</dt><dd className="text-slate-300">{clase.carga.periodo || '—'}</dd></div>
+              {nota && <div className="sm:col-span-2"><dt className="text-slate-500">Observación adicional</dt><dd className="whitespace-pre-wrap break-words text-slate-300">{nota}</dd></div>}
+            </dl>
+          ) : (
           <div className="grid gap-4 lg:grid-cols-[1fr_360px_auto] lg:items-start">
-            <div className="space-y-2 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.025] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Registro de la sesión</p><p className="mt-1 font-medium text-slate-200">{clase.bitacora?.tema_impartido || (clase.practicas?.length ? `Práctica: ${clase.practicas[0].practica_titulo}` : 'Sin tema registrado')}</p></div><p className="text-slate-300"><span className="text-slate-500">Periodo:</span> {clase.carga.periodo || '—'}</p><p className="text-slate-300"><span className="text-slate-500">Cumplimiento de lo planeado para la sesión:</span> {clase.bitacora?.avance_planeacion != null ? `${clase.bitacora.avance_planeacion}%` : 'Sin registrar'}</p>{clase.es_extemporanea && <p className="rounded-lg bg-blue-500/[0.07] p-2 text-blue-200"><span className="font-semibold">Captura extemporánea:</span> {clase.motivo_extemporaneo || 'Sin motivo registrado'}</p>}{requiereRevision && <p className="rounded-lg bg-amber-500/10 p-2 text-amber-200">La sesión está cerrada como impartida, pero el tema registrado indica que no hubo clase. Abre el registro y usa “Marcar no impartida”, o corrige el tema si fue un error de captura.</p>}{grupoNoVinculado && <p className="rounded-lg bg-amber-500/10 p-2 text-amber-200">Esta carga histórica perdió el vínculo formal con el grupo{r.total ? `, aunque conserva ${r.total} alumnos en la lista` : ''}. No significa que los alumnos no tengan grupo.</p>}{tieneIncidencia && <p className="text-amber-300"><span className="font-semibold">Nota:</span> {clase.bitacora?.incidencias || clase.observacion_general}</p>}</div>
-            {clase.estado === 'NO_IMPARTIDA'
-              ? <div className="rounded-xl border border-red-500/20 bg-red-500/[0.07] p-3 text-sm text-red-200"><b>Motivo:</b> {clase.motivo_no_impartida}</div>
-              : <div className="grid grid-cols-4 gap-2 text-center">{[['Presentes', r.presente || 0, 'text-emerald-400'], ['Faltas', r.falta || 0, 'text-red-400'], ['Retardos', r.retardo || 0, 'text-amber-400'], ['Justif.', r.justificada || 0, 'text-cyan-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/[0.04] px-2 py-2"><b className={`block ${tone}`}>{value}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>}
-            {clase.estado !== 'NO_IMPARTIDA' && <div className="flex flex-col gap-2">{clase.practicas?.map(p=><a key={p.practica_id} href={p.practica_url} className="text-sm font-semibold text-blue-400">Ver práctica: {p.practica_titulo}</a>)}<button onClick={onDetalle} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Ver registro completo</button><button onClick={exportarPdf} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300">Descargar lista PDF</button></div>}
+            <div className="space-y-2 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.025] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Registro de la sesión</p><p className="mt-1 font-medium text-slate-200">{clase.bitacora?.tema_impartido || (clase.practicas?.length ? `Práctica: ${clase.practicas[0].practica_titulo}` : 'Sin tema registrado')}</p></div><p className="text-slate-300"><span className="text-slate-500">Periodo:</span> {clase.carga.periodo || '—'}</p><p className="text-slate-300"><span className="text-slate-500">Cumplimiento de lo planeado para la sesión:</span> {clase.bitacora?.avance_planeacion != null ? `${clase.bitacora.avance_planeacion}%` : 'Sin registrar'}</p>{clase.es_extemporanea && <p className="rounded-lg bg-blue-500/[0.07] p-2 text-blue-200"><span className="font-semibold">Captura extemporánea:</span> {clase.motivo_extemporaneo || 'Sin motivo registrado'}</p>}{requiereRevision && <p className="rounded-lg bg-amber-500/10 p-2 text-amber-200">La sesión está cerrada como impartida, pero el tema registrado indica que no hubo clase. Abre el registro y usa “Marcar no impartida”, o corrige el tema si fue un error de captura.</p>}{grupoNoVinculado && <p className="rounded-lg bg-amber-500/10 p-2 text-amber-200">Esta carga histórica perdió el vínculo formal con el grupo{r.total ? `, aunque conserva ${r.total} alumnos en la lista` : ''}. No significa que los alumnos no tengan grupo.</p>}{nota && <p className="text-amber-300"><span className="font-semibold">Nota:</span> {nota}</p>}</div>
+            <div className="grid grid-cols-4 gap-2 text-center">{[['Presentes', r.presente || 0, 'text-emerald-400'], ['Faltas', r.falta || 0, 'text-red-400'], ['Retardos', r.retardo || 0, 'text-amber-400'], ['Justif.', r.justificada || 0, 'text-cyan-400']].map(([label, value, tone]) => <div key={label} className="rounded-xl bg-white/[0.04] px-2 py-2"><b className={`block ${tone}`}>{value}</b><span className="text-[9px] text-slate-500">{label}</span></div>)}</div>
+            <div className="flex flex-col gap-2">{clase.practicas?.map(p=><a key={p.practica_id} href={p.practica_url} className="text-sm font-semibold text-blue-400">Ver práctica: {p.practica_titulo}</a>)}<button onClick={onDetalle} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500">Ver registro completo</button><button onClick={exportarPdf} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300">Descargar lista PDF</button></div>
           </div>
-          {clase.estado !== 'NO_IMPARTIDA' && (actividades || trabajoAsignado || temaPendiente) && (
+          )}
+          {!noImpartida && (actividades || trabajoAsignado || temaPendiente) && (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {actividades && <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Actividades realizadas</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-300">{actividades}</p></div>}
               {trabajoAsignado && <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.06] p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-300">Trabajo asignado al grupo</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{trabajoAsignado}</p></div>}
@@ -145,19 +197,22 @@ export default function HistorialClasesDocente() {
   }, []);
   useEffect(() => { setPagina(1); setAbiertaId(null); setGrupoAbierto(null); }, [busqueda, periodo, estado, filtroEspecial, desde, hasta, vista]);
 
+  const reposicionesPorClase = useMemo(() => new Map(clases
+    .filter(clase => clase.es_reposicion && clase.clase_origen_id && clase.estado_reposicion !== 'CANCELADA' && clase.estado !== 'CANCELADA')
+    .map(clase => [clase.clase_origen_id, clase])), [clases]);
   const periodos = useMemo(() => [...new Set(clases.map((c) => c.carga.periodo).filter(Boolean))], [clases]);
   const conteoNoImpartidas = useMemo(() => clases.filter((c) => c.estado === 'NO_IMPARTIDA').length, [clases]);
   const conteoSinTema = useMemo(() => clases.filter((c) => c.estado !== 'NO_IMPARTIDA' && !c.bitacora?.tema_impartido).length, [clases]);
   const filtradas = useMemo(() => {
     const texto = busqueda.trim().toLocaleLowerCase('es');
     return clases.filter((clase) => {
-      const coincide = !texto || `${clase.carga.actividad_nombre} ${clase.carga.grupo || ''} ${clase.carga.carrera || ''} ${clase.bitacora?.tema_impartido || ''} ${clase.bitacora?.actividades_realizadas || ''} ${clase.bitacora?.tarea_asignada || ''} ${clase.bitacora?.tema_pendiente || ''}`.toLocaleLowerCase('es').includes(texto);
+      const coincide = !texto || `${clase.carga.actividad_nombre} ${clase.carga.grupo || ''} ${clase.carga.carrera || ''} ${clase.bitacora?.tema_impartido || ''} ${clase.bitacora?.actividades_realizadas || ''} ${clase.bitacora?.tarea_asignada || ''} ${clase.bitacora?.tema_pendiente || ''} ${clase.motivo_no_impartida || ''}`.toLocaleLowerCase('es').includes(texto);
       const especial = filtroEspecial === 'TODAS'
-        || (filtroEspecial === 'INCIDENCIAS' && (clase.bitacora?.incidencias || clase.observacion_general))
+        || (filtroEspecial === 'INCIDENCIAS' && observacionClase(clase))
         || (filtroEspecial === 'EXTEMPORANEAS' && clase.es_extemporanea)
         || (filtroEspecial === 'CON_TAREA' && Boolean(clase.bitacora?.tarea_asignada?.trim()))
         || (filtroEspecial === 'CON_PENDIENTE' && Boolean(clase.bitacora?.tema_pendiente?.trim()))
-        || (filtroEspecial === 'SIN_TEMA' && !clase.bitacora?.tema_impartido);
+        || (filtroEspecial === 'SIN_TEMA' && clase.estado !== 'NO_IMPARTIDA' && !clase.bitacora?.tema_impartido);
       return coincide && especial && (periodo === 'TODOS' || clase.carga.periodo === periodo) && (estado === 'TODOS' || clase.estado === estado) && (!desde || clase.fecha >= desde) && (!hasta || clase.fecha <= hasta);
     });
   }, [clases, busqueda, periodo, estado, filtroEspecial, desde, hasta]);
@@ -212,14 +267,14 @@ export default function HistorialClasesDocente() {
         {filtrosAbiertos && <div className="grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-5"><label className="text-xs font-semibold text-slate-400">Cuatrimestre<select className="input-dark mt-1 w-full" value={periodo} onChange={(e) => setPeriodo(e.target.value)}><option value="TODOS">Todos los periodos</option>{periodos.map((p) => <option key={p}>{p}</option>)}</select></label><label className="text-xs font-semibold text-slate-400">Estado<select className="input-dark mt-1 w-full" value={estado} onChange={(e) => setEstado(e.target.value)}><option value="TODOS">Todos los estados</option><option value="CERRADA">Impartidas</option><option value="ABIERTA">En captura</option><option value="CORRECCION">En corrección</option><option value="NO_IMPARTIDA">No impartidas</option></select></label><label className="text-xs font-semibold text-slate-400">Desde<input type="date" className="input-dark themed-date-input mt-1 w-full" value={desde} onChange={(e) => setDesde(e.target.value)}/></label><label className="text-xs font-semibold text-slate-400">Hasta<input type="date" className="input-dark themed-date-input mt-1 w-full" value={hasta} onChange={(e) => setHasta(e.target.value)}/></label><label className="text-xs font-semibold text-slate-400">Mostrar<select className="input-dark mt-1 w-full" value={filtroEspecial} onChange={(e) => setFiltroEspecial(e.target.value)}><option value="TODAS">Todas las clases</option><option value="INCIDENCIAS">Con notas</option><option value="EXTEMPORANEAS">Extemporáneas</option><option value="CON_TAREA">Con trabajo asignado</option><option value="CON_PENDIENTE">Con tema para retomar</option><option value="SIN_TEMA">Sin tema registrado</option></select></label></div>}
       </section>
       {error && <p className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400">{error}</p>}
-      {cargando ? <div className="glass rounded-2xl p-12 text-center text-sm text-slate-400">Cargando historial…</div> : !fuente.length ? <div className="glass rounded-2xl p-12 text-center"><p className="font-semibold text-white">No hay clases con estos filtros</p><p className="mt-1 text-sm text-slate-500">Ajusta los filtros o consulta otro cuatrimestre.</p></div> : vista === 'CRONOLOGICA' ? <section className="glass overflow-hidden rounded-2xl"><div className="hidden grid-cols-[140px_minmax(190px,0.9fr)_minmax(260px,1.35fr)_110px_180px_28px] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 md:grid"><span>Fecha</span><span>Materia y grupo</span><span>Tema</span><span>Asistencia</span><span>Estado</span><span/></div>{visibles.map((clase) => <FilaClase key={clase.id} clase={clase} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</section> : <section className="space-y-3">{visibles.map((grupo) => {
+      {cargando ? <div className="glass rounded-2xl p-12 text-center text-sm text-slate-400">Cargando historial…</div> : !fuente.length ? <div className="glass rounded-2xl p-12 text-center"><p className="font-semibold text-white">No hay clases con estos filtros</p><p className="mt-1 text-sm text-slate-500">Ajusta los filtros o consulta otro cuatrimestre.</p></div> : vista === 'CRONOLOGICA' ? <section className="glass overflow-hidden rounded-2xl"><div className="hidden grid-cols-[140px_minmax(190px,0.9fr)_minmax(260px,1.35fr)_110px_180px_28px] gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 md:grid"><span>Fecha</span><span>Materia y grupo</span><span>Tema o motivo</span><span>Asistencia</span><span>Estado</span><span/></div>{visibles.map((clase) => <FilaClase key={clase.id} clase={clase} reposicion={reposicionesPorClase.get(clase.id)} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</section> : <section className="space-y-3">{visibles.map((grupo) => {
         const clasesImpartidas = grupo.clases.filter((c) => c.estado === 'CERRADA' && !c.motivo_no_impartida);
         const cerradas = clasesImpartidas.length;
         const registros = clasesImpartidas.reduce((total, c) => total + (c.resumen?.total || 0), 0);
         const asistieron = clasesImpartidas.reduce((total, c) => total + (c.resumen?.presente || 0) + (c.resumen?.retardo || 0) + (c.resumen?.justificada || 0), 0);
         const asistencia = registros ? Math.round((asistieron / registros) * 100) : null;
         const abierto = grupoAbierto === grupo.key;
-        return <article key={grupo.key} className="glass overflow-hidden rounded-2xl"><button onClick={() => setGrupoAbierto(abierto ? null : grupo.key)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">{grupo.nombre}</h2><p className="mt-1 text-xs text-slate-500">{grupo.grupo || 'Inconsistencia: sin grupo asignado'} · {grupo.periodo} · Última sesión: {fechaLarga(grupo.clases[0].fecha)} · La asistencia usa solo listas cerradas</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-lg bg-white/5 px-3 py-2 text-slate-300" title="Incluye todas las sesiones que aparecen en el historial, sin importar su estado">{textoCantidad(grupo.clases.length, 'sesión registrada', 'sesiones registradas')}</span><span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-emerald-400" title="Sesiones cerradas como impartidas y con lista de asistencia">{textoCantidad(cerradas, 'sesión impartida', 'sesiones impartidas')}</span><span className="rounded-lg bg-slate-500/10 px-3 py-2 text-slate-300" title={`Porcentaje calculado con las listas de ${cerradas} sesiones impartidas`}>{asistencia == null ? '—' : `${asistencia}%`} asistencia</span><span className="text-[11px] font-semibold text-slate-500">{abierto ? 'Ocultar sesiones' : 'Ver sesiones'}</span><svg className={`h-4 w-4 text-slate-500 transition ${abierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg></div></button>{abierto && <div className="border-t border-white/10">{grupo.clases.map((clase) => <FilaClase key={clase.id} clase={clase} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</div>}</article>;
+        return <article key={grupo.key} className="glass overflow-hidden rounded-2xl"><button onClick={() => setGrupoAbierto(abierto ? null : grupo.key)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-white">{grupo.nombre}</h2><p className="mt-1 text-xs text-slate-500">{grupo.grupo || 'Inconsistencia: sin grupo asignado'} · {grupo.periodo} · Última sesión: {fechaLarga(grupo.clases[0].fecha)} · La asistencia usa solo listas cerradas</p></div><div className="flex flex-wrap items-center gap-2 text-xs"><span className="rounded-lg bg-white/5 px-3 py-2 text-slate-300" title="Incluye todas las sesiones que aparecen en el historial, sin importar su estado">{textoCantidad(grupo.clases.length, 'sesión registrada', 'sesiones registradas')}</span><span className="rounded-lg bg-emerald-500/10 px-3 py-2 text-emerald-400" title="Sesiones cerradas como impartidas y con lista de asistencia">{textoCantidad(cerradas, 'sesión impartida', 'sesiones impartidas')}</span><span className="rounded-lg bg-slate-500/10 px-3 py-2 text-slate-300" title={`Porcentaje calculado con las listas de ${cerradas} sesiones impartidas`}>{asistencia == null ? '—' : `${asistencia}%`} asistencia</span><span className="text-[11px] font-semibold text-slate-500">{abierto ? 'Ocultar sesiones' : 'Ver sesiones'}</span><svg className={`h-4 w-4 text-slate-500 transition ${abierto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6"/></svg></div></button>{abierto && <div className="border-t border-white/10">{grupo.clases.map((clase) => <FilaClase key={clase.id} clase={clase} reposicion={reposicionesPorClase.get(clase.id)} abierta={abiertaId === clase.id} onToggle={() => setAbiertaId(abiertaId === clase.id ? null : clase.id)} onDetalle={() => navigate(`/docente/clase/${clase.id}`)}/>)}</div>}</article>;
       })}</section>}
       <Paginacion pagina={pagina} total={fuente.length} porPagina={POR_PAGINA} onChange={(p) => { setPagina(p); setAbiertaId(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}/>
     </main></AdminLayout>
