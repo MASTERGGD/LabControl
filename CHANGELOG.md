@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Clases no impartidas en el cierre académico — 2026-11-26
+## [d154f06] — Clases no impartidas en el cierre académico — 2026-11-26
 
 El reporte de División mostraba la fecha de una clase no impartida sin explicar su motivo o reposición. El resumen distingue asistencias, clases no impartidas y fechas sin registro. Al desplegarlo se muestra el motivo y el estado de reposición, con su fecha si existe. La columna de cierre indica si se espera la ventana, falta la confirmación del docente o venció el plazo. El detalle se conserva en los nuevos reportes finales.
 
-Compilación de Vite y pruebas del frontend y del cierre académico verificadas. Pendiente confirmar la publicación y revisar la interfaz de División con sesión iniciada.
+Compilación de Vite, 207 pruebas del frontend y 11 de cierre académico aprobadas. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios. Se verificó HTTP 200 para sitio y API y las etiquetas en el JavaScript publicado. Pendiente revisar la interfaz de División con sesión iniciada.
 
 ---
 
