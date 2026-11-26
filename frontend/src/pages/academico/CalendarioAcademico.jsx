@@ -128,6 +128,46 @@ const resuelta = carga => ['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].inclu
 const sinRegistro = carga => carga.resumen.fechas_sin_registro.length > 0;
 const textoBusqueda = valor => (valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+const ESTADO_REPOSICION = {
+  NO_REQUERIDA: 'Sin reposición',
+  PENDIENTE: 'Reposición pendiente',
+  PROGRAMADA: 'Reposición programada',
+  EN_CURSO: 'Reposición en curso',
+  CANCELADA: 'Reposición cancelada',
+  REALIZADA: 'Clase repuesta',
+  NO_IMPARTIDA: 'Reposición no impartida',
+};
+
+function estadoCierreCarga(carga, cierre) {
+  if (carga.estado === 'CONFIRMADA_DOCENTE') return 'Confirmada por el docente';
+  if (carga.estado === 'CERRADA_ADMINISTRATIVA') return 'Cerrada administrativamente';
+  if (carga.estado === 'REABIERTA') return 'Reabierta para corrección';
+  if (cierre.confirmacion_vigente) return 'Por confirmar por el docente';
+  if (cierre.permite_cierre_administrativo) return 'Sin confirmar · plazo vencido';
+  return 'En espera de la ventana de confirmación';
+}
+
+function CoberturaCarga({ resumen }) {
+  const noImpartidas = resumen.detalle_no_impartidas
+    ?? resumen.fechas_no_impartidas.map(fecha => ({ fecha }));
+  const faltantes = resumen.fechas_sin_registro;
+  const cobertura = resumen.clases_esperadas == null
+    ? 'Publica el calendario con inicio y fin para calcular la cobertura.'
+    : `${resumen.asistencias_registradas} con asistencia · ${noImpartidas.length} ${noImpartidas.length === 1 ? 'no impartida' : 'no impartidas'} · ${faltantes.length} sin registro`;
+  if (!faltantes.length && !noImpartidas.length) return <p>{cobertura}</p>;
+
+  return <details>
+    <summary>{cobertura}</summary>
+    <div className="mt-2 space-y-2">
+      {faltantes.length > 0 && <p>Fechas sin registro · {faltantes.join(', ')}</p>}
+      {noImpartidas.map(clase => <div key={clase.fecha}>
+        <p><strong>{clase.fecha} · No impartida</strong> · {ESTADO_REPOSICION[clase.estado_reposicion] || 'Reposición sin definir'}{clase.fecha_reposicion ? ` · ${clase.fecha_reposicion}` : ''}</p>
+        <p>{clase.motivo || 'Sin motivo registrado'}</p>
+      </div>)}
+    </div>
+  </details>;
+}
+
 function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState('todas');
@@ -174,7 +214,7 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
         </button>
         {abierto && <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="text-slate-500"><tr><th className="py-2">Materia y horario</th><th>Grupo</th><th>Asistencia y clases</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <thead className="text-slate-500"><tr><th className="py-2">Materia y horario</th><th>Grupo</th><th>Asistencia y clases</th><th>Cierre de la carga</th><th>Acciones</th></tr></thead>
             <tbody className="divide-y divide-white/10">
               {filas.map(c => <tr key={c.carga_id}>
                 <td className="py-2.5"><b className="text-white">{c.materia}</b><br/><span>{dias[c.dia_semana]} {c.hora_inicio && `${c.hora_inicio}–${c.hora_fin}`}</span></td>
@@ -185,14 +225,9 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
                     {c.resumen.sesiones.filter(clase => ['ABIERTA', 'CORRECCION'].includes(clase.estado)).map(clase =>
                       <p key={clase.id}>{clase.fecha} · {clase.estado === 'ABIERTA' ? 'Abierta' : 'En corrección'}</p>)}
                   </details>}
-                  {c.resumen.clases_esperadas == null ? <p>Publica el calendario con inicio y fin para calcular la cobertura.</p> :
-                    <details>
-                      <summary>{c.resumen.asistencias_registradas}/{c.resumen.clases_esperadas} con asistencia · {c.resumen.fechas_sin_registro.length} sin registro</summary>
-                      {c.resumen.fechas_sin_registro.length > 0 && <p>Sin registro · {c.resumen.fechas_sin_registro.join(', ')}</p>}
-                      {c.resumen.fechas_no_impartidas.length > 0 && <p>No impartidas · {c.resumen.fechas_no_impartidas.join(', ')}</p>}
-                    </details>}
+                  <CoberturaCarga resumen={c.resumen} />
                 </td>
-                <td>{({ PENDIENTE_REVISION: 'Pendiente de revisión', CONFIRMADA_DOCENTE: 'Confirmada por el docente', CERRADA_ADMINISTRATIVA: 'Cerrada administrativamente', REABIERTA: 'Reabierta' })[c.estado] || c.estado}
+                <td>{estadoCierreCarga(c, cierre)}
                   {c.cierre_administrativo && <p>{c.cierre_administrativo.motivo} · {c.cierre_administrativo.responsable}{c.cierre_administrativo.folio && ` · Folio ${c.cierre_administrativo.folio}`}</p>}
                 </td>
                 <td className="text-right">

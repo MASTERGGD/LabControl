@@ -131,12 +131,29 @@ def _resumen_carga(db, carga, fechas_lectivas=None):
     esperadas = fechas_lectivas.get(carga.dia_semana, []) if fechas_lectivas is not None else None
     por_fecha = {clase.fecha.isoformat(): clase for clase in clases if not clase.es_reposicion}
     con_asistencia = {fecha for fecha, clase in por_fecha.items() if clase.asistencias}
-    no_impartidas = {fecha for fecha, clase in por_fecha.items() if clase.motivo_no_impartida}
+    no_impartidas = {fecha: clase for fecha, clase in por_fecha.items() if clase.estado == "NO_IMPARTIDA" or clase.motivo_no_impartida}
+    reposiciones = {}
+    for clase in clases:
+        if clase.es_reposicion and clase.clase_origen_id and clase.estado != "CANCELADA" and clase.estado_reposicion != "CANCELADA":
+            reposiciones.setdefault(clase.clase_origen_id, clase)
+    detalle_no_impartidas = []
+    for fecha, clase in sorted(no_impartidas.items()):
+        reposicion = reposiciones.get(clase.id)
+        estado = clase.estado_reposicion
+        if reposicion:
+            estado = {"CERRADA": "REALIZADA", "NO_IMPARTIDA": "NO_IMPARTIDA"}.get(
+                reposicion.estado, reposicion.estado_reposicion or estado,
+            )
+        detalle_no_impartidas.append({
+            "fecha": fecha, "motivo": clase.motivo_no_impartida,
+            "estado_reposicion": estado, "fecha_reposicion": reposicion.fecha.isoformat() if reposicion else None,
+        })
     return {
         "clases_esperadas": len(esperadas) if esperadas is not None else None,
-        "asistencias_registradas": sum(fecha in con_asistencia for fecha in esperadas or []),
+        "asistencias_registradas": sum(fecha in con_asistencia and fecha not in no_impartidas for fecha in esperadas or []),
         "fechas_sin_registro": [fecha for fecha in esperadas or [] if fecha not in con_asistencia and fecha not in no_impartidas],
         "fechas_no_impartidas": sorted(no_impartidas),
+        "detalle_no_impartidas": detalle_no_impartidas,
         "clases_registradas": len(clases),
         "clases_cerradas": sum(1 for c in clases if c.estado == "CERRADA"),
         "clases_abiertas": abiertas,
@@ -223,6 +240,10 @@ def _ser_cierre(db, cierre, usuario):
         "confirmacion_inicio": cierre.confirmacion_inicio.isoformat() if cierre.confirmacion_inicio else None,
         "confirmacion_fin": cierre.confirmacion_fin.isoformat() if cierre.confirmacion_fin else None,
         "observaciones": cierre.observaciones, "puede_administrar": administra,
+        "confirmacion_vigente": cierre.estado == "CONFIRMACION" and bool(
+            cierre.confirmacion_inicio and cierre.confirmacion_fin
+            and cierre.confirmacion_inicio <= _hoy() <= cierre.confirmacion_fin
+        ),
         "permite_cierre_administrativo": administra and cierre.estado == "CONFIRMACION"
         and cierre.confirmacion_fin is not None and _hoy() > cierre.confirmacion_fin,
         "historial_plazos": (cierre.historial_plazos or []) if administra else [],

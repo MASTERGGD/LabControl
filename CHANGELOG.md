@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Clases no impartidas en el cierre académico — 2026-11-26
+
+El reporte de División mostraba la fecha de una clase no impartida sin explicar su motivo o reposición. El resumen distingue asistencias, clases no impartidas y fechas sin registro. Al desplegarlo se muestra el motivo y el estado de reposición, con su fecha si existe. La columna de cierre indica si se espera la ventana, falta la confirmación del docente o venció el plazo. El detalle se conserva en los nuevos reportes finales.
+
+Compilación de Vite y pruebas del frontend y del cierre académico verificadas. Pendiente confirmar la publicación y revisar la interfaz de División con sesión iniciada.
+
+---
+
 ## [13f7935] — Calendario de fechas y cierre por docente — 2026-11-26
 
 El reporte de cierre desplazaba el calendario debajo de una lista extensa. Calendario oficial abre en Calendario de fechas. Cierre académico agrupa las cargas por docente y permite buscar por docente, materia o grupo, y filtrar por resolución, faltantes o clases abiertas. Cada carga muestra su horario para distinguir bloques de una misma materia.

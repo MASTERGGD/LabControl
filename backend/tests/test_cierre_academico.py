@@ -344,10 +344,19 @@ def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypa
             requiere_asistencia=requiere, permite_iniciar_clase=requiere,
             creado_por_id=admin.id,
         ))
+    db.add(ClaseDocente(
+        carga_docente_id=carga.id, fecha=datetime.date(2026, 8, 11), estado="NO_IMPARTIDA",
+        motivo_no_impartida="Reunión de academia", estado_reposicion="NO_REQUERIDA",
+    ))
+    db.add(EventoCalendarioAcademico(
+        calendario_id=calendario.id, tipo="INICIO_CUATRIMESTRE", titulo="Inicio oficial",
+        fecha_inicio=datetime.date(2026, 7, 28), fecha_fin=datetime.date(2026, 7, 28),
+        creado_por_id=admin.id,
+    ))
     db.commit()
     informe = client.get("/cierre-academico", headers=admin_h, params={"periodo_id": periodo.id})
     assert informe.status_code == 200, informe.text
-    assert informe.json()["cargas"][0]["resumen"]["fechas_sin_registro"] == ["2026-08-11"]
+    assert informe.json()["cargas"][0]["resumen"]["fechas_sin_registro"] == ["2026-07-28"]
     assert client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "PRECIERRE"}).status_code == 200
     ventana = {"periodo_id": periodo.id, "estado": "CONFIRMACION", "confirmacion_inicio": "2026-08-14", "confirmacion_fin": "2026-08-14"}
     assert client.put("/cierre-academico", headers=admin_h, json=ventana).status_code == 200
@@ -371,5 +380,9 @@ def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypa
     fila = cerrado.json()["reporte_final"]["cargas"][0]
     assert fila["estado"] == "CERRADA_ADMINISTRATIVA"
     assert fila["cierre_administrativo"]["folio"] == "DIV-01"
-    assert fila["resumen"]["fechas_sin_registro"] == ["2026-08-11"]
-    assert db.query(ClaseDocente).count() == 0
+    assert fila["resumen"]["fechas_sin_registro"] == ["2026-07-28"]
+    assert fila["resumen"]["detalle_no_impartidas"] == [{
+        "fecha": "2026-08-11", "motivo": "Reunión de academia",
+        "estado_reposicion": "NO_REQUERIDA", "fecha_reposicion": None,
+    }]
+    assert db.query(ClaseDocente).count() == 1

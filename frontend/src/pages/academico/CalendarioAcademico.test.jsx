@@ -10,11 +10,11 @@ jest.mock('../../context/PeriodoContext', () => ({
 }));
 
 test('abre las fechas primero y permite filtrar y desplegar las materias de cada docente', async () => {
-  const resumen = { clases_esperadas: 2, asistencias_registradas: 1, fechas_sin_registro: ['2026-11-24'], fechas_no_impartidas: [] };
+  const resumen = { clases_esperadas: 2, asistencias_registradas: 1, fechas_sin_registro: ['2026-11-24'], fechas_no_impartidas: ['2026-10-15'], detalle_no_impartidas: [{ fecha: '2026-10-15', motivo: 'Reunión de academia', estado_reposicion: 'NO_REQUERIDA' }] };
   const carga = { docente_id: 1, docente: 'Ana de prueba', grupo: '4° A', estado: 'PENDIENTE_REVISION', resumen };
   api.get.mockImplementation(url => Promise.resolve({ data: url === '/calendario-academico'
     ? { estado: 'BORRADOR', puede_editar: true, eventos: [] }
-    : { estado: 'ACTIVO', cargas: [
+    : { estado: 'CONFIRMACION', confirmacion_vigente: true, cargas: [
       { ...carga, carga_id: 1, materia: 'Minería de Texto', dia_semana: 1, hora_inicio: '09:00', hora_fin: '10:00' },
       { ...carga, carga_id: 2, materia: 'Bases de Datos', estado: 'CONFIRMADA_DOCENTE' },
     ] } }));
@@ -31,6 +31,10 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
     expect(boton('Ana de prueba').getAttribute('aria-expanded')).toBe('false');
     await act(async () => boton('Ana de prueba').click());
     expect(host.textContent).toContain('Minería de Texto');
+    expect(host.textContent).toContain('1 con asistencia · 1 no impartida · 1 sin registro');
+    expect(host.textContent).toContain('2026-10-15 · No impartida · Sin reposición');
+    expect(host.textContent).toContain('Reunión de academia');
+    expect(host.textContent).toContain('Por confirmar por el docente');
     expect(host.textContent).toContain('Martes 09:00–10:00');
     expect(host.textContent).toContain('Bases de Datos');
     await act(async () => {
