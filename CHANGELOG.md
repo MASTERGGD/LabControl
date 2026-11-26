@@ -4,6 +4,16 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Cierre administrativo y transición de cuatrimestre — 2026-11-26
+
+### Problema y comportamiento resultante
+División de Carrera necesitaba concluir el periodo piloto con cargas incompletas y conservar constancia de los faltantes. El Calendario oficial muestra la cobertura de asistencia, las clases abiertas, las confirmaciones y los pendientes de laboratorio. División puede ampliar el plazo, y después del vencimiento resolver cargas por motivo, responsable, fecha y folio externo opcional. El cierre definitivo conserva un reporte descargable y exige resolver las cargas y las sesiones de laboratorio vinculadas. La creación del periodo sucesor y la promoción requieren el cierre de origen. La migración aditiva es a81c73ef9402.
+
+### Validación y estado
+Compilación de Vite, 206 pruebas del frontend y migración reversible en SQLite verificadas. Pruebas dirigidas del backend para calendario, cierre y promoción. Pendiente verificar la publicación en Railway y la vista autenticada de División de Carrera.
+
+---
+
 ## [Preparado] — Historial y tarjeta de avisos de inicio — 2026-11-24
 
 ### Problema y comportamiento resultante

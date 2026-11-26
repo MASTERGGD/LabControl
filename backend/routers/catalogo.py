@@ -1,3 +1,4 @@
+from services.transicion_periodo import exigir_cierre_anterior
 from services.upload_limits import read_upload
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
@@ -127,6 +128,7 @@ def _sincronizar_inscripcion(db, alumno):
     clave = _norm(alumno.periodo).upper()
     periodo = db.query(PeriodoEscolar).filter(PeriodoEscolar.clave == clave).first()
     if not periodo:
+        exigir_cierre_anterior(db, clave)
         periodo = PeriodoEscolar(clave=clave, activo=True)
         db.add(periodo); db.flush()
     grupo = db.query(GrupoAcademico).filter(

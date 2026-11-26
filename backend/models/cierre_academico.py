@@ -26,6 +26,9 @@ class CierreAcademicoPeriodo(Base):
     actualizado_en = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
     cerrado_en = Column(DateTime, nullable=True)
 
+    reporte_final = Column(JSON, nullable=True)
+    historial_plazos = Column(JSON, nullable=True)
+
     periodo = relationship("PeriodoEscolar")
     configurado_por = relationship("Usuario", foreign_keys=[configurado_por_id])
     cerrado_por = relationship("Usuario", foreign_keys=[cerrado_por_id])
@@ -42,6 +45,7 @@ class ConfirmacionCargaDocente(Base):
     estado = Column(String(25), nullable=False, default="PENDIENTE_REVISION", index=True)
     observaciones = Column(Text, nullable=True)
     resumen_json = Column(JSON, nullable=True)
+    cierre_administrativo = Column(JSON, nullable=True)
     confirmado_en = Column(DateTime, nullable=True)
     reabierta_hasta = Column(DateTime, nullable=True)
     motivo_reapertura = Column(Text, nullable=True)

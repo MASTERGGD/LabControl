@@ -13,6 +13,7 @@ from models.sesion import SesionClase
 from models.practica_laboratorio import PracticaLaboratorio
 from dependencies import get_current_user, require_roles
 from routers.notificaciones import crear_notificacion
+from services.transicion_periodo import exigir_cierre_anterior
 from services.auditoria import registrar, Accion, Recurso
 from services.calendario_academico import estado_fecha_academica
 from services.timezone import as_mx, now_mx
@@ -1081,6 +1082,7 @@ def crear_reservacion(
     ).order_by(PeriodoEscolar.id.desc()).all() if _normalizar_periodo(periodo.clave) == periodo_buscado), None)
     periodo_preexistente = periodo_academico is not None
     if not periodo_academico:
+        exigir_cierre_anterior(db, data.cuatrimestre)
         # Compatibilidad con instalaciones heredadas: toda nueva reserva queda
         # vinculada formalmente aunque el periodo sólo existiera como texto.
         periodo_academico = PeriodoEscolar(

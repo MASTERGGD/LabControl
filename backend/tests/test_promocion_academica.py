@@ -7,7 +7,10 @@ from models.promocion_academica import PromocionAcademicaAlumno
 from tests.conftest import auth_headers, get_token
 
 
-def test_servicios_escolares_promueve_sin_borrar_historial(client, db, admin_user):
+def test_servicios_escolares_promueve_sin_borrar_historial(client, db, admin_user, monkeypatch):
+    from routers import servicios_escolares
+
+    monkeypatch.setattr(servicios_escolares, "_clave_periodo_por_fecha", lambda: "MAY-AGO 2026")
     origen = PeriodoEscolar(clave="MAY-AGO 2026", activo=True, es_actual=False)
     destino = PeriodoEscolar(clave="SEP-DIC 2026", activo=True, es_actual=True)
     db.add_all([origen, destino]); db.flush()
@@ -67,6 +70,12 @@ def test_servicios_escolares_crea_periodo_destino_en_preparacion(client, db, adm
     db.add(origen); db.commit()
     headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
 
+    bloqueado = client.post("/servicios-escolares/periodos", headers=headers, json={"clave": "SEP-DIC 2026"})
+    assert bloqueado.status_code == 409
+    assert origen.clave in bloqueado.json()["detail"]
+    db.add(CierreAcademicoPeriodo(periodo_id=origen.id, estado="CERRADO", configurado_por_id=admin_user.id))
+    db.commit()
+
     respuesta = client.post(
         "/servicios-escolares/periodos",
         headers=headers,
@@ -121,6 +130,13 @@ def test_promocion_masiva_solo_actualiza_pendientes_y_conserva_excepciones(clien
     )
     db.add(excepcion); db.commit()
     headers = auth_headers(get_token(client, admin_user.email, "AdminPass123"))
+
+    bloqueada = client.get("/servicios-escolares/promociones", headers=headers, params={
+        "periodo_origen_id": origen.id, "periodo_destino_id": destino.id,
+    })
+    assert bloqueada.status_code == 409
+    db.add(CierreAcademicoPeriodo(periodo_id=origen.id, estado="CERRADO", configurado_por_id=admin_user.id))
+    db.commit()
 
     respuesta = client.put("/servicios-escolares/promociones", headers=headers, json={
         "periodo_destino_id": destino.id, "inscripcion_ids": [i.id for i in inscripciones],

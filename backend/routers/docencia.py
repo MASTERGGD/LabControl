@@ -398,6 +398,7 @@ def _validar_periodo_actual(db: Session, periodo_id: int, *, permitir_revision_c
 
 
 def _validar_carga_actual(db: Session, carga: CargaDocente):
+    db.query(PeriodoEscolar.id).filter_by(id=carga.periodo_id).with_for_update().one()
     periodo = _validar_periodo_actual(db, carga.periodo_id, permitir_revision_carga=True)
     cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == carga.periodo_id).first()
     if cierre:
@@ -413,8 +414,8 @@ def _validar_carga_actual(db: Session, carga: CargaDocente):
         )
         if cierre.estado == "CERRADO" and not reapertura_vigente:
             raise HTTPException(409, "El cuatrimestre está cerrado; solicita una reapertura a División de Carrera")
-        if confirmacion and confirmacion.estado == "CONFIRMADA_DOCENTE":
-            raise HTTPException(409, "Esta materia ya fue confirmada para el cierre")
+        if confirmacion and confirmacion.estado in {"CONFIRMADA_DOCENTE", "CERRADA_ADMINISTRATIVA"}:
+            raise HTTPException(409, "Esta materia ya fue resuelta para el cierre")
         if confirmacion and confirmacion.estado == "REABIERTA" and confirmacion.reabierta_hasta and confirmacion.reabierta_hasta < datetime.datetime.utcnow():
             raise HTTPException(409, "La reapertura de esta materia ya venció")
     return periodo

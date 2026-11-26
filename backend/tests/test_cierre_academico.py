@@ -315,3 +315,61 @@ def test_migracion_archiva_solo_calendarios_de_cuatris_cerrados(db, monkeypatch)
     assert viejo.cerrado_en == datetime.datetime(2026, 8, 31, 10)
     assert nuevo.estado == "BORRADOR" and nuevo.version == 1
     assert db.query(HistorialCalendarioAcademico).count() == 1
+
+
+def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypatch):
+    from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
+    from routers import cierre_academico
+
+    admin, docente, periodo, carga = _escenario(db)
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    hoy = datetime.date(2026, 8, 14)
+    monkeypatch.setattr(cierre_academico, "_hoy", lambda: hoy)
+    calendario = CalendarioAcademico(
+        periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin.id,
+        publicado_en=datetime.datetime(2026, 8, 1),
+    )
+    db.add(calendario)
+    db.flush()
+    for tipo, dia, requiere in [
+        ("INICIO_CUATRIMESTRE", 1, True),
+        ("SUSPENSION_ACTIVIDADES", 4, False),
+        ("FIN_ACTIVIDADES_ACADEMICAS", 13, True),
+    ]:
+        fecha = datetime.date(2026, 8, dia)
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, tipo=tipo, titulo=tipo,
+            fecha_inicio=fecha, fecha_fin=fecha,
+            requiere_asistencia=requiere, permite_iniciar_clase=requiere,
+            creado_por_id=admin.id,
+        ))
+    db.commit()
+    informe = client.get("/cierre-academico", headers=admin_h, params={"periodo_id": periodo.id})
+    assert informe.status_code == 200, informe.text
+    assert informe.json()["cargas"][0]["resumen"]["fechas_sin_registro"] == ["2026-08-11"]
+    assert client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "PRECIERRE"}).status_code == 200
+    ventana = {"periodo_id": periodo.id, "estado": "CONFIRMACION", "confirmacion_inicio": "2026-08-14", "confirmacion_fin": "2026-08-14"}
+    assert client.put("/cierre-academico", headers=admin_h, json=ventana).status_code == 200
+    ventana["confirmacion_fin"] = "2026-08-15"
+    ampliada = client.put("/cierre-academico", headers=admin_h, json=ventana)
+    assert ampliada.status_code == 200, ampliada.text
+    assert len(ampliada.json()["historial_plazos"]) == 2
+
+    resolver = f"/cierre-academico/cargas/{carga.id}/cierre-administrativo"
+    datos = {"motivo": "Docente no disponible", "folio": "DIV-01"}
+    assert client.post(resolver, headers=admin_h, json=datos).status_code == 409
+    hoy = datetime.date(2026, 8, 16)
+    assert client.post(resolver, headers=docente_h, json=datos).status_code == 403
+    resuelto = client.post(resolver, headers=admin_h, json=datos)
+    assert resuelto.status_code == 200, resuelto.text
+    assert resuelto.json()["confirmadas"] == 0
+    assert resuelto.json()["resueltas"] == 1
+
+    cerrado = client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "CERRADO"})
+    assert cerrado.status_code == 200, cerrado.text
+    fila = cerrado.json()["reporte_final"]["cargas"][0]
+    assert fila["estado"] == "CERRADA_ADMINISTRATIVA"
+    assert fila["cierre_administrativo"]["folio"] == "DIV-01"
+    assert fila["resumen"]["fechas_sin_registro"] == ["2026-08-11"]
+    assert db.query(ClaseDocente).count() == 0

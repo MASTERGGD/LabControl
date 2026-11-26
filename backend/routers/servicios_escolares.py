@@ -35,6 +35,7 @@ from models.tutoria import GrupoTutorado
 from models.ficha_socioeconomica import FichaSocioeconomica
 from models.ficha_socioeconomica import FichaSocioeconomica, EstadoFicha
 from models.cierre_academico import CierreAcademicoPeriodo
+from services.transicion_periodo import exigir_cierre_anterior, exigir_cierre_periodo
 from models.promocion_academica import ContinuidadPrograma, PromocionAcademicaAlumno
 from models.auditoria import AuditLog
 from services.auditoria import registrar, Accion, Recurso
@@ -1330,6 +1331,7 @@ def crear_periodo_escolar(
                       if _normalizar_periodo(p.clave) == _normalizar_periodo(data.clave)), None)
     if existente:
         raise HTTPException(409, "El periodo escolar ya existe")
+    exigir_cierre_anterior(db, data.clave, exigir_anterior=True)
     periodo = PeriodoEscolar(clave=data.clave, activo=True, es_actual=False)
     db.add(periodo)
     db.commit()
@@ -1365,6 +1367,7 @@ def establecer_periodo_escolar_actual(
             409,
             f"El periodo correspondiente a la fecha actual es {esperado}. No se puede abrir otro periodo todavía.",
         )
+    exigir_cierre_anterior(db, periodo.clave)
     db.query(PeriodoEscolar).filter(
         PeriodoEscolar.id != periodo.id,
         PeriodoEscolar.es_actual == True,
@@ -1712,6 +1715,7 @@ def listar_promociones(periodo_origen_id: int, periodo_destino_id: int, db: Sess
     destino = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == periodo_destino_id).first()
     if not origen or not destino or origen.id == destino.id:
         raise HTTPException(422, "Selecciona periodos de origen y destino diferentes")
+    exigir_cierre_periodo(db, origen)
     cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == origen.id).first()
     inscripciones = (db.query(InscripcionAlumno).join(GrupoAcademico).filter(
         GrupoAcademico.periodo_id == origen.id, InscripcionAlumno.estado.in_(["ACTIVO", "CONCLUIDA"]),
@@ -1821,6 +1825,7 @@ def resolver_promocion(inscripcion_id: int, data: ResolucionPromocionIn, db: Ses
     destino = db.query(PeriodoEscolar).filter(PeriodoEscolar.id == data.periodo_destino_id).first()
     resolucion = data.resolucion.upper()
     if not inscripcion or not destino: raise HTTPException(404, "Inscripción o periodo no encontrado")
+    exigir_cierre_periodo(db, inscripcion.grupo_academico.periodo)
     if resolucion not in RESOLUCIONES_PROMOCION: raise HTTPException(422, "Resolución no válida")
     requiere_grupo = resolucion in {"PROMOVIDO", "REPITE"}
     if requiere_grupo and (not data.cuatrimestre_destino or not data.grupo_destino):
@@ -1942,6 +1947,7 @@ def resolver_promociones_masivas(
     grupos_origen = {i.grupo_academico_id for i in inscripciones}
     if len(grupos_origen) != 1:
         raise HTTPException(422, "La resolución masiva debe corresponder a un solo grupo de origen")
+    exigir_cierre_periodo(db, inscripciones[0].grupo_academico.periodo)
     if inscripciones[0].grupo_academico.periodo_id == destino.id:
         raise HTTPException(422, "El periodo destino debe ser diferente al periodo de origen")
     promociones = {p.inscripcion_origen_id: p for p in db.query(PromocionAcademicaAlumno).filter(
