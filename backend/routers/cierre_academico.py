@@ -165,6 +165,9 @@ def _ser_confirmacion(db, carga, confirmacion=None, fechas_lectivas=None):
     return {
         "id": confirmacion.id if confirmacion else None, "carga_id": carga.id,
         "materia": carga.actividad_nombre,
+        "dia_semana": carga.dia_semana,
+        "hora_inicio": carga.hora_inicio,
+        "hora_fin": carga.hora_fin,
         "grupo": f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}" if carga.grupo_academico else None,
         "docente_id": carga.docente_id, "docente": carga.docente.nombre if carga.docente else None,
         "estado": confirmacion.estado if confirmacion else "PENDIENTE_REVISION",

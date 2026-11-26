@@ -123,6 +123,91 @@ function EntradaHistorial({ registro }) {
   );
 }
 
+const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const resuelta = carga => ['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(carga.estado);
+const sinRegistro = carga => carga.resumen.fechas_sin_registro.length > 0;
+const textoBusqueda = valor => (valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
+  const [busqueda, setBusqueda] = useState('');
+  const [filtro, setFiltro] = useState('todas');
+  const [docenteAbierto, setDocenteAbierto] = useState(null);
+  const grupos = new Map();
+  const consulta = textoBusqueda(busqueda.trim());
+  for (const carga of cierre?.cargas || []) {
+    if (!textoBusqueda(`${carga.docente || ''} ${carga.materia} ${carga.grupo || ''}`).includes(consulta)) continue;
+    if (filtro === 'pendientes' && resuelta(carga)) continue;
+    if (filtro === 'sin-registro' && !sinRegistro(carga)) continue;
+    if (filtro === 'abiertas' && !carga.resumen.clases_abiertas) continue;
+    const id = carga.docente_id ?? carga.docente ?? 'sin-docente';
+    if (!grupos.has(id)) grupos.set(id, { id, nombre: carga.docente || 'Sin docente', cargas: [] });
+    grupos.get(id).cargas.push(carga);
+  }
+  const docentes = [...grupos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  if (!cierre?.cargas?.length) return null;
+
+  return <div className="mt-5 space-y-3">
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <label className="text-sm">Buscar docente, materia o grupo
+        <input type="search" className="input-dark mt-1 w-full" value={busqueda} onChange={e => setBusqueda(e.target.value)} />
+      </label>
+      <label className="text-sm">Mostrar cargas
+        <select className="input-dark mt-1 w-full" value={filtro} onChange={e => setFiltro(e.target.value)}>
+          <option value="todas">Todas</option>
+          <option value="pendientes">Sin resolver</option>
+          <option value="sin-registro">Con fechas sin registro</option>
+          <option value="abiertas">Con clases abiertas o en corrección</option>
+        </select>
+      </label>
+    </div>
+    {docentes.length === 0 && <p className="py-3 text-sm text-slate-400">No hay cargas que coincidan con la búsqueda.</p>}
+    {docentes.map(({ id, nombre, cargas }) => {
+      const abierto = docenteAbierto === id || (docenteAbierto === null && consulta && docentes.length === 1);
+      const filas = [...cargas].sort((a, b) =>
+        a.materia.localeCompare(b.materia, 'es') || (a.grupo || '').localeCompare(b.grupo || '', 'es')
+        || a.dia_semana - b.dia_semana || (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
+      return <section key={id} className="rounded-xl border p-3" style={{ borderColor: 'var(--topbar-border)' }}>
+        <button type="button" aria-expanded={Boolean(abierto)} onClick={() => setDocenteAbierto(abierto ? false : id)}
+          className="flex w-full flex-wrap items-center justify-between gap-2 p-1 text-left">
+          <span className="font-semibold">{nombre}</span>
+          <span className="text-sm text-slate-400">{cargas.length} cargas · {cargas.filter(c => !resuelta(c)).length} sin resolver · {cargas.filter(sinRegistro).length} con fechas sin registro <span aria-hidden="true">{abierto ? '▴' : '▾'}</span></span>
+        </button>
+        {abierto && <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-slate-500"><tr><th className="py-2">Materia y horario</th><th>Grupo</th><th>Asistencia y clases</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody className="divide-y divide-white/10">
+              {filas.map(c => <tr key={c.carga_id}>
+                <td className="py-2.5"><b className="text-white">{c.materia}</b><br/><span>{dias[c.dia_semana]} {c.hora_inicio && `${c.hora_inicio}–${c.hora_fin}`}</span></td>
+                <td>{c.grupo}</td>
+                <td className="py-2 pr-4">
+                  {c.resumen.clases_abiertas > 0 && <details>
+                    <summary>{c.resumen.clases_abiertas} abiertas o en corrección</summary>
+                    {c.resumen.sesiones.filter(clase => ['ABIERTA', 'CORRECCION'].includes(clase.estado)).map(clase =>
+                      <p key={clase.id}>{clase.fecha} · {clase.estado === 'ABIERTA' ? 'Abierta' : 'En corrección'}</p>)}
+                  </details>}
+                  {c.resumen.clases_esperadas == null ? <p>Publica el calendario con inicio y fin para calcular la cobertura.</p> :
+                    <details>
+                      <summary>{c.resumen.asistencias_registradas}/{c.resumen.clases_esperadas} con asistencia · {c.resumen.fechas_sin_registro.length} sin registro</summary>
+                      {c.resumen.fechas_sin_registro.length > 0 && <p>Sin registro · {c.resumen.fechas_sin_registro.join(', ')}</p>}
+                      {c.resumen.fechas_no_impartidas.length > 0 && <p>No impartidas · {c.resumen.fechas_no_impartidas.join(', ')}</p>}
+                    </details>}
+                </td>
+                <td>{({ PENDIENTE_REVISION: 'Pendiente de revisión', CONFIRMADA_DOCENTE: 'Confirmada por el docente', CERRADA_ADMINISTRATIVA: 'Cerrada administrativamente', REABIERTA: 'Reabierta' })[c.estado] || c.estado}
+                  {c.cierre_administrativo && <p>{c.cierre_administrativo.motivo} · {c.cierre_administrativo.responsable}{c.cierre_administrativo.folio && ` · Folio ${c.cierre_administrativo.folio}`}</p>}
+                </td>
+                <td className="text-right">
+                  {c.estado === 'CONFIRMADA_DOCENTE' && <button onClick={() => abrirReapertura(c)} className="rounded border border-blue-500/30 px-2 py-1 text-blue-300">Reabrir</button>}
+                  {cierre.permite_cierre_administrativo && !resuelta(c) && <button type="button" onClick={() => abrirAdministrativo(c)} className="rounded border border-amber-500/40 px-2 py-1 text-amber-300">Cerrar administrativamente</button>}
+                </td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
+      </section>;
+    })}
+  </div>;
+}
+
 export default function CalendarioAcademico() {
   const { periodo, actualizarPeriodo } = usePeriodo();
   const periodoId = periodo?.id ? String(periodo.id) : '';
@@ -142,6 +227,7 @@ export default function CalendarioAcademico() {
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
   const [vista, setVista] = useState('mes');
+  const [seccion, setSeccion] = useState('fechas');
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [tiposVisibles, setTiposVisibles] = useState(() => new Set(TIPOS.map(t => t[0])));
   const [eventoDetalle, setEventoDetalle] = useState(null);
@@ -305,7 +391,15 @@ export default function CalendarioAcademico() {
         </div>
         {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
-        {puedeAdministrar && (
+        {puedeAdministrar && <nav aria-label="Calendario académico" className="flex flex-wrap gap-2">
+          {[['fechas', 'Calendario de fechas'], ['cierre', 'Cierre académico']].map(([id, etiqueta]) => (
+            <button key={id} type="button" aria-pressed={seccion === id} onClick={() => setSeccion(id)}
+              className={`rounded-xl px-4 py-2 text-sm font-semibold ${seccion === id ? 'bg-emerald-700 text-white' : 'glass text-slate-400'}`}>
+              {etiqueta}
+            </button>
+          ))}
+        </nav>}
+        {puedeAdministrar && seccion === 'cierre' && (
           <section className="glass rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Cierre académico del cuatrimestre</p><h2 className="mt-1 font-semibold text-white">{cuatrimestreCerrado ? '✓ Cierre completado' : estadoCierre === 'CONFIRMACION' ? 'Confirmación docente en curso' : estadoCierre === 'PRECIERRE' ? 'Pre-cierre en curso' : 'El periodo está en curso'}</h2><p className="mt-1 text-xs text-slate-400">{cuatrimestreCerrado ? `Cuatrimestre y calendario en solo consulta${cierre.cerrado_en ? ` · Cerrado el ${new Date(`${cierre.cerrado_en}Z`).toLocaleString('es-MX')}` : ''}.` : estadoCierre === 'ACTIVO' ? finActividades ? `El cierre estará disponible después del ${new Date(`${finActividades.fecha_fin}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}, al terminar las actividades académicas.` : 'Agrega al calendario oficial la fecha de fin de actividades académicas para habilitar el cierre cuando corresponda.' : `${cierre.resueltas}/${cierre.total_cargas} cargas resueltas · ${cierre.confirmadas} docentes · ${cierre.administrativas} administrativas`}</p>{cierre?.laboratorios && <p className={`mt-1 text-xs ${cierre.laboratorios.sesiones_abiertas ? 'text-amber-300' : 'text-emerald-300'}`}>Laboratorios: {cierre.laboratorios.reservaciones} reservas · {cierre.laboratorios.sesiones_abiertas} sesiones abiertas{cierre.estado === 'CERRADO' ? ' · agenda archivada' : ''}</p>}</div><div className="flex flex-wrap gap-2">{estadoCierre === 'ACTIVO' && cierreDisponible && <button disabled={guardando} onClick={() => abrirAccion('precierre')} className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">Comenzar cierre del cuatrimestre</button>}{estadoCierre === 'PRECIERRE' && <button disabled={guardando} onClick={abrirConfirmacion} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Solicitar confirmación a docentes</button>}{estadoCierre === 'CONFIRMACION' && <><button disabled={guardando} onClick={abrirConfirmacion} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-slate-300 disabled:opacity-40">Ampliar plazo</button><button disabled={guardando || cierre.laboratorios?.sesiones_abiertas > 0 || cierre.resueltas < cierre.total_cargas} title="Cierra definitivamente el cuatrimestre y archiva su calendario" onClick={() => abrirAccion('cerrar')} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Cerrar definitivamente</button></>}</div></div>
             {cierre?.confirmacion_fin && <p className="mt-3 text-sm text-slate-400">Confirmación docente del {cierre.confirmacion_inicio} al {cierre.confirmacion_fin}</p>}
             {cierre?.historial_plazos?.length > 0 && <details className="mt-2 text-xs text-slate-400">
@@ -325,43 +419,14 @@ export default function CalendarioAcademico() {
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }} className="mt-3 rounded border border-white/20 px-3 py-2 text-xs">Descargar reporte final (JSON)</button>}
-            {cierre?.cargas?.length > 0 && <div className="mt-4 overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="text-slate-500"><tr><th className="py-2">Docente / materia</th><th>Grupo</th><th>Asistencia y clases</th><th>Estado</th><th>Acciones</th></tr></thead>
-                <tbody className="divide-y divide-white/10">
-                  {cierre.cargas.map(c => <tr key={c.carga_id}>
-                    <td className="py-2.5"><b className="text-white">{c.materia}</b><br/><span>{c.docente}</span></td>
-                    <td>{c.grupo}</td>
-                    <td className="py-2 pr-4">
-                      {c.resumen.clases_abiertas > 0 && <details>
-                        <summary>{c.resumen.clases_abiertas} abiertas o en corrección</summary>
-                        {c.resumen.sesiones.filter(clase => ['ABIERTA', 'CORRECCION'].includes(clase.estado)).map(clase =>
-                          <p key={clase.id}>{clase.fecha} · {clase.estado === 'ABIERTA' ? 'Abierta' : 'En corrección'}</p>)}
-                      </details>}
-                      {c.resumen.clases_esperadas == null ? <p>Publica el calendario con inicio y fin para calcular la cobertura.</p> :
-                        <details>
-                          <summary>{c.resumen.asistencias_registradas}/{c.resumen.clases_esperadas} con asistencia · {c.resumen.fechas_sin_registro.length} sin registro</summary>
-                          {c.resumen.fechas_sin_registro.length > 0 && <p>Sin registro · {c.resumen.fechas_sin_registro.join(', ')}</p>}
-                          {c.resumen.fechas_no_impartidas.length > 0 && <p>No impartidas · {c.resumen.fechas_no_impartidas.join(', ')}</p>}
-                        </details>}
-                    </td>
-                    <td>{({ PENDIENTE_REVISION: 'Pendiente de revisión', CONFIRMADA_DOCENTE: 'Confirmada por el docente', CERRADA_ADMINISTRATIVA: 'Cerrada administrativamente', REABIERTA: 'Reabierta' })[c.estado] || c.estado}
-                      {c.cierre_administrativo && <p>{c.cierre_administrativo.motivo} · {c.cierre_administrativo.responsable}{c.cierre_administrativo.folio && ` · Folio ${c.cierre_administrativo.folio}`}</p>}
-                    </td>
-                    <td className="text-right">
-                      {c.estado === 'CONFIRMADA_DOCENTE' && <button onClick={() => abrirReapertura(c)} className="rounded border border-blue-500/30 px-2 py-1 text-blue-300">Reabrir</button>}
-                      {cierre.permite_cierre_administrativo && !['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(c.estado) && <button type="button" onClick={() => {
-                        setFormCierre({ motivo: '', folio: '' });
-                        setModalCierre({ tipo: 'administrativo', carga: c });
-                      }} className="rounded border border-amber-500/40 px-2 py-1 text-amber-300">Cerrar administrativamente</button>}
-                    </td>
-                  </tr>)}
-                </tbody>
-              </table>
-            </div>}
-</section>
+            <CargasCierre key={periodoId} cierre={cierre} abrirReapertura={abrirReapertura}
+              abrirAdministrativo={carga => {
+                setFormCierre({ motivo: '', folio: '' });
+                setModalCierre({ tipo: 'administrativo', carga });
+              }} />
+          </section>
         )}
-        {!calendario ? (
+        {(!puedeAdministrar || seccion === 'fechas') && (!calendario ? (
           <div className="glass rounded-2xl p-8 text-center"><h2 className="text-lg font-semibold text-white">{periodo?.clave} todavía no tiene calendario publicado</h2><p className="mt-2 text-sm text-slate-400">{cuatrimestreCerrado ? 'Cuatrimestre cerrado. No se pueden crear calendarios ni registrar clases.' : 'El calendario oficial se mostrará cuando División de Carrera lo publique.'}</p>{puedeAdministrar && !cuatrimestreCerrado && <button onClick={crearCalendario} disabled={guardando} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white">Crear calendario en borrador</button>}</div>
         ) : <>
           <div className="glass flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
@@ -382,7 +447,7 @@ export default function CalendarioAcademico() {
             <div className={vista === 'agenda' ? 'block' : 'md:hidden'}><Agenda eventos={eventosVisibles} onEvent={setEventoDetalle} /></div>
             <p className="text-xs text-slate-500">Selecciona una actividad para consultar sus detalles{calendario.puede_editar ? '; selecciona un día vacío para agregar una nueva' : ''}.</p>
           </section>
-        </>}
+        </>)}
       </div>
       {eventoDetalle && (() => { const spec = TIPO_MAP[eventoDetalle.tipo] || TIPO_MAP.OTRO; const sinEfecto = !eventoDetalle.requiere_asistencia && !eventoDetalle.permite_iniciar_clase && !eventoDetalle.genera_alertas; return <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/65 backdrop-blur-sm" onClick={() => setEventoDetalle(null)}><aside className="h-full w-full max-w-md overflow-y-auto border-l border-white/10 bg-slate-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}><div className="flex items-start justify-between gap-4"><span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-slate-200"><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: eventoDetalle.color || spec[2] }} />{spec[4]}</span><button onClick={() => setEventoDetalle(null)} className="text-2xl leading-none text-slate-400 hover:text-white" aria-label="Cerrar detalle">×</button></div><div className="mt-8"><div className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold text-white" style={{ backgroundColor: eventoDetalle.color || spec[2] }}>{spec[5]}</div><h2 className="mt-4 text-2xl font-bold text-white">{eventoDetalle.titulo}</h2><p className="mt-2 text-sm font-medium text-slate-300">{new Date(`${eventoDetalle.fecha_inicio}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}{eventoDetalle.fecha_fin !== eventoDetalle.fecha_inicio ? ` — ${new Date(`${eventoDetalle.fecha_fin}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</p>{eventoDetalle.descripcion ? <p className="mt-6 whitespace-pre-line text-sm leading-6 text-slate-400">{eventoDetalle.descripcion}</p> : <p className="mt-6 text-sm italic text-slate-600">Esta actividad no tiene una descripción adicional.</p>}<div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Operación docente</p>{sinEfecto ? <div className="mt-3"><p className="text-sm font-semibold text-slate-200">Sin efecto en la operación docente</p><p className="mt-1 text-sm leading-5 text-slate-400">Este evento es únicamente informativo. No modifica las clases, asistencias ni alertas.</p></div> : <div className="mt-3 space-y-2.5 text-sm">{[[eventoDetalle.requiere_asistencia, 'Requiere registro de asistencia', 'No requiere registro de asistencia'], [eventoDetalle.permite_iniciar_clase, 'Permite iniciar clases', 'No permite iniciar clases'], [eventoDetalle.genera_alertas, 'Genera alertas automáticas', 'No genera alertas automáticas']].map(([activo, positivo, negativo]) => <p key={positivo} className={`flex items-start gap-2 ${activo ? 'text-emerald-300' : 'text-slate-400'}`}><span className="font-bold" aria-hidden="true">{activo ? '✓' : '×'}</span><span>{activo ? positivo : negativo}</span></p>)}</div>}</div></div>{calendario?.puede_editar && <button onClick={() => { const actual = eventoDetalle; setEventoDetalle(null); abrirEditar(actual); }} className="mt-8 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-500">Editar actividad</button>}</aside></div>; })()}
       {accion && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm" onKeyDown={e => { if (e.key === 'Escape' && !guardando) setAccion(null); }}>

@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Calendario de fechas y cierre por docente — 2026-11-26
+
+El reporte de cierre desplazaba el calendario debajo de una lista extensa. Calendario oficial abre en Calendario de fechas. Cierre académico agrupa las cargas por docente y permite buscar por docente, materia o grupo, y filtrar por resolución, faltantes o clases abiertas. Cada carga muestra su horario para distinguir bloques de una misma materia.
+
+Compilación de Vite, 207 pruebas de frontend incluida la regresión de navegación y filtros, y prueba dirigida de cierre del backend aprobadas. Pendiente verificar publicación y pantalla autenticada.
+
+---
+
 ## [e0a9e42] — Cierre administrativo y transición de cuatrimestre — 2026-11-26
 
 ### Problema y comportamiento resultante
