@@ -714,10 +714,10 @@ export default function Departamentos() {
                           className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-3 py-2.5 text-left transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
                         >
                           <span className="min-w-0">
-                            <span className="block text-sm font-medium text-white">{funcion.label}</span>
-                            <span className="block truncate text-[11px] text-slate-500">{funcion.descripcion}</span>
+                            <span className="block text-sm font-medium text-[color:var(--text-primary)]">{funcion.label}</span>
+                            <span className="block truncate text-[11px] text-[color:var(--text-secondary)]">{funcion.descripcion}</span>
                           </span>
-                          <span className="text-emerald-400">→</span>
+                          <span className="text-[color:var(--accent-success-ui)]" aria-hidden="true">→</span>
                         </button>
                       ))}
                     </div>

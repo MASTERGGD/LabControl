@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Contraste de funciones de Departamentos — 2026-11-27
+
+En tema claro, el texto blanco de los accesos a funciones se perdía sobre el fondo verde claro. El título, la descripción y la flecha usan los colores del tema activo en todas las tarjetas.
+
+Compilación de Vite aprobada. Pendiente verificar publicación y revisar la vista con sesión administrativa.
+
+---
+
 ## [09f6c92] — Contraste y botones de Mis pendientes — 2026-11-27
 
 El acceso al historial tenía poco peso visual y los botones de regreso tenían menor altura. Los tres controles comparten forma de píldora, altura mínima de 44 px y foco visible. El acceso al historial usa el color principal de texto del tema y un verde más marcado al pasar el cursor.
