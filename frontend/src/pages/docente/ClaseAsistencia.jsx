@@ -25,6 +25,8 @@ export default function ClaseAsistencia() {
   const { claseId } = useParams();
   const navigate = useNavigate();
   const { state: navegacion } = useLocation();
+  const volverAPendientes = navegacion?.volverAPendientes === true;
+  const destinoHorario = volverAPendientes ? '/docente/horario?vista=pendientes' : '/docente/horario';
   const { themeKey } = useTheme();
   const { usuario, offlineAccess } = useAuth();
   const isDay = themeKey === 'day';
@@ -94,9 +96,9 @@ export default function ClaseAsistencia() {
   }, [cargar]);
   useEffect(() => {
     if (!redireccionAutomatica || !cierreConfirmado) return undefined;
-    const temporizador = window.setTimeout(() => navigate('/docente/horario'), 5000);
+    const temporizador = window.setTimeout(() => navigate(destinoHorario), 5000);
     return () => window.clearTimeout(temporizador);
-  }, [cierreConfirmado, navigate, redireccionAutomatica]);
+  }, [cierreConfirmado, destinoHorario, navigate, redireccionAutomatica]);
 
   const cambiar = async (asistenciaId, estado, observacion = null) => {
     if (!['ABIERTA', 'CORRECCION'].includes(clase.estado)) return;
@@ -334,7 +336,7 @@ export default function ClaseAsistencia() {
         {modoLocal && <div className="flex items-start gap-3 rounded-xl border border-amber-500/35 bg-amber-950/35 px-4 py-3 text-sm text-amber-100" role="status"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400"/><div><b>Trabajando sin conexión</b><p className="mt-0.5 text-xs text-amber-200">Los cambios se guardan en este dispositivo. Si cierras el navegador, podrás volver con tu PIN offline. No borres los datos del navegador; inicia sesión con internet para sincronizar.</p></div></div>}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <button onClick={() => navigate('/docente/horario')} className="mb-2 text-sm text-slate-400 hover:text-white">← Mi horario</button>
+            <button onClick={() => navigate(destinoHorario)} className="mb-2 text-sm text-slate-400 hover:text-white">← {volverAPendientes ? 'Mis pendientes' : 'Mi horario'}</button>
             <h1 className="text-2xl font-bold text-white">{clase.carga.actividad_nombre}</h1>
             <p className="text-sm text-slate-400">{clase.carga.grupo} · <span title={clase.carga.carrera}>{formatCarrera(clase.carga.carrera)}</span> · {clase.carga.espacio_nombre || 'Sin salón'} · {clase.carga.hora_inicio}–{clase.carga.hora_fin}</p>
           </div>
@@ -406,7 +408,7 @@ export default function ClaseAsistencia() {
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
-                <button type="button" onClick={() => navigate('/docente/horario')} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${isDay ? 'border-emerald-300 bg-white text-emerald-900' : 'border-white/15 text-slate-300'}`}>Volver al horario</button>
+                <button type="button" onClick={() => navigate(destinoHorario)} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${isDay ? 'border-emerald-300 bg-white text-emerald-900' : 'border-white/15 text-slate-300'}`}>{volverAPendientes ? 'Volver a Mis pendientes' : 'Volver al horario'}</button>
                 <button type="button" onClick={() => navigate(`/docente/seguimiento?carga=${clase.carga.id}`)} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-500">Ver seguimiento del grupo</button>
               </div>
             </div>

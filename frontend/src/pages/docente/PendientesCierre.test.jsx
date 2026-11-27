@@ -21,15 +21,50 @@ test('ordena sesiones, evita duplicar clases abiertas y abre el flujo correspond
   try {
     await act(async () => root.render(<PendientesCierre filas={filas}
       seleccionarPendiente={seleccionarPendiente} abrirClase={abrirClase} />));
-    expect(host.querySelector('li').textContent).toContain('Plazo de captura vencido');
-    expect(host.querySelector('li').querySelector('button')).toBeNull();
-    const [continuar, resolver] = host.querySelectorAll('button');
+    const vencida = [...host.querySelectorAll('li')].find(fila => fila.textContent.includes('Plazo de captura vencido'));
+    expect(vencida.querySelector('summary').textContent).toBe('Ver cómo regularizar');
+    expect(vencida.textContent).not.toContain('Resolver sesión');
+    const continuar = [...host.querySelectorAll('button')].find(boton => boton.textContent === 'Continuar clase');
+    const resolver = [...host.querySelectorAll('button')].find(boton => boton.textContent === 'Resolver sesión');
     expect(continuar.textContent).toBe('Continuar clase');
     expect(resolver.textContent).toBe('Resolver sesión');
     await act(async () => continuar.click());
     await act(async () => resolver.click());
     expect(abrirClase).toHaveBeenCalledWith(42);
     expect(seleccionarPendiente).toHaveBeenCalledWith(captura);
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
+test('limita la vista compacta y separa las fechas vencidas en la vista completa', async () => {
+  const filas = Array.from({ length: 18 }, (_, indice) => ({
+    id: indice, materia: 'Minería de Texto', fecha: `2026-11-${String(indice + 1).padStart(2, '0')}`,
+    captura: indice < 4 ? { vence_en: `2026-11-${28 - indice}T09:00:00-06:00` } : undefined,
+    vencida: indice >= 4,
+  }));
+  const verTodos = jest.fn();
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<PendientesCierre filas={filas} verTodos={verTodos} />));
+    expect(host.querySelectorAll('li')).toHaveLength(3);
+    const boton = [...host.querySelectorAll('button')].find(item => item.textContent === 'Ver todos los pendientes');
+    await act(async () => boton.click());
+    expect(verTodos).toHaveBeenCalledTimes(1);
+    await act(async () => root.render(<PendientesCierre completa filas={filas} />));
+    const select = host.querySelector('select');
+    expect(select.value).toBe('accionables');
+    expect(host.querySelectorAll('li')).toHaveLength(4);
+    await act(async () => {
+      select.value = 'vencidas';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(host.querySelectorAll('li')).toHaveLength(14);
+    const copiar = [...host.querySelectorAll('button')].find(item => item.textContent === 'Copiar datos de la sesión');
+    await act(async () => copiar.click());
+    expect(host.querySelector('textarea').value).toContain('2026-11-05');
   } finally {
     act(() => root.unmount());
   }

@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Vista de pendientes y regularización docente — 2026-11-26
+
+Una lista extensa podía desplazar la agenda y una fecha vencida carecía de siguiente paso. Mi Horario conserva hasta tres sesiones en el resumen y ofrece una vista paginada con búsqueda y filtros. Se priorizan las capturas habilitadas que vencen antes. Los botones abren el registro correspondiente y permiten volver al listado. Las fechas vencidas explican cómo consultar a División y permiten copiar sus datos.
+
+Validación con pruebas del frontend y compilación de Vite. Pendiente confirmar publicación y revisar la vista con sesión docente iniciada.
+
+---
+
 ## [b97026a] — Fechas pendientes en Mi Horario antes del precierre — 2026-11-26
 
 División podía ver fechas sin registro durante el periodo activo y el docente solo veía el listado de cierre después del precierre. Mi Horario muestra Mis pendientes desde el periodo vigente con las mismas fechas, materia, grupo, programa y horario. La consulta se limita a las cargas propias, y conserva el plazo de captura y las etapas de confirmación.

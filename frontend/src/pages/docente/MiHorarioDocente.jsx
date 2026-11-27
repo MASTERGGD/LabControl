@@ -3,7 +3,7 @@ import DecisionReposicion from './DecisionReposicion';
 import AgendaPracticasDocente from '../../components/AgendaPracticasDocente';
 import { accionTutoria } from '../../utils/accionClaseDashboard';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 import { abrirClaseDocente } from '../../utils/abrirClaseDocente';
@@ -517,6 +517,15 @@ function ModalActividad({ catalogos, periodoId, actividad, preseleccion, onClose
 
 export default function MiHorarioDocente() {
   const navigate = useNavigate();
+  const [parametros, setParametros] = useSearchParams();
+  const vistaPendientes = parametros.get('vista') === 'pendientes';
+  const cambiarVistaPendientes = mostrar => {
+    const nuevos = new URLSearchParams(parametros);
+    if (mostrar) nuevos.set('vista', 'pendientes');
+    else nuevos.delete('vista');
+    setParametros(nuevos);
+  };
+  const abrirClasePendiente = id => navigate(`/docente/clase/${id}`, { state: { volverAPendientes: vistaPendientes } });
   const { usuario } = useAuth();
   const { periodo: periodoGlobal, cargando: cargandoPeriodoGlobal } = usePeriodo();
   const [catalogos, setCatalogos] = useState({ periodos: [], grupos: [], materias: [], laboratorios: [], espacios: [] });
@@ -792,7 +801,7 @@ export default function MiHorarioDocente() {
       setModalExtemporanea(null);
       setMotivoExtemporaneo('');
       setMotivoExtemporaneoTipo('');
-      navigate(`/docente/clase/${data.id}`);
+      abrirClasePendiente(data.id);
     } catch (err) {
       setMensaje(err.response?.data?.detail || 'No se pudo abrir la captura extemporánea.');
     } finally {
@@ -910,7 +919,11 @@ export default function MiHorarioDocente() {
 
   return (
     <AdminLayout>
-      <div className="space-y-5">
+      {vistaPendientes ? <>
+        {mensaje && <p role="status" className="rounded-xl border px-4 py-3 text-sm">{mensaje}</p>}
+        {cargando ? <p className="p-4 text-sm">Cargando pendientes…</p> : <PendientesCierre completa filas={pendientesCierre}
+          seleccionarPendiente={seleccionarPendiente} abrirClase={abrirClasePendiente} volver={() => cambiarVistaPendientes(false)} />}
+      </> : <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Agenda y horario docente</h1>
@@ -937,18 +950,13 @@ export default function MiHorarioDocente() {
         <AgendaPracticasDocente enHorarioDocente periodoId={periodoId || undefined}/>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
-        {mostrarPendientesPeriodo && (
+        {(mostrarPendientesPeriodo || (mostrarCierre && pendientesCierre.length > 0)) && (
           <PendientesCierre filas={pendientesCierre} seleccionarPendiente={seleccionarPendiente}
-            abrirClase={id => navigate(`/docente/clase/${id}`)} />
+            abrirClase={abrirClasePendiente} verTodos={() => cambiarVistaPendientes(true)} />
         )}
         {mostrarCierre && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana de confirmación: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
-            <PendientesCierre filas={pendientesCierre} seleccionarPendiente={item => {
-              setBusquedaPendiente('');
-              setGrupoPendiente('');
-              seleccionarPendiente(item);
-            }} abrirClase={id => navigate(`/docente/clase/${id}`)} />
             <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div>{c.estado !== 'PENDIENTE_REVISION' && <span className="text-xs font-semibold text-amber-600">{({
               CONFIRMADA_DOCENTE: 'Confirmada',
               CERRADA_ADMINISTRATIVA: 'Cerrada por División',
@@ -1151,7 +1159,7 @@ export default function MiHorarioDocente() {
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
       {agendaAbierta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onMouseDown={() => setAgendaAbierta(false)}>
           <section onMouseDown={(e) => e.stopPropagation()} className="glass max-h-[88vh] w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl">
