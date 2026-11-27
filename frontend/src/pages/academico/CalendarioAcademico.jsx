@@ -186,6 +186,25 @@ function SesionesPorMes({ bloques }) {
   </div>;
 }
 
+function BotonCopiar({ texto, etiqueta, ayuda, clase, copiar }) {
+  const [confirmacion, setConfirmacion] = useState(null);
+  useEffect(() => {
+    if (!confirmacion) return;
+    const temporizador = setTimeout(() => setConfirmacion(null), 2000);
+    return () => clearTimeout(temporizador);
+  }, [confirmacion]);
+  const copiarResumen = async () => {
+    setConfirmacion(null);
+    if (await copiar()) setConfirmacion({});
+  };
+
+  return <button type="button" aria-label={etiqueta || texto} title={ayuda} onClick={copiarResumen}
+    className={`rounded-lg border px-2 py-1 text-xs font-semibold ${clase}`} style={{ borderColor: 'var(--topbar-border)' }}>
+    <span className="invisible col-start-1 row-start-1" aria-hidden="true">{texto}</span>
+    <span className="col-start-1 row-start-1">{confirmacion ? '✓ Copiado' : texto}</span>
+  </button>;
+}
+
 function MateriaCierre({ bloques, titulo, copiar, cierre, abrirReapertura, abrirAdministrativo }) {
   const asistencias = bloques.reduce((total, c) => total + c.resumen.asistencias_registradas, 0);
   const pendientes = bloques.flatMap(sesionesPorAtender);
@@ -197,19 +216,23 @@ function MateriaCierre({ bloques, titulo, copiar, cierre, abrirReapertura, abrir
   const tieneCobertura = bloques.every(c => c.resumen.clases_esperadas != null);
   const mostrarEstado = cierre.estado === 'CONFIRMACION' || cierre.estado === 'CERRADO';
   return <div className="relative border-t" style={{ borderColor: 'var(--topbar-border)' }}>
-    {pendientes.length > 0 && <button type="button" aria-label={`Copiar materia: ${titulo}`} onClick={copiar}
-      className="absolute right-2 top-2 rounded border px-2 py-1 text-xs font-semibold" style={{ borderColor: 'var(--topbar-border)' }}>Copiar materia</button>}
-    <details className="p-3">
-      <summary className={`cursor-pointer text-sm ${pendientes.length > 0 ? 'pr-28' : ''}`}>
-        <strong>{titulo}</strong>
-        <span className="ml-2 inline-flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
-          <span>{bloques.length} {bloques.length === 1 ? 'horario' : 'horarios'}</span>
-          {tieneCobertura && <span>{asistencias} con asistencia</span>}
-          {faltantes > 0 && <span className="font-semibold text-amber-600">{faltantes} sin registro</span>}
-          {noImpartidas > 0 && <span>{noImpartidas} {noImpartidas === 1 ? 'no impartida' : 'no impartidas'}</span>}
-          {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} {abiertas === 1 ? 'abierta o en corrección' : 'abiertas o en corrección'}</span>}
-          {reposiciones > 0 && <span className="font-semibold text-amber-600">{reposiciones} {reposiciones === 1 ? 'reposición pendiente' : 'reposiciones pendientes'}</span>}
-          {mostrarEstado && <span>{bloques.filter(resuelta).length}/{bloques.length} resueltos</span>}
+    {pendientes.length > 0 && <BotonCopiar texto="Copiar materia" etiqueta={`Copiar materia: ${titulo.nombre}`}
+      clase="absolute right-2 top-2 grid w-28" copiar={copiar} />}
+    <details className="group/materia p-3">
+      <summary className={`flex cursor-pointer list-none items-start gap-2 text-sm [&::-webkit-details-marker]:hidden ${pendientes.length > 0 ? 'pr-28' : ''}`}>
+        <span aria-hidden="true" className="mt-0.5 shrink-0 text-xs transition-transform group-open/materia:rotate-90">▸</span>
+        <span className="min-w-0">
+          <strong>{titulo.principal}</strong>
+          {titulo.complemento && <span className="block font-normal text-slate-500 sm:inline sm:before:content-['·_'] sm:before:ml-1">{titulo.complemento}</span>}
+          <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-slate-500">
+            <span>{bloques.length} {bloques.length === 1 ? 'horario' : 'horarios'}</span>
+            {tieneCobertura && <span>{asistencias} con asistencia</span>}
+            {faltantes > 0 && <span className="font-semibold text-amber-600">{faltantes} sin registro</span>}
+            {noImpartidas > 0 && <span>{noImpartidas} {noImpartidas === 1 ? 'no impartida' : 'no impartidas'}</span>}
+            {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} {abiertas === 1 ? 'abierta o en corrección' : 'abiertas o en corrección'}</span>}
+            {reposiciones > 0 && <span className="font-semibold text-amber-600">{reposiciones} {reposiciones === 1 ? 'reposición pendiente' : 'reposiciones pendientes'}</span>}
+            {mostrarEstado && <span>{bloques.filter(resuelta).length}/{bloques.length} resueltos</span>}
+          </span>
         </span>
       </summary>
       <div className="mt-3 space-y-3 pl-4 text-xs">
@@ -245,9 +268,11 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
     try {
       await navigator.clipboard.writeText(texto);
       setResultadoCopia(`Resumen copiado para ${nombre}.`);
+      return true;
     } catch {
       setResultadoCopia('Selecciona el texto para copiar el resumen.');
       setCopiaManual(texto);
+      return false;
     }
   };
   const [docenteAbierto, setDocenteAbierto] = useState(null);
@@ -323,8 +348,9 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
             <summary className="cursor-pointer">Cómo se calcula el total</summary>
             <p className="mt-1">Cada horario y fecha cuenta una vez. Las clases abiertas o en corrección se cuentan en su estado. Las no impartidas sin reposición pendiente quedan en el detalle.</p>
           </details>
-          {pendientes > 0 && <button type="button" className="mb-2 rounded-lg border px-3 py-2 text-xs font-semibold"
-            style={{ borderColor: 'var(--topbar-border)' }} onClick={() => copiar(nombre, cargas, etiquetas)} title="Incluye las cargas visibles con los filtros actuales">Copiar resumen para el docente</button>}
+          {pendientes > 0 && <BotonCopiar texto="Copiar resumen para el docente"
+            ayuda="Incluye las cargas visibles con los filtros actuales" clase="mb-2 inline-grid px-3 py-2"
+            copiar={() => copiar(nombre, cargas, etiquetas)} />}
           {[...materias].map(([clave, bloques]) => <MateriaCierre key={clave} bloques={bloques} titulo={etiquetas.get(clave)} cierre={cierre} copiar={() => copiar(nombre, bloques, etiquetas)}
             abrirReapertura={abrirReapertura} abrirAdministrativo={abrirAdministrativo} />)}
         </div>}

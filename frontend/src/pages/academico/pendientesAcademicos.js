@@ -35,8 +35,10 @@ export function etiquetasMaterias(cargas) {
   for (const carga of cargas) {
     const clave = claveMateria(carga);
     if (etiquetas.has(clave)) continue;
-    const nombre = [carga.materia, rotuloGrupo(carga.grupo), carga.programa_educativo].filter(Boolean).join(' · ');
-    etiquetas.set(clave, nombre);
+    const principal = [carga.materia, rotuloGrupo(carga.grupo)].filter(Boolean).join(' · ');
+    const complemento = carga.programa_educativo || '';
+    const nombre = [principal, complemento].filter(Boolean).join(' · ');
+    etiquetas.set(clave, { principal, complemento, nombre });
     if (!porNombre.has(nombre)) porNombre.set(nombre, []);
     porNombre.get(nombre).push({ clave, carga });
   }
@@ -48,7 +50,14 @@ export function etiquetasMaterias(cargas) {
         carga.grupo_id != null && `Grupo #${carga.grupo_id}`,
         (grupoRepetido || carga.grupo_id == null) && carga.materia_id != null && `Materia #${carga.materia_id}`,
       ].filter(Boolean).join(' · ');
-      etiquetas.set(clave, referencia ? `${nombre} · ${referencia}` : nombre);
+      if (referencia) {
+        const etiqueta = etiquetas.get(clave);
+        etiquetas.set(clave, {
+          ...etiqueta,
+          complemento: [etiqueta.complemento, referencia].filter(Boolean).join(' · '),
+          nombre: `${nombre} · ${referencia}`,
+        });
+      }
     }
   }
   return etiquetas;
@@ -75,7 +84,7 @@ export function resumenParaDocente(nombre, periodo, cargas, etiquetas = etiqueta
     }
   }
   for (const [materia, filas] of materias) {
-    encabezado.push('', etiquetas.get(materia));
+    encabezado.push('', etiquetas.get(materia).nombre);
     for (const fila of filas.sort((a, b) => a.fecha.localeCompare(b.fecha))) {
       const horario = fila.hora_inicio && fila.hora_fin ? ` · ${fila.hora_inicio}–${fila.hora_fin}` : '';
       encabezado.push(`- ${fila.fecha}${horario} · ${accionesPendientes[fila.tipo]}`);

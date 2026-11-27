@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Jerarquía visual y confirmación de copia en el cierre — 2026-11-26
+
+Los títulos largos desplazaban los indicadores y el aviso de copia podía quedar fuera de la vista. Los indicadores se muestran debajo del encabezado de cada materia. El programa educativo conserva su nombre oficial con peso regular. Los botones de copia por materia y por docente muestran «✓ Copiado» durante dos segundos tras una copia exitosa.
+
+Aprobadas 210 pruebas del frontend y compilación de Vite. La regresión verifica la confirmación por botón, su duración y la copia manual cuando el portapapeles falla. Cambio preparado en el espacio de trabajo. Pendiente publicación y revisión visual autenticada.
+
+---
+
 ## [abe234e] — Identificación de grupo y detalle mensual en el cierre — 2026-11-26
 
 Los grupos de programas distintos podían verse con el mismo rótulo y las sesiones de un mes quedaban repartidas entre secciones. El reporte y el texto copiado incluyen el programa educativo y, cuando coincide el rótulo, referencias internas para distinguir las filas. El detalle mensual reúne sesiones sin registro, abiertas, en corrección y no impartidas. División puede copiar una materia o todo el docente, y consultar la regla de conteo junto al total.

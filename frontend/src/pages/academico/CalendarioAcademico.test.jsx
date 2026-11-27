@@ -24,6 +24,8 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
   const host = document.createElement('div');
   const root = createRoot(host);
   const boton = texto => [...host.querySelectorAll('button')].find(b => b.textContent.includes(texto));
+  const textoVisible = boton => boton.lastElementChild.textContent;
+  const portapapeles = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
   try {
     await act(async () => root.render(<CalendarioAcademico />));
     expect(boton('Publicar calendario')).toBeDefined();
@@ -51,6 +53,22 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
     const texto = host.querySelector('textarea[aria-label="Resumen para copiar"]').value;
     expect(texto).toContain('Minería de Texto · 4.º A · Ingeniería Industrial');
     expect(texto).not.toContain('Bases de Datos');
+    expect(textoVisible(copiarMateria)).toBe('Copiar materia');
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    jest.useFakeTimers();
+    await act(async () => copiarMateria.click());
+    expect(writeText).toHaveBeenCalledWith(texto);
+    expect(textoVisible(copiarMateria)).toBe('✓ Copiado');
+    expect(textoVisible(host.querySelector('button[aria-label^="Copiar materia: Bases de Datos"]'))).toBe('Copiar materia');
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(textoVisible(copiarMateria)).toBe('Copiar materia');
+    const copiarDocente = host.querySelector('button[aria-label="Copiar resumen para el docente"]');
+    await act(async () => copiarDocente.click());
+    expect(textoVisible(copiarDocente)).toBe('✓ Copiado');
+    expect(textoVisible(copiarMateria)).toBe('Copiar materia');
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(textoVisible(copiarDocente)).toBe('Copiar resumen para el docente');
     expect(host.textContent).toContain('Reunión de academia');
     expect(host.textContent).toContain('Por confirmar por el docente');
     expect(host.textContent).toContain('Martes 09:00–10:00');
@@ -66,5 +84,8 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
     expect(boton('Publicar calendario')).toBeDefined();
   } finally {
     act(() => root.unmount());
+    jest.useRealTimers();
+    if (portapapeles) Object.defineProperty(navigator, 'clipboard', portapapeles);
+    else delete navigator.clipboard;
   }
 });
