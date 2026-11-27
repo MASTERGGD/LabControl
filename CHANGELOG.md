@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Identificación de grupo y detalle mensual en el cierre — 2026-11-26
+## [abe234e] — Identificación de grupo y detalle mensual en el cierre — 2026-11-26
 
 Los grupos de programas distintos podían verse con el mismo rótulo y las sesiones de un mes quedaban repartidas entre secciones. El reporte y el texto copiado incluyen el programa educativo y, cuando coincide el rótulo, referencias internas para distinguir las filas. El detalle mensual reúne sesiones sin registro, abiertas, en corrección y no impartidas. División puede copiar una materia o todo el docente, y consultar la regla de conteo junto al total.
 
-Validación con pruebas de cierre y de interfaz y compilación de Vite. Pendiente verificar la publicación y revisar la pantalla con una cuenta de División.
+Aprobadas 210 pruebas del frontend, 11 de cierre académico y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios. Se verificó HTTP 200 para sitio y API y los nuevos controles en el JavaScript publicado. Pendiente revisar la pantalla con una cuenta de División.
 
 ---
 
