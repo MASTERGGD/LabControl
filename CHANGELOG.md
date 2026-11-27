@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Bandeja de Regularización y solicitudes estructuradas — 2026-11-27
+## [44563b3] — Bandeja de Regularización y solicitudes estructuradas — 2026-11-27
 
 Las solicitudes compartían el espacio del cierre y los motivos llegaban como texto corrido. Regularización tiene una pestaña propia con contador, búsqueda, filtros, 12 resultados por página y un panel de detalle. Mis pendientes muestra tarjetas y referencias. Las solicitudes nuevas guardan motivo, petición y observaciones por separado en el historial existente. Las solicitudes anteriores conservan su texto.
 
-Validación con pruebas del frontend, pruebas de cierre y compilación de Vite. Pendiente confirmar el despliegue y revisar con cuentas de División y Docente.
+Aprobadas 213 pruebas del frontend, 12 de cierre y compilación de Vite. Publicado el 27 de noviembre de 2026. Railway confirmó ambos servicios. Se verificó HTTP 200 para sitio y API y los nuevos campos y filtros en el JavaScript público. Pendiente revisar con cuentas de División y Docente.
 
 ---
 
