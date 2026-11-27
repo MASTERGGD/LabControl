@@ -19,8 +19,13 @@ test('ordena sesiones, evita duplicar clases abiertas y abre el flujo correspond
   const host = document.createElement('div');
   const root = createRoot(host);
   try {
-    await act(async () => root.render(<PendientesCierre filas={filas}
+    await act(async () => root.render(<PendientesCierre completa filas={filas}
       seleccionarPendiente={seleccionarPendiente} abrirClase={abrirClase} />));
+    const filtro = host.querySelector('select');
+    await act(async () => {
+      filtro.value = 'todas';
+      filtro.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     const vencida = [...host.querySelectorAll('li')].find(fila => fila.textContent.includes('Plazo de captura vencido'));
     expect(vencida.querySelector('summary').textContent).toBe('Ver cómo regularizar');
     expect(vencida.textContent).not.toContain('Resolver sesión');
@@ -37,7 +42,7 @@ test('ordena sesiones, evita duplicar clases abiertas y abre el flujo correspond
   }
 });
 
-test('limita la vista compacta y separa las fechas vencidas en la vista completa', async () => {
+test('deja solo el acceso en la vista compacta y separa las fechas vencidas en la vista completa', async () => {
   const filas = Array.from({ length: 18 }, (_, indice) => ({
     id: indice, materia: 'Minería de Texto', fecha: `2026-11-${String(indice + 1).padStart(2, '0')}`,
     captura: indice < 4 ? { vence_en: `2026-11-${28 - indice}T09:00:00-06:00` } : undefined,
@@ -49,8 +54,8 @@ test('limita la vista compacta y separa las fechas vencidas en la vista completa
   const root = createRoot(host);
   try {
     await act(async () => root.render(<PendientesCierre filas={filas} verTodos={verTodos} />));
-    expect(host.querySelectorAll('li')).toHaveLength(3);
-    const boton = [...host.querySelectorAll('button')].find(item => item.textContent === 'Ver todos los pendientes');
+    expect(host.querySelectorAll('li')).toHaveLength(0);
+    const boton = [...host.querySelectorAll('button')].find(item => item.textContent === 'Ver pendientes');
     await act(async () => boton.click());
     expect(verTodos).toHaveBeenCalledTimes(1);
     await act(async () => root.render(<PendientesCierre completa filas={filas} />));
@@ -65,6 +70,42 @@ test('limita la vista compacta y separa las fechas vencidas en la vista completa
     const copiar = [...host.querySelectorAll('button')].find(item => item.textContent === 'Copiar datos de la sesión');
     await act(async () => copiar.click());
     expect(host.querySelector('textarea').value).toContain('2026-11-05');
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
+test('abre Mis pendientes para una sola sesión y envía una solicitud con hechos y petición', async () => {
+  const fila = {
+    id: '7/2026-09-14', cargaId: 7, materia: 'Sistemas de Optimización', grupo: '4° A',
+    fecha: '2026-09-14', vencida: true,
+  };
+  const verTodos = jest.fn();
+  const solicitarRevision = jest.fn().mockResolvedValue(undefined);
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<PendientesCierre filas={[fila]} verTodos={verTodos} solicitarRevision={solicitarRevision} />));
+    expect(host.querySelector('form')).toBeNull();
+    expect(host.querySelector('button').textContent).toBe('Ver pendientes');
+    await act(async () => host.querySelector('button').click());
+    expect(verTodos).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.render(<PendientesCierre completa filas={[fila]} solicitarRevision={solicitarRevision} />));
+    const campos = [...host.querySelectorAll('form textarea')];
+    const cambiar = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    await act(async () => {
+      cambiar.call(campos[0], 'La clase se impartió y conservo la lista.');
+      campos[0].dispatchEvent(new Event('input', { bubbles: true }));
+      cambiar.call(campos[1], 'Solicito autorización para capturar asistencia.');
+      campos[1].dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const enviar = host.querySelector('button[type="submit"]');
+    expect(enviar.disabled).toBe(false);
+    await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(solicitarRevision).toHaveBeenCalledWith(fila,
+      'Qué ocurrió: La clase se impartió y conservo la lista.\n\nQué solicito a División: Solicito autorización para capturar asistencia.');
   } finally {
     act(() => root.unmount());
   }

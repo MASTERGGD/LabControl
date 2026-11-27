@@ -74,7 +74,7 @@ export default function RevisionesSesion({ cierre, recargar }) {
       <ul className="mt-2 space-y-1 text-xs">
         {revision.historial.map((evento, indice) => <li key={indice}>
           <strong>{evento.autor}</strong> · {new Date(evento.fecha).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · {ESTADOS[evento.estado]}
-          <p>{evento.motivo}</p>
+          <p className="whitespace-pre-line">{evento.motivo}</p>
         </li>)}
       </ul>
       {revision.autorizada_hasta && <p className="mt-2 text-xs">Inicio de captura hasta {new Date(revision.autorizada_hasta).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}

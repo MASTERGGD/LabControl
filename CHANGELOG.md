@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Acceso compacto y solicitud guiada en Mis pendientes — 2026-11-26
+
+El formulario de revisión vencida se abría sobre la agenda docente. Mi Horario ahora conserva el resumen y el acceso a la vista dedicada, incluso con una sola sesión. La solicitud distingue lo ocurrido de lo que se pide a División y conserva ambos textos en el historial. El docente puede consultar las respuestas desde el detalle sin desplazar la agenda.
+
+Validación con pruebas del frontend y compilación de Vite. Pendiente confirmar la publicación y revisar con sesión docente y de División.
+
+---
+
 ## [97b7765] — Solicitud y autorización de sesiones vencidas — 2026-11-26
 
 El docente solo podía copiar los datos de una fecha vencida. En Mis pendientes puede solicitar revisión, responder a División y abrir una captura autorizada para esa fecha. En Cierre académico, División puede pedir información, autorizar de forma temporal, resolver que una sesión no correspondía o concluir conservando el faltante. La migración b82d74fe9513 conserva las decisiones, autor, fecha y motivos. Una resolución no crea asistencia.
