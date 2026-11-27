@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Decisiones de regularización y detalle de sesión — 2026-11-27
+## [c093b25] — Decisiones de regularización y detalle de sesión — 2026-11-27
 
 El panel repetía el estado y exigía texto incluso para autorizar captura. El encabezado muestra el estado actual y la sesión con fecha y horario. La primera aportación conserva autor y fecha sin repetir su estado. Autorizar admite una observación opcional y registra un motivo de auditoría cuando queda vacía. Pedir información requiere una indicación. Las decisiones que concluyen el caso admiten motivos rápidos o una explicación propia.
 
-Validación con pruebas del frontend, del cierre y compilación de Vite. Pendiente confirmar el despliegue y revisar con sesión de División.
+Aprobadas 213 pruebas del frontend, 14 de cierre y compilación de Vite. Publicado el 27 de noviembre de 2026. Railway confirmó ambos servicios. Se verificó HTTP 200 para sitio y API y los controles en el JavaScript público. Pendiente la revisión con sesión de División.
 
 ---
 
