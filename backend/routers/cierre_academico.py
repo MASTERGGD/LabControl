@@ -18,7 +18,7 @@ from models.practica_laboratorio import PracticaLaboratorio
 from models.sesion import SesionClase
 from models.tutoria import ReporteTutor
 from models.usuario import Usuario
-from services.calendario_academico import estado_fecha_academica
+from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
 from services.user_permissions import puede_gestionar_materias
 
 router = APIRouter(prefix="/cierre-academico", tags=["Cierre académico"])
@@ -148,10 +148,17 @@ def _resumen_carga(db, carga, fechas_lectivas=None):
             "fecha": fecha, "motivo": clase.motivo_no_impartida,
             "estado_reposicion": estado, "fecha_reposicion": reposicion.fecha.isoformat() if reposicion else None,
         })
+    faltantes = [fecha for fecha in esperadas or [] if fecha not in con_asistencia and fecha not in no_impartidas]
+    ahora = datetime.datetime.now(MX)
+    vencidas = [
+        fecha for fecha in faltantes
+        if fecha not in por_fecha and ahora > datetime.datetime.fromisoformat(f"{fecha}T{carga.hora_fin}").replace(tzinfo=MX) + PLAZO_CAPTURA_EXTEMPORANEA
+    ] if faltantes and carga.hora_fin else []
     return {
+        "fechas_captura_vencida": vencidas,
         "clases_esperadas": len(esperadas) if esperadas is not None else None,
         "asistencias_registradas": sum(fecha in con_asistencia and fecha not in no_impartidas for fecha in esperadas or []),
-        "fechas_sin_registro": [fecha for fecha in esperadas or [] if fecha not in con_asistencia and fecha not in no_impartidas],
+        "fechas_sin_registro": faltantes,
         "fechas_no_impartidas": sorted(no_impartidas),
         "detalle_no_impartidas": detalle_no_impartidas,
         "clases_registradas": len(clases),
@@ -169,6 +176,8 @@ def _resumen_carga(db, carga, fechas_lectivas=None):
             "id": clase.id,
             "fecha": clase.fecha.isoformat(),
             "estado": clase.estado,
+            "hora_inicio": clase.hora_inicio_reposicion or carga.hora_inicio,
+            "hora_fin": clase.hora_fin_reposicion or carga.hora_fin,
             "tema_impartido": clase.tema_impartido,
             "incidencia_requiere_seguimiento": clase.incidencia_requiere_seguimiento,
             "incidencia_tipo": clase.incidencia_tipo,
@@ -182,6 +191,8 @@ def _ser_confirmacion(db, carga, confirmacion=None, fechas_lectivas=None):
     return {
         "id": confirmacion.id if confirmacion else None, "carga_id": carga.id,
         "materia": carga.actividad_nombre,
+        "materia_id": carga.materia_id,
+        "grupo_id": carga.grupo_academico_id,
         "dia_semana": carga.dia_semana,
         "hora_inicio": carga.hora_inicio,
         "hora_fin": carga.hora_fin,

@@ -1,3 +1,4 @@
+import PendientesCierre, { reunirPendientesCierre } from './PendientesCierre';
 import DecisionReposicion from './DecisionReposicion';
 import AgendaPracticasDocente from '../../components/AgendaPracticasDocente';
 import { accionTutoria } from '../../utils/accionClaseDashboard';
@@ -573,7 +574,11 @@ export default function MiHorarioDocente() {
       setHorario(horarioRes.data);
       const periodoElegido = cats.periodos.find((p) => String(p.id) === String(elegido));
       setHoy(periodoElegido?.es_actual ? hoyRes.data : []);
-      setExtemporaneas(periodoElegido?.es_actual ? extemporaneasRes.data : []);
+      const cargasResueltas = new Set((cierreRes.data?.cargas || [])
+        .filter(carga => ['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(carga.estado))
+        .map(carga => carga.carga_id));
+      setExtemporaneas(periodoElegido?.es_actual
+        ? extemporaneasRes.data.filter(item => !cargasResueltas.has(item.carga_id)) : []);
       setReposicionesPendientes(periodoElegido?.es_actual ? reposicionesRes.data : []);
       setCierre(cierreRes.data);
       const fechaLocal = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
@@ -672,6 +677,11 @@ export default function MiHorarioDocente() {
   };
   const periodoSeleccionado = catalogos.periodos.find((p) => String(p.id) === String(periodoId));
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
+  const mostrarCierre = cierre && cierre.estado !== 'ACTIVO'
+    && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA'));
+  const pendientesCierre = useMemo(() => mostrarCierre
+    ? reunirPendientesCierre(cierre.estado === 'CERRADO' ? cierre.cargas.filter(c => c.estado === 'REABIERTA') : cierre.cargas, extemporaneas)
+    : [], [cierre, extemporaneas, mostrarCierre]);
   const abrirConfirmacionCarga = (carga) => {
     setCargaAConfirmar(carga);
     setObservacionesCierre('');
@@ -905,7 +915,7 @@ export default function MiHorarioDocente() {
             <p className="hidden text-sm text-slate-400 sm:block">Opera tus clases del día y administra por separado el horario oficial recurrente.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            {esPeriodoActual && extemporaneas.length > 0 && (
+            {(!mostrarCierre || extemporaneas.some(item => !cierre?.cargas.some(carga => carga.carga_id === item.carga_id))) && esPeriodoActual && extemporaneas.length > 0 && (
               <button
                 type="button"
                 onClick={() => {
@@ -925,10 +935,19 @@ export default function MiHorarioDocente() {
         <AgendaPracticasDocente enHorarioDocente periodoId={periodoId || undefined}/>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
-        {cierre && cierre.estado !== 'ACTIVO' && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA')) && (
+        {mostrarCierre && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana vigente: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
-            <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p>{c.resumen.fechas_sin_registro?.length > 0 && <details className="mt-2 text-xs text-amber-300"><summary>{c.resumen.fechas_sin_registro.length} fechas sin registro</summary><p>{c.resumen.fechas_sin_registro.join(', ')}</p></details>}</div><span className="text-[10px] font-bold text-amber-300">{c.estado.replaceAll('_',' ')}</span></div>{(cierre.estado === 'CONFIRMACION' || c.estado === 'REABIERTA') && !['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(c.estado) && <button onClick={() => abrirConfirmacionCarga(c)} className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white ${c.resumen.puede_confirmar ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-amber-600 hover:bg-amber-500'}`}>{c.resumen.puede_confirmar ? 'Revisar y confirmar' : c.resumen.motivo_bloqueo === 'SIN_CLASES_REGISTRADAS' ? 'Revisar: sin clases registradas' : `Revisar ${c.resumen.clases_abiertas} pendiente(s)`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana de confirmación: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
+            <PendientesCierre filas={pendientesCierre} seleccionarPendiente={item => {
+              setBusquedaPendiente('');
+              setGrupoPendiente('');
+              seleccionarPendiente(item);
+            }} abrirClase={id => navigate(`/docente/clase/${id}`)} />
+            <div className="mt-4 grid gap-2 md:grid-cols-2">{cierre.cargas.map(c => <div key={c.carga_id} className="rounded-xl border border-white/10 bg-black/10 p-3"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold text-white">{c.materia}</p><p className="text-xs text-slate-400">{c.grupo} · {c.resumen.clases_cerradas}/{c.resumen.clases_registradas} clases cerradas</p></div>{c.estado !== 'PENDIENTE_REVISION' && <span className="text-xs font-semibold text-amber-600">{({
+              CONFIRMADA_DOCENTE: 'Confirmada',
+              CERRADA_ADMINISTRATIVA: 'Cerrada por División',
+              REABIERTA: 'Reabierta para corrección',
+            })[c.estado]}</span>}</div>{(cierre.confirmacion_vigente || c.estado === 'REABIERTA') && !['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(c.estado) && <button onClick={() => abrirConfirmacionCarga(c)} className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold text-white ${c.resumen.puede_confirmar ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-amber-600 hover:bg-amber-500'}`}>{c.resumen.puede_confirmar ? 'Revisar y confirmar' : c.resumen.motivo_bloqueo === 'SIN_CLASES_REGISTRADAS' ? 'Revisar: sin clases registradas' : `Revisar ${c.resumen.clases_abiertas} pendiente(s)`}</button>}{c.estado === 'REABIERTA' && <p className="mt-2 text-xs text-blue-300">Reabierta hasta {new Date(`${c.reabierta_hasta}Z`).toLocaleString('es-MX')}</p>}</div>)}</div>
           </section>
         )}
         {esPeriodoActual && !horario.length && !cargando && (

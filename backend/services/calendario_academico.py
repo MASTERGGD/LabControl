@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
 
 
+PLAZO_CAPTURA_EXTEMPORANEA = datetime.timedelta(days=7)
+
+
 def estado_fecha_academica(db: Session, periodo_id: int | None, fecha: datetime.date) -> dict:
     """Resuelve si una fecha programada exige asistencia.
 

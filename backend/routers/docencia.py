@@ -47,7 +47,7 @@ from services.cierre_sesion_laboratorio import cerrar_sesion_laboratorio
 from ws.mapa import manager
 from services.tutoria_sesiones import sesion_de_bloque
 from services.tutoria_sync import grupo_tutoria_para_academico
-from services.calendario_academico import estado_fecha_academica
+from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
 from services.requerimientos import cancelar_requerimientos_pendientes
 
 
@@ -842,9 +842,6 @@ def _serializar_clase(clase: ClaseDocente):
 def _fecha_programada_carga(carga: CargaDocente, fecha: datetime.date, *, usar_fin: bool = False):
     hora = datetime.time.fromisoformat(carga.hora_fin if usar_fin else carga.hora_inicio)
     return datetime.datetime.combine(fecha, hora, tzinfo=MX)
-
-
-PLAZO_CAPTURA_EXTEMPORANEA = datetime.timedelta(days=7)
 
 
 def _validar_ventana_extemporanea(db: Session, carga: CargaDocente, fecha: datetime.date):
