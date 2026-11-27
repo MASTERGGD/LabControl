@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Recibo institucional de Cobranza — 2026-11-27
+
+La impresión mostraba el encabezado y la dirección del navegador. SIGA genera un PDF de media carta con membrete UTECAN y datos del pago original desde el cobro o el historial. La descarga respeta el alcance del historial y conserva el folio.
+
+Compilación Vite, prueba HTTP de descarga y permisos y revisión visual de ejemplos en efectivo y transferencia aprobadas. Pendiente confirmar publicación y descarga con sesión de caja en producción.
+
+---
+
 ## [Preparado] — Coincidencias inmediatas en Cobranza — 2026-11-27
 
 La búsqueda ocultaba resultados en un desplegable después de pulsar Buscar. Caja muestra coincidencias debajo del campo tras una pausa breve, descarta respuestas atrasadas y confirma el alumno escogido antes del cobro.

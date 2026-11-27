@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +15,7 @@ from models.catalogo import CatalogoAlumno
 from models.cobranza import ConceptoCobro, PagoServicio
 from models.departamento import Departamento
 from models.usuario import RolUsuario, Usuario
+from services.recibo_cobranza import generar_recibo_pdf
 from services.user_permissions import PERM_COBRANZA, es_departamento_finanzas, tiene_permiso_departamento
 
 router = APIRouter(prefix="/cobranza", tags=["Cobranza"])
@@ -45,7 +47,7 @@ def _alumno(a):
 def _recibo(p):
     fecha = p.creado_en if p.creado_en.tzinfo else p.creado_en.replace(tzinfo=timezone.utc)
     return {
-        "folio": f"CJ-{p.id:08d}", "fecha": fecha, "alumno": p.alumno, "matricula": p.matricula,
+        "id": p.id, "folio": f"CJ-{p.id:08d}", "fecha": fecha, "alumno": p.alumno, "matricula": p.matricula,
         "periodo": p.periodo, "concepto": p.concepto, "cajero": p.cajero, "medio": p.medio,
         "importe_centavos": p.importe_centavos, "recibido_centavos": p.recibido_centavos,
         "cambio_centavos": p.recibido_centavos - p.importe_centavos, "referencia": p.referencia,
@@ -147,17 +149,38 @@ def actualizar_concepto(dep_id: int, concepto_id: int, data: ConceptoIn, db: Ses
     return _guardar_concepto(db, concepto, data)
 
 
-@router.get("/{dep_id}/pagos")
-def historial(dep_id: int, antes: int | None = Query(default=None, gt=0),
-              db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+def _pagos_visibles(db, usuario, dep_id):
     gestionar = _acceso(db, usuario, dep_id)
     filas = db.query(PagoServicio).filter_by(departamento_id=dep_id)
     if not gestionar:
         filas = filas.filter_by(cajero_id=usuario.id)
+    return filas
+
+
+@router.get("/{dep_id}/pagos")
+def historial(dep_id: int, antes: int | None = Query(default=None, gt=0),
+              db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+    filas = _pagos_visibles(db, usuario, dep_id)
     if antes:
         filas = filas.filter(PagoServicio.id < antes)
     pagos = filas.order_by(PagoServicio.id.desc()).limit(31).all()
     return {"recibos": [_recibo(p) for p in pagos[:30]], "siguiente": pagos[29].id if len(pagos) > 30 else None}
+
+
+@router.get("/{dep_id}/pagos/{pago_id}/recibo.pdf", response_class=Response)
+def descargar_recibo(dep_id: int, pago_id: int, db: Session = Depends(get_db),
+                     usuario: Usuario = Depends(get_current_user)):
+    pago = _pagos_visibles(db, usuario, dep_id).filter_by(id=pago_id).first()
+    if not pago:
+        raise HTTPException(404, "Recibo no encontrado")
+    recibo = _recibo(pago)
+    return Response(
+        generar_recibo_pdf(recibo), media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="Recibo_{recibo["folio"]}.pdf"',
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.post("/{dep_id}/pagos")

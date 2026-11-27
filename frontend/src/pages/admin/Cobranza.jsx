@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
 
@@ -18,8 +17,9 @@ function aCentavos(valor) {
   return Number(pesos) * 100 + Number(fraccion.padEnd(2, '0'));
 }
 
-function Recibo({ recibo }) {
-  const contenido = <article className="space-y-3">
+function Recibo({ recibo, descargar, ocupado }) {
+  return <section className={panel} aria-label="Recibo de pago">
+    <article className="space-y-3">
       <h2 className="text-lg font-bold">UTECAN · Recibo interno</h2>
       <p className="font-semibold">{recibo.folio} · {fecha(recibo.fecha)}</p>
       <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 text-sm">
@@ -35,21 +35,8 @@ function Recibo({ recibo }) {
         </>}
         <dt>Registró</dt><dd>{recibo.cajero}</dd>
       </dl>
-  </article>;
-  return <section className={panel} aria-label="Recibo de pago">
-    {contenido}
-    <button type="button" className={boton} onClick={() => window.print()}>Imprimir o guardar PDF</button>
-    {createPortal(<div id="recibo-cobranza">
-      <style>{`
-        #recibo-cobranza { display: none; }
-        @media print {
-          body:has(> #recibo-cobranza) > :not(#recibo-cobranza) { display: none !important; }
-          body:has(> #recibo-cobranza) { background: #fff !important; }
-          #recibo-cobranza { display: block; color: #000; padding: 1cm; }
-        }
-      `}</style>
-      {contenido}
-    </div>, document.body)}
+    </article>
+    <button type="button" className={boton} disabled={ocupado} onClick={() => descargar(recibo)}>Descargar recibo PDF</button>
   </section>;
 }
 
@@ -171,6 +158,16 @@ function Caja({ area }) {
     setSiguiente(data.siguiente);
   });
 
+  const descargarRecibo = pago => ejecutar(async () => {
+    const { data } = await api.get(base + '/pagos/' + pago.id + '/recibo.pdf', { responseType: 'blob' });
+    const url = URL.createObjectURL(data);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = 'Recibo_' + pago.folio + '.pdf';
+    enlace.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
   return <div className="space-y-5">
     <nav aria-label="Opciones de cobranza" className="flex flex-wrap gap-2">
       {Object.entries({ pago: 'Registrar pago', historial: 'Historial', ...(area.gestionar && { tabulador: 'Tabulador' }) })
@@ -260,7 +257,7 @@ function Caja({ area }) {
       </ul>
       {siguiente && <button type="button" className={boton} disabled={ocupado} onClick={() => cargarHistorial(siguiente)}>Ver más</button>}
     </section>}
-    {recibo && <Recibo recibo={recibo} />}
+    {recibo && <Recibo recibo={recibo} descargar={descargarRecibo} ocupado={ocupado} />}
   </div>;
 }
 

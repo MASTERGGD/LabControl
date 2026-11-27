@@ -58,6 +58,12 @@ def test_caja_valida_permiso_importe_y_reintento(db):
         assert client.post(ruta + "/pagos", json={**pago, "recibido_centavos": 10000}).status_code == 422
         recibo = client.post(ruta + "/pagos", json=pago).json()
         assert recibo["cambio_centavos"] == 2000
+        ruta_pdf = ruta + f"/pagos/{recibo['id']}/recibo.pdf"
+        pdf = client.get(ruta_pdf)
+        assert pdf.status_code == 200
+        assert pdf.headers["content-type"] == "application/pdf"
+        assert recibo["folio"] in pdf.headers["content-disposition"]
+        assert pdf.content.startswith(b"%PDF-")
         assert client.post(ruta + "/pagos", json=pago).json() == recibo
 
         actor = responsable
@@ -71,3 +77,4 @@ def test_caja_valida_permiso_importe_y_reintento(db):
         assert not client.patch(permisos, json={**asignacion, "activo": False}).json()["puede_cobrar"]
         actor = cajero
         assert client.get(ruta + "/pagos").status_code == 403
+        assert client.get(ruta_pdf).status_code == 403
