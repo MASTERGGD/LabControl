@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Vista de pendientes y regularización docente — 2026-11-26
+## [946725f] — Vista de pendientes y regularización docente — 2026-11-26
 
 Una lista extensa podía desplazar la agenda y una fecha vencida carecía de siguiente paso. Mi Horario conserva hasta tres sesiones en el resumen y ofrece una vista paginada con búsqueda y filtros. Se priorizan las capturas habilitadas que vencen antes. Los botones abren el registro correspondiente y permiten volver al listado. Las fechas vencidas explican cómo consultar a División y permiten copiar sus datos.
 
-Validación con pruebas del frontend y compilación de Vite. Pendiente confirmar publicación y revisar la vista con sesión docente iniciada.
+Aprobadas 211 pruebas del frontend y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios y se verificó HTTP 200 para la ruta y los controles de regularización en el JavaScript público. Pendiente revisar la vista con sesión docente iniciada.
 
 ---
 
