@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Decisiones de regularización y detalle de sesión — 2026-11-27
+
+El panel repetía el estado y exigía texto incluso para autorizar captura. El encabezado muestra el estado actual y la sesión con fecha y horario. La primera aportación conserva autor y fecha sin repetir su estado. Autorizar admite una observación opcional y registra un motivo de auditoría cuando queda vacía. Pedir información requiere una indicación. Las decisiones que concluyen el caso admiten motivos rápidos o una explicación propia.
+
+Validación con pruebas del frontend, del cierre y compilación de Vite. Pendiente confirmar el despliegue y revisar con sesión de División.
+
+---
+
 ## [ad68d3c] — Ventanas extraordinarias y faltantes después de clase — 2026-11-27
 
 Las clases del día aparecían antes de terminar y División solo podía autorizar fechas una por una. El cálculo omite los bloques del día cuyo horario aún no termina. Regularización permite elegir fechas de clase, inicio, fin, motivo y varios docentes, grupos o programas, o todo el cuatrimestre vigente. La vista previa muestra el alcance y se vuelve a validar antes de aplicar. La migración cb83a70de15f agrega el inicio programado y conserva las autorizaciones existentes.

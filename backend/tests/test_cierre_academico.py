@@ -430,11 +430,14 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
     decision = f"{solicitud}/{revision_id}/decision"
     pedir = {"decision": "ESPERA_DOCENTE", "motivo": "Indica dónde quedó la lista"}
     assert client.post(decision, headers=docente_h, json=pedir).status_code == 403
+    assert client.post(decision, headers=admin_h, json={"decision": "ESPERA_DOCENTE"}).status_code == 422
+    assert client.post(decision, headers=admin_h, json={"decision": "SIN_EVIDENCIA"}).status_code == 422
     assert client.post(decision, headers=admin_h, json=pedir).json()["estado"] == "ESPERA_DOCENTE"
     assert client.post(solicitud, headers=docente_h, json=datos).json()["estado"] == "EN_REVISION"
-    autorizar = {"decision": "AUTORIZADA", "motivo": "Lista de asistencia verificada", "horas": 48}
+    autorizar = {"decision": "AUTORIZADA", "horas": 48}
     aprobada = client.post(decision, headers=admin_h, json=autorizar)
     assert aprobada.status_code == 200, aprobada.text
+    assert aprobada.json()["historial"][-1]["motivo"] == "Captura autorizada para esta sesión"
     from models.cierre_academico import RevisionSesionVencida
 
     revision_db = db.get(RevisionSesionVencida, revision_id)

@@ -14,22 +14,35 @@ const ESTADOS = {
   SIN_EVIDENCIA: 'Cerrada sin registro',
 };
 
+const MOTIVOS_RAPIDOS = {
+  NO_CORRESPONDIA: ['Cambio de horario', 'Suspensión oficial'],
+  SIN_EVIDENCIA: ['Sin evidencia suficiente', 'Sin respuesta'],
+};
+
 function Decision({ cargaId, revisionId, recargar }) {
   const [decision, setDecision] = useState('ESPERA_DOCENTE');
   const [motivo, setMotivo] = useState('');
+  const [motivoRapido, setMotivoRapido] = useState('');
   const [horas, setHoras] = useState('48');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
+  const motivos = MOTIVOS_RAPIDOS[decision];
+  const exigeTexto = decision === 'ESPERA_DOCENTE' || (motivos && motivoRapido === 'otro');
+  const puedeGuardar = decision === 'AUTORIZADA' || (exigeTexto ? motivo.trim().length >= 5 : Boolean(motivoRapido));
   const guardar = async evento => {
     evento.preventDefault();
+    if (!puedeGuardar || guardando) return;
     setError('');
     setGuardando(true);
     try {
       await api.post(`/cierre-academico/cargas/${cargaId}/revision-sesion/${revisionId}/decision`, {
-        decision, motivo: motivo.trim(), horas: Number(horas),
+        decision,
+        motivo: [motivoRapido !== 'otro' ? motivoRapido : '', motivo.trim()].filter(Boolean).join(' · '),
+        horas: decision === 'AUTORIZADA' ? Number(horas) : 48,
       });
       await recargar();
       setMotivo('');
+      setMotivoRapido('');
     } catch (e) {
       const detalle = e.response?.data?.detail;
       setError(typeof detalle === 'string' ? detalle : 'No se pudo registrar la decisión.');
@@ -40,7 +53,12 @@ function Decision({ cargaId, revisionId, recargar }) {
 
   return <form onSubmit={guardar} className="mt-3 space-y-2 text-sm">
     <label className="block">Decisión
-      <select className="input-dark mt-1 w-full" value={decision} onChange={e => setDecision(e.target.value)}>
+      <select className="input-dark mt-1 w-full" value={decision} onChange={e => {
+        setDecision(e.target.value);
+        setMotivoRapido('');
+        setMotivo('');
+        setError('');
+      }}>
         <option value="ESPERA_DOCENTE">Pedir información</option>
         <option value="AUTORIZADA">Autorizar captura de esta fecha</option>
         <option value="NO_CORRESPONDIA">Resolver como sesión que no correspondía</option>
@@ -50,12 +68,21 @@ function Decision({ cargaId, revisionId, recargar }) {
     {decision === 'AUTORIZADA' && <label className="block">Horas para iniciar la captura
       <input className="input-dark mt-1 w-full" type="number" min={1} max={168} required value={horas} onChange={e => setHoras(e.target.value)} />
     </label>}
-    <label className="block">Motivo o información solicitada
-      <textarea className="input-dark mt-1 w-full" rows={2} required minLength={5} maxLength={2000}
+    {motivos && <label className="block">Motivo de la decisión
+      <select required className="input-dark mt-1 w-full" value={motivoRapido} onChange={e => setMotivoRapido(e.target.value)}>
+        <option value="">Selecciona un motivo</option>
+        {motivos.map(opcion => <option key={opcion}>{opcion}</option>)}
+        <option value="otro">Otro motivo</option>
+      </select>
+    </label>}
+    <label className="block">{decision === 'ESPERA_DOCENTE' ? 'Información que debe proporcionar el docente'
+      : exigeTexto ? 'Describe el motivo' : 'Observación (opcional)'}
+      <textarea className="input-dark mt-1 w-full" rows={2} required={Boolean(exigeTexto)}
+        minLength={exigeTexto ? 5 : undefined} maxLength={motivoRapido && motivoRapido !== 'otro' ? 1900 : 2000}
         value={motivo} onChange={e => setMotivo(e.target.value)} />
     </label>
     {error && <p role="alert" className="text-red-600">{error}</p>}
-    <button type="submit" disabled={guardando || motivo.trim().length < 5}
+    <button type="submit" disabled={guardando || !puedeGuardar}
       className="rounded bg-emerald-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Registrar decisión</button>
   </form>;
 }
@@ -73,15 +100,25 @@ function Detalle({ caso, cerrar, cierre, recargar }) {
     className="m-0 ml-auto h-dvh max-h-none w-full max-w-lg overflow-y-auto border p-5 backdrop:bg-slate-950/60"
     style={{ background: 'var(--main-bg)', color: 'var(--main-text)' }}>
     <header className="flex items-start justify-between gap-3">
-      <h2 id="titulo-solicitud" className="text-lg font-bold">Solicitud #{revision.id}</h2>
+      <div>
+        <h2 id="titulo-solicitud" className="text-lg font-bold">Solicitud #{revision.id}</h2>
+        <p className="mt-1 inline-block rounded-full bg-blue-500/10 px-2 py-1 text-xs font-semibold">{ESTADOS[revision.estado]}</p>
+      </div>
       <button type="button" className="rounded border px-3 py-1" onClick={() => dialogo.current.close()}>Cerrar</button>
     </header>
-    <p className="mt-2 font-semibold">{carga.docente}</p>
-    <p>{[carga.materia, carga.grupo, carga.programa_educativo, revision.fecha].filter(Boolean).join(' · ')}</p>
-    <p className="my-3 rounded bg-blue-500/10 p-2 text-sm">{ESTADOS[revision.estado]}</p>
+    <div className="my-3 space-y-1">
+      <p className="font-semibold">{[carga.materia, carga.grupo].filter(Boolean).join(' · ')}</p>
+      {carga.programa_educativo && <p className="text-sm text-slate-500">{carga.programa_educativo}</p>}
+      <p className="text-sm">{new Date(`${revision.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'long' })}
+        {carga.hora_inicio && carga.hora_fin && ` · ${carga.hora_inicio}–${carga.hora_fin}`}</p>
+    </div>
     <ol className="space-y-3">
       {revision.historial.map((evento, indice) => <li key={indice} className="rounded border p-2 text-sm">
-        <p className="mb-1 text-xs"><strong>{evento.autor}</strong> · {new Date(evento.fecha).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })} · {ESTADOS[evento.estado]}</p>
+        <p className="mb-1 text-xs">
+          {indice === 0 && evento.estado === 'EN_REVISION' ? 'Enviado por ' : ''}
+          <strong>{evento.autor}</strong> · {new Date(evento.fecha).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}
+          {(indice > 0 || evento.estado !== 'EN_REVISION') && ` · ${ESTADOS[evento.estado]}`}
+        </p>
         <DatosSolicitud evento={evento} />
       </li>)}
     </ol>

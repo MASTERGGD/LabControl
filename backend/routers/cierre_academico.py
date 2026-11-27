@@ -367,7 +367,7 @@ class SolicitudRevisionIn(BaseModel):
 
 class DecisionRevisionIn(BaseModel):
     decision: str
-    motivo: str = Field(min_length=5, max_length=2000)
+    motivo: Optional[str] = Field(None, max_length=2000)
     horas: int = Field(48, ge=1, le=168)
 
 
@@ -456,6 +456,9 @@ def decidir_revision_sesion(carga_id: int, revision_id: int, data: DecisionRevis
     cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=carga.periodo_id).first()
     if cierre and cierre.estado == "CERRADO":
         raise HTTPException(409, "El cuatrimestre ya está cerrado")
+    motivo = (data.motivo or "").strip()
+    if data.decision != "AUTORIZADA":
+        motivo = _motivo_revision(motivo)
     revision.autorizada_desde = None
     if data.decision == "AUTORIZADA":
         _validar_carga_actual(db, carga)
@@ -467,7 +470,7 @@ def decidir_revision_sesion(carga_id: int, revision_id: int, data: DecisionRevis
         revision.autorizada_hasta = ahora_utc() + datetime.timedelta(hours=data.horas)
     else:
         revision.autorizada_hasta = None
-    registrar_evento(revision, data.decision, current_user, _motivo_revision(data.motivo))
+    registrar_evento(revision, data.decision, current_user, motivo or "Captura autorizada para esta sesión")
     db.commit()
     return _ser_revision(revision)
 
