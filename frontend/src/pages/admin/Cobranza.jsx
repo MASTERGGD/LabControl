@@ -59,8 +59,8 @@ function Caja({ area }) {
   const [conceptos, setConceptos] = useState([]);
   const [edicion, setEdicion] = useState(conceptoNuevo);
   const [busqueda, setBusqueda] = useState('');
-  const [alumnos, setAlumnos] = useState([]);
-  const [alumnoId, setAlumnoId] = useState('');
+  const [resultado, setResultado] = useState(null);
+  const [alumno, setAlumno] = useState(null);
   const [conceptoId, setConceptoId] = useState('');
   const [medio, setMedio] = useState('EFECTIVO');
   const [recibido, setRecibido] = useState('');
@@ -75,6 +75,8 @@ function Caja({ area }) {
   const importe = concepto?.importe_centavos || 0;
   const efectivo = medio === 'EFECTIVO';
   const diferencia = aCentavos(recibido) - importe;
+  const termino = busqueda.trim();
+  const coincidencias = resultado?.termino === termino ? resultado : null;
 
   useEffect(() => {
     let activa = true;
@@ -85,6 +87,23 @@ function Caja({ area }) {
     });
     return () => { activa = false; };
   }, [base]);
+
+  useEffect(() => {
+    if (vista !== 'pago' || alumno || !termino) return;
+    let vigente = true;
+    const temporizador = window.setTimeout(async () => {
+      try {
+        const { data } = await api.get(base + '/alumnos', { params: { q: termino } });
+        if (vigente) setResultado({ termino, alumnos: data });
+      } catch {
+        if (vigente) setResultado({ termino, error: true });
+      }
+    }, 300);
+    return () => {
+      vigente = false;
+      window.clearTimeout(temporizador);
+    };
+  }, [alumno, base, termino, vista]);
 
   const ejecutar = async tarea => {
     if (ocupado) return;
@@ -100,26 +119,12 @@ function Caja({ area }) {
     }
   };
 
-  const buscar = e => {
-    e.preventDefault();
-    ejecutar(async () => {
-      setAlumnos([]);
-      setAlumnoId('');
-      const termino = busqueda.trim();
-      const { data } = await api.get(base + '/alumnos', { params: { q: termino } });
-      setAlumnos(data);
-      if (data.length === 1 && data[0].matricula.toLowerCase() === termino.toLowerCase()) {
-        setAlumnoId(String(data[0].id));
-      }
-      if (!data.length) setError('No se encontraron alumnos con esa búsqueda.');
-    });
-  };
-
   const registrar = e => {
     e.preventDefault();
+    if (!operacion && (!alumno || !concepto || (efectivo ? diferencia < 0 : !referencia.trim()))) return;
     ejecutar(async () => {
       const solicitud = operacion || {
-        operacion: crypto.randomUUID(), alumno_id: Number(alumnoId), concepto_id: concepto.id,
+        operacion: crypto.randomUUID(), alumno_id: alumno.id, concepto_id: concepto.id,
         importe_centavos: importe, medio, recibido_centavos: efectivo ? aCentavos(recibido) : null,
         referencia: efectivo ? null : referencia.trim(),
       };
@@ -131,8 +136,8 @@ function Caja({ area }) {
         setRecibido('');
         setReferencia('');
         setConceptoId('');
-        setAlumnos([]);
-        setAlumnoId('');
+        setResultado(null);
+        setAlumno(null);
         setBusqueda('');
       } catch (e) {
         if ([400, 403, 404, 409, 422].includes(e.response?.status)) {
@@ -177,19 +182,41 @@ function Caja({ area }) {
     </nav>
     {error && <p role="alert" className="rounded-lg border border-red-500/30 p-3">{error}</p>}
     {vista === 'pago' && <section className={panel}>
-      <form onSubmit={buscar} className="flex flex-wrap items-end gap-3">
-        <label className="grow">Matrícula, nombre o apellidos
-          <input className="input-dark mt-1" maxLength={120} required disabled={ocupado || !!operacion} value={busqueda}
-            onChange={e => { setBusqueda(e.target.value); setAlumnoId(''); setAlumnos([]); }} />
+      {alumno ? <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+        <div>
+          <p className="font-semibold">{alumno.nombre}</p>
+          <p className="text-sm">{alumno.matricula} · {alumno.periodo}</p>
+        </div>
+        <button type="button" className={boton} disabled={ocupado || !!operacion}
+          onClick={() => setAlumno(null)}>Cambiar alumno</button>
+      </div> : <div className="space-y-2">
+        <label className="block">Matrícula, nombre o apellidos
+          <input className="input-dark mt-1" type="search" maxLength={120} disabled={ocupado || !!operacion} value={busqueda}
+            onChange={e => {
+              if (e.target.value.trim() !== termino) setResultado(null);
+              setBusqueda(e.target.value);
+            }} />
         </label>
-        <button className={boton} disabled={ocupado || !!operacion || !busqueda.trim()}>Buscar alumno</button>
-      </form>
+        {termino && <p role="status" className="text-sm text-[color:var(--text-secondary)]">
+          {!coincidencias ? 'Buscando alumnos…'
+            : coincidencias.error ? 'No se pudo buscar. Modifica el texto para volver a intentar.'
+              : !coincidencias.alumnos.length ? 'No se encontraron alumnos.'
+                : coincidencias.alumnos.length === 25 ? 'Se muestran hasta 25 resultados. Escribe más para precisar la búsqueda.'
+                  : 'Selecciona un alumno de la lista.'}
+        </p>}
+        {!!coincidencias?.alumnos?.length && <ul aria-label="Coincidencias de alumnos"
+          className="max-h-64 divide-y overflow-y-auto rounded-lg border border-[var(--surface-border)]">
+          {coincidencias.alumnos.map(a => <li key={a.id}>
+            <button type="button" className="block w-full px-3 py-2 text-left hover:bg-emerald-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+              onClick={() => setAlumno(a)}>
+              <span className="block font-semibold">{a.nombre}</span>
+              <span className="block text-sm text-[color:var(--text-secondary)]">{a.matricula} · {a.periodo}</span>
+            </button>
+          </li>)}
+        </ul>}
+      </div>}
       <form onSubmit={registrar} className="space-y-3">
         <fieldset disabled={ocupado || !!operacion} className="grid gap-3 sm:grid-cols-2">
-          <label>Alumno y periodo<select className="input-dark mt-1" value={alumnoId} onChange={e => setAlumnoId(e.target.value)} required>
-            <option value="">Selecciona un alumno</option>
-            {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre} · {a.matricula} · {a.periodo}</option>)}
-          </select></label>
           <label>Concepto<select className="input-dark mt-1" value={conceptoId} onChange={e => setConceptoId(e.target.value)} required>
             <option value="">Selecciona un concepto</option>
             {conceptos.filter(c => c.activo).map(c => <option key={c.id} value={c.id}>{c.nombre} · {dinero(c.importe_centavos)}</option>)}
@@ -201,7 +228,7 @@ function Caja({ area }) {
             : <label>Referencia<input className="input-dark mt-1" maxLength={120} required value={referencia} onChange={e => setReferencia(e.target.value)} /></label>}
         </fieldset>
         {concepto && <p className="font-semibold">Total {dinero(importe)}{efectivo && recibido && (diferencia >= 0 ? ' · Cambio ' + dinero(diferencia) : ' · Faltan ' + dinero(-diferencia))}</p>}
-        <button className={botonPrincipal} disabled={ocupado || (!operacion && (!alumnoId || !concepto || (efectivo ? diferencia < 0 : !referencia.trim())))}>
+        <button className={botonPrincipal} disabled={ocupado || (!operacion && (!alumno || !concepto || (efectivo ? diferencia < 0 : !referencia.trim())))}>
           {operacion ? 'Reintentar el mismo cobro' : 'Confirmar pago y emitir recibo'}
         </button>
       </form>

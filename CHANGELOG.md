@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Coincidencias inmediatas en Cobranza — 2026-11-27
+
+La búsqueda ocultaba resultados en un desplegable después de pulsar Buscar. Caja muestra coincidencias debajo del campo tras una pausa breve, descarta respuestas atrasadas y confirma el alumno escogido antes del cobro.
+
+Prueba de búsqueda y selección en Jest y compilación Vite aprobadas. Pendiente verificar el despliegue y la vista autenticada.
+
+---
+
 ## [Preparado] — Búsqueda de alumnos en Cobranza — 2026-11-27
 
 La búsqueda exigía matrícula exacta. Caja puede buscar por matrícula, nombre o apellidos, incluso con varias palabras. Los resultados muestran nombre, matrícula y periodo y requieren selección explícita al buscar por nombre.
