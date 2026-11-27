@@ -24,18 +24,58 @@ export function sesionesPorAtender(carga) {
   return [...filas.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
 }
 
-export function resumenParaDocente(nombre, periodo, cargas) {
+export const claveMateria = carga => JSON.stringify([
+  carga.materia_id ?? carga.materia.trim().toLocaleLowerCase('es-MX'),
+  carga.grupo_id ?? carga.grupo,
+]);
+
+export function etiquetasMaterias(cargas) {
+  const etiquetas = new Map();
+  const porNombre = new Map();
+  for (const carga of cargas) {
+    const clave = claveMateria(carga);
+    if (etiquetas.has(clave)) continue;
+    const nombre = [carga.materia, rotuloGrupo(carga.grupo), carga.programa_educativo].filter(Boolean).join(' · ');
+    etiquetas.set(clave, nombre);
+    if (!porNombre.has(nombre)) porNombre.set(nombre, []);
+    porNombre.get(nombre).push({ clave, carga });
+  }
+  for (const [nombre, filas] of porNombre) {
+    if (filas.length < 2) continue;
+    for (const { clave, carga } of filas) {
+      const grupoRepetido = filas.filter(fila => fila.carga.grupo_id === carga.grupo_id).length > 1;
+      const referencia = [
+        carga.grupo_id != null && `Grupo #${carga.grupo_id}`,
+        (grupoRepetido || carga.grupo_id == null) && carga.materia_id != null && `Materia #${carga.materia_id}`,
+      ].filter(Boolean).join(' · ');
+      etiquetas.set(clave, referencia ? `${nombre} · ${referencia}` : nombre);
+    }
+  }
+  return etiquetas;
+}
+
+export function sesionesEnDetalle(carga) {
+  const pendientes = sesionesPorAtender(carga);
+  const fechas = new Set(pendientes.map(fila => fila.fecha));
+  const noImpartidas = carga.resumen.detalle_no_impartidas
+    ?? (carga.resumen.fechas_no_impartidas || []).map(fecha => ({ fecha }));
+  return [...pendientes, ...noImpartidas.filter(fila => !fechas.has(fila.fecha)).map(fila => ({
+    ...fila, tipo: 'no_impartida', hora_inicio: carga.hora_inicio, hora_fin: carga.hora_fin,
+  }))];
+}
+
+export function resumenParaDocente(nombre, periodo, cargas, etiquetas = etiquetasMaterias(cargas)) {
   const encabezado = [`Pendientes de cierre académico · ${periodo || ''}`.trim(), nombre];
   const materias = new Map();
   for (const carga of cargas) {
-    const nombreMateria = [carga.materia, rotuloGrupo(carga.grupo)].filter(Boolean).join(' · ');
+    const clave = claveMateria(carga);
     for (const fila of sesionesPorAtender(carga)) {
-      if (!materias.has(nombreMateria)) materias.set(nombreMateria, []);
-      materias.get(nombreMateria).push(fila);
+      if (!materias.has(clave)) materias.set(clave, []);
+      materias.get(clave).push(fila);
     }
   }
   for (const [materia, filas] of materias) {
-    encabezado.push('', materia);
+    encabezado.push('', etiquetas.get(materia));
     for (const fila of filas.sort((a, b) => a.fecha.localeCompare(b.fecha))) {
       const horario = fila.hora_inicio && fila.hora_fin ? ` · ${fila.hora_inicio}–${fila.hora_fin}` : '';
       encabezado.push(`- ${fila.fecha}${horario} · ${accionesPendientes[fila.tipo]}`);

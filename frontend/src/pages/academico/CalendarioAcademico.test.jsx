@@ -11,7 +11,7 @@ jest.mock('../../context/PeriodoContext', () => ({
 
 test('abre las fechas primero y permite filtrar y desplegar las materias de cada docente', async () => {
   const resumen = { clases_abiertas: 0, clases_esperadas: 2, asistencias_registradas: 1, fechas_sin_registro: ['2026-11-24'], fechas_no_impartidas: ['2026-10-15'], detalle_no_impartidas: [{ fecha: '2026-10-15', motivo: 'Reunión de academia', estado_reposicion: 'NO_REQUERIDA' }] };
-  const carga = { docente_id: 1, docente: 'Ana de prueba', grupo: '4° A', estado: 'PENDIENTE_REVISION', resumen };
+  const carga = { docente_id: 1, docente: 'Ana de prueba', grupo: '4° A', programa_educativo: 'Ingeniería Industrial', estado: 'PENDIENTE_REVISION', resumen };
   api.get.mockImplementation(url => Promise.resolve({ data: url === '/calendario-academico'
     ? { estado: 'BORRADOR', puede_editar: true, eventos: [] }
     : { estado: 'CONFIRMACION', confirmacion_vigente: true, confirmacion_inicio: '2026-11-25', confirmacion_fin: '2026-11-30', cargas: [
@@ -41,7 +41,16 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
     const meses = [...materia[0].parentElement.querySelectorAll('details')];
     expect(meses.find(item => item.firstElementChild.textContent.includes('noviembre')).open).toBe(true);
     expect(meses.find(item => item.firstElementChild.textContent.includes('octubre')).open).toBe(false);
-    expect(host.textContent).toContain('2026-10-15 · No impartida · 09:00–10:00 · Sin reposición');
+    const noImpartida = materia[0].parentElement.querySelector('time[datetime="2026-10-15"]').closest('li');
+    expect(noImpartida.textContent).toContain('09:00–10:00');
+    expect(noImpartida.textContent).toContain('No impartida');
+    expect(noImpartida.textContent).toContain('Sin reposición');
+    expect(materia[0].textContent).toContain('Ingeniería Industrial');
+    const copiarMateria = host.querySelector('button[aria-label^="Copiar materia: Minería de Texto"]');
+    await act(async () => copiarMateria.click());
+    const texto = host.querySelector('textarea[aria-label="Resumen para copiar"]').value;
+    expect(texto).toContain('Minería de Texto · 4.º A · Ingeniería Industrial');
+    expect(texto).not.toContain('Bases de Datos');
     expect(host.textContent).toContain('Reunión de academia');
     expect(host.textContent).toContain('Por confirmar por el docente');
     expect(host.textContent).toContain('Martes 09:00–10:00');

@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Identificación de grupo y detalle mensual en el cierre — 2026-11-26
+
+Los grupos de programas distintos podían verse con el mismo rótulo y las sesiones de un mes quedaban repartidas entre secciones. El reporte y el texto copiado incluyen el programa educativo y, cuando coincide el rótulo, referencias internas para distinguir las filas. El detalle mensual reúne sesiones sin registro, abiertas, en corrección y no impartidas. División puede copiar una materia o todo el docente, y consultar la regla de conteo junto al total.
+
+Validación con pruebas de cierre y de interfaz y compilación de Vite. Pendiente verificar la publicación y revisar la pantalla con una cuenta de División.
+
+---
+
 ## [1f97d8b] — Priorización de pendientes de cierre — 2026-11-26
 
 El reporte superponía sesiones sin asistencia con clases abiertas y dificultaba priorizar docentes. Cada horario y fecha cuenta una vez, con prioridad para clases abiertas o en corrección. La vista ordena por sesiones por atender, permite filtrar reposiciones pendientes y copiar un resumen por docente con fechas, horarios y acciones. La confirmación del cierre tiene su propio porcentaje y la ruta visible identifica Cierre académico.

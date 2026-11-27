@@ -1,4 +1,4 @@
-import { resumenParaDocente, rotuloGrupo, sesionesPorAtender } from './pendientesAcademicos';
+import { claveMateria, etiquetasMaterias, resumenParaDocente, sesionesEnDetalle, sesionesPorAtender } from './pendientesAcademicos';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -148,9 +148,17 @@ const fechaLocal = fecha => new Date(`${fecha}T12:00:00`);
 const horarioCarga = carga => carga.hora_inicio ? `${carga.hora_inicio}–${carga.hora_fin}` : '';
 const agendaCarga = carga => [dias[carga.dia_semana], horarioCarga(carga)].filter(Boolean).join(' ');
 
-function FechasSinRegistro({ bloques }) {
-  const fechas = bloques.flatMap(carga => sesionesPorAtender(carga).filter(item => item.tipo === 'faltante').map(({ fecha }) => ({ fecha, carga })))
-    .sort((a, b) => a.fecha.localeCompare(b.fecha) || horarioCarga(a.carga).localeCompare(horarioCarga(b.carga)));
+const ESTADO_SESION = {
+  faltante: 'Sin registro', abierta: 'Abierta', correccion: 'En corrección',
+  reposicion: 'No impartida', no_impartida: 'No impartida',
+};
+const formatDia = fecha => fechaLocal(fecha)
+  .toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' })
+  .replace(/[.,]/g, '').replace(' de ', ' ').replace(/^(\p{L})/u, letra => letra.toUpperCase());
+
+function SesionesPorMes({ bloques }) {
+  const fechas = bloques.flatMap(carga => sesionesEnDetalle(carga).map(fila => ({ ...fila, cargaId: carga.carga_id })))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || horarioCarga(a).localeCompare(horarioCarga(b)));
   if (!fechas.length) return null;
 
   const meses = new Map();
@@ -159,74 +167,70 @@ function FechasSinRegistro({ bloques }) {
     if (!meses.has(mes)) meses.set(mes, []);
     meses.get(mes).push(fila);
   }
-  const porMes = [...meses].reverse();
   return <div className="space-y-2">
-    <h4 className="font-semibold">Sesiones sin registro</h4>
-    {porMes.map(([mes, filas], indice) => <details key={mes} open={indice === 0}>
-      <summary className="cursor-pointer capitalize">{fechaLocal(`${mes}-01`).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })} · {filas.length}</summary>
-      <ul className="list-disc space-y-1 py-1 pl-6">
-        {filas.map(({ fecha, carga }) => <li key={`${carga.carga_id}/${fecha}`}>
-          {fechaLocal(fecha).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric' })}
-          {horarioCarga(carga) && ` · ${horarioCarga(carga)}`}
+    <h4 className="font-semibold">Detalle de sesiones</h4>
+    {[...meses].reverse().map(([mes, filas], indice) => <details key={mes} open={indice === 0}>
+      <summary className="cursor-pointer first-letter:uppercase">{MESES[Number(mes.slice(5)) - 1]} {mes.slice(0, 4)} · {filas.length}</summary>
+      <ul className="space-y-2 py-2 pl-4">
+        {filas.map(fila => <li key={`${fila.cargaId}/${fila.fecha}`}>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <time dateTime={fila.fecha}>{formatDia(fila.fecha)}</time>
+            {horarioCarga(fila) && <span className="tabular-nums">{horarioCarga(fila)}</span>}
+            <span className={`rounded px-1.5 py-0.5 font-semibold ${fila.tipo === 'no_impartida' ? 'bg-slate-500/10 text-slate-500' : 'bg-amber-500/10 text-amber-600'}`}>{ESTADO_SESION[fila.tipo]}</span>
+            {['reposicion', 'no_impartida'].includes(fila.tipo) && <span>{ESTADO_REPOSICION[fila.estado_reposicion] || 'Reposición sin definir'}{fila.fecha_reposicion && ` · ${formatDia(fila.fecha_reposicion)}`}</span>}
+          </p>
+          {['reposicion', 'no_impartida'].includes(fila.tipo) && <p className="mt-1">{fila.motivo || 'Sin motivo registrado'}</p>}
         </li>)}
       </ul>
     </details>)}
   </div>;
 }
 
-function MateriaCierre({ bloques, cierre, abrirReapertura, abrirAdministrativo }) {
-  const [primera] = bloques;
+function MateriaCierre({ bloques, titulo, copiar, cierre, abrirReapertura, abrirAdministrativo }) {
   const asistencias = bloques.reduce((total, c) => total + c.resumen.asistencias_registradas, 0);
   const pendientes = bloques.flatMap(sesionesPorAtender);
   const faltantes = pendientes.filter(fila => fila.tipo === 'faltante').length;
   const abiertas = pendientes.filter(fila => ['abierta', 'correccion'].includes(fila.tipo)).length;
   const reposiciones = pendientes.filter(fila => fila.tipo === 'reposicion').length;
-  const noImpartidas = bloques.flatMap(carga => (carga.resumen.detalle_no_impartidas
-    ?? carga.resumen.fechas_no_impartidas.map(fecha => ({ fecha }))).map(clase => ({ ...clase, carga })));
+  const noImpartidas = bloques.reduce((total, carga) => total
+    + (carga.resumen.detalle_no_impartidas ?? carga.resumen.fechas_no_impartidas ?? []).length, 0);
   const tieneCobertura = bloques.every(c => c.resumen.clases_esperadas != null);
   const mostrarEstado = cierre.estado === 'CONFIRMACION' || cierre.estado === 'CERRADO';
-  return <details className="border-t p-3" style={{ borderColor: 'var(--topbar-border)' }}>
-    <summary className="cursor-pointer text-sm">
-      <strong>{primera.materia}{primera.grupo && ` · ${rotuloGrupo(primera.grupo)}`}</strong>
-      <span className="ml-2 inline-flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
-        <span>{bloques.length} {bloques.length === 1 ? 'horario' : 'horarios'}</span>
-        {tieneCobertura && <span>{asistencias} con asistencia</span>}
-        {faltantes > 0 && <span className="font-semibold text-amber-600">{faltantes} sin registro</span>}
-        {noImpartidas.length > 0 && <span>{noImpartidas.length} {noImpartidas.length === 1 ? 'no impartida' : 'no impartidas'}</span>}
-        {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} {abiertas === 1 ? 'abierta o en corrección' : 'abiertas o en corrección'}</span>}
-        {reposiciones > 0 && <span className="font-semibold text-amber-600">{reposiciones} {reposiciones === 1 ? 'reposición pendiente' : 'reposiciones pendientes'}</span>}
-        {mostrarEstado && <span>{bloques.filter(resuelta).length}/{bloques.length} resueltos</span>}
-      </span>
-    </summary>
-    <div className="mt-3 space-y-3 pl-4 text-xs">
-      {!tieneCobertura && <p>Publica el calendario con inicio y fin para calcular la cobertura.</p>}
-      <FechasSinRegistro bloques={bloques} />
-      {noImpartidas.length > 0 && <details>
-        <summary className="cursor-pointer font-semibold">Clases no impartidas</summary>
-        <ul className="space-y-2 py-2 pl-4">
-          {noImpartidas.sort((a, b) => a.fecha.localeCompare(b.fecha)).map(clase => <li key={`${clase.carga.carga_id}/${clase.fecha}`}>
-            <p><strong>{clase.fecha} · No impartida</strong>{horarioCarga(clase.carga) && ` · ${horarioCarga(clase.carga)}`} · {ESTADO_REPOSICION[clase.estado_reposicion] || 'Reposición sin definir'}{clase.fecha_reposicion && ` · ${clase.fecha_reposicion}`}</p>
-            <p>{clase.motivo || 'Sin motivo registrado'}</p>
-          </li>)}
-        </ul>
-      </details>}
-      <div>
-        <h4 className="mb-1 font-semibold">Horarios de la materia</h4>
-        <ul className="space-y-2">
-          {bloques.map(c => <li key={c.carga_id} className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p>{agendaCarga(c) || 'Sin horario'}{(resuelta(c) || c.estado === 'REABIERTA') && ` · ${estadoCierreCarga(c)}`}</p>
-              {(c.resumen.sesiones || []).filter(clase => ['ABIERTA', 'CORRECCION'].includes(clase.estado)).map(clase =>
-                <p key={clase.id}>{clase.fecha} · {clase.estado === 'ABIERTA' ? 'Abierta' : 'En corrección'}</p>)}
-              {c.cierre_administrativo && <p>{c.cierre_administrativo.motivo} · {c.cierre_administrativo.responsable}{c.cierre_administrativo.folio && ` · Folio ${c.cierre_administrativo.folio}`}</p>}
-            </div>
-            {c.estado === 'CONFIRMADA_DOCENTE' && <button type="button" onClick={() => abrirReapertura(c)} className="rounded border border-blue-500/30 px-2 py-1 text-blue-300">Reabrir</button>}
-            {cierre.permite_cierre_administrativo && !resuelta(c) && <button type="button" onClick={() => abrirAdministrativo(c)} className="rounded border border-amber-500/40 px-2 py-1 text-amber-500">Cerrar administrativamente</button>}
-          </li>)}
-        </ul>
+  return <div className="relative border-t" style={{ borderColor: 'var(--topbar-border)' }}>
+    {pendientes.length > 0 && <button type="button" aria-label={`Copiar materia: ${titulo}`} onClick={copiar}
+      className="absolute right-2 top-2 rounded border px-2 py-1 text-xs font-semibold" style={{ borderColor: 'var(--topbar-border)' }}>Copiar materia</button>}
+    <details className="p-3">
+      <summary className={`cursor-pointer text-sm ${pendientes.length > 0 ? 'pr-28' : ''}`}>
+        <strong>{titulo}</strong>
+        <span className="ml-2 inline-flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
+          <span>{bloques.length} {bloques.length === 1 ? 'horario' : 'horarios'}</span>
+          {tieneCobertura && <span>{asistencias} con asistencia</span>}
+          {faltantes > 0 && <span className="font-semibold text-amber-600">{faltantes} sin registro</span>}
+          {noImpartidas > 0 && <span>{noImpartidas} {noImpartidas === 1 ? 'no impartida' : 'no impartidas'}</span>}
+          {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} {abiertas === 1 ? 'abierta o en corrección' : 'abiertas o en corrección'}</span>}
+          {reposiciones > 0 && <span className="font-semibold text-amber-600">{reposiciones} {reposiciones === 1 ? 'reposición pendiente' : 'reposiciones pendientes'}</span>}
+          {mostrarEstado && <span>{bloques.filter(resuelta).length}/{bloques.length} resueltos</span>}
+        </span>
+      </summary>
+      <div className="mt-3 space-y-3 pl-4 text-xs">
+        {!tieneCobertura && <p>Publica el calendario con inicio y fin para calcular la cobertura.</p>}
+        <div>
+          <h4 className="mb-1 font-semibold">Horarios de la materia</h4>
+          <ul className="space-y-2">
+            {bloques.map(c => <li key={c.carga_id} className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p>{agendaCarga(c) || 'Sin horario'}{(resuelta(c) || c.estado === 'REABIERTA') && ` · ${estadoCierreCarga(c)}`}</p>
+                {c.cierre_administrativo && <p>{c.cierre_administrativo.motivo} · {c.cierre_administrativo.responsable}{c.cierre_administrativo.folio && ` · Folio ${c.cierre_administrativo.folio}`}</p>}
+              </div>
+              {c.estado === 'CONFIRMADA_DOCENTE' && <button type="button" onClick={() => abrirReapertura(c)} className="rounded border border-blue-500/30 px-2 py-1 text-blue-300">Reabrir</button>}
+              {cierre.permite_cierre_administrativo && !resuelta(c) && <button type="button" onClick={() => abrirAdministrativo(c)} className="rounded border border-amber-500/40 px-2 py-1 text-amber-500">Cerrar administrativamente</button>}
+            </li>)}
+          </ul>
+        </div>
+        <SesionesPorMes bloques={bloques} />
       </div>
-    </div>
-  </details>;
+    </details>
+  </div>;
 }
 
 function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
@@ -235,8 +239,8 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
   const [orden, setOrden] = useState('pendientes');
   const [resultadoCopia, setResultadoCopia] = useState('');
   const [copiaManual, setCopiaManual] = useState('');
-  const copiar = async (nombre, cargas) => {
-    const texto = resumenParaDocente(nombre, cierre.periodo, cargas);
+  const copiar = async (nombre, cargas, etiquetas) => {
+    const texto = resumenParaDocente(nombre, cierre.periodo, cargas, etiquetas);
     setCopiaManual('');
     try {
       await navigator.clipboard.writeText(texto);
@@ -250,7 +254,7 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
   const grupos = new Map();
   const consulta = textoBusqueda(busqueda.trim());
   for (const carga of cierre?.cargas || []) {
-    if (!textoBusqueda(`${carga.docente || ''} ${carga.materia} ${carga.grupo || ''}`).includes(consulta)) continue;
+    if (!textoBusqueda(`${carga.docente || ''} ${carga.materia} ${carga.grupo || ''} ${carga.programa_educativo || ''}`).includes(consulta)) continue;
     if (filtro === 'pendientes' && resuelta(carga)) continue;
     const pendientes = sesionesPorAtender(carga);
     if (filtro === 'sin-registro' && !pendientes.some(fila => fila.tipo === 'faltante')) continue;
@@ -268,7 +272,7 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
 
   return <div className="mt-5 space-y-3">
     <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-      <label className="text-sm">Buscar docente, materia o grupo
+      <label className="text-sm">Buscar docente, materia, grupo o programa
         <input type="search" className="input-dark mt-1 w-full" value={busqueda} onChange={e => setBusqueda(e.target.value)} />
       </label>
       <label className="text-sm">Mostrar cargas
@@ -287,7 +291,7 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
         </select>
       </label>
     </div>
-    <p className="text-xs text-slate-500">Cada horario y fecha cuenta una vez. Una clase abierta o en corrección se cuenta en ese estado.</p>
+
     {resultadoCopia && <p role="status" className="text-sm">{resultadoCopia}</p>}
     {copiaManual && <textarea aria-label="Resumen para copiar" className="input-dark w-full" readOnly rows={5}
       value={copiaManual} onFocus={e => e.target.select()} />}
@@ -299,10 +303,12 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
         || a.dia_semana - b.dia_semana || (a.hora_inicio || '').localeCompare(b.hora_inicio || ''));
       const materias = new Map();
       for (const carga of filas) {
-        const clave = JSON.stringify([carga.materia_id ?? textoBusqueda(carga.materia), carga.grupo_id ?? carga.grupo]);
+        const clave = claveMateria(carga);
         if (!materias.has(clave)) materias.set(clave, []);
         materias.get(clave).push(carga);
       }
+      const etiquetas = etiquetasMaterias((cierre.cargas || []).filter(carga =>
+        (carga.docente_id ?? carga.docente ?? 'sin-docente') === id));
       const materiasPendientes = [...materias.values()].filter(bloques => bloques.some(c => sesionesPorAtender(c).length)).length;
       return <section key={id} className="rounded-xl border p-3" style={{ borderColor: 'var(--topbar-border)' }}>
         <button type="button" aria-expanded={Boolean(abierto)} onClick={() => setDocenteAbierto(abierto ? false : id)}
@@ -313,9 +319,13 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
           </span>
         </button>
         {abierto && <div className="mt-2">
+          <details className="mb-2 text-xs text-slate-500">
+            <summary className="cursor-pointer">Cómo se calcula el total</summary>
+            <p className="mt-1">Cada horario y fecha cuenta una vez. Las clases abiertas o en corrección se cuentan en su estado. Las no impartidas sin reposición pendiente quedan en el detalle.</p>
+          </details>
           {pendientes > 0 && <button type="button" className="mb-2 rounded-lg border px-3 py-2 text-xs font-semibold"
-            style={{ borderColor: 'var(--topbar-border)' }} onClick={() => copiar(nombre, cargas)} title="Incluye las cargas visibles con los filtros actuales">Copiar resumen para el docente</button>}
-          {[...materias].map(([clave, bloques]) => <MateriaCierre key={clave} bloques={bloques} cierre={cierre}
+            style={{ borderColor: 'var(--topbar-border)' }} onClick={() => copiar(nombre, cargas, etiquetas)} title="Incluye las cargas visibles con los filtros actuales">Copiar resumen para el docente</button>}
+          {[...materias].map(([clave, bloques]) => <MateriaCierre key={clave} bloques={bloques} titulo={etiquetas.get(clave)} cierre={cierre} copiar={() => copiar(nombre, bloques, etiquetas)}
             abrirReapertura={abrirReapertura} abrirAdministrativo={abrirAdministrativo} />)}
         </div>}
       </section>;

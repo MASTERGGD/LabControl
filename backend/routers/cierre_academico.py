@@ -193,6 +193,7 @@ def _ser_confirmacion(db, carga, confirmacion=None, fechas_lectivas=None):
         "materia": carga.actividad_nombre,
         "materia_id": carga.materia_id,
         "grupo_id": carga.grupo_academico_id,
+        "programa_educativo": carga.grupo_academico.carrera if carga.grupo_academico else None,
         "dia_semana": carga.dia_semana,
         "hora_inicio": carga.hora_inicio,
         "hora_fin": carga.hora_fin,

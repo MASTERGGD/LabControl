@@ -22,3 +22,15 @@ test('cuenta una sesión abierta una sola vez y conserva horarios distintos del 
   expect(texto).not.toContain('2026-11-03');
   expect(texto.match(/2026-11-17/g)).toHaveLength(2);
 });
+
+test('separa programas y distingue referencias internas cuando el rótulo coincide', () => {
+  const carga = { materia: 'Inglés IX', materia_id: 9, grupo: '10° A', resumen: { fechas_sin_registro: ['2026-11-24'] } };
+  const texto = resumenParaDocente('Docente', 'SEP-DIC 2026', [
+    { ...carga, grupo_id: 1, programa_educativo: 'Ingeniería Industrial' },
+    { ...carga, grupo_id: 2, programa_educativo: 'Ingeniería Industrial' },
+    { ...carga, grupo_id: 3, programa_educativo: 'Agroindustria' },
+  ]);
+  expect(texto).toContain('Inglés IX · 10.º A · Ingeniería Industrial · Grupo #1');
+  expect(texto).toContain('Inglés IX · 10.º A · Ingeniería Industrial · Grupo #2');
+  expect(texto).toContain('Inglés IX · 10.º A · Agroindustria');
+});

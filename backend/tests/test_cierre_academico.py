@@ -356,6 +356,7 @@ def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypa
     db.commit()
     informe = client.get("/cierre-academico", headers=admin_h, params={"periodo_id": periodo.id})
     assert informe.status_code == 200, informe.text
+    assert informe.json()["cargas"][0]["programa_educativo"] == carga.grupo_academico.carrera
     assert informe.json()["cargas"][0]["resumen"]["fechas_sin_registro"] == ["2026-07-28"]
     assert client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "PRECIERRE"}).status_code == 200
     ventana = {"periodo_id": periodo.id, "estado": "CONFIRMACION", "confirmacion_inicio": "2026-08-14", "confirmacion_fin": "2026-08-14"}
