@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Priorización de pendientes de cierre — 2026-11-26
+## [1f97d8b] — Priorización de pendientes de cierre — 2026-11-26
 
 El reporte superponía sesiones sin asistencia con clases abiertas y dificultaba priorizar docentes. Cada horario y fecha cuenta una vez, con prioridad para clases abiertas o en corrección. La vista ordena por sesiones por atender, permite filtrar reposiciones pendientes y copiar un resumen por docente con fechas, horarios y acciones. La confirmación del cierre tiene su propio porcentaje y la ruta visible identifica Cierre académico.
 
-Validación con pruebas del frontend y compilación de Vite. Pendiente verificar la publicación y revisar la vista autenticada de División.
+Aprobadas 209 pruebas del frontend y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios. Se verificó HTTP 200 para sitio y API y los controles publicados. Pendiente revisar la vista autenticada de División.
 
 ---
 
