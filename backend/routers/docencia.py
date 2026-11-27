@@ -47,6 +47,7 @@ from services.cierre_sesion_laboratorio import cerrar_sesion_laboratorio
 from ws.mapa import manager
 from services.tutoria_sesiones import sesion_de_bloque
 from services.tutoria_sync import grupo_tutoria_para_academico
+from services.revision_sesion import autorizaciones_vigentes, vincular_captura_autorizada
 from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
 from services.requerimientos import cancelar_requerimientos_pendientes
 
@@ -855,7 +856,9 @@ def _validar_ventana_extemporanea(db: Session, carga: CargaDocente, fecha: datet
         raise HTTPException(409, f"No se requiere asistencia: {estado_fecha['motivo']}")
     if fin_programado > ahora:
         raise HTTPException(409, "La clase todavía está en curso")
-    if ahora - fin_programado > PLAZO_CAPTURA_EXTEMPORANEA:
+    if ahora - fin_programado > PLAZO_CAPTURA_EXTEMPORANEA and not autorizaciones_vigentes(db).filter_by(
+        carga_id=carga.id, fecha=fecha, docente_id=carga.docente_id,
+    ).first():
         raise HTTPException(409, "El plazo de 7 días para capturar esta asistencia ya venció")
     return inicio_programado
 
@@ -1356,6 +1359,22 @@ def capturas_extemporaneas_disponibles(
                 "hora_fin": carga.hora_fin,
                 "vence_en": (fin_programado + PLAZO_CAPTURA_EXTEMPORANEA).isoformat(),
             })
+    cargas_por_id = {carga.id: carga for carga in cargas}
+    fechas_existentes = {(item["carga_id"], item["fecha"]) for item in opciones}
+    for revision in autorizaciones_vigentes(db).filter_by(docente_id=current_user.id).all():
+        carga = cargas_por_id.get(revision.carga_id)
+        fecha = revision.fecha
+        if not carga or (carga.id, fecha.isoformat()) in fechas_existentes or _clase_existente_en_linaje(db, carga, fecha):
+            continue
+        if carga.dia_semana != fecha.weekday() or not estado_fecha_academica(db, carga.periodo_id, fecha)["requiere_asistencia"]:
+            continue
+        opciones.append({
+            "carga_id": carga.id, "fecha": fecha.isoformat(), "materia": carga.actividad_nombre,
+            "grupo": f"{carga.grupo_academico.cuatrimestre}° {carga.grupo_academico.grupo}",
+            "carrera": carga.grupo_academico.carrera, "hora_inicio": carga.hora_inicio,
+            "hora_fin": carga.hora_fin, "vence_en": revision.autorizada_hasta.isoformat() + "Z",
+            "autorizada": True,
+        })
     opciones.sort(key=lambda item: (item["fecha"], item["hora_inicio"]), reverse=True)
     return opciones
 
@@ -1400,6 +1419,7 @@ def crear_captura_extemporanea(
             alumno_id=inscripcion.alumno_id,
             estado="PRESENTE",
         ))
+    vincular_captura_autorizada(db, clase, current_user)
     db.commit()
     db.refresh(clase)
     return _serializar_clase(clase)
@@ -1464,6 +1484,7 @@ def declarar_clase_no_impartida(
         )
         db.add(reposicion)
         db.flush()
+    vincular_captura_autorizada(db, original, current_user)
     db.commit()
     return {
         "clase_original": _serializar_clase(original),

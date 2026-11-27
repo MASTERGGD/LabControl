@@ -688,11 +688,16 @@ export default function MiHorarioDocente() {
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
   const mostrarCierre = cierre && cierre.estado !== 'ACTIVO'
     && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA'));
-  const consultarPendientes = mostrarCierre || (esPeriodoActual && cierre?.estado === 'ACTIVO');
+  const consultarPendientes = mostrarCierre || (esPeriodoActual && cierre?.estado === 'ACTIVO') || (vistaPendientes && cierre?.estado === 'CERRADO');
   const pendientesCierre = useMemo(() => consultarPendientes
-    ? reunirPendientesCierre(cierre.estado === 'CERRADO' ? cierre.cargas.filter(c => c.estado === 'REABIERTA') : cierre.cargas, extemporaneas)
-    : [], [cierre, extemporaneas, consultarPendientes]);
+    ? reunirPendientesCierre(cierre.estado === 'CERRADO' ? cierre.cargas.filter(c => c.estado === 'REABIERTA' || (vistaPendientes && c.revisiones_sesion?.length)) : cierre.cargas, extemporaneas)
+    : [], [cierre, extemporaneas, consultarPendientes, vistaPendientes]);
   const mostrarPendientesPeriodo = !mostrarCierre && pendientesCierre.length > 0;
+  const enviarRevisionSesion = async (item, motivo) => {
+    await api.post(`/cierre-academico/cargas/${item.cargaId}/revision-sesion`, { fecha: item.fecha, motivo });
+    await cargar(periodoId);
+  };
+  const solicitarRevision = esPeriodoActual && cierre?.estado !== 'CERRADO' ? enviarRevisionSesion : undefined;
   const abrirConfirmacionCarga = (carga) => {
     setCargaAConfirmar(carga);
     setObservacionesCierre('');
@@ -922,7 +927,7 @@ export default function MiHorarioDocente() {
       {vistaPendientes ? <>
         {mensaje && <p role="status" className="rounded-xl border px-4 py-3 text-sm">{mensaje}</p>}
         {cargando ? <p className="p-4 text-sm">Cargando pendientes…</p> : <PendientesCierre completa filas={pendientesCierre}
-          seleccionarPendiente={seleccionarPendiente} abrirClase={abrirClasePendiente} volver={() => cambiarVistaPendientes(false)} />}
+          seleccionarPendiente={seleccionarPendiente} abrirClase={abrirClasePendiente} solicitarRevision={solicitarRevision} volver={() => cambiarVistaPendientes(false)} />}
       </> : <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -952,7 +957,7 @@ export default function MiHorarioDocente() {
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
         {(mostrarPendientesPeriodo || (mostrarCierre && pendientesCierre.length > 0)) && (
           <PendientesCierre filas={pendientesCierre} seleccionarPendiente={seleccionarPendiente}
-            abrirClase={abrirClasePendiente} verTodos={() => cambiarVistaPendientes(true)} />
+            abrirClase={abrirClasePendiente} solicitarRevision={solicitarRevision} verTodos={() => cambiarVistaPendientes(true)} />
         )}
         {mostrarCierre && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">

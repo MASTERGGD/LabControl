@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from database import get_db
 from dependencies import get_current_user
-from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente
+from models.cierre_academico import CierreAcademicoPeriodo, ConfirmacionCargaDocente, RevisionSesionVencida
 from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico, HistorialCalendarioAcademico
 from models.catalogo import PeriodoEscolar
 from models.docencia import CargaDocente, ClaseDocente
@@ -19,6 +19,8 @@ from models.sesion import SesionClase
 from models.tutoria import ReporteTutor
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
+from services.revision_sesion import ahora_utc, registrar_evento
+from routers.docencia import _clase_existente_en_linaje, _validar_carga_actual
 from services.user_permissions import puede_gestionar_materias
 
 router = APIRouter(prefix="/cierre-academico", tags=["Cierre académico"])
@@ -235,6 +237,19 @@ def _sesiones_abiertas(db, periodo_id, reservaciones):
     } for tipo, filas in (("Sesión", sesiones), ("Práctica", practicas)) for item, laboratorio in filas]
 
 
+def _ser_revision(revision):
+    estado = revision.estado
+    if estado == "AUTORIZADA" and revision.autorizada_hasta < ahora_utc():
+        estado = "AUTORIZACION_VENCIDA"
+    if estado == "CAPTURA_INICIADA" and revision.clase and revision.clase.estado in {"CERRADA", "NO_IMPARTIDA"}:
+        estado = "REGULARIZADA"
+    return {
+        "id": revision.id, "fecha": revision.fecha.isoformat(), "estado": estado,
+        "autorizada_hasta": revision.autorizada_hasta.isoformat() + "Z" if revision.autorizada_hasta else None,
+        "historial": revision.historial,
+    }
+
+
 def _ser_cierre(db, cierre, usuario, *, solo_propias=False):
     administra = not solo_propias and puede_gestionar_materias(db, usuario)
     cargas = _cargas_periodo(db, cierre.periodo_id)
@@ -242,7 +257,24 @@ def _ser_cierre(db, cierre, usuario, *, solo_propias=False):
         cargas = cargas.filter(CargaDocente.docente_id == usuario.id)
     confirmaciones = {c.carga_docente_id: c for c in db.query(ConfirmacionCargaDocente).filter_by(cierre_id=cierre.id)}
     fechas = _fechas_lectivas(db, cierre.periodo_id)
-    filas = [_ser_confirmacion(db, c, confirmaciones.get(c.id), fechas) for c in cargas.order_by(CargaDocente.id)]
+    cargas = cargas.order_by(CargaDocente.id).all()
+    revisiones = {}
+    for revision in db.query(RevisionSesionVencida).options(selectinload(RevisionSesionVencida.clase)).filter(
+        RevisionSesionVencida.carga_id.in_([carga.id for carga in cargas]),
+    ).order_by(RevisionSesionVencida.fecha):
+        if administra or revision.docente_id == usuario.id:
+            revisiones.setdefault(revision.carga_id, []).append(_ser_revision(revision))
+    filas = []
+    for carga in cargas:
+        fila = _ser_confirmacion(db, carga, confirmaciones.get(carga.id), fechas)
+        fila["revisiones_sesion"] = revisiones.get(carga.id, [])
+        excluidas = {r["fecha"] for r in fila["revisiones_sesion"] if r["estado"] == "NO_CORRESPONDIA"}
+        resumen = fila["resumen"]
+        faltantes = resumen["fechas_sin_registro"]
+        resumen["fechas_sin_registro"] = [fecha for fecha in faltantes if fecha not in excluidas]
+        if resumen["clases_esperadas"] is not None:
+            resumen["clases_esperadas"] -= len(excluidas.intersection(faltantes))
+        filas.append(fila)
     reservaciones = _reservaciones_periodo(db, cierre.periodo.clave) if administra else []
     sesiones = _sesiones_abiertas(db, cierre.periodo_id, reservaciones) if administra else []
     return {
@@ -286,6 +318,87 @@ def obtener(periodo_id: int, solo_propias: bool = False, db: Session = Depends(g
             cierre_activo = CierreAcademicoPeriodo(periodo=periodo, periodo_id=periodo_id, estado="ACTIVO")
             return _ser_cierre(db, cierre_activo, current_user, solo_propias=solo_propias)
     return None
+
+
+class SolicitudRevisionIn(BaseModel):
+    fecha: datetime.date
+    motivo: str = Field(min_length=5, max_length=2000)
+
+
+class DecisionRevisionIn(BaseModel):
+    decision: str
+    motivo: str = Field(min_length=5, max_length=2000)
+    horas: int = Field(48, ge=1, le=168)
+
+
+def _motivo_revision(motivo):
+    motivo = motivo.strip()
+    if len(motivo) < 5:
+        raise HTTPException(422, "Indica un motivo de al menos cinco caracteres")
+    return motivo
+
+
+@router.post("/cargas/{carga_id}/revision-sesion")
+def solicitar_revision_sesion(carga_id: int, data: SolicitudRevisionIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    carga = db.query(CargaDocente).filter_by(
+        id=carga_id, docente_id=current_user.id, activo=True, tipo_actividad="CLASE", estado="ACTIVO",
+    ).first()
+    if not carga or not carga.grupo_academico_id:
+        raise HTTPException(404, "Carga docente no encontrada")
+    _validar_carga_actual(db, carga)
+    cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=carga.periodo_id).first()
+    if cierre and cierre.estado == "CERRADO":
+        raise HTTPException(409, "El cuatrimestre ya está cerrado")
+    fecha = data.fecha.isoformat()
+    resumen = _resumen_carga(db, carga, _fechas_lectivas(db, carga.periodo_id))
+    if fecha not in resumen["fechas_captura_vencida"] or _clase_existente_en_linaje(db, carga, data.fecha):
+        raise HTTPException(409, "La fecha debe corresponder a una sesión vencida sin registro")
+    revision = db.query(RevisionSesionVencida).filter_by(carga_id=carga.id, fecha=data.fecha).first()
+    if revision:
+        if revision.docente_id != current_user.id or _ser_revision(revision)["estado"] not in {"ESPERA_DOCENTE", "AUTORIZACION_VENCIDA"}:
+            raise HTTPException(409, "Esta sesión ya tiene una revisión registrada")
+    else:
+        revision = RevisionSesionVencida(carga_id=carga.id, docente_id=current_user.id, fecha=data.fecha)
+        db.add(revision)
+    revision.autorizada_hasta = None
+    registrar_evento(revision, "EN_REVISION", current_user, _motivo_revision(data.motivo))
+    db.commit()
+    return _ser_revision(revision)
+
+
+@router.post("/cargas/{carga_id}/revision-sesion/{revision_id}/decision")
+def decidir_revision_sesion(carga_id: int, revision_id: int, data: DecisionRevisionIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    if not puede_gestionar_materias(db, current_user):
+        raise HTTPException(403, "Solo División puede decidir sobre la revisión")
+    if data.decision not in {"ESPERA_DOCENTE", "AUTORIZADA", "NO_CORRESPONDIA", "SIN_EVIDENCIA"}:
+        raise HTTPException(422, "Selecciona una decisión válida")
+    carga = db.get(CargaDocente, carga_id)
+    if not carga:
+        raise HTTPException(404, "Carga docente no encontrada")
+    db.query(PeriodoEscolar.id).filter_by(id=carga.periodo_id).with_for_update().one()
+    revision = db.query(RevisionSesionVencida).filter_by(id=revision_id, carga_id=carga_id).first()
+    if not revision:
+        raise HTTPException(404, "Revisión no encontrada")
+    if current_user.rol == RolUsuario.DOCENTE and revision.docente_id == current_user.id:
+        raise HTTPException(403, "La decisión corresponde a División de Carrera")
+    if revision.estado not in {"EN_REVISION", "ESPERA_DOCENTE", "AUTORIZADA"} or revision.clase_id:
+        raise HTTPException(409, "Esta revisión ya fue resuelta")
+    cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=carga.periodo_id).first()
+    if cierre and cierre.estado == "CERRADO":
+        raise HTTPException(409, "El cuatrimestre ya está cerrado")
+    if data.decision == "AUTORIZADA":
+        _validar_carga_actual(db, carga)
+        resumen = _resumen_carga(db, carga, _fechas_lectivas(db, carga.periodo_id))
+        if (not carga.activo or carga.estado != "ACTIVO" or revision.docente_id != carga.docente_id
+            or revision.fecha.isoformat() not in resumen["fechas_captura_vencida"]
+            or _clase_existente_en_linaje(db, carga, revision.fecha)):
+            raise HTTPException(409, "La fecha ya no está disponible para autorizar captura")
+        revision.autorizada_hasta = ahora_utc() + datetime.timedelta(hours=data.horas)
+    else:
+        revision.autorizada_hasta = None
+    registrar_evento(revision, data.decision, current_user, _motivo_revision(data.motivo))
+    db.commit()
+    return _ser_revision(revision)
 
 
 @router.put("")

@@ -56,3 +56,18 @@ class ConfirmacionCargaDocente(Base):
     carga = relationship("CargaDocente")
     docente = relationship("Usuario", foreign_keys=[docente_id])
     reabierta_por = relationship("Usuario", foreign_keys=[reabierta_por_id])
+
+class RevisionSesionVencida(Base):
+    __tablename__ = "revisiones_sesion_vencida"
+    __table_args__ = (UniqueConstraint("carga_id", "fecha", name="uq_revision_sesion_vencida"),)
+
+    id = Column(Integer, primary_key=True)
+    carga_id = Column(Integer, ForeignKey("cargas_docentes.id"), nullable=False, index=True)
+    docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    fecha = Column(Date, nullable=False)
+    estado = Column(String(30), nullable=False)
+    autorizada_hasta = Column(DateTime, nullable=True)
+    clase_id = Column(Integer, ForeignKey("clases_docentes.id", ondelete="SET NULL"), nullable=True)
+    historial = Column(JSON, nullable=False)
+
+    clase = relationship("ClaseDocente")

@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Solicitud y autorización de sesiones vencidas — 2026-11-26
+
+El docente solo podía copiar los datos de una fecha vencida. En Mis pendientes puede solicitar revisión, responder a División y abrir una captura autorizada para esa fecha. En Cierre académico, División puede pedir información, autorizar de forma temporal, resolver que una sesión no correspondía o concluir conservando el faltante. La migración b82d74fe9513 conserva las decisiones, autor, fecha y motivos. Una resolución no crea asistencia.
+
+Validación con pruebas del frontend y del cierre, compilación y migración reversible en SQLite. Pendiente confirmar el despliegue y revisar las vistas con sesión iniciada.
+
+---
+
 ## [946725f] — Vista de pendientes y regularización docente — 2026-11-26
 
 Una lista extensa podía desplazar la agenda y una fecha vencida carecía de siguiente paso. Mi Horario conserva hasta tres sesiones en el resumen y ofrece una vista paginada con búsqueda y filtros. Se priorizan las capturas habilitadas que vencen antes. Los botones abren el registro correspondiente y permiten volver al listado. Las fechas vencidas explican cómo consultar a División y permiten copiar sus datos.

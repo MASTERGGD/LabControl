@@ -1,3 +1,4 @@
+import RevisionesSesion from './RevisionesSesion';
 import { claveMateria, etiquetasMaterias, resumenParaDocente, sesionesEnDetalle, sesionesPorAtender } from './pendientesAcademicos';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
@@ -581,6 +582,7 @@ export default function CalendarioAcademico() {
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }} className="mt-3 rounded border border-white/20 px-3 py-2 text-xs">Descargar reporte final (JSON)</button>}
+            <RevisionesSesion key={`revisiones-${periodoId}`} cierre={cierre} recargar={() => cargar(periodoId)} />
             <CargasCierre key={periodoId} cierre={cierre} abrirReapertura={abrirReapertura}
               abrirAdministrativo={carga => {
                 setFormCierre({ motivo: '', folio: '' });

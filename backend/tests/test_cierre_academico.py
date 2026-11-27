@@ -395,3 +395,67 @@ def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypa
         "estado_reposicion": "NO_REQUERIDA", "fecha_reposicion": None,
     }]
     assert db.query(ClaseDocente).count() == 1
+
+def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client, db, monkeypatch):
+    from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
+    from routers import cierre_academico, docencia
+
+    admin, docente, periodo, carga = _escenario(db)
+    hoy = datetime.date(2026, 8, 20)
+    monkeypatch.setattr(cierre_academico, "_hoy", lambda: hoy)
+    monkeypatch.setattr(docencia, "_ahora_mx", lambda: datetime.datetime(2026, 8, 20, 12, tzinfo=cierre_academico.MX))
+    calendario = CalendarioAcademico(periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin.id)
+    db.add(calendario)
+    db.flush()
+    for tipo, fecha in [
+        ("INICIO_CUATRIMESTRE", datetime.date(2026, 8, 1)),
+        ("FIN_ACTIVIDADES_ACADEMICAS", datetime.date(2026, 8, 31)),
+    ]:
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, tipo=tipo, titulo=tipo, fecha_inicio=fecha, fecha_fin=fecha,
+            creado_por_id=admin.id, requiere_asistencia=True,
+        ))
+    db.commit()
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    captura = f"/docencia/horario/{carga.id}/captura-extemporanea"
+    solicitud = f"/cierre-academico/cargas/{carga.id}/revision-sesion"
+    fecha = "2026-08-04"
+    datos = {"fecha": fecha, "motivo": "Presento constancia de la clase"}
+    assert client.post(captura, headers=docente_h, json=datos).status_code == 409
+    solicitada = client.post(solicitud, headers=docente_h, json=datos)
+    assert solicitada.status_code == 200, solicitada.text
+    revision_id = solicitada.json()["id"]
+    assert client.post(solicitud, headers=docente_h, json=datos).status_code == 409
+    decision = f"{solicitud}/{revision_id}/decision"
+    pedir = {"decision": "ESPERA_DOCENTE", "motivo": "Indica dónde quedó la lista"}
+    assert client.post(decision, headers=docente_h, json=pedir).status_code == 403
+    assert client.post(decision, headers=admin_h, json=pedir).json()["estado"] == "ESPERA_DOCENTE"
+    assert client.post(solicitud, headers=docente_h, json=datos).json()["estado"] == "EN_REVISION"
+    autorizar = {"decision": "AUTORIZADA", "motivo": "Lista de asistencia verificada", "horas": 48}
+    aprobada = client.post(decision, headers=admin_h, json=autorizar)
+    assert aprobada.status_code == 200, aprobada.text
+    opciones = client.get("/docencia/capturas-extemporaneas/disponibles", headers=docente_h).json()
+    assert any(item["fecha"] == fecha and item.get("autorizada") for item in opciones)
+    assert client.post(captura, headers=docente_h, json={**datos, "fecha": "2026-08-11"}).status_code == 409
+    registrada = client.post(captura, headers=docente_h, json=datos)
+    assert registrada.status_code == 200, registrada.text
+    assert client.post(captura, headers=docente_h, json=datos).status_code == 409
+    reporte = client.get("/cierre-academico", headers=docente_h, params={"periodo_id": periodo.id, "solo_propias": True}).json()
+    revision = reporte["cargas"][0]["revisiones_sesion"][0]
+    assert revision["estado"] == "CAPTURA_INICIADA"
+    assert [evento["estado"] for evento in revision["historial"]] == [
+        "EN_REVISION", "ESPERA_DOCENTE", "EN_REVISION", "AUTORIZADA", "CAPTURA_INICIADA",
+    ]
+
+    otra = client.post(solicitud, headers=docente_h, json={**datos, "fecha": "2026-08-11"})
+    assert otra.status_code == 200, otra.text
+    otra_decision = f"{solicitud}/{otra.json()['id']}/decision"
+    excluida = client.post(otra_decision, headers=admin_h, json={
+        "decision": "NO_CORRESPONDIA", "motivo": "El horario fue sustituido esa fecha",
+    })
+    assert excluida.status_code == 200, excluida.text
+    reporte = client.get("/cierre-academico", headers=docente_h, params={"periodo_id": periodo.id}).json()
+    assert "2026-08-11" not in reporte["cargas"][0]["resumen"]["fechas_sin_registro"]
+    assert reporte["cargas"][0]["revisiones_sesion"][1]["estado"] == "NO_CORRESPONDIA"
+    assert db.query(ClaseDocente).count() == 1
