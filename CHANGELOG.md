@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Contraste del botón Permisos — 2026-11-27
+
+El texto y el icono de Permisos quedaban blancos sobre fondo claro por la regla global de botones verdes. El botón usa el acento del tema y conserva el contraste al pasar el cursor.
+
+Compilación Vite y colores calculados en Chrome verificados en ambos temas. Pendiente confirmar el despliegue y revisar con sesión administrativa.
+
+---
+
 ## [Preparado] — Regla de color en accesos de Departamentos — 2026-11-27
 
 La regla global de botones verdes forzaba blanco incluso sobre fondos translúcidos y anulaba el ajuste anterior. Las tarjetas de función conservan el verde suave con un fondo que queda fuera de esa regla.

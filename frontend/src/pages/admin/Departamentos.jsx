@@ -732,7 +732,7 @@ export default function Departamentos() {
                   {dep.activo && (
                     <button
                       onClick={() => setModalPermisos(dep)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-emerald-300 hover:text-white hover:bg-emerald-500/10 transition-colors"
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[color:var(--accent-success-ui)] transition-colors hover:bg-[rgba(16,185,129,0.10)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent-success-ui)]"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7 4h10a2 2 0 012 2v14l-7-3-7 3V6a2 2 0 012-2z"/>
