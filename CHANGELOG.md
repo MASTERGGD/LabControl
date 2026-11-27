@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Regla de color en accesos de Departamentos — 2026-11-27
+
+La regla global de botones verdes forzaba blanco incluso sobre fondos translúcidos y anulaba el ajuste anterior. Las tarjetas de función conservan el verde suave con un fondo que queda fuera de esa regla.
+
+Compilación Vite y colores calculados en Chrome con el CSS compilado verificados en ambos temas. Pendiente confirmar Railway y revisar la vista con sesión administrativa.
+
+---
+
 ## [c4aa808] — Contraste de funciones de Departamentos — 2026-11-27
 
 En tema claro, el texto blanco de los accesos a funciones se perdía sobre el fondo verde claro. El título, la descripción y la flecha usan los colores del tema activo en todas las tarjetas.

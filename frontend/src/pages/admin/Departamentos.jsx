@@ -711,7 +711,7 @@ export default function Departamentos() {
                           key={funcion.path}
                           type="button"
                           onClick={() => navigate(funcion.path)}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/15 bg-emerald-500/5 px-3 py-2.5 text-left transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
+                          className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/15 bg-[rgba(16,185,129,0.05)] px-3 py-2.5 text-left transition hover:border-emerald-500/40 hover:bg-[rgba(16,185,129,0.10)]"
                         >
                           <span className="min-w-0">
                             <span className="block text-sm font-medium text-[color:var(--text-primary)]">{funcion.label}</span>
