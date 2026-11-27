@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Jerarquía visual y confirmación de copia en el cierre — 2026-11-26
+## [f81dac8] — Jerarquía visual y confirmación de copia en el cierre — 2026-11-26
 
 Los títulos largos desplazaban los indicadores y el aviso de copia podía quedar fuera de la vista. Los indicadores se muestran debajo del encabezado de cada materia. El programa educativo conserva su nombre oficial con peso regular. Los botones de copia por materia y por docente muestran «✓ Copiado» durante dos segundos tras una copia exitosa.
 
-Aprobadas 210 pruebas del frontend y compilación de Vite. La regresión verifica la confirmación por botón, su duración y la copia manual cuando el portapapeles falla. Cambio preparado en el espacio de trabajo. Pendiente publicación y revisión visual autenticada.
+Aprobadas 210 pruebas del frontend y compilación de Vite. La regresión verifica la confirmación por botón, su duración y la copia manual cuando el portapapeles falla. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios y el JavaScript público incluye «✓ Copiado». Pendiente la revisión visual con una cuenta de División.
 
 ---
 
