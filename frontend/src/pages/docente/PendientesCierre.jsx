@@ -64,6 +64,7 @@ const puedeResponder = item => ['ESPERA_DOCENTE', 'AUTORIZACION_VENCIDA'].includ
 const puedeAtender = item => Boolean(item.captura || puedeResponder(item) || ['ABIERTA', 'CORRECCION'].includes(item.sesion?.estado));
 const PAGINA = 15;
 const venceEn = item => Date.parse(item.captura?.vence_en) || Number.MAX_SAFE_INTEGER;
+const ESTILO_ACCION = 'min-h-11 rounded-full px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent-success-ui)]';
 
 function RegularizarSesion({ item, solicitarRevision }) {
   const [motivo, setMotivo] = useState('');
@@ -191,7 +192,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
         {!alDia && !historial && <p className="text-sm text-slate-500">{pendientes.length} {pendientes.length === 1 ? 'sesión' : 'sesiones'} por atender · {atendibles.length} para resolver ahora{enRevision > 0 && ` · ${enRevision} en revisión por División`}</p>}
       </div>
       {completa
-        ? <button type="button" className="rounded-full border px-4 py-2 text-sm font-medium" onClick={historial ? () => cambiarVista('') : volver}>{historial ? 'Volver a Mis pendientes' : 'Volver a Mi horario'}</button>
+        ? <button type="button" className={`${ESTILO_ACCION} border hover:bg-[var(--surface-panel-soft)]`} onClick={historial ? () => cambiarVista('') : volver}>{historial ? 'Volver a Mis pendientes' : 'Volver a Mi horario'}</button>
         : <button type="button" className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={verTodos}>Ver pendientes</button>}
     </div>
     {completa && !alDia && <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2">
@@ -214,7 +215,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
         <h2 className="text-lg font-semibold">Estás al día</h2>
         <p className="mt-1 text-sm">No tienes sesiones por atender en este cuatrimestre.</p>
       </div>
-      {totalResueltas > 0 && <button type="button" className="min-h-11 rounded-full bg-emerald-500/15 px-4 text-sm font-medium hover:bg-emerald-500/25 focus-visible:outline-2 focus-visible:outline-emerald-600"
+      {totalResueltas > 0 && <button type="button" className={`${ESTILO_ACCION} bg-emerald-500/20 text-[color:var(--text-primary)] hover:bg-emerald-500/30`}
         onClick={() => cambiarVista('resueltas')}>Ver revisiones resueltas ({totalResueltas})</button>}
     </div>}
     {completa && !alDia && !visibles.length && <p className="px-4 pb-3 text-sm text-slate-500">No hay sesiones con estos filtros.</p>}

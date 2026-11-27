@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Contraste y botones de Mis pendientes — 2026-11-27
+
+El acceso al historial tenía poco peso visual y los botones de regreso tenían menor altura. Los tres controles comparten forma de píldora, altura mínima de 44 px y foco visible. El acceso al historial usa el color principal de texto del tema y un verde más marcado al pasar el cursor.
+
+Aprobadas las 5 pruebas de Mis pendientes y compilación de Vite. Pendiente verificar el despliegue y la vista con sesión docente.
+
+---
+
 ## [bf2f36b] — Estado al día e historial docente — 2026-11-27
 
 Mis pendientes repetía los contadores en cero y mostraba filtros sin sesiones activas. El estado al día muestra una superficie verde suave con un acceso al historial. Revisiones resueltas tiene título propio, búsqueda, resultados paginados y acceso al detalle de cada solicitud.
