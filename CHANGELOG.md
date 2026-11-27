@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Solicitud y autorización de sesiones vencidas — 2026-11-26
+## [97b7765] — Solicitud y autorización de sesiones vencidas — 2026-11-26
 
 El docente solo podía copiar los datos de una fecha vencida. En Mis pendientes puede solicitar revisión, responder a División y abrir una captura autorizada para esa fecha. En Cierre académico, División puede pedir información, autorizar de forma temporal, resolver que una sesión no correspondía o concluir conservando el faltante. La migración b82d74fe9513 conserva las decisiones, autor, fecha y motivos. Una resolución no crea asistencia.
 
-Validación con pruebas del frontend y del cierre, compilación y migración reversible en SQLite. Pendiente confirmar el despliegue y revisar las vistas con sesión iniciada.
+Aprobadas 211 pruebas del frontend, 12 de cierre, compilación de Vite y migración reversible en SQLite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios y la aplicación de b82d74fe9513. Se verificó HTTP 200 en sitio y API y los nuevos controles en el JavaScript público. Pendiente revisar las vistas con sesión iniciada.
 
 ---
 
