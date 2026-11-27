@@ -4,19 +4,19 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Estado al día e historial docente — 2026-11-27
+## [bf2f36b] — Estado al día e historial docente — 2026-11-27
 
 Mis pendientes repetía los contadores en cero y mostraba filtros sin sesiones activas. El estado al día muestra una superficie verde suave con un acceso al historial. Revisiones resueltas tiene título propio, búsqueda, resultados paginados y acceso al detalle de cada solicitud.
 
-Aprobadas 215 pruebas del frontend y compilación de Vite. Pendiente verificar el despliegue y la vista con sesión docente.
+Aprobadas 215 pruebas del frontend y compilación de Vite. Publicado el 27 de noviembre de 2026. Railway confirmó ambos servicios y se verificaron los textos en el JavaScript público. Pendiente la revisión con sesión docente.
 
 ---
 
-## [Preparado] — Confirmación y salida de revisiones resueltas — 2026-11-27
+## [bae23be] — Confirmación y salida de revisiones resueltas — 2026-11-27
 
 El panel de División seguía abierto tras guardar y Mis pendientes seleccionaba las revisiones resueltas al quedar en cero. Guardar cierra el panel, confirma la decisión en la bandeja y conserva los filtros. Las autorizaciones vigentes se consultan en el detalle. Mis pendientes muestra Estás al día al quedar sin sesiones y permite abrir el historial paginado de forma explícita.
 
-Validación con pruebas del frontend y compilación de Vite. Pendiente verificar el despliegue y revisar con sesión iniciada.
+Aprobadas 215 pruebas del frontend y compilación de Vite. Railway confirmó ambos servicios el 27 de noviembre de 2026 y se verificaron los textos en el JavaScript público. Pendiente la revisión autenticada.
 
 ---
 
