@@ -641,7 +641,7 @@ const SIDEBAR_DOMAINS = [
   { key: 'administracion', label: 'Administración', matches: () => true },
 ];
 
-function Breadcrumb({ pathname }) {
+function Breadcrumb({ pathname, seccion }) {
   // Match dynamic routes like /admin/laboratorios/5 or /admin/sesion/3
   let crumbs = BREADCRUMB_MAP[pathname];
   if (!crumbs) {
@@ -652,6 +652,7 @@ function Breadcrumb({ pathname }) {
     else return null;
   }
 
+  if (crumbs && seccion) crumbs = [...crumbs, { label: seccion }];
   if (!crumbs || crumbs.length <= 1) return null; // Don't show for single-level
 
   return (
@@ -965,7 +966,7 @@ function SidebarContent({ mobile, sidebarOpen, setSidebarOpen, setMenuMovil, usu
 }
 
 // Layout principal
-export default function AdminLayout({ children }) {
+export default function AdminLayout({ children, seccion }) {
   const { usuario, offlineAccess, logout, cambiarFuncion, cerrarOtrasSesiones, sessionInfo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1317,7 +1318,7 @@ export default function AdminLayout({ children }) {
         <MobileRoleSwitcher usuario={usuario} busy={cambiandoFuncion} onChange={handleCambiarFuncion} />
 
         {/* Breadcrumb */}
-        <Breadcrumb pathname={location.pathname} />
+        <Breadcrumb pathname={location.pathname} seccion={seccion} />
 
         {/* Contenido */}
         <main className="siga-main min-h-0 flex-1 overflow-auto p-3 md:p-6" style={{color:'var(--main-text)'}}>

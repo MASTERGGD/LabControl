@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Priorización de pendientes de cierre — 2026-11-26
+
+El reporte superponía sesiones sin asistencia con clases abiertas y dificultaba priorizar docentes. Cada horario y fecha cuenta una vez, con prioridad para clases abiertas o en corrección. La vista ordena por sesiones por atender, permite filtrar reposiciones pendientes y copiar un resumen por docente con fechas, horarios y acciones. La confirmación del cierre tiene su propio porcentaje y la ruta visible identifica Cierre académico.
+
+Validación con pruebas del frontend y compilación de Vite. Pendiente verificar la publicación y revisar la vista autenticada de División.
+
+---
+
 ## [cc41b4a] — Pendientes docentes y reporte por materia y grupo — 2026-11-26
 
 División veía repetida la materia por cada horario y el docente tenía que desplegar cargas para localizar fechas. En Cierre académico, División ve una entrada por materia y grupo con sus horarios, avances de confirmación y fechas sin registro agrupadas por mes. Mi Horario reúne los pendientes de cierre por fecha, abre el flujo de captura disponible o el registro de la sesión y distingue el plazo vencido. Las clases no impartidas conservan su motivo y reposición en el detalle.

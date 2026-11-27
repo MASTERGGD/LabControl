@@ -1,3 +1,4 @@
+import { resumenParaDocente, rotuloGrupo, sesionesPorAtender } from './pendientesAcademicos';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/AdminLayout';
 import api from '../../hooks/useApi';
@@ -125,7 +126,6 @@ function EntradaHistorial({ registro }) {
 
 const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const resuelta = carga => ['CONFIRMADA_DOCENTE', 'CERRADA_ADMINISTRATIVA'].includes(carga.estado);
-const sinRegistro = carga => carga.resumen.fechas_sin_registro.length > 0;
 const textoBusqueda = valor => (valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 const ESTADO_REPOSICION = {
@@ -149,7 +149,7 @@ const horarioCarga = carga => carga.hora_inicio ? `${carga.hora_inicio}–${carg
 const agendaCarga = carga => [dias[carga.dia_semana], horarioCarga(carga)].filter(Boolean).join(' ');
 
 function FechasSinRegistro({ bloques }) {
-  const fechas = bloques.flatMap(carga => carga.resumen.fechas_sin_registro.map(fecha => ({ fecha, carga })))
+  const fechas = bloques.flatMap(carga => sesionesPorAtender(carga).filter(item => item.tipo === 'faltante').map(({ fecha }) => ({ fecha, carga })))
     .sort((a, b) => a.fecha.localeCompare(b.fecha) || horarioCarga(a.carga).localeCompare(horarioCarga(b.carga)));
   if (!fechas.length) return null;
 
@@ -177,21 +177,24 @@ function FechasSinRegistro({ bloques }) {
 function MateriaCierre({ bloques, cierre, abrirReapertura, abrirAdministrativo }) {
   const [primera] = bloques;
   const asistencias = bloques.reduce((total, c) => total + c.resumen.asistencias_registradas, 0);
-  const faltantes = bloques.reduce((total, c) => total + c.resumen.fechas_sin_registro.length, 0);
-  const abiertas = bloques.reduce((total, c) => total + c.resumen.clases_abiertas, 0);
+  const pendientes = bloques.flatMap(sesionesPorAtender);
+  const faltantes = pendientes.filter(fila => fila.tipo === 'faltante').length;
+  const abiertas = pendientes.filter(fila => ['abierta', 'correccion'].includes(fila.tipo)).length;
+  const reposiciones = pendientes.filter(fila => fila.tipo === 'reposicion').length;
   const noImpartidas = bloques.flatMap(carga => (carga.resumen.detalle_no_impartidas
     ?? carga.resumen.fechas_no_impartidas.map(fecha => ({ fecha }))).map(clase => ({ ...clase, carga })));
   const tieneCobertura = bloques.every(c => c.resumen.clases_esperadas != null);
   const mostrarEstado = cierre.estado === 'CONFIRMACION' || cierre.estado === 'CERRADO';
   return <details className="border-t p-3" style={{ borderColor: 'var(--topbar-border)' }}>
     <summary className="cursor-pointer text-sm">
-      <strong>{primera.materia}{primera.grupo && ` · ${primera.grupo}`}</strong>
-      <span className="ml-2 inline-flex flex-wrap gap-x-3 text-xs text-slate-500">
+      <strong>{primera.materia}{primera.grupo && ` · ${rotuloGrupo(primera.grupo)}`}</strong>
+      <span className="ml-2 inline-flex flex-wrap gap-x-3 text-xs tabular-nums text-slate-500">
         <span>{bloques.length} {bloques.length === 1 ? 'horario' : 'horarios'}</span>
         {tieneCobertura && <span>{asistencias} con asistencia</span>}
         {faltantes > 0 && <span className="font-semibold text-amber-600">{faltantes} sin registro</span>}
         {noImpartidas.length > 0 && <span>{noImpartidas.length} {noImpartidas.length === 1 ? 'no impartida' : 'no impartidas'}</span>}
-        {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} abiertas o en corrección</span>}
+        {abiertas > 0 && <span className="font-semibold text-amber-600">{abiertas} {abiertas === 1 ? 'abierta o en corrección' : 'abiertas o en corrección'}</span>}
+        {reposiciones > 0 && <span className="font-semibold text-amber-600">{reposiciones} {reposiciones === 1 ? 'reposición pendiente' : 'reposiciones pendientes'}</span>}
         {mostrarEstado && <span>{bloques.filter(resuelta).length}/{bloques.length} resueltos</span>}
       </span>
     </summary>
@@ -229,23 +232,42 @@ function MateriaCierre({ bloques, cierre, abrirReapertura, abrirAdministrativo }
 function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState('todas');
+  const [orden, setOrden] = useState('pendientes');
+  const [resultadoCopia, setResultadoCopia] = useState('');
+  const [copiaManual, setCopiaManual] = useState('');
+  const copiar = async (nombre, cargas) => {
+    const texto = resumenParaDocente(nombre, cierre.periodo, cargas);
+    setCopiaManual('');
+    try {
+      await navigator.clipboard.writeText(texto);
+      setResultadoCopia(`Resumen copiado para ${nombre}.`);
+    } catch {
+      setResultadoCopia('Selecciona el texto para copiar el resumen.');
+      setCopiaManual(texto);
+    }
+  };
   const [docenteAbierto, setDocenteAbierto] = useState(null);
   const grupos = new Map();
   const consulta = textoBusqueda(busqueda.trim());
   for (const carga of cierre?.cargas || []) {
     if (!textoBusqueda(`${carga.docente || ''} ${carga.materia} ${carga.grupo || ''}`).includes(consulta)) continue;
     if (filtro === 'pendientes' && resuelta(carga)) continue;
-    if (filtro === 'sin-registro' && !sinRegistro(carga)) continue;
-    if (filtro === 'abiertas' && !carga.resumen.clases_abiertas) continue;
+    const pendientes = sesionesPorAtender(carga);
+    if (filtro === 'sin-registro' && !pendientes.some(fila => fila.tipo === 'faltante')) continue;
+    if (filtro === 'abiertas' && !pendientes.some(fila => ['abierta', 'correccion'].includes(fila.tipo))) continue;
+    if (filtro === 'reposicion' && !pendientes.some(fila => fila.tipo === 'reposicion')) continue;
     const id = carga.docente_id ?? carga.docente ?? 'sin-docente';
-    if (!grupos.has(id)) grupos.set(id, { id, nombre: carga.docente || 'Sin docente', cargas: [] });
-    grupos.get(id).cargas.push(carga);
+    if (!grupos.has(id)) grupos.set(id, { id, nombre: (carga.docente || 'Sin docente').replace(/^(Dr|Dra|Mtro|Mtra|Ing)\.(?=\S)/i, '$1. '), cargas: [], pendientes: 0 });
+    const docente = grupos.get(id);
+    docente.cargas.push(carga);
+    docente.pendientes += pendientes.length;
   }
-  const docentes = [...grupos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const docentes = [...grupos.values()].sort((a, b) =>
+    (orden === 'pendientes' ? b.pendientes - a.pendientes : 0) || a.nombre.localeCompare(b.nombre, 'es'));
   if (!cierre?.cargas?.length) return null;
 
   return <div className="mt-5 space-y-3">
-    <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
       <label className="text-sm">Buscar docente, materia o grupo
         <input type="search" className="input-dark mt-1 w-full" value={busqueda} onChange={e => setBusqueda(e.target.value)} />
       </label>
@@ -255,11 +277,22 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
           <option value="pendientes">Sin resolver</option>
           <option value="sin-registro">Con fechas sin registro</option>
           <option value="abiertas">Con clases abiertas o en corrección</option>
+          <option value="reposicion">Con reposición pendiente</option>
+        </select>
+      </label>
+      <label className="text-sm">Ordenar docentes
+        <select className="input-dark mt-1 w-full" value={orden} onChange={e => setOrden(e.target.value)}>
+          <option value="pendientes">Más sesiones por atender</option>
+          <option value="nombre">Nombre</option>
         </select>
       </label>
     </div>
+    <p className="text-xs text-slate-500">Cada horario y fecha cuenta una vez. Una clase abierta o en corrección se cuenta en ese estado.</p>
+    {resultadoCopia && <p role="status" className="text-sm">{resultadoCopia}</p>}
+    {copiaManual && <textarea aria-label="Resumen para copiar" className="input-dark w-full" readOnly rows={5}
+      value={copiaManual} onFocus={e => e.target.select()} />}
     {docentes.length === 0 && <p className="py-3 text-sm text-slate-400">No hay cargas que coincidan con la búsqueda.</p>}
-    {docentes.map(({ id, nombre, cargas }) => {
+    {docentes.map(({ id, nombre, cargas, pendientes }) => {
       const abierto = docenteAbierto === id || (docenteAbierto === null && consulta && docentes.length === 1);
       const filas = [...cargas].sort((a, b) =>
         a.materia.localeCompare(b.materia, 'es') || (a.grupo || '').localeCompare(b.grupo || '', 'es')
@@ -270,16 +303,18 @@ function CargasCierre({ cierre, abrirReapertura, abrirAdministrativo }) {
         if (!materias.has(clave)) materias.set(clave, []);
         materias.get(clave).push(carga);
       }
-      const totalFaltantes = cargas.reduce((total, carga) => total + carga.resumen.fechas_sin_registro.length, 0);
+      const materiasPendientes = [...materias.values()].filter(bloques => bloques.some(c => sesionesPorAtender(c).length)).length;
       return <section key={id} className="rounded-xl border p-3" style={{ borderColor: 'var(--topbar-border)' }}>
         <button type="button" aria-expanded={Boolean(abierto)} onClick={() => setDocenteAbierto(abierto ? false : id)}
           className="flex w-full flex-wrap items-center justify-between gap-2 p-1 text-left">
           <span className="font-semibold">{nombre}</span>
-          <span className="text-sm text-slate-500">
-            {materias.size} {materias.size === 1 ? 'materia y grupo' : 'materias y grupos'} · {cargas.filter(sinRegistro).length} horarios con faltantes · {totalFaltantes} sesiones sin registro <span aria-hidden="true">{abierto ? '▴' : '▾'}</span>
+          <span className="text-sm tabular-nums text-slate-500">
+            {materiasPendientes} {materiasPendientes === 1 ? 'materia con pendientes' : 'materias con pendientes'} · <strong>{pendientes} {pendientes === 1 ? 'sesión por atender' : 'sesiones por atender'}</strong> <span aria-hidden="true">{abierto ? '▴' : '▾'}</span>
           </span>
         </button>
         {abierto && <div className="mt-2">
+          {pendientes > 0 && <button type="button" className="mb-2 rounded-lg border px-3 py-2 text-xs font-semibold"
+            style={{ borderColor: 'var(--topbar-border)' }} onClick={() => copiar(nombre, cargas)} title="Incluye las cargas visibles con los filtros actuales">Copiar resumen para el docente</button>}
           {[...materias].map(([clave, bloques]) => <MateriaCierre key={clave} bloques={bloques} cierre={cierre}
             abrirReapertura={abrirReapertura} abrirAdministrativo={abrirAdministrativo} />)}
         </div>}
@@ -464,10 +499,10 @@ export default function CalendarioAcademico() {
   };
 
   return (
-    <AdminLayout>
+    <AdminLayout seccion={puedeAdministrar && seccion === 'cierre' ? 'Cierre académico' : undefined}>
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><h1 className="text-2xl font-bold text-white">Calendario académico</h1><p className="mt-1 text-sm text-slate-400">Fuente oficial para asistencias, alertas y operación docente.</p></div>
+          <div><h1 className="text-2xl font-bold text-white">{puedeAdministrar && seccion === 'cierre' ? 'Cierre académico' : 'Calendario académico'}</h1></div>
         </div>
         {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
@@ -482,6 +517,14 @@ export default function CalendarioAcademico() {
         {puedeAdministrar && seccion === 'cierre' && (
           <section className="glass rounded-2xl p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Cierre académico del cuatrimestre</p><h2 className="mt-1 font-semibold text-white">{cuatrimestreCerrado ? '✓ Cierre completado' : estadoCierre === 'CONFIRMACION' ? 'Confirmación docente en curso' : estadoCierre === 'PRECIERRE' ? 'Pre-cierre en curso' : 'El periodo está en curso'}</h2><p className="mt-1 text-xs text-slate-400">{cuatrimestreCerrado ? `Cuatrimestre y calendario en solo consulta${cierre.cerrado_en ? ` · Cerrado el ${new Date(`${cierre.cerrado_en}Z`).toLocaleString('es-MX')}` : ''}.` : estadoCierre === 'ACTIVO' ? finActividades ? `El cierre estará disponible después del ${new Date(`${finActividades.fecha_fin}T12:00:00`).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}, al terminar las actividades académicas.` : 'Agrega al calendario oficial la fecha de fin de actividades académicas para habilitar el cierre cuando corresponda.' : `${cierre.resueltas}/${cierre.total_cargas} cargas resueltas · ${cierre.confirmadas} docentes · ${cierre.administrativas} administrativas`}</p>{cierre?.laboratorios && <p className={`mt-1 text-xs ${cierre.laboratorios.sesiones_abiertas ? 'text-amber-300' : 'text-emerald-300'}`}>Laboratorios: {cierre.laboratorios.reservaciones} reservas · {cierre.laboratorios.sesiones_abiertas} sesiones abiertas{cierre.estado === 'CERRADO' ? ' · agenda archivada' : ''}</p>}</div><div className="flex flex-wrap gap-2">{estadoCierre === 'ACTIVO' && cierreDisponible && <button disabled={guardando} onClick={() => abrirAccion('precierre')} className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 disabled:opacity-40">Comenzar cierre del cuatrimestre</button>}{estadoCierre === 'PRECIERRE' && <button disabled={guardando} onClick={abrirConfirmacion} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Solicitar confirmación a docentes</button>}{estadoCierre === 'CONFIRMACION' && <><button disabled={guardando} onClick={abrirConfirmacion} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-slate-300 disabled:opacity-40">Ampliar plazo</button><button disabled={guardando || cierre.laboratorios?.sesiones_abiertas > 0 || cierre.resueltas < cierre.total_cargas} title="Cierra definitivamente el cuatrimestre y archiva su calendario" onClick={() => abrirAccion('cerrar')} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">Cerrar definitivamente</button></>}</div></div>
             {cierre && ['ACTIVO', 'PRECIERRE'].includes(estadoCierre) && <p className="mt-3 text-sm text-slate-500">En espera de la ventana de confirmación docente.</p>}
+            {cierre && ['CONFIRMACION', 'CERRADO'].includes(estadoCierre) && cierre.total_cargas > 0 && (
+              <div className="mt-3 max-w-sm">
+                <label className="block text-xs font-semibold tabular-nums">
+                  Avance del cierre · {Math.round(100 * cierre.resueltas / cierre.total_cargas)} %
+                  <progress className="mt-1 block h-2 w-full accent-emerald-600" value={cierre.resueltas} max={cierre.total_cargas} />
+                </label>
+              </div>
+            )}
             {cierre?.confirmacion_fin && <p className="mt-3 text-sm text-slate-400">Confirmación docente del {cierre.confirmacion_inicio} al {cierre.confirmacion_fin}
               {cierre.confirmacion_vigente && ' · Por confirmar por el docente'}
               {cierre.permite_cierre_administrativo && ' · Plazo vencido'}</p>}
