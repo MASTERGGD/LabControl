@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Fechas pendientes en Mi Horario antes del precierre — 2026-11-26
+
+División podía ver fechas sin registro durante el periodo activo y el docente solo veía el listado de cierre después del precierre. Mi Horario muestra Mis pendientes desde el periodo vigente con las mismas fechas, materia, grupo, programa y horario. La consulta se limita a las cargas propias, y conserva el plazo de captura y las etapas de confirmación.
+
+Validación con compilación de Vite, pruebas del frontend y pruebas de cierre académico. Pendiente confirmar la publicación y revisar con la cuenta docente del caso reportado.
+
+---
+
 ## [f81dac8] — Jerarquía visual y confirmación de copia en el cierre — 2026-11-26
 
 Los títulos largos desplazaban los indicadores y el aviso de copia podía quedar fuera de la vista. Los indicadores se muestran debajo del encabezado de cada materia. El programa educativo conserva su nombre oficial con peso regular. Los botones de copia por materia y por docente muestran «✓ Copiado» durante dos segundos tras una copia exitosa.

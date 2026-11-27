@@ -4,7 +4,7 @@ export function reunirPendientesCierre(cargas, capturas) {
   const filas = new Map();
   for (const carga of cargas) {
     const base = {
-      materia: carga.materia, grupo: carga.grupo,
+      materia: carga.materia, grupo: carga.grupo, programa: carga.programa_educativo,
       hora_inicio: carga.hora_inicio, hora_fin: carga.hora_fin,
     };
     const sesiones = new Map((carga.resumen.sesiones || []).map(sesion => [sesion.fecha, sesion]));
@@ -44,6 +44,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
       {filas.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
         <div className="text-sm">
           <p className="font-semibold">{item.materia}{item.grupo && ` · ${item.grupo}`}</p>
+          {item.programa && <p className="text-xs text-slate-500">{item.programa}</p>}
           <p className="text-xs text-slate-400">{new Date(`${item.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'long' })}
             {item.hora_inicio && ` · ${item.hora_inicio}–${item.hora_fin}`}</p>
           <p className="text-xs text-amber-600">{item.estado}</p>

@@ -358,6 +358,14 @@ def test_cierre_administrativo_conserva_faltantes_y_reporte(client, db, monkeypa
     assert informe.status_code == 200, informe.text
     assert informe.json()["cargas"][0]["programa_educativo"] == carga.grupo_academico.carrera
     assert informe.json()["cargas"][0]["resumen"]["fechas_sin_registro"] == ["2026-07-28"]
+    parametros = {"periodo_id": periodo.id, "solo_propias": True}
+    docente_activo = client.get("/cierre-academico", headers=docente_h, params=parametros)
+    assert docente_activo.status_code == 200, docente_activo.text
+    reporte_docente = docente_activo.json()
+    assert reporte_docente["estado"] == "ACTIVO"
+    assert reporte_docente["confirmacion_vigente"] is False
+    assert reporte_docente["cargas"] == informe.json()["cargas"]
+    assert client.get("/cierre-academico", headers=admin_h, params=parametros).json()["cargas"] == []
     assert client.put("/cierre-academico", headers=admin_h, json={"periodo_id": periodo.id, "estado": "PRECIERRE"}).status_code == 200
     ventana = {"periodo_id": periodo.id, "estado": "CONFIRMACION", "confirmacion_inicio": "2026-08-14", "confirmacion_fin": "2026-08-14"}
     assert client.put("/cierre-academico", headers=admin_h, json=ventana).status_code == 200

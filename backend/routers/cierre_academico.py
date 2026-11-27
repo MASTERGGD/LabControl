@@ -17,7 +17,7 @@ from models.laboratorio import Laboratorio
 from models.practica_laboratorio import PracticaLaboratorio
 from models.sesion import SesionClase
 from models.tutoria import ReporteTutor
-from models.usuario import Usuario
+from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
 from services.user_permissions import puede_gestionar_materias
 
@@ -235,8 +235,8 @@ def _sesiones_abiertas(db, periodo_id, reservaciones):
     } for tipo, filas in (("Sesión", sesiones), ("Práctica", practicas)) for item, laboratorio in filas]
 
 
-def _ser_cierre(db, cierre, usuario):
-    administra = puede_gestionar_materias(db, usuario)
+def _ser_cierre(db, cierre, usuario, *, solo_propias=False):
+    administra = not solo_propias and puede_gestionar_materias(db, usuario)
     cargas = _cargas_periodo(db, cierre.periodo_id)
     if not administra:
         cargas = cargas.filter(CargaDocente.docente_id == usuario.id)
@@ -276,14 +276,15 @@ def _ser_cierre(db, cierre, usuario):
 
 
 @router.get("")
-def obtener(periodo_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+def obtener(periodo_id: int, solo_propias: bool = False, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     cierre = db.query(CierreAcademicoPeriodo).filter(CierreAcademicoPeriodo.periodo_id == periodo_id).first()
     if cierre:
-        return _ser_cierre(db, cierre, current_user)
-    if puede_gestionar_materias(db, current_user):
+        return _ser_cierre(db, cierre, current_user, solo_propias=solo_propias)
+    if current_user.rol == RolUsuario.DOCENTE or puede_gestionar_materias(db, current_user):
         periodo = db.get(PeriodoEscolar, periodo_id)
         if periodo:
-            return _ser_cierre(db, CierreAcademicoPeriodo(periodo=periodo, periodo_id=periodo_id, estado="ACTIVO"), current_user)
+            cierre_activo = CierreAcademicoPeriodo(periodo=periodo, periodo_id=periodo_id, estado="ACTIVO")
+            return _ser_cierre(db, cierre_activo, current_user, solo_propias=solo_propias)
     return None
 
 

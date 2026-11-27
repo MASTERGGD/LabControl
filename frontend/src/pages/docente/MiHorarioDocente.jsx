@@ -568,7 +568,7 @@ export default function MiHorarioDocente() {
         api.get('/docencia/hoy'),
         api.get('/docencia/capturas-extemporaneas/disponibles'),
         api.get('/docencia/reposiciones/pendientes'),
-        api.get('/cierre-academico', { params: { periodo_id: elegido } }),
+        api.get('/cierre-academico', { params: { periodo_id: elegido, solo_propias: true } }),
         api.get('/docencia/historial'),
       ]);
       setHorario(horarioRes.data);
@@ -679,9 +679,11 @@ export default function MiHorarioDocente() {
   const esPeriodoActual = Boolean(periodoSeleccionado?.es_actual);
   const mostrarCierre = cierre && cierre.estado !== 'ACTIVO'
     && (cierre.estado !== 'CERRADO' || cierre.cargas.some(c => c.estado === 'REABIERTA'));
-  const pendientesCierre = useMemo(() => mostrarCierre
+  const consultarPendientes = mostrarCierre || (esPeriodoActual && cierre?.estado === 'ACTIVO');
+  const pendientesCierre = useMemo(() => consultarPendientes
     ? reunirPendientesCierre(cierre.estado === 'CERRADO' ? cierre.cargas.filter(c => c.estado === 'REABIERTA') : cierre.cargas, extemporaneas)
-    : [], [cierre, extemporaneas, mostrarCierre]);
+    : [], [cierre, extemporaneas, consultarPendientes]);
+  const mostrarPendientesPeriodo = !mostrarCierre && pendientesCierre.length > 0;
   const abrirConfirmacionCarga = (carga) => {
     setCargaAConfirmar(carga);
     setObservacionesCierre('');
@@ -915,7 +917,7 @@ export default function MiHorarioDocente() {
             <p className="hidden text-sm text-slate-400 sm:block">Opera tus clases del día y administra por separado el horario oficial recurrente.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            {(!mostrarCierre || extemporaneas.some(item => !cierre?.cargas.some(carga => carga.carga_id === item.carga_id))) && esPeriodoActual && extemporaneas.length > 0 && (
+            {((!mostrarCierre && !mostrarPendientesPeriodo) || extemporaneas.some(item => !cierre?.cargas.some(carga => carga.carga_id === item.carga_id))) && esPeriodoActual && extemporaneas.length > 0 && (
               <button
                 type="button"
                 onClick={() => {
@@ -935,6 +937,10 @@ export default function MiHorarioDocente() {
         <AgendaPracticasDocente enHorarioDocente periodoId={periodoId || undefined}/>
 
         {mensaje && <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{mensaje}</div>}
+        {mostrarPendientesPeriodo && (
+          <PendientesCierre filas={pendientesCierre} seleccionarPendiente={seleccionarPendiente}
+            abrirClase={id => navigate(`/docente/clase/${id}`)} />
+        )}
         {mostrarCierre && (
           <section className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-amber-300">Cierre del cuatrimestre · {cierre.estado}</p><h2 className="mt-1 font-semibold text-white">Revisa y confirma cada materia</h2><p className="mt-1 text-xs text-slate-400">{cierre.estado === 'CONFIRMACION' ? `Ventana de confirmación: ${cierre.confirmacion_inicio} al ${cierre.confirmacion_fin}.` : cierre.estado === 'CERRADO' ? 'El periodo está cerrado y disponible solo para consulta.' : 'Completa las clases abiertas antes de la confirmación.'}</p></div><span className="rounded-full bg-white/5 px-3 py-1 text-xs text-slate-300">{cierre.confirmadas}/{cierre.total_cargas} confirmadas</span></div>
