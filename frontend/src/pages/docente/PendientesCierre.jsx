@@ -161,10 +161,11 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
   const atendibles = pendientes.filter(puedeAtender).sort((a, b) =>
     venceEn(a) - venceEn(b) || a.fecha.localeCompare(b.fecha));
   const enRevision = pendientes.filter(item => item.revision?.estado === 'EN_REVISION').length;
-  const ordenadas = [...atendibles, ...filas.filter(item => !puedeAtender(item))];
+  const ordenadas = [...atendibles, ...filas.filter(item => resuelta(item) || !puedeAtender(item))];
   const totalResueltas = filas.length - pendientes.length;
   const estado = filtro || (atendibles.length ? 'accionables' : 'todas');
   const alDia = pendientes.length === 0 && estado !== 'resueltas';
+  const historial = estado === 'resueltas';
   const coincidencias = ordenadas.filter(item => {
     if (estado === 'accionables' && !puedeAtender(item)) return false;
     if (estado === 'vencidas' && ((!item.vencida && item.revision?.estado !== 'AUTORIZACION_VENCIDA') || item.captura || resuelta(item))) return false;
@@ -176,23 +177,28 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
   const paginaActual = Math.min(pagina, Math.max(0, Math.ceil(coincidencias.length / PAGINA) - 1));
   const desde = paginaActual * PAGINA;
   const visibles = coincidencias.slice(desde, desde + PAGINA);
-  const titulo = completa ? <h1 className="text-xl font-bold">Mis pendientes</h1> : <h2 className="font-semibold">Mis pendientes</h2>;
+  const titulo = completa ? <h1 className="text-xl font-bold">{historial ? 'Revisiones resueltas' : 'Mis pendientes'}</h1> : <h2 className="font-semibold">Mis pendientes</h2>;
+  const cambiarVista = vista => {
+    setFiltro(vista);
+    setMateria('');
+    setPagina(0);
+  };
 
-  return <section className="mt-4 rounded-xl border border-amber-500/20">
+  return <section className={`mt-4 rounded-2xl ${completa ? '' : 'border border-amber-500/20'}`}>
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div>
         {titulo}
-        <p className="text-sm text-slate-500">{pendientes.length} {pendientes.length === 1 ? 'sesión' : 'sesiones'} por atender · {atendibles.length} para resolver ahora{enRevision > 0 && ` · ${enRevision} en revisión por División`}</p>
+        {!alDia && !historial && <p className="text-sm text-slate-500">{pendientes.length} {pendientes.length === 1 ? 'sesión' : 'sesiones'} por atender · {atendibles.length} para resolver ahora{enRevision > 0 && ` · ${enRevision} en revisión por División`}</p>}
       </div>
       {completa
-        ? <button type="button" className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={volver}>Volver a Mi horario</button>
+        ? <button type="button" className="rounded-full border px-4 py-2 text-sm font-medium" onClick={historial ? () => cambiarVista('') : volver}>{historial ? 'Volver a Mis pendientes' : 'Volver a Mi horario'}</button>
         : <button type="button" className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={verTodos}>Ver pendientes</button>}
     </div>
-    {completa && <div className="grid gap-3 px-4 pb-3 sm:grid-cols-2">
+    {completa && !alDia && <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2">
       <label className="text-sm">Buscar materia, grupo o programa
         <input type="search" className="input-dark mt-1 h-11 w-full focus:ring-2 focus:ring-emerald-500/30" value={materia} onChange={e => { setMateria(e.target.value); setPagina(0); }} />
       </label>
-      <label className="text-sm">Estado del pendiente
+      {!historial && <label className="text-sm">Estado del pendiente
         <select className="input-dark mt-1 h-11 w-full focus:ring-2 focus:ring-emerald-500/30" value={estado} onChange={e => { setFiltro(e.target.value); setPagina(0); }}>
           <option value="accionables">Puedo resolver ahora</option>
           <option value="vencidas">Plazo vencido</option>
@@ -200,23 +206,26 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
           <option value="todas">Todos los pendientes</option>
           <option value="resueltas">Revisiones resueltas</option>
         </select>
-      </label>
+      </label>}
     </div>}
-    {completa && alDia && <div className="mx-4 mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-      <p className="font-semibold">Estás al día</p>
-      <p className="mt-1 text-sm text-slate-500">No tienes sesiones por atender en este cuatrimestre.</p>
-      {totalResueltas > 0 && <button type="button" className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold"
-        onClick={() => { setFiltro('resueltas'); setMateria(''); setPagina(0); }}>Ver revisiones resueltas ({totalResueltas})</button>}
+    {completa && alDia && <div className="mx-4 mt-3 flex flex-wrap items-center gap-x-5 gap-y-4 rounded-2xl bg-emerald-500/10 p-5 sm:p-7">
+      <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-full bg-emerald-500/20 text-xl font-semibold">✓</span>
+      <div className="min-w-0 flex-1 basis-52">
+        <h2 className="text-lg font-semibold">Estás al día</h2>
+        <p className="mt-1 text-sm">No tienes sesiones por atender en este cuatrimestre.</p>
+      </div>
+      {totalResueltas > 0 && <button type="button" className="min-h-11 rounded-full bg-emerald-500/15 px-4 text-sm font-medium hover:bg-emerald-500/25 focus-visible:outline-2 focus-visible:outline-emerald-600"
+        onClick={() => cambiarVista('resueltas')}>Ver revisiones resueltas ({totalResueltas})</button>}
     </div>}
     {completa && !alDia && !visibles.length && <p className="px-4 pb-3 text-sm text-slate-500">No hay sesiones con estos filtros.</p>}
-    {completa && <ul className="space-y-3 px-4 pb-4">
+    {completa && !alDia && <ul className="space-y-3 px-4 pb-4">
       {visibles.map(item => <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border p-4">
         <div className="text-sm">
           <p className="font-semibold">{item.materia}{item.grupo && ` · ${item.grupo}`}</p>
           {item.programa && <p className="text-xs font-normal text-slate-500">{item.programa}</p>}
           <p className="text-xs text-slate-500">{new Date(`${item.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'long' })}
             {item.hora_inicio && ` · ${item.hora_inicio}–${item.hora_fin}`}</p>
-          <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.revision?.estado === 'EN_REVISION' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>{item.estado}</p>
+          <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${resuelta(item) ? 'bg-emerald-500/15' : item.revision?.estado === 'EN_REVISION' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>{item.estado}</p>
           {item.revision?.estado === 'AUTORIZACION_PROGRAMADA' && <p className="text-xs">Disponible desde {new Date(item.revision.autorizada_desde).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
           {item.captura?.autorizada && <p className="text-xs">Disponible hasta {new Date(item.captura.vence_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
         </div>

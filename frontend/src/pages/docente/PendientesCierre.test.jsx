@@ -149,13 +149,20 @@ test('muestra Estás al día y conserva 40 revisiones solo en el historial expl�
   try {
     await act(async () => root.render(<PendientesCierre completa filas={filas} />));
     expect(host.textContent).toContain('Estás al día');
+    expect(host.textContent).not.toContain('0 sesiones por atender');
+    expect(host.querySelector('input, select')).toBeNull();
     expect(host.querySelectorAll('li')).toHaveLength(0);
     const historial = [...host.querySelectorAll('button')].find(boton => boton.textContent.includes('Ver revisiones resueltas'));
     expect(historial.textContent).toContain('(40)');
     await act(async () => historial.click());
-    expect(host.querySelector('select').value).toBe('resueltas');
+    expect(host.querySelector('h1').textContent).toBe('Revisiones resueltas');
+    expect(host.querySelector('input[type="search"]')).not.toBeNull();
     expect(host.querySelectorAll('li')).toHaveLength(15);
     expect(host.textContent).toContain('de 40');
+    const volver = [...host.querySelectorAll('button')].find(boton => boton.textContent === 'Volver a Mis pendientes');
+    await act(async () => volver.click());
+    expect(host.textContent).toContain('Estás al día');
+    expect(host.querySelectorAll('li')).toHaveLength(0);
   } finally {
     act(() => root.unmount());
   }
