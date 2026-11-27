@@ -312,6 +312,10 @@ const NAV_ITEMS = [
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7M8 11h3m-3 4h3m3-4h2m-2 4h2"/></svg>,
   },
   {
+    label: 'Cobranza', path: '/admin/cobranza', roles: ['SUPER_ADMIN'], permiso: 'cobranza:operar',
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18m-14 5h4" /></svg>,
+  },
+  {
     label: 'Departamentos', path: '/admin/departamentos', roles: ['SUPER_ADMIN','ADMINISTRATIVO','SERVICIOS_ESCOLARES'], permiso: PERM_SERVICIOS_ESCOLARES_MANAGE,
     icon: <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V7a2 2 0 00-2-2h-3V3H10v2H7a2 2 0 00-2 2v14m14 0h2M5 21H3m4-8h2m-2 4h2m6-4h2m-2 4h2M9 9h6"/></svg>,
   },
@@ -588,6 +592,7 @@ const BREADCRUMB_MAP = {
   '/docente/historial-clases': [{ label: 'Historial de clases' }],
   '/admin/laboratorios':      [{ label: 'Laboratorios' }],
   '/admin/usuarios':          [{ label: 'Usuarios' }],
+  '/admin/cobranza': [{ label: 'Cobranza' }],
   '/admin/departamentos':     [{ label: 'Departamentos' }],
   '/admin/horarios':          [{ label: 'Horarios' }],
   '/admin/reservaciones':     [{ label: 'Reservaciones' }],

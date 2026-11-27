@@ -9,6 +9,7 @@ from models.departamento import Departamento
 from models.usuario import RolUsuario, Usuario
 from models.usuario_permiso import UsuarioPermiso
 
+PERM_COBRANZA = "cobranza:operar"
 PERM_COMUNICADOS_WRITE = "comunicados:write"
 PERM_INVENTARIO_WRITE = "inventario:write"
 PERM_INVENTARIO_VALIDATE = "inventario:validar"
@@ -24,6 +25,27 @@ def _normalizar_catalogo(value: str | None) -> str:
     normalized = unicodedata.normalize("NFKD", str(value))
     normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
     return " ".join(normalized.upper().replace("_", " ").replace("-", " ").split())
+
+
+def es_departamento_finanzas(departamento: Departamento | None) -> bool:
+    return bool(departamento and (
+        _normalizar_catalogo(departamento.clave) in {"DAF", "FINANZAS"}
+        or "FINANZAS" in _normalizar_catalogo(departamento.nombre).split()
+    ))
+
+
+def puede_operar_cobranza(db: Session, usuario: Usuario) -> bool:
+    if usuario.rol == RolUsuario.SUPER_ADMIN:
+        return True
+    if usuario.rol != RolUsuario.ADMINISTRATIVO:
+        return False
+    responsables = db.query(Departamento).filter_by(responsable_id=usuario.id, activo=True)
+    if any(es_departamento_finanzas(dep) for dep in responsables):
+        return True
+    dep = db.get(Departamento, usuario.departamento_id) if usuario.departamento_id else None
+    return bool(es_departamento_finanzas(dep) and dep.activo and (
+        tiene_permiso_departamento(db, usuario, PERM_COBRANZA, dep.id)
+    ))
 
 
 def es_departamento_servicios_escolares(departamento: Departamento | None) -> bool:
@@ -270,4 +292,6 @@ def permisos_efectivos(db: Session, usuario: Usuario) -> list[str]:
         permisos.add(PERM_EXPEDIENTE_ACADEMICO_READ)
     elif puede_consultar_expediente(db, usuario):
         permisos.add(PERM_EXPEDIENTE_ACADEMICO_READ)
+    if puede_operar_cobranza(db, usuario):
+        permisos.add(PERM_COBRANZA)
     return sorted(permisos)

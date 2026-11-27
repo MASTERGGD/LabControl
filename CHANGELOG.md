@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Cobranza interna de Finanzas — 2026-11-27
+
+Finanzas carecía de un flujo de caja para servicios. El responsable o Super Admin puede asignar Cobranza a personal administrativo del departamento y editar el tabulador. Caja consulta por matrícula, aplica la tarifa, calcula el cambio y emite recibos internos con folio e historial. Los pagos guardan el importe y concepto del momento. La migración f19b4d820c35 crea el tabulador y los pagos.
+
+Aprobadas 215 pruebas del frontend, compilación de Vite, prueba HTTP del flujo con datos ficticios y subida y reversión de la migración en SQLite. Pendiente la prueba visual con ambos perfiles, la publicación y las funciones posteriores de descuentos, cortes, cancelaciones e integración bancaria.
+
+---
+
 ## [Preparado] — Contraste del botón Permisos — 2026-11-27
 
 El texto y el icono de Permisos quedaban blancos sobre fondo claro por la regla global de botones verdes. El botón usa el acento del tema y conserva el contraste al pasar el cursor.

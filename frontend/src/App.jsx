@@ -25,6 +25,7 @@ import SEPromociones from './pages/servicios_escolares/SEPromociones';
 import Laboratorios from './pages/admin/Laboratorios';
 import LaboratorioDetalle from './pages/admin/LaboratorioDetalle';
 import Usuarios from './pages/admin/Usuarios';
+import Cobranza from './pages/admin/Cobranza';
 import Departamentos from './pages/admin/Departamentos';
 import Horarios from './pages/admin/Horarios';
 import Reservaciones from './pages/admin/Reservaciones';
@@ -189,6 +190,11 @@ function AppRoutes() {
           </RutaProtegida>
         }
       />
+      <Route path="/admin/cobranza" element={
+        <RutaProtegida rolesPermitidos={['SUPER_ADMIN']} permisosPermitidos="cobranza:operar">
+          <Cobranza />
+        </RutaProtegida>
+      } />
       <Route
         path="/servicios-escolares"
         element={

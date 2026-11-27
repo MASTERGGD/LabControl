@@ -32,6 +32,9 @@ const esDepartamentoDivisionCarrera = departamento => {
     || nombre.includes('DIRECCION DE DIVISION');
 };
 
+const esDepartamentoFinanzas = dep =>
+  ['DAF', 'FINANZAS'].includes(dep?.clave?.trim().toUpperCase()) || /\bFINANZAS\b/i.test(dep?.nombre || '');
+
 const funcionesDepartamento = departamento => {
   if (esDepartamentoServiciosEscolares(departamento)) {
     return [
@@ -234,6 +237,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
   const [savingId, setSavingId] = useState(null);
   const isSuperAdmin = usuarioActual?.rol === 'SUPER_ADMIN';
   const mostrarServiciosEscolares = esDepartamentoServiciosEscolares(departamento);
+  const mostrarCobranza = esDepartamentoFinanzas(departamento);
   const mostrarDivisionCarrera = esDepartamentoDivisionCarrera(departamento);
 
   const cargar = useCallback(async () => {
@@ -321,6 +325,7 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                     <th className="px-3 py-3 text-center font-semibold">Validacion</th>
                     {isSuperAdmin && <th className="px-3 py-3 text-center font-semibold">Institucional</th>}
                     {mostrarServiciosEscolares && <th className="px-3 py-3 text-center font-semibold">Escolares</th>}
+                    {mostrarCobranza && <th className="px-3 py-3 text-center font-semibold">Cobranza</th>}
                     {mostrarDivisionCarrera && <th className="px-3 py-3 text-center font-semibold">Materias</th>}
                     <th className="px-3 py-3 text-center font-semibold">Comunicados</th>
                   </tr>
@@ -390,6 +395,14 @@ export function ModalPermisosComunicados({ departamento, onClose }) {
                             disabled={u.es_responsable || savingId === u.id}
                             onChange={() => toggle(u, PERM_SERVICIOS_ESCOLARES_MANAGE, 'puede_gestionar_servicios_escolares')}
                           />
+                        </td>
+                      )}
+                      {mostrarCobranza && (
+                        <td className="px-3 py-3 text-center">
+                          <input type="checkbox" aria-label={'Cobranza para ' + u.nombre}
+                            checked={!!u.puede_cobrar}
+                            disabled={u.es_responsable || u.rol !== 'ADMINISTRATIVO' || savingId === u.id}
+                            onChange={() => toggle(u, 'cobranza:operar', 'puede_cobrar')} />
                         </td>
                       )}
                       {mostrarDivisionCarrera && (

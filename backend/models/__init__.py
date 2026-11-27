@@ -14,6 +14,7 @@ from .adeudo import Adeudo
 from .notificacion import Notificacion
 from .password_reset import PasswordResetToken
 from .catalogo import CatalogoAlumno, CatalogoMateria, CatalogoCarrera, CatalogoInventarioItem
+from .cobranza import ConceptoCobro, PagoServicio
 from .auditoria import AuditLog
 from .cumplimiento import EventoCumplimiento
 from .espacio import EspacioInstitucional, EspacioResponsable, EspacioApoyo, SolicitudEspacio, RequerimientoSolicitud

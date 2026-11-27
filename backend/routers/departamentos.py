@@ -20,6 +20,8 @@ from models.usuario_permiso import UsuarioPermiso
 from services.auditoria import registrar as _audit, Accion, Recurso
 from models.usuario import RolUsuario, Usuario
 from services.user_permissions import (
+    PERM_COBRANZA,
+    es_departamento_finanzas,
     PERM_COMUNICADOS_WRITE,
     PERM_INVENTARIO_VALIDATE,
     PERM_INVENTARIO_WRITE,
@@ -192,6 +194,7 @@ class ResponsableIn(BaseModel):
 
 
 PERMISOS_DEPARTAMENTO = {
+    PERM_COBRANZA,
     PERM_COMUNICADOS_WRITE,
     PERM_INVENTARIO_WRITE,
     PERM_INVENTARIO_VALIDATE,
@@ -225,6 +228,7 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
         ).all()
     }
     es_responsable = es_responsable_departamento(db, u, departamento_id)
+    puede_cobrar = es_departamento_finanzas(dep) and (es_responsable or (u.rol == RolUsuario.ADMINISTRATIVO and PERM_COBRANZA in permisos_activos))
     puede_comunicados = PERM_COMUNICADOS_WRITE in permisos_activos or es_responsable
     puede_inventario = PERM_INVENTARIO_WRITE in permisos_activos or es_responsable
     puede_validar_inventario = PERM_INVENTARIO_VALIDATE in permisos_activos
@@ -251,6 +255,7 @@ def _serializar_usuario_departamento(db: Session, u: Usuario, departamento_id: i
             PERM_SERVICIOS_ESCOLARES_MANAGE: puede_servicios_escolares,
             PERM_DIVISION_CARRERA_MANAGE: puede_division_carrera,
         },
+        "puede_cobrar": puede_cobrar,
         "puede_enviar_comunicados": puede_comunicados,
         "puede_gestionar_inventario": puede_inventario,
         "puede_validar_inventario": puede_validar_inventario,
@@ -394,6 +399,9 @@ def actualizar_permiso_departamental(
         raise HTTPException(status_code=404, detail="Usuario no encontrado en este departamento")
     if dep.responsable_id == usuario.id and data.permiso != PERM_INVENTARIO_VALIDATE and not data.activo:
         raise HTTPException(status_code=400, detail="El responsable del departamento siempre conserva sus permisos")
+
+    if data.permiso == PERM_COBRANZA and (not es_departamento_finanzas(dep) or usuario.rol != RolUsuario.ADMINISTRATIVO):
+        raise HTTPException(422, "Cobranza solo puede asignarse a personal administrativo de Finanzas")
 
     if data.scope_global:
         _upsert_permiso_global(
