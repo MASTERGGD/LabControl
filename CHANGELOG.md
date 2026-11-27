@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Confirmación y salida de revisiones resueltas — 2026-11-27
+
+El panel de División seguía abierto tras guardar y Mis pendientes seleccionaba las revisiones resueltas al quedar en cero. Guardar cierra el panel, confirma la decisión en la bandeja y conserva los filtros. Las autorizaciones vigentes se consultan en el detalle. Mis pendientes muestra Estás al día al quedar sin sesiones y permite abrir el historial paginado de forma explícita.
+
+Validación con pruebas del frontend y compilación de Vite. Pendiente verificar el despliegue y revisar con sesión iniciada.
+
+---
+
 ## [c093b25] — Decisiones de regularización y detalle de sesión — 2026-11-27
 
 El panel repetía el estado y exigía texto incluso para autorizar captura. El encabezado muestra el estado actual y la sesión con fecha y horario. La primera aportación conserva autor y fecha sin repetir su estado. Autorizar admite una observación opcional y registra un motivo de auditoría cuando queda vacía. Pedir información requiere una indicación. Las decisiones que concluyen el caso admiten motivos rápidos o una explicación propia.

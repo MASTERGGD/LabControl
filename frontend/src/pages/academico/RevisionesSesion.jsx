@@ -19,7 +19,7 @@ const MOTIVOS_RAPIDOS = {
   SIN_EVIDENCIA: ['Sin evidencia suficiente', 'Sin respuesta'],
 };
 
-function Decision({ cargaId, revisionId, recargar }) {
+function Decision({ cargaId, revisionId, alGuardar }) {
   const [decision, setDecision] = useState('ESPERA_DOCENTE');
   const [motivo, setMotivo] = useState('');
   const [motivoRapido, setMotivoRapido] = useState('');
@@ -40,9 +40,7 @@ function Decision({ cargaId, revisionId, recargar }) {
         motivo: [motivoRapido !== 'otro' ? motivoRapido : '', motivo.trim()].filter(Boolean).join(' · '),
         horas: decision === 'AUTORIZADA' ? Number(horas) : 48,
       });
-      await recargar();
-      setMotivo('');
-      setMotivoRapido('');
+      alGuardar(decision);
     } catch (e) {
       const detalle = e.response?.data?.detail;
       setError(typeof detalle === 'string' ? detalle : 'No se pudo registrar la decisión.');
@@ -90,7 +88,7 @@ function Decision({ cargaId, revisionId, recargar }) {
 const LIMITE = 12;
 const normalizar = texto => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-MX');
 
-function Detalle({ caso, cerrar, cierre, recargar }) {
+function Detalle({ caso, cerrar, cierre, alGuardar }) {
   const dialogo = useRef(null);
   useEffect(() => {
     dialogo.current.showModal();
@@ -124,8 +122,11 @@ function Detalle({ caso, cerrar, cierre, recargar }) {
     </ol>
     {revision.autorizada_desde && <p className="mt-2 text-xs">Inicio de captura desde {new Date(revision.autorizada_desde).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
     {revision.autorizada_hasta && <p className="mt-2 text-xs">Inicio de captura hasta {new Date(revision.autorizada_hasta).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
-    {cierre.estado !== 'CERRADO' && ['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZADA', 'AUTORIZACION_VENCIDA'].includes(revision.estado)
-      && <Decision cargaId={carga.carga_id} revisionId={revision.id} recargar={recargar} />}
+    {cierre.estado !== 'CERRADO' && ['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZACION_VENCIDA'].includes(revision.estado)
+      && <Decision cargaId={carga.carga_id} revisionId={revision.id} alGuardar={decision => {
+        dialogo.current.close();
+        alGuardar(decision);
+      }} />}
   </dialog>;
 }
 
@@ -134,6 +135,11 @@ export default function RevisionesSesion({ cierre, recargar }) {
   const [estado, setEstado] = useState('EN_REVISION');
   const [pagina, setPagina] = useState(0);
   const [seleccion, setSeleccion] = useState(null);
+  const [mensaje, setMensaje] = useState('');
+  const alGuardar = decision => {
+    setMensaje(decision === 'AUTORIZADA' ? 'Captura autorizada.' : 'Decisión registrada.');
+    recargar();
+  };
   const casos = (cierre?.cargas || []).flatMap(carga => (carga.revisiones_sesion || []).map(revision => ({ carga, revision })));
   const buscado = normalizar(consulta.trim());
   const filtrados = casos.filter(({ carga, revision }) => (!estado || revision.estado === estado)
@@ -145,6 +151,7 @@ export default function RevisionesSesion({ cierre, recargar }) {
 
   return <section className="glass space-y-4 rounded-xl p-4">
     <h2 className="font-semibold">Solicitudes de regularización</h2>
+    {mensaje && <p role="status" className="rounded-lg bg-emerald-500/10 p-2 text-sm font-medium text-emerald-700">{mensaje}</p>}
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="text-sm">Buscar docente, materia, grupo o referencia
         <input type="search" className="input-dark mt-1 h-11 w-full" value={consulta} onChange={e => { setConsulta(e.target.value); setPagina(0); }} />
@@ -172,6 +179,6 @@ export default function RevisionesSesion({ cierre, recargar }) {
       <span>{desde + 1}–{Math.min(desde + LIMITE, filtrados.length)} de {filtrados.length}</span>
       <button type="button" className="rounded border px-2 py-1 disabled:opacity-50" disabled={desde + LIMITE >= filtrados.length} onClick={() => setPagina(actual + 1)}>Siguiente</button>
     </div>}
-    {detalle && <Detalle key={seleccion} caso={detalle} cerrar={() => setSeleccion(null)} cierre={cierre} recargar={recargar} />}
+    {detalle && <Detalle key={seleccion} caso={detalle} cerrar={() => setSeleccion(null)} cierre={cierre} alGuardar={alGuardar} />}
   </section>;
 }

@@ -137,3 +137,26 @@ test('reutiliza el motivo de una autorización vencida y solo exige la petición
     act(() => root.unmount());
   }
 });
+
+test('muestra Estás al día y conserva 40 revisiones solo en el historial explícito', async () => {
+  const filas = Array.from({ length: 40 }, (_, indice) => ({
+    id: indice, materia: 'Sistemas de Optimización', fecha: '2026-09-14', estado: 'Regularizada',
+    revision: { id: indice + 1, estado: 'REGULARIZADA', historial: [] },
+  }));
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<PendientesCierre completa filas={filas} />));
+    expect(host.textContent).toContain('Estás al día');
+    expect(host.querySelectorAll('li')).toHaveLength(0);
+    const historial = [...host.querySelectorAll('button')].find(boton => boton.textContent.includes('Ver revisiones resueltas'));
+    expect(historial.textContent).toContain('(40)');
+    await act(async () => historial.click());
+    expect(host.querySelector('select').value).toBe('resueltas');
+    expect(host.querySelectorAll('li')).toHaveLength(15);
+    expect(host.textContent).toContain('de 40');
+  } finally {
+    act(() => root.unmount());
+  }
+});

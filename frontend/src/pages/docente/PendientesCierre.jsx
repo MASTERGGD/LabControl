@@ -162,7 +162,9 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
     venceEn(a) - venceEn(b) || a.fecha.localeCompare(b.fecha));
   const enRevision = pendientes.filter(item => item.revision?.estado === 'EN_REVISION').length;
   const ordenadas = [...atendibles, ...filas.filter(item => !puedeAtender(item))];
-  const estado = filtro || (atendibles.length ? 'accionables' : pendientes.length ? 'todas' : 'resueltas');
+  const totalResueltas = filas.length - pendientes.length;
+  const estado = filtro || (atendibles.length ? 'accionables' : 'todas');
+  const alDia = pendientes.length === 0 && estado !== 'resueltas';
   const coincidencias = ordenadas.filter(item => {
     if (estado === 'accionables' && !puedeAtender(item)) return false;
     if (estado === 'vencidas' && ((!item.vencida && item.revision?.estado !== 'AUTORIZACION_VENCIDA') || item.captura || resuelta(item))) return false;
@@ -200,7 +202,13 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
         </select>
       </label>
     </div>}
-    {completa && !visibles.length && <p className="px-4 pb-3 text-sm text-slate-500">No hay sesiones con estos filtros.</p>}
+    {completa && alDia && <div className="mx-4 mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+      <p className="font-semibold">Estás al día</p>
+      <p className="mt-1 text-sm text-slate-500">No tienes sesiones por atender en este cuatrimestre.</p>
+      {totalResueltas > 0 && <button type="button" className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold"
+        onClick={() => { setFiltro('resueltas'); setMateria(''); setPagina(0); }}>Ver revisiones resueltas ({totalResueltas})</button>}
+    </div>}
+    {completa && !alDia && !visibles.length && <p className="px-4 pb-3 text-sm text-slate-500">No hay sesiones con estos filtros.</p>}
     {completa && <ul className="space-y-3 px-4 pb-4">
       {visibles.map(item => <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border p-4">
         <div className="text-sm">
