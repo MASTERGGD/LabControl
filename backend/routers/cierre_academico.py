@@ -240,6 +240,9 @@ def _sesiones_abiertas(db, periodo_id, reservaciones):
 def _motivo_previo_revision(revision):
     for evento in revision.historial or []:
         if evento["estado"] == "EN_REVISION" and evento["usuario_id"] == revision.docente_id:
+            if evento.get("solicitud"):
+                datos = evento["solicitud"]
+                return datos["observaciones"] if datos.get("categoria") == "OTRO" else datos["motivo"]
             motivo = evento["motivo"].strip()
             if motivo.startswith("Qué ocurrió: "):
                 return motivo.removeprefix("Qué ocurrió: ").split("\n\nQué solicito a División: ", 1)[0]
@@ -331,11 +334,23 @@ def obtener(periodo_id: int, solo_propias: bool = False, db: Session = Depends(g
     return None
 
 
+MOTIVOS_REGULARIZACION = {
+    "IMPARTIDA": "Clase impartida sin registro", "CAMBIO_HORARIO": "Cambio de horario",
+    "NO_IMPARTIDA": "Clase no impartida", "SIN_EVIDENCIA": "Sin evidencia suficiente", "OTRO": "Otro motivo",
+}
+PETICIONES_REGULARIZACION = {
+    "AUTORIZAR_CAPTURA": "Autorización de captura", "REVISAR_SESION": "Revisión de la sesión",
+}
+
+
 class SolicitudRevisionIn(BaseModel):
     fecha: datetime.date
     motivo: Optional[str] = Field(None, min_length=5, max_length=2000)
     peticion: Optional[str] = Field(None, min_length=5, max_length=900)
     aclaracion: Optional[str] = Field(None, max_length=900)
+    categoria: Optional[str] = None
+    tramite: Optional[str] = None
+    observaciones: Optional[str] = Field(None, max_length=900)
 
 
 class DecisionRevisionIn(BaseModel):
@@ -374,7 +389,23 @@ def solicitar_revision_sesion(carga_id: int, data: SolicitudRevisionIn, db: Sess
     else:
         revision = RevisionSesionVencida(carga_id=carga.id, docente_id=current_user.id, fecha=data.fecha)
         db.add(revision)
-    if data.peticion is not None:
+    solicitud = None
+    if data.tramite is not None or data.categoria is not None:
+        peticion = PETICIONES_REGULARIZACION.get(data.tramite)
+        hechos = MOTIVOS_REGULARIZACION.get(data.categoria)
+        if not hechos and data.categoria is None and estado_previo == "AUTORIZACION_VENCIDA":
+            hechos = _motivo_previo_revision(revision)
+        if not hechos or not peticion or estado_previo == "ESPERA_DOCENTE":
+            raise HTTPException(422, "Selecciona el motivo y la solicitud válidos")
+        observaciones = (data.observaciones or "").strip()
+        if data.categoria == "OTRO" and not observaciones:
+            raise HTTPException(422, "Describe el motivo en Observaciones")
+        solicitud = {"categoria": data.categoria, "tramite": data.tramite, "motivo": hechos,
+                     "peticion": peticion, "observaciones": observaciones}
+        motivo = f"Motivo reportado: {hechos}\n\nSolicitud: {peticion}"
+        if observaciones:
+            motivo += f"\n\nObservaciones: {observaciones}"
+    elif data.peticion is not None:
         hechos = _motivo_previo_revision(revision) if estado_previo == "AUTORIZACION_VENCIDA" else None
         if not hechos or data.motivo is not None:
             raise HTTPException(422, "La reutilización requiere una explicación previa de esta sesión")
@@ -386,6 +417,8 @@ def solicitar_revision_sesion(carga_id: int, data: SolicitudRevisionIn, db: Sess
         motivo = _motivo_revision(data.motivo)
     revision.autorizada_hasta = None
     registrar_evento(revision, "EN_REVISION", current_user, motivo)
+    if solicitud:
+        revision.historial = [*revision.historial[:-1], {**revision.historial[-1], "solicitud": solicitud}]
     db.commit()
     return _ser_revision(revision)
 

@@ -1,3 +1,4 @@
+import DatosSolicitud from '../../components/DatosSolicitud';
 import { useState } from 'react';
 
 export function reunirPendientesCierre(cargas, capturas) {
@@ -66,10 +67,12 @@ const venceEn = item => Date.parse(item.captura?.vence_en) || Number.MAX_SAFE_IN
 function RegularizarSesion({ item, solicitarRevision }) {
   const [motivo, setMotivo] = useState('');
   const [peticion, setPeticion] = useState('');
+  const [categoria, setCategoria] = useState('');
   const esRespuesta = item.revision?.estado === 'ESPERA_DOCENTE';
   const motivoPrevio = item.revision?.motivo_previo;
   const reutilizaMotivo = item.revision?.estado === 'AUTORIZACION_VENCIDA' && Boolean(motivoPrevio);
-  const puedeEnviar = (reutilizaMotivo || motivo.trim().length >= 5) && (esRespuesta || peticion.trim().length >= 5);
+  const puedeEnviar = esRespuesta ? motivo.trim().length >= 5
+    : Boolean(peticion && (reutilizaMotivo || categoria) && (categoria !== 'OTRO' || motivo.trim()));
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   const enviar = async evento => {
@@ -78,8 +81,9 @@ function RegularizarSesion({ item, solicitarRevision }) {
     setEnviando(true);
     setError('');
     try {
-      const texto = esRespuesta ? motivo.trim() : `Qué ocurrió: ${motivo.trim()}\n\nQué solicito a División: ${peticion.trim()}`;
-      await solicitarRevision(item, reutilizaMotivo ? { peticion: peticion.trim(), aclaracion: motivo.trim() } : texto);
+      await solicitarRevision(item, esRespuesta ? motivo.trim() : {
+        categoria: reutilizaMotivo ? null : categoria, tramite: peticion, observaciones: motivo.trim(),
+      });
       setMotivo('');
       setPeticion('');
     } catch (e) {
@@ -114,16 +118,29 @@ function RegularizarSesion({ item, solicitarRevision }) {
           <p className="font-semibold">Motivo ya registrado</p>
           <p className="whitespace-pre-line">{motivoPrevio}</p>
         </div>}
-        <label className="block">{esRespuesta ? 'Respuesta para División' : reutilizaMotivo ? 'Aclaración (opcional)' : '¿Qué ocurrió?'}
-          <textarea required={!reutilizaMotivo} minLength={reutilizaMotivo ? undefined : 5} maxLength={esRespuesta ? 1800 : 900} value={motivo} onChange={e => setMotivo(e.target.value)}
-            className="input-dark mt-1 w-full" rows={3}
-            placeholder={esRespuesta || reutilizaMotivo ? undefined : 'Indica si la clase se impartió, si cambió el horario y qué evidencia tienes.'} />
-        </label>
-        {!esRespuesta && <label className="block">¿Qué solicitas a División?
-          <textarea className="input-dark mt-1 w-full" rows={2} required minLength={5} maxLength={900}
-            value={peticion} onChange={e => setPeticion(e.target.value)}
-            placeholder="Por ejemplo, autorizar la captura o revisar si la sesión correspondía." />
+        {!esRespuesta && !reutilizaMotivo && <label className="block">Motivo reportado
+          <select required className="input-dark mt-1 w-full" value={categoria} onChange={e => setCategoria(e.target.value)}>
+            <option value="">Selecciona un motivo</option>
+            <option value="IMPARTIDA">Clase impartida sin registro</option>
+            <option value="CAMBIO_HORARIO">Cambio de horario</option>
+            <option value="NO_IMPARTIDA">Clase no impartida</option>
+            <option value="SIN_EVIDENCIA">Sin evidencia suficiente</option>
+            <option value="OTRO">Otro motivo</option>
+          </select>
         </label>}
+        {!esRespuesta && <label className="block">Solicitud
+          <select required className="input-dark mt-1 w-full" value={peticion} onChange={e => setPeticion(e.target.value)}>
+            <option value="">Selecciona una solicitud</option>
+            <option value="AUTORIZAR_CAPTURA">Autorización de captura</option>
+            <option value="REVISAR_SESION">Revisión de la sesión</option>
+          </select>
+        </label>}
+        <label className="block">{esRespuesta ? 'Respuesta para División' : categoria === 'OTRO' ? 'Observaciones' : 'Observaciones (opcionales)'}
+          <textarea required={esRespuesta || categoria === 'OTRO'} minLength={esRespuesta ? 5 : undefined}
+            maxLength={esRespuesta ? 1800 : 900} value={motivo} onChange={e => setMotivo(e.target.value)}
+            className="input-dark mt-1 w-full" rows={3}
+            placeholder={esRespuesta ? undefined : 'Puedes indicar qué evidencia tienes u otros detalles.'} />
+        </label>
         {error && <p role="alert" className="text-red-600">{typeof error === 'string' ? error : 'Revisa la información de la solicitud.'}</p>}
         <button type="submit" disabled={enviando || !puedeEnviar} className="rounded bg-emerald-700 px-3 py-1.5 font-semibold text-white disabled:opacity-50">Enviar a División</button>
       </form> : <p>Pasaron los 7 días para capturar esta sesión. Comparte los datos de esta sesión con División de Carrera para que revise cómo procede.</p>}
@@ -142,6 +159,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
   const pendientes = filas.filter(item => !resuelta(item));
   const atendibles = pendientes.filter(puedeAtender).sort((a, b) =>
     venceEn(a) - venceEn(b) || a.fecha.localeCompare(b.fecha));
+  const enRevision = pendientes.filter(item => item.revision?.estado === 'EN_REVISION').length;
   const ordenadas = [...atendibles, ...filas.filter(item => !puedeAtender(item))];
   const estado = filtro || (atendibles.length ? 'accionables' : pendientes.length ? 'todas' : 'resueltas');
   const coincidencias = ordenadas.filter(item => {
@@ -161,7 +179,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
       <div>
         {titulo}
-        <p className="text-sm text-slate-500">{pendientes.length} {pendientes.length === 1 ? 'sesión' : 'sesiones'} por atender · {atendibles.length} para resolver ahora</p>
+        <p className="text-sm text-slate-500">{pendientes.length} {pendientes.length === 1 ? 'sesión' : 'sesiones'} por atender · {atendibles.length} para resolver ahora{enRevision > 0 && ` · ${enRevision} en revisión por División`}</p>
       </div>
       {completa
         ? <button type="button" className="rounded-lg border px-3 py-2 text-sm font-semibold" onClick={volver}>Volver a Mi horario</button>
@@ -169,10 +187,10 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
     </div>
     {completa && <div className="grid gap-3 px-4 pb-3 sm:grid-cols-2">
       <label className="text-sm">Buscar materia, grupo o programa
-        <input type="search" className="input-dark mt-1 w-full" value={materia} onChange={e => { setMateria(e.target.value); setPagina(0); }} />
+        <input type="search" className="input-dark mt-1 h-11 w-full focus:ring-2 focus:ring-emerald-500/30" value={materia} onChange={e => { setMateria(e.target.value); setPagina(0); }} />
       </label>
       <label className="text-sm">Estado del pendiente
-        <select className="input-dark mt-1 w-full" value={estado} onChange={e => { setFiltro(e.target.value); setPagina(0); }}>
+        <select className="input-dark mt-1 h-11 w-full focus:ring-2 focus:ring-emerald-500/30" value={estado} onChange={e => { setFiltro(e.target.value); setPagina(0); }}>
           <option value="accionables">Puedo resolver ahora</option>
           <option value="vencidas">Plazo vencido</option>
           <option value="en-revision">Solicitudes en seguimiento</option>
@@ -182,26 +200,14 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
       </label>
     </div>}
     {completa && !visibles.length && <p className="px-4 pb-3 text-sm text-slate-500">No hay sesiones con estos filtros.</p>}
-    {completa && <ul className="divide-y divide-amber-500/15">
-      {visibles.map(item => <li key={item.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
+    {completa && <ul className="space-y-3 px-4 pb-4">
+      {visibles.map(item => <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border p-4">
         <div className="text-sm">
           <p className="font-semibold">{item.materia}{item.grupo && ` · ${item.grupo}`}</p>
           {item.programa && <p className="text-xs font-normal text-slate-500">{item.programa}</p>}
           <p className="text-xs text-slate-500">{new Date(`${item.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'long' })}
             {item.hora_inicio && ` · ${item.hora_inicio}–${item.hora_fin}`}</p>
-          <p className="text-xs text-amber-600">{item.estado}</p>
-          {item.revision?.historial?.length > 0 && <>
-            <p className="max-w-xl whitespace-pre-line text-xs text-slate-500">{item.revision.historial.at(-1).motivo}</p>
-            {item.revision.historial.length > 1 && <details className="mt-2 text-xs">
-              <summary className="cursor-pointer font-semibold">Ver historial de la solicitud</summary>
-              <ol className="mt-2 space-y-2 border-l pl-3">
-                {item.revision.historial.map((evento, indice) => <li key={indice}>
-                  <p><strong>{evento.autor}</strong> · {new Date(evento.fecha).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>
-                  <p className="whitespace-pre-line text-slate-500">{evento.motivo}</p>
-                </li>)}
-              </ol>
-            </details>}
-          </>}
+          <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.revision?.estado === 'EN_REVISION' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>{item.estado}</p>
           {item.captura?.autorizada && <p className="text-xs">Disponible hasta {new Date(item.captura.vence_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
         </div>
         {item.captura
@@ -210,6 +216,15 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
             {item.sesion.estado === 'ABIERTA' ? 'Continuar clase' : item.sesion.estado === 'CORRECCION' ? 'Ir a corregir' : 'Ver registro'}
           </button> : (puedeResponder(item) || (item.vencida && !item.revision)) && <RegularizarSesion item={item}
               solicitarRevision={solicitarRevision} />}
+        {item.revision && <details className="w-full rounded-lg border px-3 py-2 text-sm sm:w-auto sm:max-w-lg">
+          <summary className="cursor-pointer font-semibold">Ver solicitud #{item.revision.id}</summary>
+          <ol className="mt-2 space-y-2 border-l pl-3">
+            {(item.revision.historial || []).map((evento, indice) => <li key={indice}>
+              <p className="text-xs"><strong>{evento.autor}</strong> · {new Date(evento.fecha).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>
+              <DatosSolicitud evento={evento} />
+            </li>)}
+          </ol>
+        </details>}
       </li>)}
     </ul>}
     {completa && coincidencias.length > PAGINA && <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3 text-sm">

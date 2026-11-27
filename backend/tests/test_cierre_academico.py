@@ -441,11 +441,13 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
     revision_db.autorizada_hasta = datetime.datetime(2000, 1, 1)
     db.commit()
     renovada = client.post(solicitud, headers=docente_h, json={
-        "fecha": fecha, "peticion": "Solicito una nueva ventana de captura",
+        "fecha": fecha, "tramite": "AUTORIZAR_CAPTURA", "observaciones": "Solicito una nueva ventana de captura",
     })
     assert renovada.status_code == 200, renovada.text
     assert renovada.json()["motivo_previo"] == datos["motivo"]
-    assert datos["motivo"] in renovada.json()["historial"][-1]["motivo"]
+    evento = renovada.json()["historial"][-1]
+    assert evento["solicitud"]["motivo"] == datos["motivo"]
+    assert evento["solicitud"]["peticion"] == "Autorización de captura"
     assert client.post(decision, headers=admin_h, json=autorizar).status_code == 200
     opciones = client.get("/docencia/capturas-extemporaneas/disponibles", headers=docente_h).json()
     assert any(item["fecha"] == fecha and item.get("autorizada") for item in opciones)
@@ -460,8 +462,11 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
         "EN_REVISION", "ESPERA_DOCENTE", "EN_REVISION", "AUTORIZADA", "EN_REVISION", "AUTORIZADA", "CAPTURA_INICIADA",
     ]
 
-    otra = client.post(solicitud, headers=docente_h, json={**datos, "fecha": "2026-08-11"})
+    otra = client.post(solicitud, headers=docente_h, json={
+        "fecha": "2026-08-11", "categoria": "CAMBIO_HORARIO", "tramite": "REVISAR_SESION",
+    })
     assert otra.status_code == 200, otra.text
+    assert otra.json()["historial"][0]["solicitud"]["motivo"] == "Cambio de horario"
     otra_decision = f"{solicitud}/{otra.json()['id']}/decision"
     excluida = client.post(otra_decision, headers=admin_h, json={
         "decision": "NO_CORRESPONDIA", "motivo": "El horario fue sustituido esa fecha",

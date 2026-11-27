@@ -93,19 +93,18 @@ test('abre Mis pendientes para una sola sesión y envía una solicitud con hecho
     expect(verTodos).toHaveBeenCalledTimes(1);
 
     await act(async () => root.render(<PendientesCierre completa filas={[fila]} solicitarRevision={solicitarRevision} />));
-    const campos = [...host.querySelectorAll('form textarea')];
-    const cambiar = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    const [categoria, peticion] = host.querySelectorAll('form select');
     await act(async () => {
-      cambiar.call(campos[0], 'La clase se impartió y conservo la lista.');
-      campos[0].dispatchEvent(new Event('input', { bubbles: true }));
-      cambiar.call(campos[1], 'Solicito autorización para capturar asistencia.');
-      campos[1].dispatchEvent(new Event('input', { bubbles: true }));
+      categoria.value = 'IMPARTIDA';
+      categoria.dispatchEvent(new Event('change', { bubbles: true }));
+      peticion.value = 'AUTORIZAR_CAPTURA';
+      peticion.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    const enviar = host.querySelector('button[type="submit"]');
-    expect(enviar.disabled).toBe(false);
+    expect(host.querySelector('button[type="submit"]').disabled).toBe(false);
     await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-    expect(solicitarRevision).toHaveBeenCalledWith(fila,
-      'Qué ocurrió: La clase se impartió y conservo la lista.\n\nQué solicito a División: Solicito autorización para capturar asistencia.');
+    expect(solicitarRevision).toHaveBeenCalledWith(fila, {
+      categoria: 'IMPARTIDA', tramite: 'AUTORIZAR_CAPTURA', observaciones: '',
+    });
   } finally {
     act(() => root.unmount());
   }
@@ -123,17 +122,17 @@ test('reutiliza el motivo de una autorización vencida y solo exige la petición
   try {
     await act(async () => root.render(<PendientesCierre completa filas={[fila]} solicitarRevision={solicitarRevision} />));
     expect(host.textContent).toContain(fila.revision.motivo_previo);
-    const [aclaracion, peticion] = host.querySelectorAll('form textarea');
+    const aclaracion = host.querySelector('form textarea');
+    const peticion = host.querySelector('form select');
     expect(aclaracion.required).toBe(false);
     expect(peticion.required).toBe(true);
-    const cambiar = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
     await act(async () => {
-      cambiar.call(peticion, 'Solicito un nuevo plazo para capturar.');
-      peticion.dispatchEvent(new Event('input', { bubbles: true }));
+      peticion.value = 'AUTORIZAR_CAPTURA';
+      peticion.dispatchEvent(new Event('change', { bubbles: true }));
     });
     expect(host.querySelector('button[type="submit"]').disabled).toBe(false);
     await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-    expect(solicitarRevision).toHaveBeenCalledWith(fila, { peticion: 'Solicito un nuevo plazo para capturar.', aclaracion: '' });
+    expect(solicitarRevision).toHaveBeenCalledWith(fila, { categoria: null, tramite: 'AUTORIZAR_CAPTURA', observaciones: '' });
   } finally {
     act(() => root.unmount());
   }

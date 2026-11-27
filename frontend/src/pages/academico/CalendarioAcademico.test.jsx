@@ -82,6 +82,9 @@ test('abre las fechas primero y permite filtrar y desplegar las materias de cada
     expect(host.textContent).not.toContain('Bases de Datos');
     await act(async () => boton('Calendario de fechas').click());
     expect(boton('Publicar calendario')).toBeDefined();
+    await act(async () => boton('Regularización').click());
+    expect(host.textContent).toContain('Solicitudes de regularización');
+    expect(host.textContent).not.toContain('Ordenar docentes');
   } finally {
     act(() => root.unmount());
     jest.useRealTimers();

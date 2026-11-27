@@ -4,11 +4,19 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Aviso de siete días y motivo previo en regularización — 2026-11-26
+## [Preparado] — Bandeja de Regularización y solicitudes estructuradas — 2026-11-27
+
+Las solicitudes compartían el espacio del cierre y los motivos llegaban como texto corrido. Regularización tiene una pestaña propia con contador, búsqueda, filtros, 12 resultados por página y un panel de detalle. Mis pendientes muestra tarjetas y referencias. Las solicitudes nuevas guardan motivo, petición y observaciones por separado en el historial existente. Las solicitudes anteriores conservan su texto.
+
+Validación con pruebas del frontend, pruebas de cierre y compilación de Vite. Pendiente confirmar el despliegue y revisar con cuentas de División y Docente.
+
+---
+
+## [e49a335] — Aviso de siete días y motivo previo en regularización — 2026-11-26
 
 Mis pendientes explica que pasaron los siete días de captura. Si vence una autorización y el docente solicita otra para la misma sesión, SIGA muestra la explicación que ya consta en el historial y pide solo la nueva petición, con aclaración opcional. División recibe el motivo previo junto con la petición. Si pidió información, el docente responde a lo solicitado.
 
-Validación con pruebas de interfaz, cierre y compilación. Pendiente confirmar la publicación y la vista autenticada.
+Aprobadas 213 pruebas del frontend, 12 de cierre y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios y se verificó HTTP 200 para sitio y API y los textos publicados. Pendiente la revisión autenticada.
 
 ---
 

@@ -535,16 +535,22 @@ export default function CalendarioAcademico() {
     catch (e) { setError(e.response?.data?.detail || 'No se pudo reabrir la carga.'); }
   };
 
+  const tituloSeccion = puedeAdministrar && seccion !== 'fechas'
+    ? seccion === 'regularizacion' ? 'Regularización' : 'Cierre académico'
+    : 'Calendario académico';
+  const solicitudesPorRevisar = (cierre?.cargas || []).flatMap(carga => carga.revisiones_sesion || [])
+    .filter(revision => revision.estado === 'EN_REVISION').length;
+
   return (
-    <AdminLayout seccion={puedeAdministrar && seccion === 'cierre' ? 'Cierre académico' : undefined}>
+    <AdminLayout seccion={seccion !== 'fechas' && puedeAdministrar ? tituloSeccion : undefined}>
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div><h1 className="text-2xl font-bold text-white">{puedeAdministrar && seccion === 'cierre' ? 'Cierre académico' : 'Calendario académico'}</h1></div>
+          <div><h1 className="text-2xl font-bold text-white">{tituloSeccion}</h1></div>
         </div>
         {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{typeof error === 'string' ? error : JSON.stringify(error)}</div>}
         {mensaje && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{mensaje}</div>}
         {puedeAdministrar && <nav aria-label="Calendario académico" className="flex flex-wrap gap-2">
-          {[['fechas', 'Calendario de fechas'], ['cierre', 'Cierre académico']].map(([id, etiqueta]) => (
+          {[['fechas', 'Calendario de fechas'], ['cierre', 'Cierre académico'], ['regularizacion', solicitudesPorRevisar ? `Regularización (${solicitudesPorRevisar})` : 'Regularización']].map(([id, etiqueta]) => (
             <button key={id} type="button" aria-pressed={seccion === id} onClick={() => setSeccion(id)}
               className={`rounded-xl px-4 py-2 text-sm font-semibold ${seccion === id ? 'bg-emerald-700 text-white' : 'glass text-slate-400'}`}>
               {etiqueta}
@@ -582,7 +588,6 @@ export default function CalendarioAcademico() {
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }} className="mt-3 rounded border border-white/20 px-3 py-2 text-xs">Descargar reporte final (JSON)</button>}
-            <RevisionesSesion key={`revisiones-${periodoId}`} cierre={cierre} recargar={() => cargar(periodoId)} />
             <CargasCierre key={periodoId} cierre={cierre} abrirReapertura={abrirReapertura}
               abrirAdministrativo={carga => {
                 setFormCierre({ motivo: '', folio: '' });
@@ -590,6 +595,7 @@ export default function CalendarioAcademico() {
               }} />
           </section>
         )}
+        {puedeAdministrar && seccion === 'regularizacion' && <RevisionesSesion key={periodoId} cierre={cierre} recargar={() => cargar(periodoId)} />}
         {(!puedeAdministrar || seccion === 'fechas') && (!calendario ? (
           <div className="glass rounded-2xl p-8 text-center"><h2 className="text-lg font-semibold text-white">{periodo?.clave} todavía no tiene calendario publicado</h2><p className="mt-2 text-sm text-slate-400">{cuatrimestreCerrado ? 'Cuatrimestre cerrado. No se pueden crear calendarios ni registrar clases.' : 'El calendario oficial se mostrará cuando División de Carrera lo publique.'}</p>{puedeAdministrar && !cuatrimestreCerrado && <button onClick={crearCalendario} disabled={guardando} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white">Crear calendario en borrador</button>}</div>
         ) : <>
