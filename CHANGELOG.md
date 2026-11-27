@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Ventanas extraordinarias y faltantes después de clase — 2026-11-27
+## [ad68d3c] — Ventanas extraordinarias y faltantes después de clase — 2026-11-27
 
 Las clases del día aparecían antes de terminar y División solo podía autorizar fechas una por una. El cálculo omite los bloques del día cuyo horario aún no termina. Regularización permite elegir fechas de clase, inicio, fin, motivo y varios docentes, grupos o programas, o todo el cuatrimestre vigente. La vista previa muestra el alcance y se vuelve a validar antes de aplicar. La migración cb83a70de15f agrega el inicio programado y conserva las autorizaciones existentes.
 
-Validación con pruebas del frontend y del cierre, compilación de Vite y migración reversible en SQLite. Pendiente confirmar el despliegue y revisar con sesión iniciada.
+Aprobadas 213 pruebas del frontend, 14 de cierre, compilación de Vite y migración reversible en SQLite. Publicado el 27 de noviembre de 2026. Railway confirmó ambos servicios y la aplicación de cb83a70de15f. Se verificó HTTP 200 en sitio y API y los controles en el JavaScript público. Pendiente la revisión autenticada.
 
 ---
 
