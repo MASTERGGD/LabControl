@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Ventanas extraordinarias y faltantes después de clase — 2026-11-27
+
+Las clases del día aparecían antes de terminar y División solo podía autorizar fechas una por una. El cálculo omite los bloques del día cuyo horario aún no termina. Regularización permite elegir fechas de clase, inicio, fin, motivo y varios docentes, grupos o programas, o todo el cuatrimestre vigente. La vista previa muestra el alcance y se vuelve a validar antes de aplicar. La migración cb83a70de15f agrega el inicio programado y conserva las autorizaciones existentes.
+
+Validación con pruebas del frontend y del cierre, compilación de Vite y migración reversible en SQLite. Pendiente confirmar el despliegue y revisar con sesión iniciada.
+
+---
+
 ## [44563b3] — Bandeja de Regularización y solicitudes estructuradas — 2026-11-27
 
 Las solicitudes compartían el espacio del cierre y los motivos llegaban como texto corrido. Regularización tiene una pestaña propia con contador, búsqueda, filtros, 12 resultados por página y un panel de detalle. Mis pendientes muestra tarjetas y referencias. Las solicitudes nuevas guardan motivo, petición y observaciones por separado en el historial existente. Las solicitudes anteriores conservan su texto.

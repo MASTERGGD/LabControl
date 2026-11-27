@@ -6,6 +6,7 @@ const ESTADOS = {
   EN_REVISION: 'En revisión por División',
   ESPERA_DOCENTE: 'Esperando al docente',
   AUTORIZADA: 'Captura autorizada',
+  AUTORIZACION_PROGRAMADA: 'Captura programada',
   AUTORIZACION_VENCIDA: 'Autorización vencida',
   CAPTURA_INICIADA: 'Captura iniciada',
   REGULARIZADA: 'Regularizada',
@@ -84,6 +85,7 @@ function Detalle({ caso, cerrar, cierre, recargar }) {
         <DatosSolicitud evento={evento} />
       </li>)}
     </ol>
+    {revision.autorizada_desde && <p className="mt-2 text-xs">Inicio de captura desde {new Date(revision.autorizada_desde).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
     {revision.autorizada_hasta && <p className="mt-2 text-xs">Inicio de captura hasta {new Date(revision.autorizada_hasta).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
     {cierre.estado !== 'CERRADO' && ['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZADA', 'AUTORIZACION_VENCIDA'].includes(revision.estado)
       && <Decision cargaId={carga.carga_id} revisionId={revision.id} recargar={recargar} />}

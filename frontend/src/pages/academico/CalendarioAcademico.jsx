@@ -1,3 +1,4 @@
+import VentanaExtraordinaria from './VentanaExtraordinaria';
 import RevisionesSesion from './RevisionesSesion';
 import { claveMateria, etiquetasMaterias, resumenParaDocente, sesionesEnDetalle, sesionesPorAtender } from './pendientesAcademicos';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -595,7 +596,10 @@ export default function CalendarioAcademico() {
               }} />
           </section>
         )}
-        {puedeAdministrar && seccion === 'regularizacion' && <RevisionesSesion key={periodoId} cierre={cierre} recargar={() => cargar(periodoId)} />}
+        {puedeAdministrar && seccion === 'regularizacion' && <>
+          <VentanaExtraordinaria key={`ventana-${periodoId}`} cierre={cierre} recargar={() => cargar(periodoId)} />
+          <RevisionesSesion key={periodoId} cierre={cierre} recargar={() => cargar(periodoId)} />
+        </>}
         {(!puedeAdministrar || seccion === 'fechas') && (!calendario ? (
           <div className="glass rounded-2xl p-8 text-center"><h2 className="text-lg font-semibold text-white">{periodo?.clave} todavía no tiene calendario publicado</h2><p className="mt-2 text-sm text-slate-400">{cuatrimestreCerrado ? 'Cuatrimestre cerrado. No se pueden crear calendarios ni registrar clases.' : 'El calendario oficial se mostrará cuando División de Carrera lo publique.'}</p>{puedeAdministrar && !cuatrimestreCerrado && <button onClick={crearCalendario} disabled={guardando} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white">Crear calendario en borrador</button>}</div>
         ) : <>

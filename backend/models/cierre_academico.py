@@ -66,6 +66,7 @@ class RevisionSesionVencida(Base):
     docente_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
     fecha = Column(Date, nullable=False)
     estado = Column(String(30), nullable=False)
+    autorizada_desde = Column(DateTime, nullable=True)
     autorizada_hasta = Column(DateTime, nullable=True)
     clase_id = Column(Integer, ForeignKey("clases_docentes.id", ondelete="SET NULL"), nullable=True)
     historial = Column(JSON, nullable=False)

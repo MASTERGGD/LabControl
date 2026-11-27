@@ -1,4 +1,7 @@
 import datetime
+import hashlib
+import json
+from uuid import uuid4
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -20,7 +23,7 @@ from models.tutoria import ReporteTutor
 from models.usuario import RolUsuario, Usuario
 from services.calendario_academico import PLAZO_CAPTURA_EXTEMPORANEA, estado_fecha_academica
 from services.revision_sesion import ahora_utc, registrar_evento
-from routers.docencia import _clase_existente_en_linaje, _validar_carga_actual
+from routers.docencia import _carga_linaje_ids, _clase_existente_en_linaje, _periodo_actual, _validar_carga_actual
 from services.user_permissions import puede_gestionar_materias
 
 router = APIRouter(prefix="/cierre-academico", tags=["Cierre académico"])
@@ -122,7 +125,7 @@ def _fechas_lectivas(db, periodo_id):
     return fechas
 
 
-def _resumen_carga(db, carga, fechas_lectivas=None):
+def _resumen_carga(db, carga, fechas_lectivas=None, *, ahora=None):
     clases = db.query(ClaseDocente).filter(
         ClaseDocente.carga_docente_id == carga.id,
     ).options(selectinload(ClaseDocente.asistencias)).order_by(ClaseDocente.fecha.desc()).all()
@@ -130,7 +133,12 @@ def _resumen_carga(db, carga, fechas_lectivas=None):
     abiertas = sum(1 for c in clases if c.estado in {"ABIERTA", "CORRECCION"})
     incidencias = sum(1 for c in clases if c.incidencia_requiere_seguimiento)
     reportes_pendientes = sum(1 for r in reportes if r.estado not in {"ATENDIDO", "CERRADO", "CERRADO_ADMINISTRATIVO", "CANCELADO"})
+    ahora = ahora or datetime.datetime.now(MX)
     esperadas = fechas_lectivas.get(carga.dia_semana, []) if fechas_lectivas is not None else None
+    if esperadas and carga.hora_fin:
+        hoy = ahora.date().isoformat()
+        if hoy in esperadas and ahora.time() < datetime.time.fromisoformat(carga.hora_fin):
+            esperadas = [fecha for fecha in esperadas if fecha != hoy]
     por_fecha = {clase.fecha.isoformat(): clase for clase in clases if not clase.es_reposicion}
     con_asistencia = {fecha for fecha, clase in por_fecha.items() if clase.asistencias}
     no_impartidas = {fecha: clase for fecha, clase in por_fecha.items() if clase.estado == "NO_IMPARTIDA" or clase.motivo_no_impartida}
@@ -151,7 +159,6 @@ def _resumen_carga(db, carga, fechas_lectivas=None):
             "estado_reposicion": estado, "fecha_reposicion": reposicion.fecha.isoformat() if reposicion else None,
         })
     faltantes = [fecha for fecha in esperadas or [] if fecha not in con_asistencia and fecha not in no_impartidas]
-    ahora = datetime.datetime.now(MX)
     vencidas = [
         fecha for fecha in faltantes
         if fecha not in por_fecha and ahora > datetime.datetime.fromisoformat(f"{fecha}T{carga.hora_fin}").replace(tzinfo=MX) + PLAZO_CAPTURA_EXTEMPORANEA
@@ -252,12 +259,17 @@ def _motivo_previo_revision(revision):
 
 def _ser_revision(revision):
     estado = revision.estado
-    if estado == "AUTORIZADA" and revision.autorizada_hasta < ahora_utc():
-        estado = "AUTORIZACION_VENCIDA"
+    ahora = ahora_utc()
+    if estado == "AUTORIZADA":
+        if revision.autorizada_hasta < ahora:
+            estado = "AUTORIZACION_VENCIDA"
+        elif revision.autorizada_desde and revision.autorizada_desde > ahora:
+            estado = "AUTORIZACION_PROGRAMADA"
     if estado == "CAPTURA_INICIADA" and revision.clase and revision.clase.estado in {"CERRADA", "NO_IMPARTIDA"}:
         estado = "REGULARIZADA"
     return {
         "id": revision.id, "fecha": revision.fecha.isoformat(), "estado": estado,
+        "autorizada_desde": revision.autorizada_desde.isoformat() + "Z" if revision.autorizada_desde else None,
         "autorizada_hasta": revision.autorizada_hasta.isoformat() + "Z" if revision.autorizada_hasta else None,
         "motivo_previo": _motivo_previo_revision(revision),
         "historial": revision.historial,
@@ -415,6 +427,7 @@ def solicitar_revision_sesion(carga_id: int, data: SolicitudRevisionIn, db: Sess
             motivo += f"\n\nAclaración: {data.aclaracion.strip()}"
     else:
         motivo = _motivo_revision(data.motivo)
+    revision.autorizada_desde = None
     revision.autorizada_hasta = None
     registrar_evento(revision, "EN_REVISION", current_user, motivo)
     if solicitud:
@@ -443,6 +456,7 @@ def decidir_revision_sesion(carga_id: int, revision_id: int, data: DecisionRevis
     cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=carga.periodo_id).first()
     if cierre and cierre.estado == "CERRADO":
         raise HTTPException(409, "El cuatrimestre ya está cerrado")
+    revision.autorizada_desde = None
     if data.decision == "AUTORIZADA":
         _validar_carga_actual(db, carga)
         resumen = _resumen_carga(db, carga, _fechas_lectivas(db, carga.periodo_id))
@@ -456,6 +470,102 @@ def decidir_revision_sesion(carga_id: int, revision_id: int, data: DecisionRevis
     registrar_evento(revision, data.decision, current_user, _motivo_revision(data.motivo))
     db.commit()
     return _ser_revision(revision)
+
+
+class VentanaExtraordinariaIn(BaseModel):
+    periodo_id: int
+    fecha_desde: datetime.date
+    fecha_hasta: datetime.date
+    abre: datetime.datetime
+    cierra: datetime.datetime
+    alcance: str
+    valores: list[str] = Field(default_factory=list)
+    motivo: str = Field(min_length=5, max_length=2000)
+    vista_previa: Optional[str] = Field(None, max_length=64)
+
+
+def _ventana_utc(valor):
+    return (valor if valor.tzinfo else valor.replace(tzinfo=MX)).astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+
+@router.post("/ventanas-extraordinarias")
+def ventana_extraordinaria(data: VentanaExtraordinariaIn, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    if not puede_gestionar_materias(db, current_user):
+        raise HTTPException(403, "Solo División puede abrir una ventana extraordinaria")
+    periodo = db.query(PeriodoEscolar).filter_by(id=data.periodo_id).with_for_update().first()
+    actual = _periodo_actual(db)
+    cierre = db.query(CierreAcademicoPeriodo).filter_by(periodo_id=data.periodo_id).first()
+    if not periodo or not actual or actual.id != periodo.id or (cierre and cierre.estado == "CERRADO"):
+        raise HTTPException(409, "La ventana debe corresponder al cuatrimestre vigente y abierto")
+    abre, cierra = _ventana_utc(data.abre), _ventana_utc(data.cierra)
+    ahora = ahora_utc()
+    if cierra <= max(abre, ahora):
+        raise HTTPException(422, "El fin de la ventana debe ser posterior a su inicio y a la hora actual")
+    if not data.fecha_desde <= data.fecha_hasta <= _hoy():
+        raise HTTPException(422, "Indica un rango de fechas de clase válido, hasta hoy")
+    if data.alcance not in {"TODOS", "DOCENTE", "GRUPO", "PROGRAMA"} or (data.alcance != "TODOS" and not data.valores):
+        raise HTTPException(422, "Selecciona el alcance y su destinatario")
+    seleccion = set(data.valores)
+    motivo = _motivo_revision(data.motivo)
+    cargas = _cargas_periodo(db, periodo.id).filter(
+        CargaDocente.estado == "ACTIVO", CargaDocente.grupo_academico_id.isnot(None),
+    ).order_by(CargaDocente.id).all()
+    resueltas = {r.carga_docente_id for r in db.query(ConfirmacionCargaDocente).filter(
+        ConfirmacionCargaDocente.cierre_id == cierre.id, ConfirmacionCargaDocente.estado.in_(RESUELTAS),
+    )} if cierre else set()
+    revisiones = {(r.carga_id, r.fecha): r for r in db.query(RevisionSesionVencida).filter(
+        RevisionSesionVencida.carga_id.in_([carga.id for carga in cargas]),
+        RevisionSesionVencida.fecha.between(data.fecha_desde, data.fecha_hasta),
+    )}
+    fechas = _fechas_lectivas(db, periodo.id)
+    candidatas = []
+    incluidas = set()
+    for carga in cargas:
+        if carga.id in resueltas or not carga.docente.activo:
+            continue
+        destinatarios = {"DOCENTE": str(carga.docente_id), "GRUPO": str(carga.grupo_academico_id), "PROGRAMA": carga.grupo_academico.carrera}
+        if data.alcance != "TODOS" and destinatarios[data.alcance] not in seleccion:
+            continue
+        pendientes = [
+            datetime.date.fromisoformat(texto) for texto in _resumen_carga(db, carga, fechas)["fechas_captura_vencida"]
+            if data.fecha_desde.isoformat() <= texto <= data.fecha_hasta.isoformat()
+        ]
+        if not pendientes:
+            continue
+        registradas = {fila.fecha for fila in db.query(ClaseDocente.fecha).filter(
+            ClaseDocente.carga_docente_id.in_(_carga_linaje_ids(db, carga)), ClaseDocente.fecha.in_(pendientes),
+        )}
+        for fecha in pendientes:
+            clave_linaje = (carga.carga_linaje_id or carga.id, fecha)
+            if fecha in registradas or clave_linaje in incluidas:
+                continue
+            revision = revisiones.get((carga.id, fecha))
+            if revision and (revision.docente_id != carga.docente_id or _ser_revision(revision)["estado"] not in {"EN_REVISION", "AUTORIZACION_VENCIDA"}):
+                continue
+            candidatas.append((carga, fecha, revision))
+            incluidas.add(clave_linaje)
+    huella = hashlib.sha256(json.dumps({
+        "periodo": periodo.id, "abre": abre.isoformat(), "cierra": cierra.isoformat(), "motivo": motivo,
+        "alcance": data.alcance, "valores": sorted(seleccion),
+        "fecha_desde": data.fecha_desde.isoformat(), "fecha_hasta": data.fecha_hasta.isoformat(),
+        "sesiones": [(c.id, c.docente_id, f.isoformat()) for c, f, _ in candidatas],
+    }, sort_keys=True).encode()).hexdigest()
+    resultado = {"vista_previa": huella, "sesiones": len(candidatas), "docentes": len({c.docente_id for c, _, _ in candidatas})}
+    if data.vista_previa is None:
+        return resultado
+    if not candidatas or data.vista_previa != huella:
+        raise HTTPException(409, "El alcance cambió. Genera de nuevo la vista previa")
+    ventana_id = str(uuid4())
+    for carga, fecha, revision in candidatas:
+        if not revision:
+            revision = RevisionSesionVencida(carga_id=carga.id, docente_id=carga.docente_id, fecha=fecha)
+            db.add(revision)
+        revision.autorizada_desde = abre
+        revision.autorizada_hasta = cierra
+        registrar_evento(revision, "AUTORIZADA", current_user, motivo)
+        revision.historial = [*revision.historial[:-1], {**revision.historial[-1], "ventana_id": ventana_id}]
+    db.commit()
+    return {**resultado, "ventana_id": ventana_id}
 
 
 @router.put("")

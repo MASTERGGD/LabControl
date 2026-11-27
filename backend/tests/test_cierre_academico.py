@@ -476,3 +476,73 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
     assert "2026-08-11" not in reporte["cargas"][0]["resumen"]["fechas_sin_registro"]
     assert reporte["cargas"][0]["revisiones_sesion"][1]["estado"] == "NO_CORRESPONDIA"
     assert db.query(ClaseDocente).count() == 1
+
+def test_faltantes_de_hoy_aparecen_despues_del_horario(db):
+    from routers import cierre_academico
+
+    _, _, _, carga = _escenario(db)
+    fecha = datetime.date(2026, 8, 4)
+    fechas = {fecha.weekday(): [fecha.isoformat()]}
+    antes = datetime.datetime.combine(fecha, datetime.time(8, 30), tzinfo=cierre_academico.MX)
+    despues = datetime.datetime.combine(fecha, datetime.time(9, 1), tzinfo=cierre_academico.MX)
+    assert cierre_academico._resumen_carga(db, carga, fechas, ahora=antes)["fechas_sin_registro"] == []
+    assert cierre_academico._resumen_carga(db, carga, fechas, ahora=despues)["fechas_sin_registro"] == [fecha.isoformat()]
+
+
+def test_ventana_extraordinaria_previsualiza_y_aplica_solo_fechas_del_alcance(client, db, monkeypatch):
+    from models.calendario_academico import CalendarioAcademico, EventoCalendarioAcademico
+    from models.cierre_academico import RevisionSesionVencida
+    from routers import cierre_academico, docencia
+    from services import revision_sesion
+
+    admin, docente, periodo, carga = _escenario(db)
+    monkeypatch.setattr(cierre_academico, "_hoy", lambda: datetime.date(2026, 8, 25))
+    monkeypatch.setattr(docencia, "_ahora_mx", lambda: datetime.datetime(2026, 8, 25, 12, tzinfo=cierre_academico.MX))
+    reloj = [datetime.datetime(2026, 8, 25, 18)]
+    monkeypatch.setattr(cierre_academico, "ahora_utc", lambda: reloj[0])
+    monkeypatch.setattr(revision_sesion, "ahora_utc", lambda: reloj[0])
+    calendario = CalendarioAcademico(periodo_id=periodo.id, estado="PUBLICADO", creado_por_id=admin.id)
+    db.add(calendario)
+    db.flush()
+    for tipo, fecha in [
+        ("INICIO_CUATRIMESTRE", datetime.date(2026, 8, 1)),
+        ("FIN_ACTIVIDADES_ACADEMICAS", datetime.date(2026, 8, 31)),
+    ]:
+        db.add(EventoCalendarioAcademico(
+            calendario_id=calendario.id, tipo=tipo, titulo=tipo, fecha_inicio=fecha, fecha_fin=fecha,
+            creado_por_id=admin.id, requiere_asistencia=True,
+        ))
+    db.commit()
+    admin_h = auth_headers(get_token(client, admin.email, "Admin123!"))
+    docente_h = auth_headers(get_token(client, docente.email, "Docente123!"))
+    url = "/cierre-academico/ventanas-extraordinarias"
+    datos = {
+        "periodo_id": periodo.id, "fecha_desde": "2026-08-04", "fecha_hasta": "2026-08-04",
+        "abre": "2026-08-25T13:00", "cierra": "2026-08-25T15:00",
+        "alcance": "DOCENTE", "valores": [str(docente.id)], "motivo": "Regularizacion por incidencia de captura",
+    }
+    assert client.post(url, headers=docente_h, json=datos).status_code == 403
+    vista = client.post(url, headers=admin_h, json=datos)
+    assert vista.status_code == 200, vista.text
+    assert vista.json()["sesiones"] == 1
+    assert db.query(RevisionSesionVencida).count() == 0
+    datos["vista_previa"] = vista.json()["vista_previa"]
+    assert client.post(url, headers=admin_h, json={**datos, "motivo": "Se modifico el motivo"}).status_code == 409
+    aplicada = client.post(url, headers=admin_h, json=datos)
+    assert aplicada.status_code == 200, aplicada.text
+    caso = db.query(RevisionSesionVencida).one()
+    assert caso.historial[-1]["ventana_id"] == aplicada.json()["ventana_id"]
+    ruta = "/docencia/capturas-extemporaneas/disponibles"
+
+    def autorizadas():
+        return [fila["fecha"] for fila in client.get(ruta, headers=docente_h).json() if fila.get("autorizada")]
+
+    assert autorizadas() == []
+    reloj[0] = datetime.datetime(2026, 8, 25, 20)
+    assert autorizadas() == ["2026-08-04"]
+    reloj[0] = datetime.datetime(2026, 8, 25, 22)
+    assert autorizadas() == []
+    captura = f"/docencia/horario/{carga.id}/captura-extemporanea"
+    assert client.post(captura, headers=docente_h, json={
+        "fecha": "2026-08-04", "motivo": "Clase impartida",
+    }).status_code == 409

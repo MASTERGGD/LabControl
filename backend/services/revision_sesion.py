@@ -1,5 +1,7 @@
 import datetime
 
+from sqlalchemy import or_
+
 from models.cierre_academico import RevisionSesionVencida
 
 
@@ -12,14 +14,17 @@ def registrar_evento(revision, estado, usuario, motivo):
     revision.historial = [*(revision.historial or []), {
         "estado": estado, "usuario_id": usuario.id, "autor": usuario.nombre,
         "motivo": motivo, "fecha": ahora_utc().isoformat() + "Z",
+        "autorizada_desde": revision.autorizada_desde.isoformat() + "Z" if revision.autorizada_desde else None,
         "autorizada_hasta": revision.autorizada_hasta.isoformat() + "Z" if revision.autorizada_hasta else None,
     }]
 
 
 def autorizaciones_vigentes(db):
+    ahora = ahora_utc()
     return db.query(RevisionSesionVencida).filter(
         RevisionSesionVencida.estado == "AUTORIZADA",
-        RevisionSesionVencida.autorizada_hasta >= ahora_utc(),
+        RevisionSesionVencida.autorizada_hasta >= ahora,
+        or_(RevisionSesionVencida.autorizada_desde.is_(None), RevisionSesionVencida.autorizada_desde <= ahora),
         RevisionSesionVencida.clase_id.is_(None),
     )
 

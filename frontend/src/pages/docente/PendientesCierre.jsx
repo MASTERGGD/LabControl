@@ -23,7 +23,7 @@ export function reunirPendientesCierre(cargas, capturas) {
       filas.set(id, {
         ...base, id, fecha, captura, sesion: sesiones.get(fecha), vencida: vencidas.has(fecha),
         estado: captura ? 'Sin registro' : bloqueada ? 'Carga resuelta · sin registro'
-          : sesiones.has(fecha) ? 'Registro sin asistencia' : vencidas.has(fecha) ? 'Pasaron los 7 días para capturar esta sesión' : 'Captura no disponible',
+          : sesiones.has(fecha) ? 'Registro sin asistencia' : vencidas.has(fecha) ? 'Pasaron los 7 días para capturar esta sesión' : 'Captura no habilitada · revisa la carga y el calendario',
       });
     }
     for (const sesion of carga.resumen.sesiones || []) {
@@ -51,6 +51,7 @@ const ESTADOS_REVISION = {
   EN_REVISION: 'En revisión por División',
   ESPERA_DOCENTE: 'División solicitó información',
   AUTORIZADA: 'Captura autorizada',
+  AUTORIZACION_PROGRAMADA: 'Captura programada',
   AUTORIZACION_VENCIDA: 'Autorización vencida',
   CAPTURA_INICIADA: 'Captura iniciada',
   REGULARIZADA: 'Regularizada',
@@ -165,7 +166,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
   const coincidencias = ordenadas.filter(item => {
     if (estado === 'accionables' && !puedeAtender(item)) return false;
     if (estado === 'vencidas' && ((!item.vencida && item.revision?.estado !== 'AUTORIZACION_VENCIDA') || item.captura || resuelta(item))) return false;
-    if (estado === 'en-revision' && !['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZADA', 'AUTORIZACION_VENCIDA'].includes(item.revision?.estado)) return false;
+    if (estado === 'en-revision' && !['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZADA', 'AUTORIZACION_PROGRAMADA', 'AUTORIZACION_VENCIDA'].includes(item.revision?.estado)) return false;
     if (estado === 'resueltas' && !resuelta(item)) return false;
     if (estado === 'todas' && resuelta(item)) return false;
     return `${item.materia} ${item.grupo || ''} ${item.programa || ''}`.toLocaleLowerCase('es-MX').includes(materia.trim().toLocaleLowerCase('es-MX'));
@@ -208,6 +209,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
           <p className="text-xs text-slate-500">{new Date(`${item.fecha}T12:00:00`).toLocaleDateString('es-MX', { dateStyle: 'long' })}
             {item.hora_inicio && ` · ${item.hora_inicio}–${item.hora_fin}`}</p>
           <p className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${item.revision?.estado === 'EN_REVISION' ? 'bg-blue-500/10 text-blue-600' : 'bg-amber-500/10 text-amber-600'}`}>{item.estado}</p>
+          {item.revision?.estado === 'AUTORIZACION_PROGRAMADA' && <p className="text-xs">Disponible desde {new Date(item.revision.autorizada_desde).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
           {item.captura?.autorizada && <p className="text-xs">Disponible hasta {new Date(item.captura.vence_en).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}</p>}
         </div>
         {item.captura
