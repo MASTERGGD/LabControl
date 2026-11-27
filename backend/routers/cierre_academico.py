@@ -237,6 +237,16 @@ def _sesiones_abiertas(db, periodo_id, reservaciones):
     } for tipo, filas in (("Sesión", sesiones), ("Práctica", practicas)) for item, laboratorio in filas]
 
 
+def _motivo_previo_revision(revision):
+    for evento in revision.historial or []:
+        if evento["estado"] == "EN_REVISION" and evento["usuario_id"] == revision.docente_id:
+            motivo = evento["motivo"].strip()
+            if motivo.startswith("Qué ocurrió: "):
+                return motivo.removeprefix("Qué ocurrió: ").split("\n\nQué solicito a División: ", 1)[0]
+            return motivo
+    return None
+
+
 def _ser_revision(revision):
     estado = revision.estado
     if estado == "AUTORIZADA" and revision.autorizada_hasta < ahora_utc():
@@ -246,6 +256,7 @@ def _ser_revision(revision):
     return {
         "id": revision.id, "fecha": revision.fecha.isoformat(), "estado": estado,
         "autorizada_hasta": revision.autorizada_hasta.isoformat() + "Z" if revision.autorizada_hasta else None,
+        "motivo_previo": _motivo_previo_revision(revision),
         "historial": revision.historial,
     }
 
@@ -322,7 +333,9 @@ def obtener(periodo_id: int, solo_propias: bool = False, db: Session = Depends(g
 
 class SolicitudRevisionIn(BaseModel):
     fecha: datetime.date
-    motivo: str = Field(min_length=5, max_length=2000)
+    motivo: Optional[str] = Field(None, min_length=5, max_length=2000)
+    peticion: Optional[str] = Field(None, min_length=5, max_length=900)
+    aclaracion: Optional[str] = Field(None, max_length=900)
 
 
 class DecisionRevisionIn(BaseModel):
@@ -332,7 +345,7 @@ class DecisionRevisionIn(BaseModel):
 
 
 def _motivo_revision(motivo):
-    motivo = motivo.strip()
+    motivo = (motivo or "").strip()
     if len(motivo) < 5:
         raise HTTPException(422, "Indica un motivo de al menos cinco caracteres")
     return motivo
@@ -354,14 +367,25 @@ def solicitar_revision_sesion(carga_id: int, data: SolicitudRevisionIn, db: Sess
     if fecha not in resumen["fechas_captura_vencida"] or _clase_existente_en_linaje(db, carga, data.fecha):
         raise HTTPException(409, "La fecha debe corresponder a una sesión vencida sin registro")
     revision = db.query(RevisionSesionVencida).filter_by(carga_id=carga.id, fecha=data.fecha).first()
+    estado_previo = _ser_revision(revision)["estado"] if revision else None
     if revision:
-        if revision.docente_id != current_user.id or _ser_revision(revision)["estado"] not in {"ESPERA_DOCENTE", "AUTORIZACION_VENCIDA"}:
+        if revision.docente_id != current_user.id or estado_previo not in {"ESPERA_DOCENTE", "AUTORIZACION_VENCIDA"}:
             raise HTTPException(409, "Esta sesión ya tiene una revisión registrada")
     else:
         revision = RevisionSesionVencida(carga_id=carga.id, docente_id=current_user.id, fecha=data.fecha)
         db.add(revision)
+    if data.peticion is not None:
+        hechos = _motivo_previo_revision(revision) if estado_previo == "AUTORIZACION_VENCIDA" else None
+        if not hechos or data.motivo is not None:
+            raise HTTPException(422, "La reutilización requiere una explicación previa de esta sesión")
+        peticion = _motivo_revision(data.peticion)
+        motivo = f"Motivo registrado: {hechos}\n\nQué solicito a División: {peticion}"
+        if data.aclaracion and data.aclaracion.strip():
+            motivo += f"\n\nAclaración: {data.aclaracion.strip()}"
+    else:
+        motivo = _motivo_revision(data.motivo)
     revision.autorizada_hasta = None
-    registrar_evento(revision, "EN_REVISION", current_user, _motivo_revision(data.motivo))
+    registrar_evento(revision, "EN_REVISION", current_user, motivo)
     db.commit()
     return _ser_revision(revision)
 

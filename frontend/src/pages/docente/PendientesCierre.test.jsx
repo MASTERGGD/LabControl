@@ -26,7 +26,7 @@ test('ordena sesiones, evita duplicar clases abiertas y abre el flujo correspond
       filtro.value = 'todas';
       filtro.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    const vencida = [...host.querySelectorAll('li')].find(fila => fila.textContent.includes('Plazo de captura vencido'));
+    const vencida = [...host.querySelectorAll('li')].find(fila => fila.textContent.includes('Pasaron los 7 días para capturar esta sesión'));
     expect(vencida.querySelector('summary').textContent).toBe('Ver cómo regularizar');
     expect(vencida.textContent).not.toContain('Resolver sesión');
     const continuar = [...host.querySelectorAll('button')].find(boton => boton.textContent === 'Continuar clase');
@@ -106,6 +106,34 @@ test('abre Mis pendientes para una sola sesión y envía una solicitud con hecho
     await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(solicitarRevision).toHaveBeenCalledWith(fila,
       'Qué ocurrió: La clase se impartió y conservo la lista.\n\nQué solicito a División: Solicito autorización para capturar asistencia.');
+  } finally {
+    act(() => root.unmount());
+  }
+});
+
+test('reutiliza el motivo de una autorización vencida y solo exige la petición', async () => {
+  const fila = {
+    id: '7/2026-09-14', cargaId: 7, materia: 'Sistemas de Optimización', fecha: '2026-09-14',
+    revision: { estado: 'AUTORIZACION_VENCIDA', motivo_previo: 'La clase se impartió y conservo la lista.' },
+  };
+  const solicitarRevision = jest.fn().mockResolvedValue(undefined);
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<PendientesCierre completa filas={[fila]} solicitarRevision={solicitarRevision} />));
+    expect(host.textContent).toContain(fila.revision.motivo_previo);
+    const [aclaracion, peticion] = host.querySelectorAll('form textarea');
+    expect(aclaracion.required).toBe(false);
+    expect(peticion.required).toBe(true);
+    const cambiar = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    await act(async () => {
+      cambiar.call(peticion, 'Solicito un nuevo plazo para capturar.');
+      peticion.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(host.querySelector('button[type="submit"]').disabled).toBe(false);
+    await act(async () => host.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(solicitarRevision).toHaveBeenCalledWith(fila, { peticion: 'Solicito un nuevo plazo para capturar.', aclaracion: '' });
   } finally {
     act(() => root.unmount());
   }

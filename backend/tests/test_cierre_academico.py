@@ -435,6 +435,18 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
     autorizar = {"decision": "AUTORIZADA", "motivo": "Lista de asistencia verificada", "horas": 48}
     aprobada = client.post(decision, headers=admin_h, json=autorizar)
     assert aprobada.status_code == 200, aprobada.text
+    from models.cierre_academico import RevisionSesionVencida
+
+    revision_db = db.get(RevisionSesionVencida, revision_id)
+    revision_db.autorizada_hasta = datetime.datetime(2000, 1, 1)
+    db.commit()
+    renovada = client.post(solicitud, headers=docente_h, json={
+        "fecha": fecha, "peticion": "Solicito una nueva ventana de captura",
+    })
+    assert renovada.status_code == 200, renovada.text
+    assert renovada.json()["motivo_previo"] == datos["motivo"]
+    assert datos["motivo"] in renovada.json()["historial"][-1]["motivo"]
+    assert client.post(decision, headers=admin_h, json=autorizar).status_code == 200
     opciones = client.get("/docencia/capturas-extemporaneas/disponibles", headers=docente_h).json()
     assert any(item["fecha"] == fecha and item.get("autorizada") for item in opciones)
     assert client.post(captura, headers=docente_h, json={**datos, "fecha": "2026-08-11"}).status_code == 409
@@ -445,7 +457,7 @@ def test_revision_sesion_vencida_autoriza_una_fecha_y_conserva_auditoria(client,
     revision = reporte["cargas"][0]["revisiones_sesion"][0]
     assert revision["estado"] == "CAPTURA_INICIADA"
     assert [evento["estado"] for evento in revision["historial"]] == [
-        "EN_REVISION", "ESPERA_DOCENTE", "EN_REVISION", "AUTORIZADA", "CAPTURA_INICIADA",
+        "EN_REVISION", "ESPERA_DOCENTE", "EN_REVISION", "AUTORIZADA", "EN_REVISION", "AUTORIZADA", "CAPTURA_INICIADA",
     ]
 
     otra = client.post(solicitud, headers=docente_h, json={**datos, "fecha": "2026-08-11"})

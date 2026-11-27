@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Aviso de siete días y motivo previo en regularización — 2026-11-26
+
+Mis pendientes explica que pasaron los siete días de captura. Si vence una autorización y el docente solicita otra para la misma sesión, SIGA muestra la explicación que ya consta en el historial y pide solo la nueva petición, con aclaración opcional. División recibe el motivo previo junto con la petición. Si pidió información, el docente responde a lo solicitado.
+
+Validación con pruebas de interfaz, cierre y compilación. Pendiente confirmar la publicación y la vista autenticada.
+
+---
+
 ## [eb173c5] — Acceso compacto y solicitud guiada en Mis pendientes — 2026-11-26
 
 El formulario de revisión vencida se abría sobre la agenda docente. Mi Horario ahora conserva el resumen y el acceso a la vista dedicada, incluso con una sola sesión. La solicitud distingue lo ocurrido de lo que se pide a División y conserva ambos textos en el historial. El docente puede consultar las respuestas desde el detalle sin desplazar la agenda.

@@ -22,7 +22,7 @@ export function reunirPendientesCierre(cargas, capturas) {
       filas.set(id, {
         ...base, id, fecha, captura, sesion: sesiones.get(fecha), vencida: vencidas.has(fecha),
         estado: captura ? 'Sin registro' : bloqueada ? 'Carga resuelta · sin registro'
-          : sesiones.has(fecha) ? 'Registro sin asistencia' : vencidas.has(fecha) ? 'Plazo de captura vencido' : 'Captura no disponible',
+          : sesiones.has(fecha) ? 'Registro sin asistencia' : vencidas.has(fecha) ? 'Pasaron los 7 días para capturar esta sesión' : 'Captura no disponible',
       });
     }
     for (const sesion of carga.resumen.sesiones || []) {
@@ -67,7 +67,9 @@ function RegularizarSesion({ item, solicitarRevision }) {
   const [motivo, setMotivo] = useState('');
   const [peticion, setPeticion] = useState('');
   const esRespuesta = item.revision?.estado === 'ESPERA_DOCENTE';
-  const puedeEnviar = motivo.trim().length >= 5 && (esRespuesta || peticion.trim().length >= 5);
+  const motivoPrevio = item.revision?.motivo_previo;
+  const reutilizaMotivo = item.revision?.estado === 'AUTORIZACION_VENCIDA' && Boolean(motivoPrevio);
+  const puedeEnviar = (reutilizaMotivo || motivo.trim().length >= 5) && (esRespuesta || peticion.trim().length >= 5);
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
   const enviar = async evento => {
@@ -77,7 +79,7 @@ function RegularizarSesion({ item, solicitarRevision }) {
     setError('');
     try {
       const texto = esRespuesta ? motivo.trim() : `Qué ocurrió: ${motivo.trim()}\n\nQué solicito a División: ${peticion.trim()}`;
-      await solicitarRevision(item, texto);
+      await solicitarRevision(item, reutilizaMotivo ? { peticion: peticion.trim(), aclaracion: motivo.trim() } : texto);
       setMotivo('');
       setPeticion('');
     } catch (e) {
@@ -108,10 +110,14 @@ function RegularizarSesion({ item, solicitarRevision }) {
     <div className="space-y-2 px-3 pb-3 text-xs">
       {solicitarRevision ? <form onSubmit={enviar} className="space-y-2">
         {!esRespuesta && <p className="text-slate-500">SIGA incluye la materia, el grupo, la fecha y el horario de esta sesión.</p>}
-        <label className="block">{esRespuesta ? 'Respuesta para División' : '¿Qué ocurrió?'}
-          <textarea required minLength={5} maxLength={esRespuesta ? 1800 : 900} value={motivo} onChange={e => setMotivo(e.target.value)}
+        {motivoPrevio && <div className="rounded-lg border p-2">
+          <p className="font-semibold">Motivo ya registrado</p>
+          <p className="whitespace-pre-line">{motivoPrevio}</p>
+        </div>}
+        <label className="block">{esRespuesta ? 'Respuesta para División' : reutilizaMotivo ? 'Aclaración (opcional)' : '¿Qué ocurrió?'}
+          <textarea required={!reutilizaMotivo} minLength={reutilizaMotivo ? undefined : 5} maxLength={esRespuesta ? 1800 : 900} value={motivo} onChange={e => setMotivo(e.target.value)}
             className="input-dark mt-1 w-full" rows={3}
-            placeholder={esRespuesta ? undefined : 'Indica si la clase se impartió, si cambió el horario y qué evidencia tienes.'} />
+            placeholder={esRespuesta || reutilizaMotivo ? undefined : 'Indica si la clase se impartió, si cambió el horario y qué evidencia tienes.'} />
         </label>
         {!esRespuesta && <label className="block">¿Qué solicitas a División?
           <textarea className="input-dark mt-1 w-full" rows={2} required minLength={5} maxLength={900}
@@ -120,7 +126,7 @@ function RegularizarSesion({ item, solicitarRevision }) {
         </label>}
         {error && <p role="alert" className="text-red-600">{typeof error === 'string' ? error : 'Revisa la información de la solicitud.'}</p>}
         <button type="submit" disabled={enviando || !puedeEnviar} className="rounded bg-emerald-700 px-3 py-1.5 font-semibold text-white disabled:opacity-50">Enviar a División</button>
-      </form> : <p>El plazo de captura terminó. Comparte los datos de esta sesión con División de Carrera para que revise cómo procede.</p>}
+      </form> : <p>Pasaron los 7 días para capturar esta sesión. Comparte los datos de esta sesión con División de Carrera para que revise cómo procede.</p>}
       <button type="button" onClick={copiar} className="rounded border px-2 py-1 font-semibold">Copiar datos de la sesión</button>
       {copia === 'copiado' && <p role="status">Datos copiados.</p>}
       {copia === 'manual' && <textarea aria-label="Datos de la sesión para copiar" className="input-dark w-full" rows={4}
@@ -140,7 +146,7 @@ export default function PendientesCierre({ filas, seleccionarPendiente, abrirCla
   const estado = filtro || (atendibles.length ? 'accionables' : pendientes.length ? 'todas' : 'resueltas');
   const coincidencias = ordenadas.filter(item => {
     if (estado === 'accionables' && !puedeAtender(item)) return false;
-    if (estado === 'vencidas' && (!item.vencida || item.captura || resuelta(item))) return false;
+    if (estado === 'vencidas' && ((!item.vencida && item.revision?.estado !== 'AUTORIZACION_VENCIDA') || item.captura || resuelta(item))) return false;
     if (estado === 'en-revision' && !['EN_REVISION', 'ESPERA_DOCENTE', 'AUTORIZADA', 'AUTORIZACION_VENCIDA'].includes(item.revision?.estado)) return false;
     if (estado === 'resueltas' && !resuelta(item)) return false;
     if (estado === 'todas' && resuelta(item)) return false;

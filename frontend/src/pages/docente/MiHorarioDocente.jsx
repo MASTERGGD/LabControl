@@ -693,8 +693,9 @@ export default function MiHorarioDocente() {
     ? reunirPendientesCierre(cierre.estado === 'CERRADO' ? cierre.cargas.filter(c => c.estado === 'REABIERTA' || (vistaPendientes && c.revisiones_sesion?.length)) : cierre.cargas, extemporaneas)
     : [], [cierre, extemporaneas, consultarPendientes, vistaPendientes]);
   const mostrarPendientesPeriodo = !mostrarCierre && pendientesCierre.length > 0;
-  const enviarRevisionSesion = async (item, motivo) => {
-    await api.post(`/cierre-academico/cargas/${item.cargaId}/revision-sesion`, { fecha: item.fecha, motivo });
+  const enviarRevisionSesion = async (item, solicitud) => {
+    const datos = typeof solicitud === 'string' ? { motivo: solicitud } : solicitud;
+    await api.post(`/cierre-academico/cargas/${item.cargaId}/revision-sesion`, { fecha: item.fecha, ...datos });
     await cargar(periodoId);
   };
   const solicitarRevision = esPeriodoActual && cierre?.estado !== 'CERRADO' ? enviarRevisionSesion : undefined;
