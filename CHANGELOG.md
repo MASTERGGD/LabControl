@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Contraste y botones de Mis pendientes — 2026-11-27
+## [09f6c92] — Contraste y botones de Mis pendientes — 2026-11-27
 
 El acceso al historial tenía poco peso visual y los botones de regreso tenían menor altura. Los tres controles comparten forma de píldora, altura mínima de 44 px y foco visible. El acceso al historial usa el color principal de texto del tema y un verde más marcado al pasar el cursor.
 
-Aprobadas las 5 pruebas de Mis pendientes y compilación de Vite. Pendiente verificar el despliegue y la vista con sesión docente.
+Aprobadas las 5 pruebas de Mis pendientes y compilación de Vite. Publicado el 27 de noviembre de 2026. Railway confirmó ambos servicios y se verificaron los estilos en el JavaScript público. Pendiente la revisión visual con sesión docente.
 
 ---
 
