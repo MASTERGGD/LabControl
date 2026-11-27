@@ -58,7 +58,7 @@ function Caja({ area }) {
   const [vista, setVista] = useState('pago');
   const [conceptos, setConceptos] = useState([]);
   const [edicion, setEdicion] = useState(conceptoNuevo);
-  const [matricula, setMatricula] = useState('');
+  const [busqueda, setBusqueda] = useState('');
   const [alumnos, setAlumnos] = useState([]);
   const [alumnoId, setAlumnoId] = useState('');
   const [conceptoId, setConceptoId] = useState('');
@@ -105,10 +105,13 @@ function Caja({ area }) {
     ejecutar(async () => {
       setAlumnos([]);
       setAlumnoId('');
-      const { data } = await api.get(base + '/alumnos', { params: { matricula: matricula.trim() } });
+      const termino = busqueda.trim();
+      const { data } = await api.get(base + '/alumnos', { params: { q: termino } });
       setAlumnos(data);
-      if (data.length === 1) setAlumnoId(String(data[0].id));
-      if (!data.length) setError('No se encontró esa matrícula.');
+      if (data.length === 1 && data[0].matricula.toLowerCase() === termino.toLowerCase()) {
+        setAlumnoId(String(data[0].id));
+      }
+      if (!data.length) setError('No se encontraron alumnos con esa búsqueda.');
     });
   };
 
@@ -130,7 +133,7 @@ function Caja({ area }) {
         setConceptoId('');
         setAlumnos([]);
         setAlumnoId('');
-        setMatricula('');
+        setBusqueda('');
       } catch (e) {
         if ([400, 403, 404, 409, 422].includes(e.response?.status)) {
           setOperacion(null);
@@ -175,17 +178,17 @@ function Caja({ area }) {
     {error && <p role="alert" className="rounded-lg border border-red-500/30 p-3">{error}</p>}
     {vista === 'pago' && <section className={panel}>
       <form onSubmit={buscar} className="flex flex-wrap items-end gap-3">
-        <label className="grow">Matrícula
-          <input className="input-dark mt-1" maxLength={30} required disabled={ocupado || !!operacion} value={matricula}
-            onChange={e => { setMatricula(e.target.value); setAlumnoId(''); setAlumnos([]); }} />
+        <label className="grow">Matrícula, nombre o apellidos
+          <input className="input-dark mt-1" maxLength={120} required disabled={ocupado || !!operacion} value={busqueda}
+            onChange={e => { setBusqueda(e.target.value); setAlumnoId(''); setAlumnos([]); }} />
         </label>
-        <button className={boton} disabled={ocupado || !!operacion || !matricula.trim()}>Buscar alumno</button>
+        <button className={boton} disabled={ocupado || !!operacion || !busqueda.trim()}>Buscar alumno</button>
       </form>
       <form onSubmit={registrar} className="space-y-3">
         <fieldset disabled={ocupado || !!operacion} className="grid gap-3 sm:grid-cols-2">
-          <label>Alumno y cuatrimestre<select className="input-dark mt-1" value={alumnoId} onChange={e => setAlumnoId(e.target.value)} required>
+          <label>Alumno y periodo<select className="input-dark mt-1" value={alumnoId} onChange={e => setAlumnoId(e.target.value)} required>
             <option value="">Selecciona un alumno</option>
-            {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre} · {a.periodo}</option>)}
+            {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre} · {a.matricula} · {a.periodo}</option>)}
           </select></label>
           <label>Concepto<select className="input-dark mt-1" value={conceptoId} onChange={e => setConceptoId(e.target.value)} required>
             <option value="">Selecciona un concepto</option>

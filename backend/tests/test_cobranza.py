@@ -49,6 +49,10 @@ def test_caja_valida_permiso_importe_y_reintento(db):
         assert client.post(ruta + "/conceptos", json=tarifa).status_code == 403
         busqueda = client.get(ruta + "/alumnos", params={"matricula": "test001"})
         assert busqueda.json()[0]["id"] == alumno.id
+        for termino in ("alum", "PRUEBA alumno", "caja", "TEST001"):
+            coincidencias = client.get(ruta + "/alumnos", params={"q": termino})
+            assert [fila["id"] for fila in coincidencias.json()] == [alumno.id]
+        assert client.get(ruta + "/alumnos", params={"q": "%%"}).json() == []
         pago = {"operacion": str(uuid4()), "alumno_id": alumno.id, "concepto_id": concepto_id,
                 "medio": "EFECTIVO", "importe_centavos": 18000, "recibido_centavos": 20000}
         assert client.post(ruta + "/pagos", json={**pago, "recibido_centavos": 10000}).status_code == 422

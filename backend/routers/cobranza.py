@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -85,12 +85,26 @@ def areas(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_
 
 
 @router.get("/{dep_id}/alumnos")
-def buscar_alumnos(dep_id: int, matricula: str = Query(min_length=1, max_length=30),
+def buscar_alumnos(dep_id: int, q: str = Query(default="", max_length=120),
+                   matricula: str = Query(default="", max_length=30),
                    db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     _acceso(db, usuario, dep_id)
-    alumnos = db.query(CatalogoAlumno).filter(
-        func.lower(CatalogoAlumno.matricula) == matricula.strip().lower()
-    ).order_by(CatalogoAlumno.activo.desc(), CatalogoAlumno.id.desc()).limit(25).all()
+    termino = q.strip()
+    consulta = db.query(CatalogoAlumno)
+    matricula_exacta = func.lower(CatalogoAlumno.matricula) == (termino or matricula.strip()).lower()
+    if len(termino) >= 2:
+        campos = (CatalogoAlumno.matricula, CatalogoAlumno.nombres, CatalogoAlumno.apellido_paterno,
+                  CatalogoAlumno.apellido_materno)
+        for palabra in termino.split():
+            consulta = consulta.filter(or_(*(campo.icontains(palabra, autoescape=True) for campo in campos)))
+    elif termino or matricula.strip():
+        consulta = consulta.filter(matricula_exacta)
+    else:
+        return []
+    alumnos = consulta.order_by(
+        matricula_exacta.desc(), CatalogoAlumno.activo.desc().nulls_last(), CatalogoAlumno.apellido_paterno,
+        CatalogoAlumno.apellido_materno, CatalogoAlumno.nombres, CatalogoAlumno.id.desc(),
+    ).limit(25).all()
     return [_alumno(a) for a in alumnos]
 
 

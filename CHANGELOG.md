@@ -4,6 +4,14 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
+## [Preparado] — Búsqueda de alumnos en Cobranza — 2026-11-27
+
+La búsqueda exigía matrícula exacta. Caja puede buscar por matrícula, nombre o apellidos, incluso con varias palabras. Los resultados muestran nombre, matrícula y periodo y requieren selección explícita al buscar por nombre.
+
+Aprobadas la prueba HTTP de Cobranza con datos ficticios y la compilación de Vite. Pendiente confirmar despliegue y revisar con sesión de caja.
+
+---
+
 ## [Preparado] — Cobranza interna de Finanzas — 2026-11-27
 
 Finanzas carecía de un flujo de caja para servicios. El responsable o Super Admin puede asignar Cobranza a personal administrativo del departamento y editar el tabulador. Caja consulta por matrícula, aplica la tarifa, calcula el cambio y emite recibos internos con folio e historial. Los pagos guardan el importe y concepto del momento. La migración f19b4d820c35 crea el tabulador y los pagos.
