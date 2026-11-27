@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Fechas pendientes en Mi Horario antes del precierre — 2026-11-26
+## [b97026a] — Fechas pendientes en Mi Horario antes del precierre — 2026-11-26
 
 División podía ver fechas sin registro durante el periodo activo y el docente solo veía el listado de cierre después del precierre. Mi Horario muestra Mis pendientes desde el periodo vigente con las mismas fechas, materia, grupo, programa y horario. La consulta se limita a las cargas propias, y conserva el plazo de captura y las etapas de confirmación.
 
-Validación con compilación de Vite, pruebas del frontend y pruebas de cierre académico. Pendiente confirmar la publicación y revisar con la cuenta docente del caso reportado.
+Aprobadas 210 pruebas del frontend, 11 de cierre académico y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios y se verificó HTTP 200 para sitio y API. Pendiente revisar con la cuenta docente del caso reportado.
 
 ---
 
