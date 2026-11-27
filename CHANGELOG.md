@@ -4,11 +4,11 @@ Historial de desarrollo del sistema. Sigue [Keep a Changelog](https://keepachang
 
 ---
 
-## [Preparado] — Acceso compacto y solicitud guiada en Mis pendientes — 2026-11-26
+## [eb173c5] — Acceso compacto y solicitud guiada en Mis pendientes — 2026-11-26
 
 El formulario de revisión vencida se abría sobre la agenda docente. Mi Horario ahora conserva el resumen y el acceso a la vista dedicada, incluso con una sola sesión. La solicitud distingue lo ocurrido de lo que se pide a División y conserva ambos textos en el historial. El docente puede consultar las respuestas desde el detalle sin desplazar la agenda.
 
-Validación con pruebas del frontend y compilación de Vite. Pendiente confirmar la publicación y revisar con sesión docente y de División.
+Aprobadas 212 pruebas del frontend y compilación de Vite. Publicado el 26 de noviembre de 2026. Railway confirmó ambos servicios. La ruta respondió HTTP 200 y el JavaScript público incluye el acceso, el formulario y el historial. Pendiente revisar con sesión docente y de División.
 
 ---
 
